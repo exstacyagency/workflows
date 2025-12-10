@@ -1,0 +1,312 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum JobType {
+  CUSTOMER_RESEARCH
+  AD_PERFORMANCE
+  PATTERN_ANALYSIS
+  SCRIPT_GENERATION
+  STORYBOARD_GENERATION
+  CUSTOMER_ANALYSIS
+  CHARACTER_GENERATION
+  VIDEO_IMAGE_GENERATION
+  VIDEO_PROMPT_GENERATION
+  VIDEO_REVIEW
+}
+
+enum JobStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum ResearchSource {
+  REDDIT_PRODUCT
+  REDDIT_PROBLEM
+  AMAZON
+  G2
+  LOCAL_BUSINESS
+}
+
+enum AdPlatform {
+  TIKTOK
+  META
+}
+
+model Project {
+  id            String        @id @default(uuid())
+  name          String
+  description   String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  jobs          Job[]
+  researchRows  ResearchRow[]
+  adAssets      AdAsset[]
+  adPatternResults    AdPatternResult[]
+  adPatternReferences AdPatternReference[]
+
+  customerAvatars       CustomerAvatar[]
+  productIntelligences  ProductIntelligence[]
+  characters            Character[]
+  scripts               Script[]
+  storyboards           Storyboard[]
+}
+
+model Job {
+  id            String        @id @default(uuid())
+  type          JobType
+  status        JobStatus     @default(PENDING)
+  project       Project       @relation(fields: [projectId], references: [id])
+  projectId     String
+  payload       Json?
+  resultSummary String?
+  error         String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  researchRows  ResearchRow[]
+  adAssets      AdAsset[]
+  adPatternResults AdPatternResult[]
+  customerAvatars      CustomerAvatar[]
+  productIntelligences ProductIntelligence[]
+  characters            Character[]
+  scripts               Script[]
+  storyboards           Storyboard[]
+}
+
+model ResearchRow {
+  id          String         @id @default(uuid())
+  project     Project        @relation(fields: [projectId], references: [id])
+  projectId   String
+  job         Job?           @relation(fields: [jobId], references: [id])
+  jobId       String?
+  source      ResearchSource
+  indexLabel  String?
+  title       String?
+  content     String
+  sentiment   Float?
+  importance  Int?
+  rating      Float?
+  verified    Boolean?
+  sourceUrl   String?
+  metadata    Json?
+  createdAt   DateTime       @default(now())
+}
+
+model AdAsset {
+  id          String      @id @default(uuid())
+  project     Project     @relation(fields: [projectId], references: [id])
+  projectId   String
+  job         Job?        @relation(fields: [jobId], references: [id])
+  jobId       String?
+  platform    AdPlatform
+  url         String
+  metrics     Json?
+  transcript  String?
+  ocr         Json?
+  createdAt   DateTime    @default(now())
+}
+
+model AdPatternResult {
+  id         String   @id @default(uuid())
+
+  project    Project  @relation(fields: [projectId], references: [id])
+  projectId  String
+
+  job        Job?     @relation(fields: [jobId], references: [id])
+  jobId      String?
+
+  rawJson    Json
+
+  baselineRetention3s Float?
+  baselineCtr         Float?
+  totalConverters     Int?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  patternReferences   AdPatternReference[]
+}
+
+model AdPatternReference {
+  id        String          @id @default(uuid())
+
+  project   Project         @relation(fields: [projectId], references: [id])
+  projectId String
+
+  result    AdPatternResult @relation(fields: [resultId], references: [id])
+  resultId  String
+
+  patternName          String
+  category             String
+  timing               String
+  description          String
+  example              String
+  exampleTimestamp     Int?
+  visualNotes          String
+  occurrenceRate       Float?
+  sampleCount          Int?
+  performanceLift      String
+  productionComplexity String?
+  standaloneViable     Boolean?
+  canCoexist           Boolean?
+
+  createdAt DateTime @default(now())
+}
+
+model CustomerAvatar {
+  id        String   @id @default(uuid())
+
+  project   Project  @relation(fields: [projectId], references: [id])
+  projectId String
+
+  job       Job?     @relation(fields: [jobId], references: [id])
+  jobId     String?
+
+  rawJson   Json
+
+  // Common top-level fields pulled from avatar_snapshot / top_pains
+  age           Int?
+  gender        String?
+  income        Int?
+  jobTitle      String?
+  location      String?
+  ethnicity     String?
+  primaryPain   String?   // e.g. first top_pains.pain
+  primaryGoal   String?   // optional summary of goals.now[0]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  archivedAt    DateTime?
+}
+
+model ProductIntelligence {
+  id        String   @id @default(uuid())
+
+  project   Project  @relation(fields: [projectId], references: [id])
+  projectId String
+
+  job       Job?     @relation(fields: [jobId], references: [id])
+  jobId     String?
+
+  rawJson   Json
+
+  // Helpful top-level fields pulled from ingredients/mechanism/timeline
+  heroIngredient   String?
+  heroMechanism    String?
+  form             String?
+  initialTimeline  String?
+  peakTimeline     String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  archivedAt       DateTime?
+}
+
+model Character {
+  id        String   @id @default(uuid())
+
+  project   Project  @relation(fields: [projectId], references: [id])
+  projectId String
+
+  job       Job?     @relation(fields: [jobId], references: [id])
+  jobId     String?
+
+  // "male" / "female" – keep as string for flexibility
+  gender    String
+
+  age       Int?
+  ethnicity String?
+  face      String?
+  skin      String?
+  hair      String?
+  eyes      String?
+  build     String?
+  height    String?
+
+  // Full JSON object as returned by the LLM for this character
+  rawJson   Json
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Script {
+  id        String   @id @default(uuid())
+
+  project   Project  @relation(fields: [projectId], references: [id])
+  projectId String
+
+  job       Job?     @relation(fields: [jobId], references: [id])
+  jobId     String?
+
+  rawJson   Json
+  wordCount Int?
+
+  mergedVideoUrl String?
+  status         String?   // e.g. "upscale_pending"
+  upscaledVideoUrl String?
+  upscaleError     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  storyboards Storyboard[]
+}
+
+
+model Storyboard {
+  id        String   @id @default(uuid())
+
+  project   Project  @relation(fields: [projectId], references: [id])
+  projectId String
+
+  job       Job?     @relation(fields: [jobId], references: [id])
+  jobId     String?
+
+  script    Script?  @relation(fields: [scriptId], references: [id])
+  scriptId  String?
+
+  // optional label or name
+  label     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  scenes    StoryboardScene[]
+}
+
+model StoryboardScene {
+  id            String     @id @default(uuid())
+
+  storyboard    Storyboard @relation(fields: [storyboardId], references: [id])
+  storyboardId  String
+
+  sceneNumber   Int
+  durationSec   Int
+  aspectRatio   String
+
+  // Full “scene_full” string like in the workflow
+  sceneFull     String
+
+  // Raw JSON from the LLM for this scene
+  rawJson       Json?
+
+  status        String     @default("pending")
+
+  firstFrameUrl String?
+  lastFrameUrl  String?
+  
+  videoPrompt   String?
+  videoUrl      String?
+  
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+}
+
+

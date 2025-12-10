@@ -1,0 +1,9 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Optional: slight hardening of the base look */
+html,
+body {
+  @apply bg-slate-950 text-slate-50;
+}
