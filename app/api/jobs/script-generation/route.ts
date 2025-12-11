@@ -12,6 +12,10 @@ import { getSessionUser } from '@/lib/getSessionUser';
 export async function POST(req: NextRequest) {
   const user = await getSessionUser();
   let projectId: string | null = null;
+  let jobId: string | null = null;
+  const ip =
+    req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null;
+
   try {
     const parsed = await parseJson(req, ProjectJobSchema);
     if (!parsed.success) {
@@ -41,14 +45,12 @@ export async function POST(req: NextRequest) {
         projectId,
       },
     });
-
-    const ip =
-      req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null;
+    jobId = job.id;
 
     await logAudit({
       userId: user?.id ?? null,
       projectId,
-      jobId: job.id,
+      jobId,
       action: 'job.create',
       ip,
       metadata: {
@@ -64,10 +66,12 @@ export async function POST(req: NextRequest) {
     await logAudit({
       userId: user?.id ?? null,
       projectId,
+      jobId,
       action: 'job.error',
+      ip,
       metadata: {
         type: 'script-generation',
-        error: String(err),
+        error: String(err?.message ?? err),
       },
     });
     return NextResponse.json(

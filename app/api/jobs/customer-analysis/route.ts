@@ -7,6 +7,8 @@ import { requireProjectOwner } from '@/lib/requireProjectOwner';
 import { ProjectJobSchema, parseJson } from '@/lib/validation/jobs';
 import { z } from 'zod';
 import { checkRateLimit } from '@/lib/rateLimiter';
+import { logAudit } from '@/lib/logger';
+import { getSessionUser } from '@/lib/getSessionUser';
 
 function formatAnalysisJobSummary(result: Awaited<ReturnType<typeof runCustomerAnalysis>>) {
   const avatar = result.summary?.avatar;
@@ -29,13 +31,23 @@ const CustomerAnalysisSchema = ProjectJobSchema.extend({
 });
 
 export async function POST(req: NextRequest) {
+  const user = await getSessionUser();
+  let projectId: string | null = null;
+  let jobId: string | null = null;
+  const ip =
+    req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null;
+
   try {
     const parsed = await parseJson(req, CustomerAnalysisSchema);
     if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error, details: parsed.details }, { status: 400 });
+      return NextResponse.json(
+        { error: parsed.error, details: parsed.details },
+        { status: 400 },
+      );
     }
 
-    const { projectId, productName, productProblemSolved } = parsed.data;
+    const { projectId: parsedProjectId, productName, productProblemSolved } = parsed.data;
+    projectId = parsedProjectId;
     const auth = await requireProjectOwner(projectId);
     if (auth.error) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
@@ -53,6 +65,18 @@ export async function POST(req: NextRequest) {
         status: JobStatus.RUNNING,
         projectId,
         payload: parsed.data,
+      },
+    });
+    jobId = job.id;
+
+    await logAudit({
+      userId: user?.id ?? null,
+      projectId,
+      jobId,
+      action: 'job.create',
+      ip,
+      metadata: {
+        type: 'customer-analysis',
       },
     });
 
@@ -85,12 +109,35 @@ export async function POST(req: NextRequest) {
         },
       });
 
+      await logAudit({
+        userId: user?.id ?? null,
+        projectId,
+        jobId,
+        action: 'job.error',
+        ip,
+        metadata: {
+          type: 'customer-analysis',
+          error: String(err?.message ?? err),
+        },
+      });
+
       return NextResponse.json(
         { error: err?.message ?? 'Customer analysis failed' },
         { status: 500 },
       );
     }
   } catch (err: any) {
+    await logAudit({
+      userId: user?.id ?? null,
+      projectId,
+      jobId,
+      action: 'job.error',
+      ip,
+      metadata: {
+        type: 'customer-analysis',
+        error: String(err?.message ?? err),
+      },
+    });
     return NextResponse.json(
       { error: err?.message ?? 'Invalid request' },
       { status: 400 },

@@ -5,12 +5,20 @@ import { requireProjectOwner } from '@/lib/requireProjectOwner';
 import { ProjectJobSchema, parseJson } from '@/lib/validation/jobs';
 import { z } from 'zod';
 import { checkRateLimit } from '@/lib/rateLimiter';
+import { logAudit } from '@/lib/logger';
+import { getSessionUser } from '@/lib/getSessionUser';
 
 const AdPerformanceSchema = ProjectJobSchema.extend({
   industryCode: z.string().min(1, 'industryCode is required'),
 });
 
 export async function POST(req: NextRequest) {
+  const user = await getSessionUser();
+  let projectId: string | null = null;
+  let jobId: string | null = null;
+  const ip =
+    req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null;
+
   try {
     const parsed = await parseJson(req, AdPerformanceSchema);
     if (!parsed.success) {
@@ -19,7 +27,8 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       );
     }
-    const { projectId, industryCode } = parsed.data;
+    const { projectId: parsedProjectId, industryCode } = parsed.data;
+    projectId = parsedProjectId;
 
     const auth = await requireProjectOwner(projectId);
     if (auth.error) {
@@ -33,10 +42,33 @@ export async function POST(req: NextRequest) {
       );
     }
     const result = await startAdRawCollectionJob({ projectId, industryCode });
+    jobId = result?.jobId ?? null;
+
+    await logAudit({
+      userId: user?.id ?? null,
+      projectId,
+      jobId,
+      action: 'job.create',
+      ip,
+      metadata: {
+        type: 'ad-performance',
+      },
+    });
 
     return NextResponse.json(result, { status: 200 });
   } catch (err: any) {
     console.error(err);
+    await logAudit({
+      userId: user?.id ?? null,
+      projectId,
+      jobId,
+      action: 'job.error',
+      ip,
+      metadata: {
+        type: 'ad-performance',
+        error: String(err?.message ?? err),
+      },
+    });
     return NextResponse.json(
       { error: err?.message ?? 'Ad performance collection failed' },
       { status: 500 },

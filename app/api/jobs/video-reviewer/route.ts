@@ -5,8 +5,16 @@ import { requireProjectOwner } from '@/lib/requireProjectOwner';
 import prisma from '@/lib/prisma';
 import { StoryboardJobSchema, parseJson } from '@/lib/validation/jobs';
 import { checkRateLimit } from '@/lib/rateLimiter';
+import { logAudit } from '@/lib/logger';
+import { getSessionUser } from '@/lib/getSessionUser';
 
 export async function POST(req: NextRequest) {
+  const user = await getSessionUser();
+  let projectId: string | null = null;
+  let jobId: string | null = null;
+  const ip =
+    req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null;
+
   try {
     const parsed = await parseJson(req, StoryboardJobSchema);
     if (!parsed.success) {
@@ -30,7 +38,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
 
-    const projectId = storyboard.script?.project?.id ?? storyboard.projectId;
+    projectId = storyboard.script?.project?.id ?? storyboard.projectId;
     const auth = await requireProjectOwner(projectId);
     if (auth.error) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
@@ -44,9 +52,32 @@ export async function POST(req: NextRequest) {
     }
 
     const result = await runVideoReviewer();
+
+    await logAudit({
+      userId: user?.id ?? null,
+      projectId,
+      jobId,
+      action: 'job.create',
+      ip,
+      metadata: {
+        type: 'video-reviewer',
+      },
+    });
+
     return NextResponse.json(result, { status: 200 });
   } catch (err: any) {
     console.error(err);
+    await logAudit({
+      userId: user?.id ?? null,
+      projectId,
+      jobId,
+      action: 'job.error',
+      ip,
+      metadata: {
+        type: 'video-reviewer',
+        error: String(err?.message ?? err),
+      },
+    });
     return NextResponse.json(
       { error: err?.message ?? 'Video reviewer failed' },
       { status: 500 },

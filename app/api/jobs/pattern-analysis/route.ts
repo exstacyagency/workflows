@@ -6,8 +6,16 @@ import { runPatternAnalysis } from '@/lib/adPatternAnalysisService';
 import { requireProjectOwner } from '@/lib/requireProjectOwner';
 import { ProjectJobSchema, parseJson } from '@/lib/validation/jobs';
 import { checkRateLimit } from '@/lib/rateLimiter';
+import { logAudit } from '@/lib/logger';
+import { getSessionUser } from '@/lib/getSessionUser';
 
 export async function POST(req: NextRequest) {
+  const user = await getSessionUser();
+  let projectId: string | null = null;
+  let jobId: string | null = null;
+  const ip =
+    req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null;
+
   try {
     const parsed = await parseJson(req, ProjectJobSchema);
     if (!parsed.success) {
@@ -16,7 +24,7 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       );
     }
-    const { projectId } = parsed.data;
+    projectId = parsed.data.projectId;
 
     const auth = await requireProjectOwner(projectId);
     if (auth.error) {
@@ -36,6 +44,18 @@ export async function POST(req: NextRequest) {
         status: JobStatus.RUNNING,
         projectId,
         payload: parsed.data,
+      },
+    });
+    jobId = job.id;
+
+    await logAudit({
+      userId: user?.id ?? null,
+      projectId,
+      jobId,
+      action: 'job.create',
+      ip,
+      metadata: {
+        type: 'pattern-analysis',
       },
     });
 
@@ -63,12 +83,35 @@ export async function POST(req: NextRequest) {
         },
       });
 
+      await logAudit({
+        userId: user?.id ?? null,
+        projectId,
+        jobId,
+        action: 'job.error',
+        ip,
+        metadata: {
+          type: 'pattern-analysis',
+          error: String(err?.message ?? err),
+        },
+      });
+
       return NextResponse.json(
         { error: err?.message ?? 'Pattern analysis failed' },
         { status: 500 },
       );
     }
   } catch (err: any) {
+    await logAudit({
+      userId: user?.id ?? null,
+      projectId,
+      jobId,
+      action: 'job.error',
+      ip,
+      metadata: {
+        type: 'pattern-analysis',
+        error: String(err?.message ?? err),
+      },
+    });
     return NextResponse.json(
       { error: err?.message ?? 'Invalid request' },
       { status: 400 },

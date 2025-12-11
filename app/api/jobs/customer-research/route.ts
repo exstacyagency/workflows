@@ -6,6 +6,8 @@ import { checkRateLimit } from '@/lib/rateLimiter';
 import { requireProjectOwner } from '@/lib/requireProjectOwner';
 import { z } from 'zod';
 import { ProjectJobSchema, parseJson } from '@/lib/validation/jobs';
+import { logAudit } from '@/lib/logger';
+import { getSessionUser } from '@/lib/getSessionUser';
 
 export const runtime = 'nodejs';
 
@@ -18,6 +20,12 @@ const CustomerResearchSchema = ProjectJobSchema.extend({
 });
 
 export async function POST(req: NextRequest) {
+  const user = await getSessionUser();
+  let projectId: string | null = null;
+  let jobId: string | null = null;
+  const ip =
+    req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null;
+
   try {
     const parsed = await parseJson(req, CustomerResearchSchema);
     if (!parsed.success) {
@@ -27,13 +35,14 @@ export async function POST(req: NextRequest) {
       );
     }
     const {
-      projectId,
+      projectId: parsedProjectId,
       productName,
       productProblemSolved,
       productAmazonAsin,
       competitor1AmazonAsin,
       competitor2AmazonAsin,
     } = parsed.data;
+    projectId = parsedProjectId;
 
     const auth = await requireProjectOwner(projectId);
     if (auth.error) {
@@ -57,7 +66,7 @@ export async function POST(req: NextRequest) {
     const budgetOk = await checkBudget(projectId, costEstimate.totalCost);
     if (!budgetOk) {
       return NextResponse.json(
-        { 
+        {
           error: 'Budget exceeded',
           estimate: costEstimate,
         },
@@ -70,20 +79,21 @@ export async function POST(req: NextRequest) {
         type: JobType.CUSTOMER_RESEARCH,
         status: JobStatus.PENDING,
         projectId,
-        payload: { 
-          projectId, 
-          productName, 
-          productProblemSolved, 
-          productAmazonAsin, 
-          competitor1AmazonAsin, 
+        payload: {
+          projectId,
+          productName,
+          productProblemSolved,
+          productAmazonAsin,
+          competitor1AmazonAsin,
           competitor2AmazonAsin,
           estimatedCost: costEstimate.totalCost,
         },
       },
     });
+    jobId = job.id;
 
     const { addJob, QueueName } = await import('@/lib/queue');
-    
+
     await addJob(QueueName.CUSTOMER_RESEARCH, job.id, {
       jobId: job.id,
       projectId,
@@ -94,13 +104,41 @@ export async function POST(req: NextRequest) {
       competitor2AmazonAsin,
     });
 
-    return NextResponse.json({ 
-      jobId: job.id,
-      estimatedCost: costEstimate.totalCost,
-      breakdown: costEstimate.breakdown,
-    }, { status: 202 });
-  } catch (err: any) {
-    console.error('[API] Customer research job creation failed:', err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    await logAudit({
+      userId: user?.id ?? null,
+      projectId,
+      jobId,
+      action: 'job.create',
+      ip,
+      metadata: {
+        type: 'customer-research',
+      },
+    });
+
+    return NextResponse.json(
+      {
+        jobId: job.id,
+        estimatedCost: costEstimate.totalCost,
+        breakdown: costEstimate.breakdown,
+      },
+      { status: 202 }
+    );
+  } catch (error: any) {
+    await logAudit({
+      userId: user?.id ?? null,
+      projectId,
+      jobId,
+      action: 'job.error',
+      ip,
+      metadata: {
+        type: 'customer-research',
+        error: String(error?.message ?? error),
+      },
+    });
+    console.error('[API] Customer research job creation failed:', error);
+    return NextResponse.json(
+      { error: error?.message ?? 'Customer research job creation failed' },
+      { status: 500 }
+    );
   }
 }
