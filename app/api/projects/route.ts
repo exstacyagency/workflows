@@ -30,8 +30,14 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET() {
+  const user = await getSessionUser();
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   const projects = await prisma.project.findMany({
-    orderBy: { createdAt: 'desc' }
+    where: { userId: user.id },
+    orderBy: { createdAt: 'desc' },
   });
   return NextResponse.json(projects);
 }

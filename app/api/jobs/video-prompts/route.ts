@@ -18,13 +18,18 @@ export async function POST(req: NextRequest) {
 
     const storyboard = await prisma.storyboard.findUnique({
       where: { id: storyboardId },
-      select: { projectId: true },
+      include: {
+        script: {
+          include: { project: true },
+        },
+      },
     });
     if (!storyboard) {
-      return NextResponse.json({ error: 'Storyboard not found' }, { status: 404 });
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
 
-    const auth = await requireProjectOwner(storyboard.projectId);
+    const projectId = storyboard.script?.project?.id ?? storyboard.projectId;
+    const auth = await requireProjectOwner(projectId);
     if (auth.error) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
