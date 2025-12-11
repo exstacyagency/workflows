@@ -2,6 +2,8 @@ import { prisma } from '@/lib/prisma';
 import { getSessionUser } from '@/lib/getSessionUser';
 import { NextRequest, NextResponse } from 'next/server';
 import { logAudit } from '@/lib/logger';
+import { CreateProjectSchema, parseJson } from '@/lib/validation/projects';
+import { checkRateLimit } from '@/lib/rateLimiter';
 
 export async function POST(request: NextRequest) {
   const user = await getSessionUser();
@@ -9,24 +11,31 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  let name = '';
   try {
-    const body = await request.json();
-    name = typeof body.name === 'string' ? body.name.trim() : '';
-
-    if (!name) {
+    const parsed = await parseJson(request, CreateProjectSchema);
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: 'Project name is required' },
+        { error: parsed.error, details: parsed.details },
         { status: 400 },
       );
     }
+    const { name, description } = parsed.data;
 
-    const data: Record<string, any> = { name, userId: user.id };
-    if (typeof body.description === 'string') {
-      data.description = body.description;
+    const rateKey = `project:create:${user.id}`;
+    const rateCheck = await checkRateLimit(rateKey);
+    if (!rateCheck.allowed) {
+      return NextResponse.json(
+        { error: 'Rate limit exceeded' },
+        { status: 429 },
+      );
     }
+
     const project = await prisma.project.create({
-      data,
+      data: {
+        name,
+        description: description ?? undefined,
+        userId: user.id,
+      },
     });
 
     const ip =

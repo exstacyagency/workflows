@@ -9,7 +9,15 @@ const anthropic = new Anthropic({
 export async function runPatternAnalysis(args: { projectId: string; jobId: string }) {
   const { projectId, jobId } = args;
 
-  await prisma.job.update({ where: { id: jobId }, data: { status: JobStatus.RUNNING } });
+  let job = await prisma.job.findUnique({ where: { id: jobId } });
+  if (!job) {
+    throw new Error(`Pattern analysis job not found: ${jobId}`);
+  }
+
+  job = await prisma.job.update({
+    where: { id: job.id },
+    data: { status: JobStatus.RUNNING },
+  });
 
   try {
     const assets = await prisma.adAsset.findMany({
@@ -67,8 +75,8 @@ export async function runPatternAnalysis(args: { projectId: string; jobId: strin
       }
     });
 
-    await prisma.job.update({
-      where: { id: jobId },
+    job = await prisma.job.update({
+      where: { id: job.id },
       data: {
         status: JobStatus.COMPLETED,
         resultSummary: `Pattern analysis: ${parsed.patterns?.length || 0} patterns`,
@@ -78,7 +86,7 @@ export async function runPatternAnalysis(args: { projectId: string; jobId: strin
     return parsed;
   } catch (err: any) {
     await prisma.job.update({
-      where: { id: jobId },
+      where: { id: job.id },
       data: { status: JobStatus.FAILED, error: err.message },
     });
     throw err;
@@ -123,14 +131,31 @@ Return JSON:
 export async function startPatternAnalysisJob(params: { projectId: string }) {
   const { projectId } = params;
 
-  const job = await prisma.job.create({
-    data: {
-      type: JobType.PATTERN_ANALYSIS,
-      status: JobStatus.PENDING,
+  let job = await prisma.job.findFirst({
+    where: {
       projectId,
-      payload: { projectId },
+      type: JobType.PATTERN_ANALYSIS,
     },
   });
+
+  if (!job) {
+    job = await prisma.job.create({
+      data: {
+        type: JobType.PATTERN_ANALYSIS,
+        status: JobStatus.PENDING,
+        projectId,
+        payload: { projectId },
+      },
+    });
+  } else {
+    job = await prisma.job.update({
+      where: { id: job.id },
+      data: {
+        status: JobStatus.PENDING,
+        error: null,
+      },
+    });
+  }
 
   const { addJob, QueueName } = await import('@/lib/queue');
   await addJob(QueueName.PATTERN_ANALYSIS, job.id, { jobId: job.id, projectId });

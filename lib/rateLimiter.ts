@@ -4,10 +4,33 @@ const LIMITS = {
   jobsPerHour: 10,
   jobsPerDay: 50,
   concurrentJobs: 3,
+  projectsPerHour: 5,
 };
 
-export async function checkRateLimit(projectId: string): Promise<{ allowed: boolean; reason?: string }> {
+export async function checkRateLimit(identifier: string): Promise<{ allowed: boolean; reason?: string }> {
   const now = new Date();
+
+  if (identifier.startsWith('project:create:')) {
+    const [, , userId] = identifier.split(':');
+    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+    const created = await prisma.project.count({
+      where: {
+        userId,
+        createdAt: { gte: oneHourAgo },
+      },
+    });
+
+    if (created >= LIMITS.projectsPerHour) {
+      return {
+        allowed: false,
+        reason: `${created} projects created in last hour (max: ${LIMITS.projectsPerHour})`,
+      };
+    }
+
+    return { allowed: true };
+  }
+
+  const projectId = identifier;
   const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
   const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 

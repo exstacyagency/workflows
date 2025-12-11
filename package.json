@@ -14,9 +14,11 @@
     "workers": "tsx workers.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.71.2",
     "@prisma/client": "5.22.0",
     "bcryptjs": "^3.0.3",
     "bull": "^4.16.5",
+    "date-fns": "^3.6.0",
     "ioredis": "^5.8.2",
     "next": "14.2.5",
     "next-auth": "^4.24.13",
@@ -35,6 +37,7 @@
     "postcss": "^8.5.6",
     "prisma": "5.22.0",
     "tailwindcss": "^3.4.13",
+    "ts-node": "^10.9.2",
     "typescript": "5.6.3"
   }
 }

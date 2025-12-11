@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { purgeCustomerProfileArchives } from '@/lib/customerAnalysisService';
 import { requireProjectOwner } from '@/lib/requireProjectOwner';
+import {
+  CustomerAvatarActionSchema,
+  parseJson,
+} from '@/lib/validation/projects';
 
 type Params = {
   params: { projectId: string; avatarId: string };
@@ -9,20 +13,27 @@ type Params = {
 
 export async function PATCH(req: NextRequest, { params }: Params) {
   const { projectId, avatarId } = params;
+
+  const auth = await requireProjectOwner(projectId);
+  if (auth.error) {
+    return NextResponse.json(
+      { error: auth.error },
+      { status: auth.status },
+    );
+  }
+
   if (!projectId || !avatarId) {
     return NextResponse.json({ error: 'projectId and avatarId are required' }, { status: 400 });
   }
 
-  const auth = await requireProjectOwner(projectId);
-  if (auth.error) {
-    return NextResponse.json({ error: auth.error }, { status: auth.status });
+  const parsed = await parseJson(req, CustomerAvatarActionSchema);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: parsed.error, details: parsed.details },
+      { status: 400 },
+    );
   }
-
-  const body = await req.json().catch(() => null);
-  const action = body?.action as 'archive' | 'restore' | undefined;
-  if (!action || !['archive', 'restore'].includes(action)) {
-    return NextResponse.json({ error: 'Invalid action. Use "archive" or "restore".' }, { status: 400 });
-  }
+  const { action } = parsed.data;
 
   const avatar = await prisma.customerAvatar.findFirst({ where: { id: avatarId, projectId } });
   if (!avatar) {
@@ -46,13 +57,17 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
 export async function DELETE(_req: NextRequest, { params }: Params) {
   const { projectId, avatarId } = params;
-  if (!projectId || !avatarId) {
-    return NextResponse.json({ error: 'projectId and avatarId are required' }, { status: 400 });
-  }
 
   const auth = await requireProjectOwner(projectId);
   if (auth.error) {
-    return NextResponse.json({ error: auth.error }, { status: auth.status });
+    return NextResponse.json(
+      { error: auth.error },
+      { status: auth.status },
+    );
+  }
+
+  if (!projectId || !avatarId) {
+    return NextResponse.json({ error: 'projectId and avatarId are required' }, { status: 400 });
   }
 
   const avatar = await prisma.customerAvatar.findFirst({ where: { id: avatarId, projectId } });

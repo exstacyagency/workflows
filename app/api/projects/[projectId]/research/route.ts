@@ -8,13 +8,17 @@ type Params = {
 
 export async function GET(_request: Request, { params }: Params) {
   const { projectId } = params;
-  if (!projectId) {
-    return NextResponse.json({ error: 'projectId is required' }, { status: 400 });
-  }
 
   const auth = await requireProjectOwner(projectId);
   if (auth.error) {
-    return NextResponse.json({ error: auth.error }, { status: auth.status });
+    return NextResponse.json(
+      { error: auth.error },
+      { status: auth.status },
+    );
+  }
+
+  if (!projectId) {
+    return NextResponse.json({ error: 'projectId is required' }, { status: 400 });
   }
 
   const project = await prisma.project.findUnique({ where: { id: projectId } });

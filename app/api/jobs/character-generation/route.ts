@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { checkRateLimit } from '@/lib/rateLimiter';
 import { logAudit } from '@/lib/logger';
 import { getSessionUser } from '@/lib/getSessionUser';
+import { enforcePlanLimits, incrementUsage } from '@/lib/billing';
 
 const CharacterGenerationSchema = ProjectJobSchema.extend({
   productName: z.string().min(1, 'productName is required'),
@@ -14,6 +15,9 @@ const CharacterGenerationSchema = ProjectJobSchema.extend({
 
 export async function POST(req: NextRequest) {
   const user = await getSessionUser();
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
   let projectId: string | null = null;
   let jobId: string | null = null;
   const ip =
@@ -34,6 +38,16 @@ export async function POST(req: NextRequest) {
     if (auth.error) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
+    const userId = auth.user?.id ?? user.id;
+    const limitCheck = await enforcePlanLimits(userId);
+    if (!limitCheck.allowed) {
+      return NextResponse.json(
+        { error: limitCheck.reason },
+        { status: 403 },
+      );
+    }
+
+    await incrementUsage(userId, 'job', 1);
     const rateCheck = await checkRateLimit(projectId);
     if (!rateCheck.allowed) {
       return NextResponse.json(

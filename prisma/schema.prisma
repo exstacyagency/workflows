@@ -50,6 +50,8 @@ model User {
 
   projects     Project[]
   auditLogs    AuditLog[]
+  subscriptions Subscription[]
+  usage        Usage[]
 }
 
 model Project {
@@ -342,4 +344,43 @@ model StoryboardScene {
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
 
+}
+
+model Plan {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+
+  maxJobsPerDay      Int
+  maxVideoJobsPerDay Int
+  maxMonthlyUsage    Int
+
+  subscriptions Subscription[]
+}
+
+model Subscription {
+  id        String   @id @default(cuid())
+  userId    String
+  planId    String
+
+  plan      Plan     @relation(fields: [planId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+
+  status    String   @default("active")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Usage {
+  id          String   @id @default(cuid())
+  userId      String
+  period      DateTime
+
+  jobsUsed      Int   @default(0)
+  videoJobsUsed Int   @default(0)
+  tokensUsed    Int   @default(0)
+
+  user        User    @relation(fields: [userId], references: [id])
+
+  @@unique([userId, period])
 }
