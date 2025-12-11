@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { requireProjectOwner } from '@/lib/requireProjectOwner';
+import { getSignedMediaUrl } from '@/lib/mediaStorage';
 
 type Params = {
   params: { projectId: string };
@@ -27,5 +28,13 @@ export async function GET(_req: NextRequest, { params }: Params) {
     orderBy: { createdAt: 'desc' },
   });
 
-  return NextResponse.json(scripts, { status: 200 });
+  const scriptsWithSignedUrls = await Promise.all(
+    scripts.map(async script => ({
+      ...script,
+      mergedVideoUrl: await getSignedMediaUrl(script.mergedVideoUrl),
+      upscaledVideoUrl: await getSignedMediaUrl(script.upscaledVideoUrl),
+    })),
+  );
+
+  return NextResponse.json(scriptsWithSignedUrls, { status: 200 });
 }

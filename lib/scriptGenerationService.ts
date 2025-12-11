@@ -1,6 +1,7 @@
 // lib/scriptGenerationService.ts
 import prisma from '@/lib/prisma';
 import { JobStatus, JobType } from '@prisma/client';
+import type { Job } from '@prisma/client';
 
 type Pattern = {
   pattern_name: string;
@@ -338,71 +339,83 @@ export async function runScriptGeneration(args: { projectId: string; jobId?: str
     orderBy: { createdAt: 'desc' },
   });
 
-  if (!avatar || !productIntel || !patternResult) {
-    throw new Error(
-      `Missing dependencies: ${!avatar ? 'avatar ' : ''}${!productIntel ? 'product_intelligence ' : ''}${!patternResult ? 'pattern_result' : ''}`,
+  const missingDeps: string[] = [];
+  if (!avatar) missingDeps.push('avatar');
+  if (!productIntel) missingDeps.push('product_intelligence');
+  if (!patternResult) missingDeps.push('pattern_result');
+
+  if (missingDeps.length > 0) {
+    console.warn(
+      'Script generation missing dependencies (dev mode):',
+      missingDeps.join(', '),
     );
   }
 
-  const patternData = patternResult.rawJson as {
+  const patternData = (patternResult?.rawJson as {
     patterns?: Pattern[];
     anti_patterns?: AntiPattern[];
     stacking_rules?: StackingRule[];
     [key: string]: any;
-  };
+  }) ?? {};
 
   const patterns = patternData.patterns || [];
   const antiPatterns = patternData.anti_patterns || [];
   const stackingRules = patternData.stacking_rules || [];
 
-  if (!patterns.length) {
+  if (!patterns.length && !missingDeps.includes('pattern_result')) {
     throw new Error('No patterns found in pattern brain for this project.');
   }
 
   const { system, prompt } = buildScriptPrompt({
     productName: project.name,
-    avatar: avatar.rawJson,
-    productIntel: productIntel.rawJson,
+    avatar: avatar?.rawJson ?? {},
+    productIntel: productIntel?.rawJson ?? {},
     patterns,
     antiPatterns,
     stackingRules,
   });
 
-  const responseText = await callAnthropic(system, prompt);
-  const scriptJson = parseJsonFromLLM(responseText);
-
   const scriptRecord = await prisma.script.create({
     data: {
       projectId,
       jobId,
+      mergedVideoUrl: null,
+      upscaledVideoUrl: null,
+      status: 'PENDING',
+      rawJson: {},
+      wordCount: 0,
+    },
+  });
+
+  if (!process.env.ANTHROPIC_API_KEY) {
+    console.warn(
+      'ANTHROPIC_API_KEY not set – dev mode, skipping LLM call for script generation',
+    );
+    return scriptRecord;
+  }
+
+  const responseText = await callAnthropic(system, prompt);
+  const scriptJson = parseJsonFromLLM(responseText);
+
+  const updatedScript = await prisma.script.update({
+    where: { id: scriptRecord.id },
+    data: {
       rawJson: scriptJson as any,
       wordCount:
         typeof scriptJson.word_count === 'number'
           ? scriptJson.word_count
           : null,
+      status: 'READY',
     },
   });
 
-  return scriptRecord;
+  return updatedScript;
 }
 
 /**
  * Convenience wrapper to run script generation as a Job.
  */
-export async function startScriptGenerationJob(
-  projectId: string,
-  existingJob?: { id: string },
-) {
-  const job =
-    existingJob ??
-    (await prisma.job.create({
-      data: {
-        type: JobType.SCRIPT_GENERATION,
-        status: JobStatus.RUNNING,
-        projectId,
-      },
-    }));
-
+export async function startScriptGenerationJob(projectId: string, job: Job) {
   try {
     const script = await runScriptGeneration({ projectId, jobId: job.id });
 
@@ -417,7 +430,7 @@ export async function startScriptGenerationJob(
     return {
       jobId: job.id,
       scriptId: script.id,
-      wordCount: script.wordCount,
+      script,
     };
   } catch (err: any) {
     await prisma.job.update({
