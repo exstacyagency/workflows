@@ -3,18 +3,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import { startVideoImageGenerationJob } from '@/lib/videoImageGenerationService';
 import prisma from '@/lib/prisma';
 import { requireProjectOwner } from '@/lib/requireProjectOwner';
+import { StoryboardJobSchema, parseJson } from '@/lib/validation/jobs';
+import { checkRateLimit } from '@/lib/rateLimiter';
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { storyboardId } = body;
-
-    if (!storyboardId || typeof storyboardId !== 'string') {
+    const parsed = await parseJson(req, StoryboardJobSchema);
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: 'storyboardId is required' },
+        { error: parsed.error, details: parsed.details },
         { status: 400 },
       );
     }
+    const { storyboardId } = parsed.data;
 
     const storyboard = await prisma.storyboard.findUnique({
       where: { id: storyboardId },
@@ -32,6 +33,13 @@ export async function POST(req: NextRequest) {
     const auth = await requireProjectOwner(projectId);
     if (auth.error) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+    const rateCheck = await checkRateLimit(projectId);
+    if (!rateCheck.allowed) {
+      return NextResponse.json(
+        { error: `Rate limit exceeded: ${rateCheck.reason}` },
+        { status: 429 },
+      );
     }
 
     const result = await startVideoImageGenerationJob(storyboardId);

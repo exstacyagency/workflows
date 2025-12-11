@@ -4,6 +4,9 @@ import prisma from '@/lib/prisma';
 import { JobStatus, JobType } from '@prisma/client';
 import { runCustomerAnalysis } from '@/lib/customerAnalysisService';
 import { requireProjectOwner } from '@/lib/requireProjectOwner';
+import { ProjectJobSchema, parseJson } from '@/lib/validation/jobs';
+import { z } from 'zod';
+import { checkRateLimit } from '@/lib/rateLimiter';
 
 function formatAnalysisJobSummary(result: Awaited<ReturnType<typeof runCustomerAnalysis>>) {
   const avatar = result.summary?.avatar;
@@ -20,30 +23,36 @@ function formatAnalysisJobSummary(result: Awaited<ReturnType<typeof runCustomerA
     : `Customer analysis complete for ${result.productName}.`;
 }
 
+const CustomerAnalysisSchema = ProjectJobSchema.extend({
+  productName: z.string().optional(),
+  productProblemSolved: z.string().optional(),
+});
+
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { projectId, productName, productProblemSolved } = body;
-
-    if (!projectId || typeof projectId !== 'string') {
-      return NextResponse.json({ error: 'projectId is required' }, { status: 400 });
+    const parsed = await parseJson(req, CustomerAnalysisSchema);
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error, details: parsed.details }, { status: 400 });
     }
+
+    const { projectId, productName, productProblemSolved } = parsed.data;
     const auth = await requireProjectOwner(projectId);
     if (auth.error) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
-    if (productName !== undefined && typeof productName !== 'string') {
-      return NextResponse.json({ error: 'productName must be a string when provided' }, { status: 400 });
-    }
-    if (productProblemSolved !== undefined && typeof productProblemSolved !== 'string') {
-      return NextResponse.json({ error: 'productProblemSolved must be a string when provided' }, { status: 400 });
+    const rateCheck = await checkRateLimit(projectId);
+    if (!rateCheck.allowed) {
+      return NextResponse.json(
+        { error: `Rate limit exceeded: ${rateCheck.reason}` },
+        { status: 429 },
+      );
     }
     const job = await prisma.job.create({
       data: {
         type: JobType.CUSTOMER_ANALYSIS,
         status: JobStatus.RUNNING,
         projectId,
-        payload: body,
+        payload: parsed.data,
       },
     });
 

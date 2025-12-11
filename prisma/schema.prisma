@@ -49,6 +49,7 @@ model User {
   updatedAt    DateTime  @updatedAt
 
   projects     Project[]
+  auditLogs    AuditLog[]
 }
 
 model Project {
@@ -70,6 +71,7 @@ model Project {
   characters            Character[]
   scripts               Script[]
   storyboards           Storyboard[]
+  auditLogs             AuditLog[]
 }
 
 model Job {
@@ -94,6 +96,23 @@ model Job {
   characters            Character[]
   scripts               Script[]
   storyboards           Storyboard[]
+  auditLogs             AuditLog[]
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id])
+  jobId     String?
+  job       Job?     @relation(fields: [jobId], references: [id])
+
+  action   String
+  metadata Json?
+  ip       String?
+
+  createdAt DateTime @default(now())
 }
 
 model ResearchRow {
@@ -324,4 +343,3 @@ model StoryboardScene {
   updatedAt     DateTime   @updatedAt
 
 }
-

@@ -4,20 +4,36 @@ import { JobType, JobStatus } from '@prisma/client';
 import { estimateCustomerResearchCost, checkBudget } from '@/lib/costEstimator';
 import { checkRateLimit } from '@/lib/rateLimiter';
 import { requireProjectOwner } from '@/lib/requireProjectOwner';
+import { z } from 'zod';
+import { ProjectJobSchema, parseJson } from '@/lib/validation/jobs';
 
 export const runtime = 'nodejs';
 
+const CustomerResearchSchema = ProjectJobSchema.extend({
+  productName: z.string().min(1, 'productName is required'),
+  productProblemSolved: z.string().min(1, 'productProblemSolved is required'),
+  productAmazonAsin: z.string().min(1, 'productAmazonAsin is required'),
+  competitor1AmazonAsin: z.string().optional(),
+  competitor2AmazonAsin: z.string().optional(),
+});
+
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { projectId, productName, productProblemSolved, productAmazonAsin, competitor1AmazonAsin, competitor2AmazonAsin } = body;
-
-    if (!projectId || !productName || !productProblemSolved || !productAmazonAsin) {
+    const parsed = await parseJson(req, CustomerResearchSchema);
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: 'Missing required fields' },
+        { error: parsed.error, details: parsed.details },
         { status: 400 }
       );
     }
+    const {
+      projectId,
+      productName,
+      productProblemSolved,
+      productAmazonAsin,
+      competitor1AmazonAsin,
+      competitor2AmazonAsin,
+    } = parsed.data;
 
     const auth = await requireProjectOwner(projectId);
     if (auth.error) {

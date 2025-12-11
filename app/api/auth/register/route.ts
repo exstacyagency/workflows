@@ -2,12 +2,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { hash } from "bcryptjs";
+import { logAudit } from "@/lib/logger";
 
 export async function POST(req: NextRequest) {
+  let email: string | null = null;
   try {
     const body = await req.json();
-    const email = typeof body.email === "string" ? body.email.trim() : "";
-    const password = typeof body.password === "string" ? body.password : "";
+
+    email = typeof body.email === "string" ? body.email.trim() : "";
+    const password =
+      typeof body.password === "string" ? body.password : "";
     const name =
       typeof body.name === "string" && body.name.trim().length > 0
         ? body.name.trim()
@@ -35,11 +39,33 @@ export async function POST(req: NextRequest) {
       select: { id: true, email: true, name: true, createdAt: true },
     });
 
+    const ip =
+      req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
+
+    await logAudit({
+      userId: user.id,
+      action: "auth.register",
+      ip,
+      metadata: { email: user.email },
+    });
+
     return NextResponse.json({ user }, { status: 201 });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error in /api/auth/register", error);
+
+    await logAudit({
+      action: "auth.error",
+      metadata: {
+        scope: "register",
+        email,
+        error: String(error?.message ?? error),
+      },
+    });
+
     return NextResponse.json(
-      { error: "Internal server error" },
+      {
+        error: "Internal server error",
+      },
       { status: 500 }
     );
   }

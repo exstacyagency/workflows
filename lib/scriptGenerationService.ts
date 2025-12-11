@@ -389,14 +389,19 @@ export async function runScriptGeneration(args: { projectId: string; jobId?: str
 /**
  * Convenience wrapper to run script generation as a Job.
  */
-export async function startScriptGenerationJob(projectId: string) {
-  const job = await prisma.job.create({
-    data: {
-      type: JobType.SCRIPT_GENERATION,
-      status: JobStatus.RUNNING,
-      projectId,
-    },
-  });
+export async function startScriptGenerationJob(
+  projectId: string,
+  existingJob?: { id: string },
+) {
+  const job =
+    existingJob ??
+    (await prisma.job.create({
+      data: {
+        type: JobType.SCRIPT_GENERATION,
+        status: JobStatus.RUNNING,
+        projectId,
+      },
+    }));
 
   try {
     const script = await runScriptGeneration({ projectId, jobId: job.id });
