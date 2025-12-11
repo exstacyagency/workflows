@@ -1,22 +1,27 @@
-import { prisma } from '@/lib/prisma';
-import { startOfMonth } from 'date-fns';
+// lib/billing.ts
+import { prisma } from "@/lib/prisma";
+import { startOfMonth } from "date-fns";
 
 export async function getUserSubscription(userId: string) {
   const sub = await prisma.subscription.findFirst({
     where: {
       userId,
-      status: 'active',
+      status: "active",
     },
     include: { plan: true },
   });
 
   if (!sub) {
     const growthPlan = await prisma.plan.findFirst({
-      where: { name: 'Growth' },
+      where: { name: "Growth" },
     });
 
+    if (!growthPlan) {
+      throw new Error("Growth plan not found in database");
+    }
+
     return {
-      plan: growthPlan!,
+      plan: growthPlan,
       subscription: null,
     };
   }
@@ -29,13 +34,22 @@ export async function getUserSubscription(userId: string) {
 
 export async function getUserUsage(userId: string) {
   const period = startOfMonth(new Date());
-  let usage = await prisma.usage.findFirst({
-    where: { userId, period },
+
+  let usage = await prisma.usage.findUnique({
+    where: {
+      userId_period: {
+        userId,
+        period,
+      },
+    },
   });
 
   if (!usage) {
     usage = await prisma.usage.create({
-      data: { userId, period },
+      data: {
+        userId,
+        period,
+      },
     });
   }
 
@@ -44,17 +58,17 @@ export async function getUserUsage(userId: string) {
 
 export async function incrementUsage(
   userId: string,
-  type: 'job' | 'video' | 'tokens',
-  amount = 1,
+  type: "job" | "video" | "tokens",
+  amount = 1
 ) {
   const period = startOfMonth(new Date());
 
   const field =
-    type === 'job'
-      ? 'jobsUsed'
-      : type === 'video'
-      ? 'videoJobsUsed'
-      : 'tokensUsed';
+    type === "job"
+      ? "jobsUsed"
+      : type === "video"
+      ? "videoJobsUsed"
+      : "tokensUsed";
 
   await prisma.usage.upsert({
     where: {
@@ -63,15 +77,15 @@ export async function incrementUsage(
         period,
       },
     },
-    update: {
-      [field]: {
-        increment: amount,
-      },
-    },
     create: {
       userId,
       period,
       [field]: amount,
+    },
+    update: {
+      [field]: {
+        increment: amount,
+      },
     },
   });
 }
@@ -81,24 +95,15 @@ export async function enforcePlanLimits(userId: string) {
   const usage = await getUserUsage(userId);
 
   if (usage.jobsUsed >= plan.maxJobsPerDay) {
-    return {
-      allowed: false,
-      reason: 'Daily job limit reached',
-    };
+    return { allowed: false, reason: "Daily job limit reached" };
   }
 
   if (usage.videoJobsUsed >= plan.maxVideoJobsPerDay) {
-    return {
-      allowed: false,
-      reason: 'Daily video jobs limit reached',
-    };
+    return { allowed: false, reason: "Daily video jobs limit reached" };
   }
 
   if (usage.tokensUsed >= plan.maxMonthlyUsage) {
-    return {
-      allowed: false,
-      reason: 'Monthly usage cap reached',
-    };
+    return { allowed: false, reason: "Monthly usage cap reached" };
   }
 
   return { allowed: true };

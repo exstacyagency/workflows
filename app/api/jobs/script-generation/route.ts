@@ -12,39 +12,43 @@ import { enforcePlanLimits, incrementUsage } from '@/lib/billing';
 
 export async function POST(req: NextRequest) {
   const user = await getSessionUser();
-  if (!user) {
+  if (!user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-  let projectId: string | null = null;
-  let jobId: string | null = null;
   const ip =
     req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null;
 
+  const parsed = await parseJson(req, ProjectJobSchema);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: parsed.error, details: parsed.details },
+      { status: 400 },
+    );
+  }
+
+  const { projectId } = parsed.data;
+
+  const auth = await requireProjectOwner(projectId);
+  if (auth.error) {
+    return NextResponse.json(
+      { error: auth.error },
+      { status: auth.status },
+    );
+  }
+
+  const userId = user.id;
+
+  const limitCheck = await enforcePlanLimits(userId);
+  if (!limitCheck.allowed) {
+    return NextResponse.json(
+      { error: limitCheck.reason },
+      { status: 403 },
+    );
+  }
+
+  await incrementUsage(userId, 'job', 1);
+
   try {
-    const parsed = await parseJson(req, ProjectJobSchema);
-    if (!parsed.success) {
-      return NextResponse.json(
-        { error: parsed.error, details: parsed.details },
-        { status: 400 },
-      );
-    }
-    projectId = parsed.data.projectId;
-
-    const auth = await requireProjectOwner(projectId);
-    if (auth.error) {
-      return NextResponse.json({ error: auth.error }, { status: auth.status });
-    }
-
-    const userId = auth.user?.id ?? user.id;
-    const limitCheck = await enforcePlanLimits(userId);
-    if (!limitCheck.allowed) {
-      return NextResponse.json(
-        { error: limitCheck.reason },
-        { status: 403 },
-      );
-    }
-
-    await incrementUsage(userId, 'job', 1);
     const rateCheck = await checkRateLimit(projectId);
     if (!rateCheck.allowed) {
       return NextResponse.json(
@@ -60,12 +64,10 @@ export async function POST(req: NextRequest) {
         projectId,
       },
     });
-    jobId = job.id;
-
-    await incrementUsage(user.id, 'job', 1);
+    const jobId = job.id;
 
     await logAudit({
-      userId: user?.id ?? null,
+      userId,
       projectId,
       jobId,
       action: 'job.create',
@@ -81,9 +83,9 @@ export async function POST(req: NextRequest) {
   } catch (err: any) {
     console.error(err);
     await logAudit({
-      userId: user?.id ?? null,
+      userId,
       projectId,
-      jobId,
+      jobId: null,
       action: 'job.error',
       ip,
       metadata: {

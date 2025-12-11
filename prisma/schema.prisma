@@ -372,15 +372,15 @@ model Subscription {
 }
 
 model Usage {
-  id          String   @id @default(cuid())
-  userId      String
-  period      DateTime
+  id        String   @id @default(cuid())
+  userId    String
+  period    DateTime
 
   jobsUsed      Int   @default(0)
   videoJobsUsed Int   @default(0)
   tokensUsed    Int   @default(0)
 
-  user        User    @relation(fields: [userId], references: [id])
+  user      User   @relation(fields: [userId], references: [id])
 
   @@unique([userId, period])
 }
