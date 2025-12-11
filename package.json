@@ -10,13 +10,20 @@
     "start": "next start",
     "lint": "next lint",
     "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev --name init"
+    "prisma:migrate": "prisma migrate dev --name init",
+    "workers": "tsx workers.ts"
   },
   "dependencies": {
     "@prisma/client": "5.22.0",
+    "bcryptjs": "^3.0.3",
+    "bull": "^4.16.5",
+    "ioredis": "^5.8.2",
     "next": "14.2.5",
+    "next-auth": "^4.24.13",
+    "p-limit": "^7.2.0",
     "react": "18.3.1",
-    "react-dom": "18.3.1"
+    "react-dom": "18.3.1",
+    "tsx": "^4.21.0"
   },
   "devDependencies": {
     "@types/node": "20.14.10",

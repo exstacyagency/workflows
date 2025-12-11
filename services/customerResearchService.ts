@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { JobStatus, ResearchSource } from '@prisma/client';
+import { getBreaker } from '@/lib/circuitBreaker';
 
 export type RunCustomerResearchParams = {
   projectId: string;
@@ -36,44 +37,45 @@ type AmazonReview = {
 type ResearchRowInput = Parameters<(typeof prisma.researchRow)['createMany']>[0]['data'][number];
 
 const APIFY_BASE = 'https://api.apify.com/v2';
-const FETCH_RETRY_ATTEMPTS = Number(process.env.CUSTOMER_RESEARCH_FETCH_RETRIES ?? 3);
-const REDDIT_PAGE_SIZE = Number(process.env.CUSTOMER_RESEARCH_REDDIT_PAGE_SIZE ?? 75);
-const REDDIT_MAX_PAGES = Number(process.env.CUSTOMER_RESEARCH_REDDIT_PAGES ?? 3);
-const MIN_RESEARCH_ROWS = Number(process.env.CUSTOMER_RESEARCH_MIN_ROWS ?? 25);
+const FETCH_RETRY_ATTEMPTS = 3;
+const REDDIT_PAGE_SIZE = 75;
+const REDDIT_MAX_PAGES = 3;
+const MIN_RESEARCH_ROWS = 25;
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function fetchWithRetry(url: string, init: RequestInit | undefined, label: string) {
-  let lastError: Error | undefined;
+  const breaker = getBreaker(label);
+  
+  return breaker.execute(async () => {
+    let lastError: Error | undefined;
 
-  for (let attempt = 1; attempt <= FETCH_RETRY_ATTEMPTS; attempt++) {
-    try {
-      const res = await fetch(url, init);
-      if (!res.ok) {
-        const text = await res.text().catch(() => '');
-        throw new Error(`${label} failed (${res.status}): ${text}`);
+    for (let attempt = 1; attempt <= FETCH_RETRY_ATTEMPTS; attempt++) {
+      try {
+        const res = await fetch(url, init);
+        if (!res.ok) {
+          const text = await res.text().catch(() => '');
+          throw new Error(`${label} failed (${res.status}): ${text}`);
+        }
+        return res;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        if (attempt === FETCH_RETRY_ATTEMPTS) break;
+        
+        const backoff = Math.min(1000 * 2 ** (attempt - 1), 5000);
+        await sleep(backoff);
       }
-      return res;
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error));
-      if (attempt === FETCH_RETRY_ATTEMPTS) {
-        break;
-      }
-      const backoff = Math.min(1000 * 2 ** (attempt - 1), 5000);
-      await sleep(backoff);
     }
-  }
 
-  throw lastError ?? new Error(`${label} failed`);
+    throw lastError ?? new Error(`${label} failed`);
+  }, label);
 }
 
 async function runApifyActor<T>(actorId: string, input: Record<string, unknown>) {
   const token = process.env.APIFY_TOKEN;
-  if (!token) {
-    throw new Error('APIFY_TOKEN is not set');
-  }
+  if (!token) throw new Error('APIFY_TOKEN not set');
 
   const runResponse = await fetchWithRetry(
     `${APIFY_BASE}/acts/${actorId}/runs?token=${token}&waitForFinish=120`,
@@ -82,19 +84,17 @@ async function runApifyActor<T>(actorId: string, input: Record<string, unknown>)
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ input })
     },
-    `Apify actor ${actorId}`
+    `apify-${actorId}`
   );
 
   const runData = await runResponse.json();
   const datasetId: string | undefined = runData?.data?.defaultDatasetId;
-  if (!datasetId) {
-    throw new Error('Apify run did not return a datasetId');
-  }
+  if (!datasetId) throw new Error('Apify run failed - no datasetId');
 
   const datasetRes = await fetchWithRetry(
     `${APIFY_BASE}/datasets/${datasetId}/items?clean=true&token=${token}`,
     undefined,
-    `Apify dataset ${datasetId}`
+    `apify-dataset-${datasetId}`
   );
 
   return (await datasetRes.json()) as T[];
@@ -105,28 +105,24 @@ async function searchReddit(keyword: string) {
 
   const collected: RedditPost[] = [];
   let after: string | undefined;
-  const headers = { 'User-Agent': process.env.REDDIT_USER_AGENT || 'ai-ad-lab/1.0' };
+  const headers = { 'User-Agent': 'ai-ad-lab/1.0' };
 
   for (let page = 0; page < REDDIT_MAX_PAGES; page++) {
     const searchUrl = new URL('https://www.reddit.com/search.json');
     searchUrl.searchParams.set('q', keyword);
     searchUrl.searchParams.set('limit', `${REDDIT_PAGE_SIZE}`);
     searchUrl.searchParams.set('sort', 'top');
-    if (after) {
-      searchUrl.searchParams.set('after', after);
-    }
+    if (after) searchUrl.searchParams.set('after', after);
 
-    const res = await fetchWithRetry(searchUrl.toString(), { headers }, 'Reddit search');
+    const res = await fetchWithRetry(searchUrl.toString(), { headers }, 'reddit-search');
     const data = await res.json();
     const children = data?.data?.children || [];
-    if (!children.length) {
-      break;
-    }
+    if (!children.length) break;
+    
     collected.push(...(children.map((item: any) => item?.data) as RedditPost[]));
     after = data?.data?.after;
-    if (!after) {
-      break;
-    }
+    if (!after) break;
+    
     await sleep(300);
   }
 
@@ -177,9 +173,7 @@ function filterProblemComments(items: RedditPost[]) {
         const text = (c.body || '').toLowerCase();
         const wordCount = text.split(' ').length;
         if (wordCount < 30) return false;
-        return /tried everything|years|months|nothing work|desperate|given up|can't take|tired of|frustrated|help|struggle|worse|failed|stopped working/i.test(
-          text
-        );
+        return /tried everything|years|months|nothing work|desperate|given up|can't take|tired of|frustrated|help|struggle|worse|failed|stopped working/i.test(text);
       });
 
       return {
@@ -253,17 +247,15 @@ function dedupeRows(rows: ResearchRowInput[]) {
 }
 
 export async function runCustomerResearch(params: RunCustomerResearchParams) {
-  const { projectId, jobId, productName, productProblemSolved, productAmazonAsin, competitor1AmazonAsin, competitor2AmazonAsin } =
-    params;
+  const { projectId, jobId, productName, productProblemSolved, productAmazonAsin, competitor1AmazonAsin, competitor2AmazonAsin } = params;
 
   await prisma.job.update({ where: { id: jobId }, data: { status: JobStatus.RUNNING } });
 
   try {
     if (!productName || !productProblemSolved || !productAmazonAsin) {
-      throw new Error('productName, productProblemSolved, and productAmazonAsin are required for customer research.');
+      throw new Error('productName, productProblemSolved, productAmazonAsin required');
     }
 
-    // 1) Reddit posts by product name and problem statement
     const [productPosts, problemPosts] = await Promise.all([
       searchReddit(productName),
       searchReddit(productProblemSolved)
@@ -280,7 +272,6 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
     const filteredProductComments = filterProductComments(productDetails, productName);
     const filteredProblemComments = filterProblemComments(problemDetails);
 
-    // 2) Amazon reviews for product and competitors
     const [product5Star, product4Star, competitor1, competitor2] = await Promise.all([
       fetchApifyAmazonReviews(productAmazonAsin, 'five_star', 10),
       fetchApifyAmazonReviews(productAmazonAsin, 'four_star', 15),
@@ -293,7 +284,6 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
     const processedCompetitor1 = processReviews(competitor1, 2);
     const processedCompetitor2 = processReviews(competitor2, 2);
 
-    // 3) Build ResearchRow payloads
     const rows: ResearchRowInput[] = [
       ...filteredProductComments.map((item, idx) => ({
         projectId,
@@ -330,12 +320,8 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
         indexLabel: `${idx + 1}`,
         content: r.text,
         rating: r.rating,
-        cinematicScore: r.cinematicScore,
         verified: r.verified,
-        metadata: {
-          date: r.date,
-          wordCount: r.wordCount
-        }
+        metadata: { date: r.date, wordCount: r.wordCount }
       })),
       ...processed4Star.map((r, idx) => ({
         projectId,
@@ -344,12 +330,8 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
         indexLabel: `${idx + 1}`,
         content: r.text,
         rating: r.rating,
-        cinematicScore: r.cinematicScore,
         verified: r.verified,
-        metadata: {
-          date: r.date,
-          wordCount: r.wordCount
-        }
+        metadata: { date: r.date, wordCount: r.wordCount }
       })),
       ...processedCompetitor1.map((r, idx) => ({
         projectId,
@@ -358,12 +340,8 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
         indexLabel: `${idx + 1}`,
         content: r.text,
         rating: r.rating,
-        cinematicScore: r.cinematicScore,
         verified: r.verified,
-        metadata: {
-          date: r.date,
-          wordCount: r.wordCount
-        }
+        metadata: { date: r.date, wordCount: r.wordCount }
       })),
       ...processedCompetitor2.map((r, idx) => ({
         projectId,
@@ -372,12 +350,8 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
         indexLabel: `${idx + 1}`,
         content: r.text,
         rating: r.rating,
-        cinematicScore: r.cinematicScore,
         verified: r.verified,
-        metadata: {
-          date: r.date,
-          wordCount: r.wordCount
-        }
+        metadata: { date: r.date, wordCount: r.wordCount }
       }))
     ];
 
@@ -391,16 +365,14 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
     });
 
     if (dedupedRows.length < MIN_RESEARCH_ROWS) {
-      throw new Error(
-        `Only ${dedupedRows.length} research rows collected (minimum required: ${MIN_RESEARCH_ROWS}). Provide broader keywords or ASINs and try again.`
-      );
+      throw new Error(`Only ${dedupedRows.length} rows (min: ${MIN_RESEARCH_ROWS})`);
     }
 
     await prisma.job.update({
       where: { id: jobId },
       data: {
         status: JobStatus.COMPLETED,
-        resultSummary: `Captured ${dedupedRows.length} research rows from Reddit and Amazon after deduplication.`
+        resultSummary: `${dedupedRows.length} research rows collected`
       }
     });
 

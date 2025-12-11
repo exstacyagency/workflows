@@ -40,12 +40,25 @@ enum AdPlatform {
   META
 }
 
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  name         String?
+  passwordHash String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  projects     Project[]
+}
+
 model Project {
   id            String        @id @default(uuid())
   name          String
   description   String?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
+  userId        String
+  user          User          @relation(fields: [userId], references: [id])
   jobs          Job[]
   researchRows  ResearchRow[]
   adAssets      AdAsset[]
@@ -70,6 +83,9 @@ model Job {
   error         String?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
+  estimatedCost Float?
+  actualCost    Float?
+  costBreakdown Json?
   researchRows  ResearchRow[]
   adAssets      AdAsset[]
   adPatternResults AdPatternResult[]
@@ -308,5 +324,4 @@ model StoryboardScene {
   updatedAt     DateTime   @updatedAt
 
 }
-
 
