@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { JobType, JobStatus } from '@prisma/client';
 import { estimateCustomerResearchCost, checkBudget } from '@/lib/costEstimator';
 import { checkRateLimit } from '@/lib/rateLimiter';
+import { requireProjectOwner } from '@/lib/requireProjectOwner';
 
 export const runtime = 'nodejs';
 
@@ -16,6 +17,11 @@ export async function POST(req: NextRequest) {
         { error: 'Missing required fields' },
         { status: 400 }
       );
+    }
+
+    const auth = await requireProjectOwner(projectId);
+    if (auth.error) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
     const rateCheck = await checkRateLimit(projectId);

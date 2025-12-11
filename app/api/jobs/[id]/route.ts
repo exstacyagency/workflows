@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { requireProjectOwner } from '@/lib/requireProjectOwner';
 
 export const runtime = 'nodejs';
 
@@ -9,12 +10,22 @@ export async function GET(
 ) {
   const jobId = params.id;
 
-  const dbJob = await prisma.job.findUnique({
+  const job = await prisma.job.findUnique({
     where: { id: jobId },
+    include: { project: true },
   });
 
-  if (!dbJob) {
+  if (!job) {
     return NextResponse.json({ error: 'Job not found' }, { status: 404 });
+  }
+
+  if (!job.project) {
+    return NextResponse.json({ error: 'Job project missing' }, { status: 404 });
+  }
+
+  const auth = await requireProjectOwner(job.project.id);
+  if (auth.error) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
   const { getJobStatus, QueueName } = await import('@/lib/queue');
@@ -24,13 +35,13 @@ export async function GET(
     AD_PERFORMANCE: QueueName.AD_COLLECTION,
   };
 
-  const queueName = queueMap[dbJob.type];
+  const queueName = queueMap[job.type];
   const queueStatus = queueName 
     ? await getJobStatus(queueName, jobId)
     : null;
 
   return NextResponse.json({
-    job: dbJob,
+    job,
     queue: queueStatus,
   });
 }

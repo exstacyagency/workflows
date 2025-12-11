@@ -1,18 +1,29 @@
 import { prisma } from '@/lib/prisma';
 import { NextResponse } from 'next/server';
+import { requireProjectOwner } from '@/lib/requireProjectOwner';
 
 type Params = {
   params: { projectId: string };
 };
 
 export async function GET(_request: Request, { params }: Params) {
-  const project = await prisma.project.findUnique({ where: { id: params.projectId } });
+  const { projectId } = params;
+  if (!projectId) {
+    return NextResponse.json({ error: 'projectId is required' }, { status: 400 });
+  }
+
+  const auth = await requireProjectOwner(projectId);
+  if (auth.error) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
+  }
+
+  const project = await prisma.project.findUnique({ where: { id: projectId } });
   if (!project) {
     return NextResponse.json({ error: 'Project not found' }, { status: 404 });
   }
 
   const researchRows = await prisma.researchRow.findMany({
-    where: { projectId: params.projectId },
+    where: { projectId },
     orderBy: [{ source: 'asc' }, { createdAt: 'desc' }]
   });
 

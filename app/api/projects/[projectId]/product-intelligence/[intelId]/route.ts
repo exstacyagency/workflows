@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { purgeCustomerProfileArchives } from '@/lib/customerAnalysisService';
+import { requireProjectOwner } from '@/lib/requireProjectOwner';
 
 type Params = {
   params: { projectId: string; intelId: string };
@@ -10,6 +11,11 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const { projectId, intelId } = params;
   if (!projectId || !intelId) {
     return NextResponse.json({ error: 'projectId and intelId are required' }, { status: 400 });
+  }
+
+  const auth = await requireProjectOwner(projectId);
+  if (auth.error) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
   const body = await req.json().catch(() => null);
@@ -42,6 +48,11 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   const { projectId, intelId } = params;
   if (!projectId || !intelId) {
     return NextResponse.json({ error: 'projectId and intelId are required' }, { status: 400 });
+  }
+
+  const auth = await requireProjectOwner(projectId);
+  if (auth.error) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
   const intel = await prisma.productIntelligence.findFirst({ where: { id: intelId, projectId } });

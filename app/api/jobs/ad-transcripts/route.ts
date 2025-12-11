@@ -1,6 +1,7 @@
 // app/api/jobs/ad-transcripts/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { startAdTranscriptJob } from '@/lib/adTranscriptCollectionService';
+import { requireProjectOwner } from '@/lib/requireProjectOwner';
 
 export async function POST(req: NextRequest) {
   try {
@@ -12,6 +13,10 @@ export async function POST(req: NextRequest) {
         { error: 'projectId is required' },
         { status: 400 },
       );
+    }
+    const auth = await requireProjectOwner(projectId);
+    if (auth.error) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
     const result = await startAdTranscriptJob(projectId);

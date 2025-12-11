@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { JobStatus, JobType } from '@prisma/client';
 import { runCustomerAnalysis } from '@/lib/customerAnalysisService';
+import { requireProjectOwner } from '@/lib/requireProjectOwner';
 
 function formatAnalysisJobSummary(result: Awaited<ReturnType<typeof runCustomerAnalysis>>) {
   const avatar = result.summary?.avatar;
@@ -26,6 +27,10 @@ export async function POST(req: NextRequest) {
 
     if (!projectId || typeof projectId !== 'string') {
       return NextResponse.json({ error: 'projectId is required' }, { status: 400 });
+    }
+    const auth = await requireProjectOwner(projectId);
+    if (auth.error) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
     if (productName !== undefined && typeof productName !== 'string') {
       return NextResponse.json({ error: 'productName must be a string when provided' }, { status: 400 });

@@ -1,6 +1,7 @@
 // app/api/projects/[projectId]/product-intelligence/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { requireProjectOwner } from '@/lib/requireProjectOwner';
 
 type Params = {
   params: { projectId: string };
@@ -16,6 +17,11 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   if (!projectId) {
     return NextResponse.json({ error: 'projectId is required' }, { status: 400 });
+  }
+
+  const auth = await requireProjectOwner(projectId);
+  if (auth.error) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
   const view = req.nextUrl.searchParams.get('view');

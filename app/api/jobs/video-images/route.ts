@@ -1,6 +1,8 @@
 // app/api/jobs/video-images/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { startVideoImageGenerationJob } from '@/lib/videoImageGenerationService';
+import prisma from '@/lib/prisma';
+import { requireProjectOwner } from '@/lib/requireProjectOwner';
 
 export async function POST(req: NextRequest) {
   try {
@@ -12,6 +14,19 @@ export async function POST(req: NextRequest) {
         { error: 'storyboardId is required' },
         { status: 400 },
       );
+    }
+
+    const storyboard = await prisma.storyboard.findUnique({
+      where: { id: storyboardId },
+      select: { projectId: true },
+    });
+    if (!storyboard) {
+      return NextResponse.json({ error: 'Storyboard not found' }, { status: 404 });
+    }
+
+    const auth = await requireProjectOwner(storyboard.projectId);
+    if (auth.error) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
     const result = await startVideoImageGenerationJob(storyboardId);
