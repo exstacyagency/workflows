@@ -9,8 +9,8 @@ type NavItem = {
 };
 
 const mainNav: NavItem[] = [
-  { label: "Studio Home", href: "/" },
-  { label: "Projects", href: "/projects" }, // we’ll build this page later
+  { label: "Studio Home", href: "/studio" },
+  { label: "Projects", href: "/studio/projects" },
 ];
 
 function SidebarLink({ href, label }: NavItem) {

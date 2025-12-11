@@ -31,6 +31,9 @@ export async function getSignedMediaUrl(
 
   const s3 = getS3();
   if (!s3 || !bucket) {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("S3 media signing not configured in production");
+    }
     return key;
   }
 

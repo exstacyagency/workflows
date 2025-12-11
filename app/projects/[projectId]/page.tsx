@@ -2,6 +2,7 @@ import { prisma } from '@/lib/prisma';
 import { JobStatus, JobType } from '@prisma/client';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { ScriptMediaPreview, type ScriptMedia } from '@/components/ScriptMediaPreview';
 
 const pipelinePhases: { label: string; description: string; types: JobType[] }[] = [
   {
@@ -103,6 +104,10 @@ export default async function ProjectDashboardPage({ params }: Params) {
         orderBy: { createdAt: 'desc' },
         take: 1,
       },
+      scripts: {
+        orderBy: { createdAt: 'desc' },
+        take: 4,
+      },
     },
   });
 
@@ -114,6 +119,14 @@ export default async function ProjectDashboardPage({ params }: Params) {
   const recentResearch = project.researchRows;
   const latestAvatar = project.customerAvatars[0] ?? null;
   const latestProductIntel = project.productIntelligences[0] ?? null;
+  const recentScripts: ScriptMedia[] = project.scripts.map(script => ({
+    id: script.id,
+    status: script.status,
+    createdAt: script.createdAt.toISOString(),
+    mergedVideoUrl: script.mergedVideoUrl,
+    upscaledVideoUrl: script.upscaledVideoUrl,
+    wordCount: script.wordCount,
+  }));
 
   const stats = [
     { label: 'Total Jobs', value: project._count.jobs.toString() },
@@ -309,6 +322,39 @@ export default async function ProjectDashboardPage({ params }: Params) {
           </div>
 
         </div>
+      </section>
+
+      <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-100">Scripts & Media</h2>
+            <p className="text-xs text-slate-400">
+              Preview the most recent scripts and their rendered videos.
+            </p>
+          </div>
+          <Link
+            href={`/projects/${project.id}/scripts`}
+            className="text-[11px] text-sky-400 hover:text-sky-300"
+          >
+            View all scripts →
+          </Link>
+        </div>
+        {recentScripts.length === 0 ? (
+          <p className="text-xs text-slate-400">
+            Run script generation to create your first storyboard-ready video.
+          </p>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2">
+            {recentScripts.map(script => (
+              <div
+                key={script.id}
+                className="rounded-lg border border-slate-800 bg-slate-950/70 px-4 py-3"
+              >
+                <ScriptMediaPreview script={script} />
+              </div>
+            ))}
+          </div>
+        )}
       </section>
     </div>
   );
