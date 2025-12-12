@@ -1,0 +1,2 @@
+-- Add VIDEO_UPSCALER enum value for JobType
+ALTER TYPE "JobType" ADD VALUE IF NOT EXISTS 'VIDEO_UPSCALER';

@@ -8,6 +8,8 @@ import { checkRateLimit } from '@/lib/rateLimiter';
 import { logAudit } from '@/lib/logger';
 import { getSessionUser } from '@/lib/getSessionUser';
 import { enforcePlanLimits, incrementUsage } from '@/lib/billing';
+import { createJobWithIdempotency, enforceUserConcurrency } from '@/lib/jobGuards';
+import { JobStatus, JobType } from '@prisma/client';
 
 export async function POST(req: NextRequest) {
   const user = await getSessionUser();
@@ -59,6 +61,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const concurrency = await enforceUserConcurrency(userId);
+    if (!concurrency.allowed) {
+      return NextResponse.json(
+        { error: concurrency.reason },
+        { status: 429 },
+      );
+    }
+
     await incrementUsage(userId, 'job', 1);
 
     const rateCheck = await checkRateLimit(projectId);
@@ -69,7 +79,37 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const idempotencyKey = JSON.stringify([
+      projectId,
+      JobType.VIDEO_UPSCALER,
+      storyboardId,
+    ]);
+    const { job, reused } = await createJobWithIdempotency({
+      projectId,
+      type: JobType.VIDEO_UPSCALER,
+      idempotencyKey,
+      payload: { storyboardId },
+    });
+    jobId = job.id;
+
+    if (reused) {
+      return NextResponse.json({ jobId: job.id, reused: true }, { status: 200 });
+    }
+
+    await prisma.job.update({
+      where: { id: job.id },
+      data: { status: JobStatus.RUNNING },
+    });
+
     const result = await runVideoUpscalerBatch();
+
+    await prisma.job.update({
+      where: { id: job.id },
+      data: {
+        status: JobStatus.COMPLETED,
+        resultSummary: `Video upscaler processed ${result.count} scripts`,
+      },
+    });
 
     await logAudit({
       userId: user?.id ?? null,
@@ -85,6 +125,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(result, { status: 200 });
   } catch (err: any) {
     console.error(err);
+    if (jobId) {
+      await prisma.job.update({
+        where: { id: jobId },
+        data: {
+          status: JobStatus.FAILED,
+          error: err?.message ?? 'Video upscaler failed',
+        },
+      });
+    }
     await logAudit({
       userId: user?.id ?? null,
       projectId,

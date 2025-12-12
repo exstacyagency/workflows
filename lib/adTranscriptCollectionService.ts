@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma';
-import { AdPlatform, JobStatus, JobType } from '@prisma/client';
+import { AdPlatform, JobStatus } from '@prisma/client';
 import pLimit from 'p-limit';
 
 const ASSEMBLY_BASE = 'https://api.assemblyai.com/v2';
@@ -197,36 +197,33 @@ export async function runAdTranscriptCollection(args: {
   return { totalAssets: total, processed };
 }
 
-export async function startAdTranscriptJob(params: { projectId: string }) {
-  const { projectId } = params;
-
-  const job = await prisma.job.create({
-    data: {
-      type: JobType.AD_PERFORMANCE,
-      status: JobStatus.RUNNING,
-      projectId,
-      payload: { projectId, kind: 'ad_transcript_collection' },
-    },
+export async function startAdTranscriptJob(params: {
+  projectId: string;
+  jobId: string;
+}) {
+  const { projectId, jobId } = params;
+  await prisma.job.update({
+    where: { id: jobId },
+    data: { status: JobStatus.RUNNING },
   });
-
   try {
     const result = await runAdTranscriptCollection({
       projectId,
-      jobId: job.id,
+      jobId,
     });
 
     await prisma.job.update({
-      where: { id: job.id },
+      where: { id: jobId },
       data: {
         status: JobStatus.COMPLETED,
         resultSummary: `Transcripts: ${result.processed}/${result.totalAssets}`,
       },
     });
 
-    return { jobId: job.id, ...result };
+    return { jobId, ...result };
   } catch (err: any) {
     await prisma.job.update({
-      where: { id: job.id },
+      where: { id: jobId },
       data: {
         status: JobStatus.FAILED,
         error: err?.message ?? 'Unknown error in transcript collection',

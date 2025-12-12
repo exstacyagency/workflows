@@ -8,6 +8,8 @@ import { checkRateLimit } from '@/lib/rateLimiter';
 import { enforcePlanLimits, incrementUsage } from '@/lib/billing';
 import { logAudit } from '@/lib/logger';
 import { getSessionUser } from '@/lib/getSessionUser';
+import { createJobWithIdempotency, enforceUserConcurrency } from '@/lib/jobGuards';
+import { JobType } from '@prisma/client';
 
 const AdPerformanceSchema = ProjectJobSchema.extend({
   industryCode: z.string().min(1, 'industryCode is required'),
@@ -47,6 +49,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const concurrency = await enforceUserConcurrency(userId);
+    if (!concurrency.allowed) {
+      return NextResponse.json(
+        { error: concurrency.reason },
+        { status: 429 },
+      );
+    }
+
     await incrementUsage(userId, 'job', 1);
 
     const rateCheck = await checkRateLimit(projectId);
@@ -57,8 +67,28 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const result = await startAdRawCollectionJob({ projectId, industryCode });
-    jobId = result?.jobId ?? null;
+    const idempotencyKey = JSON.stringify([
+      projectId,
+      JobType.AD_PERFORMANCE,
+      industryCode,
+    ]);
+    const { job, reused } = await createJobWithIdempotency({
+      projectId,
+      type: JobType.AD_PERFORMANCE,
+      idempotencyKey,
+      payload: { projectId, industryCode },
+    });
+    jobId = job.id;
+
+    if (reused) {
+      return NextResponse.json({ jobId: job.id, reused: true }, { status: 200 });
+    }
+
+    const result = await startAdRawCollectionJob({
+      projectId,
+      industryCode,
+      jobId: job.id,
+    });
 
     await logAudit({
       userId: user?.id ?? null,

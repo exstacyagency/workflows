@@ -1,6 +1,6 @@
 // lib/characterGenerationService.ts
 import prisma from '@/lib/prisma';
-import { JobStatus, JobType } from '@prisma/client';
+import { JobStatus } from '@prisma/client';
 
 type CharacterSpec = {
   age?: number;
@@ -240,37 +240,32 @@ export async function runCharacterGeneration(args: {
 export async function startCharacterGenerationJob(params: {
   projectId: string;
   productName: string;
+  jobId: string;
 }) {
-  const { projectId, productName } = params;
-
-  const job = await prisma.job.create({
-    data: {
-      type: JobType.CHARACTER_GENERATION,
-      status: JobStatus.RUNNING,
-      projectId,
-      payload: { projectId, productName },
-    },
+  const { projectId, productName, jobId } = params;
+  await prisma.job.update({
+    where: { id: jobId },
+    data: { status: JobStatus.RUNNING },
   });
-
   try {
     const result = await runCharacterGeneration({
       projectId,
       productName,
-      jobId: job.id,
+      jobId,
     });
 
     await prisma.job.update({
-      where: { id: job.id },
+      where: { id: jobId },
       data: {
         status: JobStatus.COMPLETED,
         resultSummary: `Character generation complete (male=${result.maleId}, female=${result.femaleId})`,
       },
     });
 
-    return { jobId: job.id, ...result };
+    return { jobId, ...result };
   } catch (err: any) {
     await prisma.job.update({
-      where: { id: job.id },
+      where: { id: jobId },
       data: {
         status: JobStatus.FAILED,
         error: err?.message ?? 'Unknown error in character generation',

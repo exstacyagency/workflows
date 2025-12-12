@@ -1,6 +1,6 @@
 // lib/videoImageGenerationService.ts
 import prisma from '@/lib/prisma';
-import { JobStatus, JobType } from '@prisma/client';
+import { JobStatus } from '@prisma/client';
 
 const KIE_BASE = process.env.KIE_API_BASE ?? 'https://api.kie.ai/api/v1';
 
@@ -211,42 +211,33 @@ export async function runVideoImageGeneration(args: {
 /**
  * Convenience wrapper: run video image generation as a Job.
  */
-export async function startVideoImageGenerationJob(storyboardId: string) {
-  const storyboard = await prisma.storyboard.findUnique({
-    where: { id: storyboardId },
+export async function startVideoImageGenerationJob(params: {
+  storyboardId: string;
+  jobId: string;
+}) {
+  const { storyboardId, jobId } = params;
+  await prisma.job.update({
+    where: { id: jobId },
+    data: { status: JobStatus.RUNNING },
   });
-
-  if (!storyboard) {
-    throw new Error('Storyboard not found');
-  }
-
-  const job = await prisma.job.create({
-    data: {
-      type: JobType.VIDEO_IMAGE_GENERATION,
-      status: JobStatus.RUNNING,
-      projectId: storyboard.projectId,
-      payload: { storyboardId },
-    },
-  });
-
   try {
     const result = await runVideoImageGeneration({
       storyboardId,
-      jobId: job.id,
+      jobId,
     });
 
     await prisma.job.update({
-      where: { id: job.id },
+      where: { id: jobId },
       data: {
         status: JobStatus.COMPLETED,
         resultSummary: `Video image generation complete: ${result.processed}/${result.sceneCount} scenes processed`,
       },
     });
 
-    return { jobId: job.id, ...result };
+    return { jobId, ...result };
   } catch (err: any) {
     await prisma.job.update({
-      where: { id: job.id },
+      where: { id: jobId },
       data: {
         status: JobStatus.FAILED,
         error: err?.message ?? 'Unknown error during video image generation',

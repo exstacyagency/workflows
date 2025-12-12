@@ -1,6 +1,6 @@
 // lib/videoPromptGenerationService.ts
 import prisma from '@/lib/prisma';
-import { JobStatus, JobType } from '@prisma/client';
+import { JobStatus } from '@prisma/client';
 
 /**
  * Build a per-scene video prompt.
@@ -103,42 +103,33 @@ export async function runVideoPromptGeneration(args: {
 /**
  * Convenience wrapper: Job for video prompt generation.
  */
-export async function startVideoPromptGenerationJob(storyboardId: string) {
-  const storyboard = await prisma.storyboard.findUnique({
-    where: { id: storyboardId },
+export async function startVideoPromptGenerationJob(params: {
+  storyboardId: string;
+  jobId: string;
+}) {
+  const { storyboardId, jobId } = params;
+  await prisma.job.update({
+    where: { id: jobId },
+    data: { status: JobStatus.RUNNING },
   });
-
-  if (!storyboard) {
-    throw new Error('Storyboard not found');
-  }
-
-  const job = await prisma.job.create({
-    data: {
-      type: JobType.VIDEO_PROMPT_GENERATION,
-      status: JobStatus.RUNNING,
-      projectId: storyboard.projectId,
-      payload: { storyboardId },
-    },
-  });
-
   try {
     const result = await runVideoPromptGeneration({
       storyboardId,
-      jobId: job.id,
+      jobId,
     });
 
     await prisma.job.update({
-      where: { id: job.id },
+      where: { id: jobId },
       data: {
         status: JobStatus.COMPLETED,
         resultSummary: `Video prompts generated: ${result.processed}/${result.sceneCount} scenes`,
       },
     });
 
-    return { jobId: job.id, ...result };
+    return { jobId, ...result };
   } catch (err: any) {
     await prisma.job.update({
-      where: { id: job.id },
+      where: { id: jobId },
       data: {
         status: JobStatus.FAILED,
         error: err?.message ?? 'Unknown error during video prompt generation',

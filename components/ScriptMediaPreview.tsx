@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 export type ScriptMedia = {
   id: string;
@@ -17,8 +17,8 @@ type Props = {
 
 export function ScriptMediaPreview({ script }: Props) {
   const [loading, setLoading] = useState(false);
-  const [signedUrl, setSignedUrl] = useState<string | null>(null);
-  const [fallbackKey, setFallbackKey] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
+  const [warningKey, setWarningKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const mediaKey = useMemo(
@@ -26,58 +26,36 @@ export function ScriptMediaPreview({ script }: Props) {
     [script.upscaledVideoUrl, script.mergedVideoUrl]
   );
 
-  useEffect(() => {
-    if (!mediaKey) {
-      setSignedUrl(null);
-      setFallbackKey(null);
-      return;
-    }
+  async function handleGetVideo() {
+    if (!mediaKey || loading) return;
+    setLoading(true);
+    setWarning(null);
+    setWarningKey(null);
+    setError(null);
 
-    let cancelled = false;
-    async function load() {
-      setLoading(true);
-      setError(null);
-
-      try {
-        const res = await fetch(
-          `/api/media?key=${encodeURIComponent(mediaKey)}`
-        );
-        if (!res.ok) {
-          throw new Error("Failed to fetch media");
-        }
-        const data = await res.json();
-        const url: unknown = data?.url;
-        if (typeof url !== "string") {
-          throw new Error("Invalid media response");
-        }
-
-        if (cancelled) return;
-        if (url.startsWith("http")) {
-          setSignedUrl(url);
-          setFallbackKey(null);
-        } else {
-          setSignedUrl(null);
-          setFallbackKey(mediaKey);
-        }
-      } catch (err: any) {
-        if (!cancelled) {
-          setError(err?.message ?? "Unable to load media");
-          setSignedUrl(null);
-          setFallbackKey(null);
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+    try {
+      const res = await fetch(`/api/media?key=${encodeURIComponent(mediaKey)}`);
+      if (!res.ok) {
+        throw new Error("Failed to fetch media");
       }
+      const data = await res.json();
+      const url: unknown = data?.url;
+      if (typeof url !== "string") {
+        throw new Error("Invalid media response");
+      }
+
+      if (url.startsWith("http")) {
+        window.open(url, "_blank", "noopener,noreferrer");
+      } else {
+        setWarning("Media not configured (S3 not set)");
+        setWarningKey(mediaKey);
+      }
+    } catch (err: any) {
+      setError(err?.message ?? "Unable to fetch video link");
+    } finally {
+      setLoading(false);
     }
-
-    load();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [mediaKey]);
+  }
 
   return (
     <div className="space-y-2">
@@ -98,26 +76,24 @@ export function ScriptMediaPreview({ script }: Props) {
         <p className="text-xs text-slate-500">
           No merged video available for this script yet.
         </p>
-      ) : loading ? (
-        <p className="text-xs text-slate-500">Loading media preview…</p>
-      ) : error ? (
-        <p className="text-xs text-red-400">{error}</p>
-      ) : signedUrl ? (
-        <video
-          src={signedUrl}
-          controls
-          className="w-full rounded-lg border border-slate-800 bg-black"
-          preload="metadata"
-        />
-      ) : fallbackKey ? (
-        <div className="text-xs text-amber-300 bg-amber-500/10 border border-amber-300/30 rounded-md p-3 space-y-1">
-          <p className="font-semibold">Media not configured (S3 not set)</p>
-          <p className="font-mono text-amber-200 break-all">{fallbackKey}</p>
-        </div>
       ) : (
-        <p className="text-xs text-slate-500">
-          Media unavailable. Try again shortly.
-        </p>
+        <button
+          type="button"
+          onClick={handleGetVideo}
+          disabled={loading}
+          className="text-xs px-3 py-1.5 rounded-md bg-slate-800 hover:bg-slate-700 disabled:opacity-50 border border-slate-700"
+        >
+          {loading ? "Fetching link…" : "Get video link"}
+        </button>
+      )}
+      {error && <p className="text-xs text-red-400">{error}</p>}
+      {warning && (
+        <div className="text-xs text-amber-300 bg-amber-500/10 border border-amber-300/30 rounded-md p-3 space-y-1">
+          <p className="font-semibold">{warning}</p>
+          {warningKey && (
+            <p className="font-mono text-amber-200 break-all">{warningKey}</p>
+          )}
+        </div>
       )}
     </div>
   );

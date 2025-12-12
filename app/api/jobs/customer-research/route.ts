@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { JobType, JobStatus } from '@prisma/client';
+import { JobType } from '@prisma/client';
 import { estimateCustomerResearchCost, checkBudget } from '@/lib/costEstimator';
 import { checkRateLimit } from '@/lib/rateLimiter';
 import { requireProjectOwner } from '@/lib/requireProjectOwner';
@@ -9,6 +9,7 @@ import { ProjectJobSchema, parseJson } from '@/lib/validation/jobs';
 import { logAudit } from '@/lib/logger';
 import { getSessionUser } from '@/lib/getSessionUser';
 import { enforcePlanLimits, incrementUsage } from '@/lib/billing';
+import { createJobWithIdempotency, enforceUserConcurrency } from '@/lib/jobGuards';
 
 export const runtime = 'nodejs';
 
@@ -62,6 +63,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const concurrency = await enforceUserConcurrency(userId);
+    if (!concurrency.allowed) {
+      return NextResponse.json(
+        { error: concurrency.reason },
+        { status: 429 },
+      );
+    }
+
     await incrementUsage(userId, 'job', 1);
 
     const rateCheck = await checkRateLimit(projectId);
@@ -89,23 +98,35 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const job = await prisma.job.create({
-      data: {
-        type: JobType.CUSTOMER_RESEARCH,
-        status: JobStatus.PENDING,
+    const idempotencyKey = JSON.stringify([
+      projectId,
+      JobType.CUSTOMER_RESEARCH,
+      productAmazonAsin,
+      competitor1AmazonAsin ?? '',
+      competitor2AmazonAsin ?? '',
+      productName,
+      productProblemSolved,
+    ]);
+
+    const { job, reused } = await createJobWithIdempotency({
+      projectId,
+      type: JobType.CUSTOMER_RESEARCH,
+      idempotencyKey,
+      payload: {
         projectId,
-        payload: {
-          projectId,
-          productName,
-          productProblemSolved,
-          productAmazonAsin,
-          competitor1AmazonAsin,
-          competitor2AmazonAsin,
-          estimatedCost: costEstimate.totalCost,
-        },
+        productName,
+        productProblemSolved,
+        productAmazonAsin,
+        competitor1AmazonAsin,
+        competitor2AmazonAsin,
+        estimatedCost: costEstimate.totalCost,
       },
     });
     jobId = job.id;
+
+    if (reused) {
+      return NextResponse.json({ jobId: job.id, reused: true }, { status: 202 });
+    }
 
     const { addJob, QueueName } = await import('@/lib/queue');
 

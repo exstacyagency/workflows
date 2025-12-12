@@ -1,6 +1,6 @@
 // lib/adRawCollectionService.ts
 import prisma from '@/lib/prisma';
-import { AdPlatform, JobStatus, JobType } from '@prisma/client';
+import { AdPlatform, JobStatus } from '@prisma/client';
 
 type ApifyAd = {
   id: string;
@@ -234,37 +234,32 @@ export async function runAdRawCollection(args: {
 export async function startAdRawCollectionJob(params: {
   projectId: string;
   industryCode: string;
+  jobId: string;
 }) {
-  const { projectId, industryCode } = params;
-
-  const job = await prisma.job.create({
-    data: {
-      type: JobType.AD_PERFORMANCE,
-      status: JobStatus.RUNNING,
-      projectId,
-      payload: { projectId, industryCode },
-    },
+  const { projectId, industryCode, jobId } = params;
+  await prisma.job.update({
+    where: { id: jobId },
+    data: { status: JobStatus.RUNNING },
   });
-
   try {
     const result = await runAdRawCollection({
       projectId,
       industryCode,
-      jobId: job.id,
+      jobId,
     });
 
     await prisma.job.update({
-      where: { id: job.id },
+      where: { id: jobId },
       data: {
         status: JobStatus.COMPLETED,
         resultSummary: `Phase 2A: saved ${result.totalSaved}/${result.totalValidated} ads (raw=${result.totalRaw})`,
       },
     });
 
-    return { jobId: job.id, ...result };
+    return { jobId, ...result };
   } catch (err: any) {
     await prisma.job.update({
-      where: { id: job.id },
+      where: { id: jobId },
       data: {
         status: JobStatus.FAILED,
         error: err?.message ?? 'Unknown error in Phase 2A',

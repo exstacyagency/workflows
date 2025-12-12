@@ -9,6 +9,7 @@ import { JobStatus, JobType } from '@prisma/client';
 import { logAudit } from '@/lib/logger';
 import { getSessionUser } from '@/lib/getSessionUser';
 import { enforcePlanLimits, incrementUsage } from '@/lib/billing';
+import { createJobWithIdempotency, enforceUserConcurrency } from '@/lib/jobGuards';
 
 export async function POST(req: NextRequest) {
   const user = await getSessionUser();
@@ -46,6 +47,14 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const concurrency = await enforceUserConcurrency(userId);
+  if (!concurrency.allowed) {
+    return NextResponse.json(
+      { error: concurrency.reason },
+      { status: 429 },
+    );
+  }
+
   await incrementUsage(userId, 'job', 1);
 
   try {
@@ -59,14 +68,22 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const job = await prisma.job.create({
-      data: {
-        type: JobType.SCRIPT_GENERATION,
-        status: JobStatus.RUNNING,
-        projectId,
-      },
+    const idempotencyKey = JSON.stringify([projectId, JobType.SCRIPT_GENERATION]);
+    const { job, reused } = await createJobWithIdempotency({
+      projectId,
+      type: JobType.SCRIPT_GENERATION,
+      idempotencyKey,
+      payload: parsed.data,
     });
-    const jobId = job.id;
+    if (reused) {
+      return NextResponse.json({ jobId: job.id, reused: true }, { status: 200 });
+    }
+
+    const runningJob = await prisma.job.update({
+      where: { id: job.id },
+      data: { status: JobStatus.RUNNING },
+    });
+    const jobId = runningJob.id;
 
     await logAudit({
       userId,
@@ -79,7 +96,7 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    const result = await startScriptGenerationJob(projectId, job);
+    const result = await startScriptGenerationJob(projectId, runningJob);
 
     return NextResponse.json(result, { status: 200 });
   } catch (err: any) {

@@ -8,6 +8,8 @@ import { checkRateLimit } from '@/lib/rateLimiter';
 import { logAudit } from '@/lib/logger';
 import { getSessionUser } from '@/lib/getSessionUser';
 import { enforcePlanLimits, incrementUsage } from '@/lib/billing';
+import { createJobWithIdempotency, enforceUserConcurrency } from '@/lib/jobGuards';
+import { JobType } from '@prisma/client';
 
 const CharacterGenerationSchema = ProjectJobSchema.extend({
   productName: z.string().min(1, 'productName is required'),
@@ -47,6 +49,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const concurrency = await enforceUserConcurrency(userId);
+    if (!concurrency.allowed) {
+      return NextResponse.json(
+        { error: concurrency.reason },
+        { status: 429 },
+      );
+    }
+
     await incrementUsage(userId, 'job', 1);
     const rateCheck = await checkRateLimit(projectId);
     if (!rateCheck.allowed) {
@@ -56,8 +66,28 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const result = await startCharacterGenerationJob({ projectId, productName });
-    jobId = result?.jobId ?? null;
+    const idempotencyKey = JSON.stringify([
+      projectId,
+      JobType.CHARACTER_GENERATION,
+      productName,
+    ]);
+    const { job, reused } = await createJobWithIdempotency({
+      projectId,
+      type: JobType.CHARACTER_GENERATION,
+      idempotencyKey,
+      payload: { projectId, productName },
+    });
+    jobId = job.id;
+
+    if (reused) {
+      return NextResponse.json({ jobId: job.id, reused: true }, { status: 200 });
+    }
+
+    const result = await startCharacterGenerationJob({
+      projectId,
+      productName,
+      jobId: job.id,
+    });
 
     await logAudit({
       userId: user?.id ?? null,

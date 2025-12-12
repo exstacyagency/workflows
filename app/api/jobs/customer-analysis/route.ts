@@ -10,6 +10,7 @@ import { checkRateLimit } from '@/lib/rateLimiter';
 import { logAudit } from '@/lib/logger';
 import { getSessionUser } from '@/lib/getSessionUser';
 import { enforcePlanLimits, incrementUsage } from '@/lib/billing';
+import { createJobWithIdempotency, enforceUserConcurrency } from '@/lib/jobGuards';
 
 function formatAnalysisJobSummary(result: Awaited<ReturnType<typeof runCustomerAnalysis>>) {
   const avatar = result.summary?.avatar;
@@ -66,6 +67,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const concurrency = await enforceUserConcurrency(userId);
+    if (!concurrency.allowed) {
+      return NextResponse.json(
+        { error: concurrency.reason },
+        { status: 429 },
+      );
+    }
+
     await incrementUsage(userId, 'job', 1);
 
     const rateCheck = await checkRateLimit(projectId);
@@ -75,15 +84,28 @@ export async function POST(req: NextRequest) {
         { status: 429 },
       );
     }
-    const job = await prisma.job.create({
-      data: {
-        type: JobType.CUSTOMER_ANALYSIS,
-        status: JobStatus.RUNNING,
-        projectId,
-        payload: parsed.data,
-      },
+    const idempotencyKey = JSON.stringify([
+      projectId,
+      JobType.CUSTOMER_ANALYSIS,
+      productName ?? '',
+      productProblemSolved ?? '',
+    ]);
+    const { job, reused } = await createJobWithIdempotency({
+      projectId,
+      type: JobType.CUSTOMER_ANALYSIS,
+      idempotencyKey,
+      payload: parsed.data,
     });
     jobId = job.id;
+
+    if (reused) {
+      return NextResponse.json({ jobId: job.id, reused: true }, { status: 200 });
+    }
+
+    await prisma.job.update({
+      where: { id: job.id },
+      data: { status: JobStatus.RUNNING },
+    });
 
     await logAudit({
       userId: user?.id ?? null,

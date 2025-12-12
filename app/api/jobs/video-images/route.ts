@@ -8,6 +8,8 @@ import { checkRateLimit } from '@/lib/rateLimiter';
 import { logAudit } from '@/lib/logger';
 import { getSessionUser } from '@/lib/getSessionUser';
 import { enforcePlanLimits, incrementUsage } from '@/lib/billing';
+import { createJobWithIdempotency, enforceUserConcurrency } from '@/lib/jobGuards';
+import { JobType } from '@prisma/client';
 
 export async function POST(req: NextRequest) {
   const user = await getSessionUser();
@@ -59,6 +61,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const concurrency = await enforceUserConcurrency(userId);
+    if (!concurrency.allowed) {
+      return NextResponse.json(
+        { error: concurrency.reason },
+        { status: 429 },
+      );
+    }
+
     await incrementUsage(userId, 'job', 1);
 
     const rateCheck = await checkRateLimit(projectId);
@@ -69,8 +79,27 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const result = await startVideoImageGenerationJob(storyboardId);
-    jobId = result?.jobId ?? null;
+    const idempotencyKey = JSON.stringify([
+      projectId,
+      JobType.VIDEO_IMAGE_GENERATION,
+      storyboardId,
+    ]);
+    const { job, reused } = await createJobWithIdempotency({
+      projectId,
+      type: JobType.VIDEO_IMAGE_GENERATION,
+      idempotencyKey,
+      payload: { storyboardId },
+    });
+    jobId = job.id;
+
+    if (reused) {
+      return NextResponse.json({ jobId: job.id, reused: true }, { status: 200 });
+    }
+
+    const result = await startVideoImageGenerationJob({
+      storyboardId,
+      jobId: job.id,
+    });
 
     await logAudit({
       userId: user?.id ?? null,
