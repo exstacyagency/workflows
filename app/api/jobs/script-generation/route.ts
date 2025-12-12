@@ -9,7 +9,7 @@ import { JobStatus, JobType } from '@prisma/client';
 import { logAudit } from '@/lib/logger';
 import { getSessionUser } from '@/lib/getSessionUser';
 import { enforcePlanLimits, incrementUsage } from '@/lib/billing';
-import { createJobWithIdempotency, enforceUserConcurrency } from '@/lib/jobGuards';
+import { enforceUserConcurrency } from '@/lib/jobGuards';
 
 export async function POST(req: NextRequest) {
   const user = await getSessionUser();
@@ -38,6 +38,38 @@ export async function POST(req: NextRequest) {
   }
 
   const userId = user.id;
+
+  const idempotencyKey = `script-generation:${projectId}`;
+
+  const existingJob = await prisma.job.findFirst({
+    where: {
+      projectId,
+      type: JobType.SCRIPT_GENERATION,
+      idempotencyKey,
+      status: { in: [JobStatus.PENDING, JobStatus.RUNNING] },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  if (existingJob) {
+    const existingScript = await prisma.script.findFirst({
+      where: {
+        projectId,
+        jobId: existingJob.id,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return NextResponse.json(
+      {
+        jobId: existingJob.id,
+        scriptId: existingScript?.id ?? null,
+        script: existingScript ?? null,
+        reused: true,
+      },
+      { status: 200 },
+    );
+  }
 
   const limitCheck = await enforcePlanLimits(userId);
   if (!limitCheck.allowed) {
@@ -68,22 +100,40 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const idempotencyKey = JSON.stringify([projectId, JobType.SCRIPT_GENERATION]);
-    const { job, reused } = await createJobWithIdempotency({
-      projectId,
-      type: JobType.SCRIPT_GENERATION,
-      idempotencyKey,
-      payload: parsed.data,
-    });
-    if (reused) {
-      return NextResponse.json({ jobId: job.id, reused: true }, { status: 200 });
-    }
+    let job;
+    try {
+      job = await prisma.job.create({
+        data: {
+          type: JobType.SCRIPT_GENERATION,
+          status: JobStatus.RUNNING,
+          projectId,
+          idempotencyKey,
+          payload: { idempotencyKey },
+        },
+      });
+    } catch (createErr: any) {
+      if (createErr?.code === 'P2002') {
+        const existingJob = await prisma.job.findFirst({
+          where: {
+            projectId,
+            type: JobType.SCRIPT_GENERATION,
+            idempotencyKey,
+            status: { in: [JobStatus.PENDING, JobStatus.RUNNING] },
+          },
+          orderBy: { createdAt: 'desc' },
+        });
 
-    const runningJob = await prisma.job.update({
-      where: { id: job.id },
-      data: { status: JobStatus.RUNNING },
-    });
-    const jobId = runningJob.id;
+        if (existingJob) {
+          return NextResponse.json(
+            { jobId: existingJob.id, reused: true },
+            { status: 200 },
+          );
+        }
+      }
+
+      throw createErr;
+    }
+    const jobId = job.id;
 
     await logAudit({
       userId,
@@ -96,7 +146,7 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    const result = await startScriptGenerationJob(projectId, runningJob);
+    const result = await startScriptGenerationJob(projectId, job);
 
     return NextResponse.json(result, { status: 200 });
   } catch (err: any) {

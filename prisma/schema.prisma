@@ -83,6 +83,7 @@ model Job {
   status        JobStatus     @default(PENDING)
   project       Project       @relation(fields: [projectId], references: [id])
   projectId     String
+  idempotencyKey String?
   payload       Json?
   resultSummary String?
   error         String?
@@ -100,6 +101,8 @@ model Job {
   scripts               Script[]
   storyboards           Storyboard[]
   auditLogs             AuditLog[]
+
+  @@unique([projectId, type, idempotencyKey])
 }
 
 model AuditLog {

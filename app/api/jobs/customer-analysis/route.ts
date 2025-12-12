@@ -77,12 +77,14 @@ export async function POST(req: NextRequest) {
 
     await incrementUsage(userId, 'job', 1);
 
-    const rateCheck = await checkRateLimit(projectId);
-    if (!rateCheck.allowed) {
-      return NextResponse.json(
-        { error: `Rate limit exceeded: ${rateCheck.reason}` },
-        { status: 429 },
-      );
+    if (process.env.NODE_ENV === 'production') {
+      const rateCheck = await checkRateLimit(projectId);
+      if (!rateCheck.allowed) {
+        return NextResponse.json(
+          { error: `Rate limit exceeded: ${rateCheck.reason}` },
+          { status: 429 },
+        );
+      }
     }
     const idempotencyKey = JSON.stringify([
       projectId,

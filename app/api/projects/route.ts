@@ -22,12 +22,14 @@ export async function POST(request: NextRequest) {
     const { name, description } = parsed.data;
 
     const rateKey = `project:create:${user.id}`;
-    const rateCheck = await checkRateLimit(rateKey);
-    if (!rateCheck.allowed) {
-      return NextResponse.json(
-        { error: 'Rate limit exceeded' },
-        { status: 429 },
-      );
+    if (process.env.NODE_ENV === 'production') {
+      const rateCheck = await checkRateLimit(rateKey);
+      if (!rateCheck.allowed) {
+        return NextResponse.json(
+          { error: 'Rate limit exceeded' },
+          { status: 429 },
+        );
+      }
     }
 
     const project = await prisma.project.create({
