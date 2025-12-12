@@ -417,6 +417,10 @@ export async function runScriptGeneration(args: { projectId: string; jobId?: str
  */
 export async function startScriptGenerationJob(projectId: string, job: Job) {
   try {
+    if (process.env.FF_FORCE_SCRIPT_FAIL === "true") {
+      throw new Error("Transient: forced failure for retry test");
+    }
+
     const script = await runScriptGeneration({ projectId, jobId: job.id });
 
     await prisma.job.update({

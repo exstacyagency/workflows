@@ -7,10 +7,20 @@ const MAX_MS = Number(process.env.JOB_RETRY_MAX_MS ?? 60_000);
 
 type Payload = Record<string, any>;
 
+function isPermanentError(msg: string) {
+  const m = msg.toLowerCase();
+  return (
+    m.includes("missing dependencies") ||
+    m.includes("required") ||
+    m.includes("forbidden") ||
+    m.includes("unauthorized")
+  );
+}
+
 export function canTransition(from: JobStatus, to: JobStatus) {
   const allowed: Record<JobStatus, JobStatus[]> = {
     PENDING: [JobStatus.RUNNING, JobStatus.FAILED],
-    RUNNING: [JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.PENDING],
+    RUNNING: [JobStatus.COMPLETED, JobStatus.FAILED],
     COMPLETED: [],
     FAILED: [JobStatus.PENDING],
   };
@@ -53,8 +63,14 @@ export async function recordFailureForRetry(jobId: string, errMsg: string) {
   const { payload, attempts } = await getRetryState(jobId);
   const nextAttempts = attempts + 1;
 
-  if (nextAttempts >= MAX_ATTEMPTS) {
-    await setStatus(jobId, JobStatus.FAILED, `Max attempts exceeded: ${errMsg}`);
+  if (isPermanentError(errMsg) || nextAttempts >= MAX_ATTEMPTS) {
+    await setStatus(
+      jobId,
+      JobStatus.FAILED,
+      nextAttempts >= MAX_ATTEMPTS
+        ? `Max attempts exceeded: ${errMsg}`
+        : errMsg
+    );
     await prisma.job.update({
       where: { id: jobId },
       data: {
@@ -114,7 +130,7 @@ export async function runWithState(jobId: string, fn: () => Promise<any>) {
       where: { id: jobId },
       data: { payload: { ...payload, attempts, nextRunAt: null } },
     });
-  return { ok: true, result };
+    return { ok: true, result };
   } catch (e: any) {
     const msg = String(e?.message ?? e);
     const retry = await recordFailureForRetry(jobId, msg);
