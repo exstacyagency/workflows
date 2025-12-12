@@ -132,11 +132,11 @@ export async function POST(req: NextRequest) {
           orderBy: { createdAt: 'desc' },
         });
 
-          if (raced) {
-            const existingScript = await prisma.script.findFirst({
-              where: { projectId, jobId: raced.id },
-              orderBy: { createdAt: 'desc' },
-            });
+        if (raced) {
+          const existingScript = await prisma.script.findFirst({
+            where: { projectId, jobId: raced.id },
+            orderBy: { createdAt: 'desc' },
+          });
 
           return NextResponse.json(
             {
@@ -147,8 +147,13 @@ export async function POST(req: NextRequest) {
             },
             { status: 200 },
           );
-          }
         }
+
+        return NextResponse.json(
+          { jobId: null, reused: true },
+          { status: 200 },
+        );
+      }
       throw e;
     }
 

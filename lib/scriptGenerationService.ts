@@ -417,6 +417,11 @@ export async function runScriptGeneration(args: { projectId: string; jobId?: str
  */
 export async function startScriptGenerationJob(projectId: string, job: Job) {
   try {
+    const sleepMs = Number(process.env.FF_WORKER_SLEEP_MS ?? 0);
+    if (sleepMs > 0) {
+      await new Promise((r) => setTimeout(r, sleepMs));
+    }
+
     if (process.env.FF_FORCE_SCRIPT_FAIL === "true") {
       throw new Error("Transient: forced failure for retry test");
     }
