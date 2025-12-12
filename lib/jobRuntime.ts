@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma";
+import { prisma } from "./prisma.ts";
 import { JobStatus } from "@prisma/client";
 
 const MAX_ATTEMPTS = Number(process.env.MAX_JOB_ATTEMPTS ?? 3);
@@ -10,9 +10,9 @@ type Payload = Record<string, any>;
 export function canTransition(from: JobStatus, to: JobStatus) {
   const allowed: Record<JobStatus, JobStatus[]> = {
     PENDING: [JobStatus.RUNNING, JobStatus.FAILED],
-    RUNNING: [JobStatus.COMPLETED, JobStatus.FAILED],
+    RUNNING: [JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.PENDING],
     COMPLETED: [],
-    FAILED: [],
+    FAILED: [JobStatus.PENDING],
   };
   return (allowed[from] ?? []).includes(to);
 }

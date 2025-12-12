@@ -1,5 +1,5 @@
 // lib/scriptGenerationService.ts
-import prisma from '@/lib/prisma';
+import prisma from './prisma.ts';
 import { JobStatus, JobType } from '@prisma/client';
 import type { Job } from '@prisma/client';
 
