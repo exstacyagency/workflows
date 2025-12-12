@@ -77,6 +77,8 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    let jobId: string | null = null;
+
     const existingJob = await prisma.job.findFirst({
       where: {
         projectId,
@@ -88,82 +90,58 @@ export async function POST(req: NextRequest) {
     });
 
     if (existingJob) {
-      const existingScript = await prisma.script.findFirst({
-        where: { projectId, jobId: existingJob.id },
-        orderBy: { createdAt: 'desc' },
-      });
-
-      return NextResponse.json(
-        {
-          jobId: existingJob.id,
-          scriptId: existingScript?.id ?? null,
-          script: existingScript ?? null,
-          reused: true,
-        },
-        { status: 200 },
-      );
+      jobId = existingJob.id;
     }
 
-    let job;
-    try {
-      job = await prisma.job.create({
-        data: {
-          projectId,
-          type: JobType.SCRIPT_GENERATION,
-          status: JobStatus.RUNNING,
-          idempotencyKey,
-          payload: { ...parsed.data, idempotencyKey },
-        },
-      });
-    } catch (e: any) {
-      const message = String(e?.message ?? '');
-      const isUnique =
-        e?.code === 'P2002' ||
-        (e?.name === 'PrismaClientKnownRequestError' && e?.meta?.target) ||
-        message.includes('Unique constraint failed');
-
-      if (isUnique) {
-        const raced = await prisma.job.findFirst({
-          where: {
+    if (!jobId) {
+      try {
+        const job = await prisma.job.create({
+          data: {
             projectId,
             type: JobType.SCRIPT_GENERATION,
+            status: JobStatus.RUNNING,
             idempotencyKey,
+            payload: { ...parsed.data, idempotencyKey },
           },
-          orderBy: { createdAt: 'desc' },
         });
+        jobId = job.id;
+      } catch (e: any) {
+        const message = String(e?.message ?? '');
+        const isUnique =
+          e?.code === 'P2002' ||
+          (e?.name === 'PrismaClientKnownRequestError' && e?.meta?.target) ||
+          message.includes('Unique constraint failed');
 
-        if (raced) {
-          const existingScript = await prisma.script.findFirst({
-            where: { projectId, jobId: raced.id },
+        if (isUnique) {
+          const raced = await prisma.job.findFirst({
+            where: {
+              projectId,
+              type: JobType.SCRIPT_GENERATION,
+              idempotencyKey,
+            },
             orderBy: { createdAt: 'desc' },
           });
 
-          return NextResponse.json(
-            {
-              jobId: raced.id,
-              scriptId: existingScript?.id ?? null,
-              script: existingScript ?? null,
-              reused: true,
-            },
-            { status: 200 },
-          );
+          if (raced) {
+            jobId = raced.id;
+          } else {
+            return NextResponse.json(
+              { error: 'Failed to resolve job after unique constraint' },
+              { status: 500 },
+            );
+          }
+        } else {
+          throw e;
         }
-
-        return NextResponse.json(
-          { jobId: null, reused: true },
-          { status: 200 },
-        );
       }
-      throw e;
     }
 
-    if (!job) {
+    if (!jobId) {
       return NextResponse.json(
         { error: 'Job not found after creation' },
         { status: 500 },
       );
     }
-    const jobId = job.id;
 
     await logAudit({
       userId,
@@ -176,17 +154,19 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    const stateResult = await runWithState(jobId, async () => {
+    console.log("[script-generation] entering runWithState", { jobId, projectId });
+    const state = await runWithState(jobId, async () => {
       const freshJob = await prisma.job.findUnique({ where: { id: jobId } });
       if (!freshJob) {
         throw new Error('Job not found');
       }
       return startScriptGenerationJob(projectId, freshJob);
     });
+    console.log("[script-generation] runWithState result", state);
 
     return NextResponse.json(
-      { jobId, ...stateResult },
-      { status: stateResult.ok ? 200 : 500 },
+      { jobId, ...state },
+      { status: state.ok ? 200 : 500 },
     );
   } catch (err: any) {
     console.error('script-generation POST failed', err);
