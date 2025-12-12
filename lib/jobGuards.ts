@@ -29,7 +29,7 @@ export async function enforceUserConcurrency(userId: string) {
   const running = await prisma.job.count({
     where: {
       project: { userId },
-      status: JobStatus.RUNNING,
+      status: { in: [JobStatus.PENDING, JobStatus.RUNNING] },
     },
   });
   if (running >= MAX_RUNNING_JOBS_PER_USER) {
