@@ -12,19 +12,17 @@ function applySecurityHeaders(res: NextResponse) {
     "camera=(), microphone=(), geolocation=()"
   );
 
-  // CSP tuned for dev; you can tighten this for production later
-  res.headers.set(
-    "Content-Security-Policy",
-    [
-      "default-src 'self'",
-      "img-src 'self' data: https:",
-      "script-src 'self' 'unsafe-inline'",
-      "style-src 'self' 'unsafe-inline'",
-      "connect-src 'self' https:",
-      "font-src 'self' data: https:",
-      "frame-ancestors 'none'",
-    ].join("; ")
-  );
+  const isProd = process.env.NODE_ENV === "production";
+  const csp = [
+    "default-src 'self'",
+    "img-src 'self' data: https:",
+    `script-src 'self' 'unsafe-inline'${isProd ? "" : " 'unsafe-eval'"}`,
+    "style-src 'self' 'unsafe-inline'",
+    "connect-src 'self' https:",
+    "font-src 'self' data: https:",
+    "frame-ancestors 'none'",
+  ].join("; ");
+  res.headers.set("Content-Security-Policy", csp);
 
   return res;
 }

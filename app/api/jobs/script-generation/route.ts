@@ -12,86 +12,89 @@ import { enforcePlanLimits, incrementUsage } from '@/lib/billing';
 import { enforceUserConcurrency } from '@/lib/jobGuards';
 
 export async function POST(req: NextRequest) {
-  const user = await getSessionUser();
-  if (!user?.id) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-  const ip =
-    req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null;
-
-  const parsed = await parseJson(req, ProjectJobSchema);
-  if (!parsed.success) {
-    return NextResponse.json(
-      { error: parsed.error, details: parsed.details },
-      { status: 400 },
-    );
-  }
-
-  const { projectId } = parsed.data;
-
-  const auth = await requireProjectOwner(projectId);
-  if (auth.error) {
-    return NextResponse.json(
-      { error: auth.error },
-      { status: auth.status },
-    );
-  }
-
-  const userId = user.id;
-
-  const idempotencyKey = `script-generation:${projectId}`;
-
-  const existing = await prisma.$queryRaw<Array<{ id: string }>>`
-    SELECT "id"
-    FROM "Job"
-    WHERE "projectId" = ${projectId}
-      AND "type" = ${JobType.SCRIPT_GENERATION}
-      AND "idempotencyKey" = ${idempotencyKey}
-      AND "status" IN ('PENDING', 'RUNNING')
-    ORDER BY "createdAt" DESC
-    LIMIT 1
-  `;
-
-  if (existing.length) {
-    const existingJobId = existing[0].id;
-    const existingScript = await prisma.script.findFirst({
-      where: {
-        projectId,
-        jobId: existingJobId,
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    return NextResponse.json(
-      {
-        jobId: existingJobId,
-        scriptId: existingScript?.id ?? null,
-        script: existingScript ?? null,
-        reused: true,
-      },
-      { status: 200 },
-    );
-  }
-
-  const limitCheck = await enforcePlanLimits(userId);
-  if (!limitCheck.allowed) {
-    return NextResponse.json(
-      { error: limitCheck.reason },
-      { status: 403 },
-    );
-  }
-
-  const concurrency = await enforceUserConcurrency(userId);
-  if (!concurrency.allowed) {
-    return NextResponse.json(
-      { error: concurrency.reason },
-      { status: 429 },
-    );
-  }
-
-  await incrementUsage(userId, 'job', 1);
-
   try {
+    const user = await getSessionUser();
+    if (!user?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    const ip =
+      req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null;
+
+    const parsed = await parseJson(req, ProjectJobSchema);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: parsed.error, details: parsed.details },
+        { status: 400 },
+      );
+    }
+
+    const { projectId } = parsed.data;
+
+    const auth = await requireProjectOwner(projectId);
+    if (auth.error) {
+      return NextResponse.json(
+        { error: auth.error },
+        { status: auth.status },
+      );
+    }
+
+    const userId = user.id;
+
+    const idempotencyKey = `script-generation:${projectId}`;
+
+    const existing = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT "id"
+      FROM "Job"
+      WHERE "projectId" = ${projectId}
+        AND "type" = CAST(${JobType.SCRIPT_GENERATION} AS "JobType")
+        AND "idempotencyKey" = ${idempotencyKey}
+        AND "status" IN (
+          CAST('PENDING' AS "JobStatus"),
+          CAST('RUNNING' AS "JobStatus")
+        )
+      ORDER BY "createdAt" DESC
+      LIMIT 1
+    `;
+
+    if (existing.length) {
+      const existingJobId = existing[0].id;
+      const existingScript = await prisma.script.findFirst({
+        where: {
+          projectId,
+          jobId: existingJobId,
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      return NextResponse.json(
+        {
+          jobId: existingJobId,
+          scriptId: existingScript?.id ?? null,
+          script: existingScript ?? null,
+          reused: true,
+        },
+        { status: 200 },
+      );
+    }
+
+    const limitCheck = await enforcePlanLimits(userId);
+    if (!limitCheck.allowed) {
+      return NextResponse.json(
+        { error: limitCheck.reason },
+        { status: 403 },
+      );
+    }
+
+    const concurrency = await enforceUserConcurrency(userId);
+    if (!concurrency.allowed) {
+      return NextResponse.json(
+        { error: concurrency.reason },
+        { status: 429 },
+      );
+    }
+
+    await incrementUsage(userId, 'job', 1);
+
     if (process.env.NODE_ENV === 'production') {
       const rateCheck = await checkRateLimit(projectId);
       if (!rateCheck.allowed) {
@@ -102,9 +105,20 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const payloadJson = JSON.stringify({ idempotencyKey });
     const inserted = await prisma.$queryRaw<Array<{ id: string }>>`
-      INSERT INTO "Job" ("id","type","status","projectId","idempotencyKey","createdAt","updatedAt")
-      VALUES (gen_random_uuid()::text, ${JobType.SCRIPT_GENERATION}, 'RUNNING', ${projectId}, ${idempotencyKey}, now(), now())
+      INSERT INTO "Job" ("type","status","projectId","idempotencyKey","payload","createdAt","updatedAt")
+      VALUES (
+        CAST(${JobType.SCRIPT_GENERATION} AS "JobType"),
+        CAST('RUNNING' AS "JobStatus"),
+        ${projectId},
+        ${idempotencyKey},
+        CAST(${payloadJson} AS jsonb),
+        now(),
+        now()
+      )
+      ON CONFLICT ("projectId","type","idempotencyKey")
+      DO UPDATE SET "updatedAt" = now()
       RETURNING "id"
     `;
 
@@ -135,20 +149,11 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(result, { status: 200 });
   } catch (err: any) {
-    console.error(err);
-    await logAudit({
-      userId,
-      projectId,
-      jobId: null,
-      action: 'job.error',
-      ip,
-      metadata: {
-        type: 'script-generation',
-        error: String(err?.message ?? err),
-      },
-    });
+    console.error('script-generation POST failed', err);
     return NextResponse.json(
-      { error: err?.message ?? 'Script generation failed' },
+      {
+        error: err instanceof Error ? err.message : String(err),
+      },
       { status: 500 },
     );
   }
