@@ -41,7 +41,10 @@ export async function POST(req: NextRequest) {
 
     const userId = user.id;
     const devTest = process.env.FF_DEV_TEST_MODE === 'true';
-    const idempotencyKey = `script-generation:${projectId}`;
+    let idempotencyKey = `script-generation:${projectId}`;
+    if (process.env.FF_BREAKER_TEST === 'true') {
+      idempotencyKey = `${idempotencyKey}:${Date.now()}`;
+    }
 
     if (!devTest) {
       const limitCheck = await enforcePlanLimits(userId);

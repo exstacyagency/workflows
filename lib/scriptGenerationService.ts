@@ -2,6 +2,12 @@
 import prisma from './prisma.ts';
 import { JobStatus, JobType } from '@prisma/client';
 import type { Job } from '@prisma/client';
+import { guardedExternalCall } from './externalCallGuard.ts';
+
+const LLM_TIMEOUT_MS = Number(process.env.LLM_TIMEOUT_MS ?? 30_000);
+const LLM_BREAKER_FAILS = Number(process.env.LLM_BREAKER_FAILS ?? 3);
+const LLM_BREAKER_COOLDOWN_MS = Number(process.env.LLM_BREAKER_COOLDOWN_MS ?? 60_000);
+const LLM_RETRIES = Number(process.env.LLM_RETRIES ?? 1);
 
 type Pattern = {
   pattern_name: string;
@@ -65,25 +71,58 @@ function getAnthropicHeaders() {
 async function callAnthropic(system: string, prompt: string): Promise<string> {
   const model = process.env.ANTHROPIC_MODEL ?? 'claude-3-opus-20240229';
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: getAnthropicHeaders(),
-    body: JSON.stringify({
-      model,
-      max_tokens: 8000,
-      system,
-      messages: [{ role: 'user', content: prompt }],
-    }),
+  const isRetryable = (err: any) => {
+    const msg = String(err?.message ?? err).toLowerCase();
+    return (
+      msg.includes('timed out') ||
+      msg.includes('timeout') ||
+      msg.includes('fetch') ||
+      msg.includes('network') ||
+      msg.includes('429') ||
+      msg.includes('rate') ||
+      msg.includes('5')
+    );
+  };
+
+  console.log("[LLM] about to call guardedExternalCall");
+  return guardedExternalCall({
+    breakerKey: 'anthropic:messages.create',
+    breaker: { failureThreshold: LLM_BREAKER_FAILS, cooldownMs: LLM_BREAKER_COOLDOWN_MS },
+    timeoutMs: LLM_TIMEOUT_MS,
+    retry: { retries: LLM_RETRIES, baseDelayMs: 500, maxDelayMs: 5000 },
+    label: 'Anthropic messages.create',
+    isRetryable,
+    fn: async () => {
+      console.log("[LLM] inside guarded fn");
+      if (process.env.FF_SIMULATE_LLM_FAIL === "true") {
+        throw new Error("Simulated LLM 500");
+      }
+
+      if (process.env.FF_SIMULATE_LLM_HANG === "true") {
+        await new Promise(() => {}); // simulate hang for timeout testing
+      }
+
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: getAnthropicHeaders(),
+        body: JSON.stringify({
+          model,
+          max_tokens: 8000,
+          system,
+          messages: [{ role: 'user', content: prompt }],
+        }),
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Anthropic script generation failed: ${res.status} ${text}`);
+      }
+
+      const data = await res.json();
+      const content = data?.content?.[0]?.text ?? data?.content ?? '';
+      return content as string;
+    },
   });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Anthropic script generation failed: ${res.status} ${text}`);
-  }
-
-  const data = await res.json();
-  const content = data?.content?.[0]?.text ?? data?.content ?? '';
-  return content as string;
 }
 
 function parseJsonFromLLM(text: string): ScriptJSON {
