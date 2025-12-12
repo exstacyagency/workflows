@@ -10,6 +10,7 @@ import { logAudit } from '@/lib/logger';
 import { getSessionUser } from '@/lib/getSessionUser';
 import { enforcePlanLimits, incrementUsage } from '@/lib/billing';
 import { enforceUserConcurrency } from '@/lib/jobGuards';
+import { runWithState } from '@/lib/jobRuntime';
 
 export async function POST(req: NextRequest) {
   try {
@@ -41,12 +42,6 @@ export async function POST(req: NextRequest) {
     const userId = user.id;
     const devTest = process.env.FF_DEV_TEST_MODE === 'true';
     const idempotencyKey = `script-generation:${projectId}`;
-
-    await prisma.$executeRawUnsafe(`
-      CREATE UNIQUE INDEX IF NOT EXISTS "Job_projectId_type_idempotencyKey_key"
-      ON "Job" ("projectId","type","idempotencyKey")
-      WHERE "idempotencyKey" IS NOT NULL;
-    `);
 
     if (!devTest) {
       const limitCheck = await enforcePlanLimits(userId);
@@ -82,80 +77,88 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const existing = await prisma.$queryRaw<Array<{ id: string }>>`
-      SELECT "id"
-      FROM "Job"
-      WHERE "projectId" = ${projectId}
-        AND "type" = CAST(${JobType.SCRIPT_GENERATION} AS "JobType")
-        AND "idempotencyKey" = ${idempotencyKey}
-        AND "status" IN (
-          CAST('PENDING' AS "JobStatus"),
-          CAST('RUNNING' AS "JobStatus")
-        )
-      ORDER BY "createdAt" DESC
-      LIMIT 1
-    `;
-
-    let jobId: string | null = existing[0]?.id ?? null;
-
-    if (!jobId) {
-      const payloadJson = JSON.stringify({ idempotencyKey });
-      const typeVal = JobType.SCRIPT_GENERATION;
-      const statusVal = JobStatus.RUNNING;
-      const inserted = await prisma.$queryRaw<Array<{ id: string }>>`
-        INSERT INTO "Job" ("type","status","projectId","idempotencyKey","payload","createdAt","updatedAt")
-        VALUES (
-          CAST(${typeVal} AS "JobType"),
-          CAST(${statusVal} AS "JobStatus"),
-          ${projectId},
-          ${idempotencyKey},
-          CAST(${payloadJson} AS jsonb),
-          now(),
-          now()
-        )
-        ON CONFLICT ("projectId","type","idempotencyKey")
-        DO UPDATE SET "updatedAt" = now()
-        RETURNING "id"
-      `;
-      jobId = inserted[0]?.id ?? null;
-    }
-
-    if (!jobId) {
-      return NextResponse.json(
-        { error: 'Failed to create or reuse script-generation job' },
-        { status: 500 },
-      );
-    }
-
-    const existingScript = await prisma.script.findFirst({
+    const existingJob = await prisma.job.findFirst({
       where: {
         projectId,
-        jobId,
+        type: JobType.SCRIPT_GENERATION,
+        idempotencyKey,
+        status: { in: [JobStatus.PENDING, JobStatus.RUNNING] },
       },
       orderBy: { createdAt: 'desc' },
     });
 
-    if (existingScript) {
+    if (existingJob) {
+      const existingScript = await prisma.script.findFirst({
+        where: { projectId, jobId: existingJob.id },
+        orderBy: { createdAt: 'desc' },
+      });
+
       return NextResponse.json(
         {
-          jobId,
-          scriptId: existingScript.id,
-          script: existingScript,
+          jobId: existingJob.id,
+          scriptId: existingScript?.id ?? null,
+          script: existingScript ?? null,
           reused: true,
         },
         { status: 200 },
       );
     }
 
-    const job = await prisma.job.findUnique({
-      where: { id: jobId },
-    });
+    let job;
+    try {
+      job = await prisma.job.create({
+        data: {
+          projectId,
+          type: JobType.SCRIPT_GENERATION,
+          status: JobStatus.RUNNING,
+          idempotencyKey,
+          payload: { ...parsed.data, idempotencyKey },
+        },
+      });
+    } catch (e: any) {
+      const message = String(e?.message ?? '');
+      const isUnique =
+        e?.code === 'P2002' ||
+        (e?.name === 'PrismaClientKnownRequestError' && e?.meta?.target) ||
+        message.includes('Unique constraint failed');
+
+      if (isUnique) {
+        const raced = await prisma.job.findFirst({
+          where: {
+            projectId,
+            type: JobType.SCRIPT_GENERATION,
+            idempotencyKey,
+          },
+          orderBy: { createdAt: 'desc' },
+        });
+
+        if (raced) {
+          const existingScript = await prisma.script.findFirst({
+            where: { projectId, jobId: raced.id },
+            orderBy: { createdAt: 'desc' },
+          });
+
+          return NextResponse.json(
+            {
+              jobId: raced.id,
+              scriptId: existingScript?.id ?? null,
+              script: existingScript ?? null,
+              reused: true,
+            },
+            { status: 200 },
+          );
+        }
+      }
+      throw e;
+    }
+
     if (!job) {
       return NextResponse.json(
         { error: 'Job not found after creation' },
         { status: 500 },
       );
     }
+    const jobId = job.id;
 
     await logAudit({
       userId,
@@ -168,9 +171,18 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    const result = await startScriptGenerationJob(projectId, job);
+    const stateResult = await runWithState(jobId, async () => {
+      const freshJob = await prisma.job.findUnique({ where: { id: jobId } });
+      if (!freshJob) {
+        throw new Error('Job not found');
+      }
+      return startScriptGenerationJob(projectId, freshJob);
+    });
 
-    return NextResponse.json({ ...result, jobId }, { status: 200 });
+    return NextResponse.json(
+      { jobId, ...stateResult },
+      { status: stateResult.ok ? 200 : 500 },
+    );
   } catch (err: any) {
     console.error('script-generation POST failed', err);
     return NextResponse.json(
