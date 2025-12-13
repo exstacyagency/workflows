@@ -1,4 +1,4 @@
-import { prisma } from '@/lib/prisma';
+import { prisma } from './prisma.ts';
 import { AdPlatform, JobStatus } from '@prisma/client';
 import pLimit from 'p-limit';
 

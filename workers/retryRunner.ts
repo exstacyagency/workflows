@@ -1,6 +1,8 @@
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, JobType } from "@prisma/client";
 import { runWithState } from "../lib/jobRuntime.ts";
 import { startScriptGenerationJob } from "../lib/scriptGenerationService.ts";
+import * as patternSvc from "../lib/adPatternAnalysisService.ts";
+import * as transcriptsSvc from "../lib/adTranscriptCollectionService.ts";
 
 const prisma = new PrismaClient();
 
@@ -8,12 +10,14 @@ const POLL_MS = Number(process.env.RETRY_POLL_MS ?? 5000);
 const BATCH = Number(process.env.RETRY_BATCH ?? 5);
 const MAX_WORKER_CONCURRENCY = Number(process.env.MAX_WORKER_CONCURRENCY ?? 2);
 const MAX_RUNNING_JOBS_PER_USER = Number(process.env.MAX_RUNNING_JOBS_PER_USER ?? 3);
+const RUNNING_JOB_TIMEOUT_MS = Number(process.env.RUNNING_JOB_TIMEOUT_MS ?? 5 * 60_000);
+const RUNNING_TIMEOUT_MAX_BATCH = Number(process.env.RUNNING_TIMEOUT_MAX_BATCH ?? 25);
 
-async function fetchDueScriptGenerationJobIds(nowMs: number) {
+async function fetchDueJobIds(type: JobType, nowMs: number) {
   const rows = await prisma.$queryRaw<Array<{ id: string }>>`
     SELECT "id"
     FROM "Job"
-    WHERE "type" = CAST('SCRIPT_GENERATION' AS "JobType")
+    WHERE "type" = CAST(${type} AS "JobType")
       AND "status" = CAST('PENDING' AS "JobStatus")
       AND (
         ("payload"->>'nextRunAt') IS NULL
@@ -42,9 +46,73 @@ async function getJobUserId(jobId: string) {
   return job?.project.userId ?? null;
 }
 
+function resolveFn(mod: any, candidates: string[]) {
+  for (const name of candidates) {
+    const fn = mod?.[name];
+    if (typeof fn === "function") return fn;
+  }
+  return null;
+}
+
+async function callServiceFn(fn: Function, job: any) {
+  try {
+    return await fn(job.projectId, job);
+  } catch {}
+  try {
+    return await fn(job.projectId);
+  } catch {}
+  try {
+    return await fn(job);
+  } catch {}
+  return await fn(job.projectId, job.id);
+}
+
+async function cleanupStuckRunningJobs() {
+  const cutoff = new Date(Date.now() - RUNNING_JOB_TIMEOUT_MS);
+
+  const stuck = await prisma.job.findMany({
+    where: {
+      status: "RUNNING",
+      updatedAt: { lt: cutoff },
+    },
+    orderBy: { updatedAt: "asc" },
+    take: RUNNING_TIMEOUT_MAX_BATCH,
+    select: { id: true, payload: true },
+  });
+
+  if (stuck.length === 0) return 0;
+
+  for (const j of stuck) {
+    const payload = (j.payload as any) ?? {};
+    const attempts = Number(payload.attempts ?? 0) + 1;
+
+    await prisma.job.update({
+      where: { id: j.id },
+      data: {
+        status: "PENDING",
+        error: "Worker timeout: stuck RUNNING",
+        payload: {
+          ...payload,
+          attempts,
+          nextRunAt: Date.now(),
+          lastError: "Worker timeout: stuck RUNNING",
+        },
+      },
+    });
+  }
+
+  console.log(`[retryRunner] cleaned stuck RUNNING jobs: ${stuck.length}`);
+  return stuck.length;
+}
+
 async function processOnce() {
+  await cleanupStuckRunningJobs();
   const nowMs = Date.now();
-  const ids = await fetchDueScriptGenerationJobIds(nowMs);
+  const scriptIds = await fetchDueJobIds(JobType.SCRIPT_GENERATION, nowMs);
+  const patternIds = await fetchDueJobIds(JobType.PATTERN_ANALYSIS, nowMs);
+  const transcriptIds = await fetchDueJobIds(JobType.AD_TRANSCRIPTS, nowMs);
+
+  const ids = [...scriptIds, ...patternIds, ...transcriptIds];
   if (ids.length === 0) return;
 
   let executed = 0;
@@ -67,16 +135,45 @@ async function processOnce() {
     const state = await runWithState(jobId, async () => {
       const job = await prisma.job.findUnique({ where: { id: jobId } });
       if (!job) throw new Error("Job not found");
-      return startScriptGenerationJob(job.projectId, job);
+
+      if (job.type === JobType.SCRIPT_GENERATION) {
+        return startScriptGenerationJob(job.projectId, job);
+      }
+
+      if (job.type === JobType.PATTERN_ANALYSIS) {
+        const fn =
+          resolveFn(patternSvc, [
+            "startAdPatternAnalysisJob",
+            "runAdPatternAnalysisJob",
+            "startPatternAnalysisJob",
+            "runPatternAnalysis",
+          ]) || null;
+        if (!fn) throw new Error("Pattern analysis service function not found");
+        return callServiceFn(fn, job);
+      }
+
+      if (job.type === JobType.AD_TRANSCRIPTS) {
+        const fn =
+          resolveFn(transcriptsSvc, [
+            "startAdTranscriptCollectionJob",
+            "runAdTranscriptCollectionJob",
+            "startAdTranscriptsJob",
+            "runAdTranscripts",
+          ]) || null;
+        if (!fn) throw new Error("Ad transcripts service function not found");
+        return callServiceFn(fn, job);
+      }
+
+      throw new Error(`Unsupported job type in retryRunner: ${job.type}`);
     });
 
     const latest = await prisma.job.findUnique({
       where: { id: jobId },
-      select: { status: true, payload: true },
+      select: { status: true, payload: true, type: true },
     });
     const p = (latest?.payload as any) ?? {};
     console.log(
-      `[retryRunner] job=${jobId} ok=${state.ok} skipped=${(state as any).skipped ?? ""} status=${latest?.status} attempts=${p.attempts ?? 0} nextRunAt=${p.nextRunAt ?? null}`
+      `[retryRunner] job=${jobId} type=${latest?.type} ok=${state.ok} skipped=${(state as any).skipped ?? ""} status=${latest?.status} attempts=${p.attempts ?? 0} nextRunAt=${p.nextRunAt ?? null}`
     );
     executed++;
   }

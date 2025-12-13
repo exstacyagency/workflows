@@ -1,4 +1,4 @@
-import { prisma } from '@/lib/prisma';
+import { prisma } from './prisma.ts';
 import { JobStatus, JobType } from '@prisma/client';
 import Anthropic from '@anthropic-ai/sdk';
 
@@ -157,7 +157,7 @@ export async function startPatternAnalysisJob(params: { projectId: string }) {
     });
   }
 
-  const { addJob, QueueName } = await import('@/lib/queue');
+  const { addJob, QueueName } = await import('./queue.ts');
   await addJob(QueueName.PATTERN_ANALYSIS, job.id, { jobId: job.id, projectId });
 
   return { jobId: job.id };

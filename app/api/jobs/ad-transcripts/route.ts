@@ -63,10 +63,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const idempotencyKey = JSON.stringify([projectId, JobType.AD_PERFORMANCE, 'transcript']);
+    const idempotencyKey = JSON.stringify([projectId, JobType.AD_TRANSCRIPTS, 'transcript']);
     const { job, reused } = await createJobWithIdempotency({
       projectId,
-      type: JobType.AD_PERFORMANCE,
+      type: JobType.AD_TRANSCRIPTS,
       idempotencyKey,
       payload: { projectId, kind: 'ad_transcript_collection' },
     });
