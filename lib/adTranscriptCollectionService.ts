@@ -1,6 +1,20 @@
 import { prisma } from './prisma.ts';
 import { AdPlatform, JobStatus } from '@prisma/client';
 import pLimit from 'p-limit';
+import { guardedExternalCall } from './externalCallGuard.ts';
+import { env, requireEnv } from './configGuard.ts';
+
+const APIFY_TIMEOUT_MS = Number(process.env.APIFY_TIMEOUT_MS ?? 30_000);
+const APIFY_BREAKER_FAILS = Number(process.env.APIFY_BREAKER_FAILS ?? 3);
+const APIFY_BREAKER_COOLDOWN_MS = Number(process.env.APIFY_BREAKER_COOLDOWN_MS ?? 60_000);
+const APIFY_RETRIES = Number(process.env.APIFY_RETRIES ?? 1);
+
+const ASSEMBLY_TIMEOUT_MS = Number(process.env.ASSEMBLY_TIMEOUT_MS ?? APIFY_TIMEOUT_MS);
+const ASSEMBLY_BREAKER_FAILS = Number(process.env.ASSEMBLY_BREAKER_FAILS ?? APIFY_BREAKER_FAILS);
+const ASSEMBLY_BREAKER_COOLDOWN_MS = Number(
+  process.env.ASSEMBLY_BREAKER_COOLDOWN_MS ?? APIFY_BREAKER_COOLDOWN_MS
+);
+const ASSEMBLY_RETRIES = Number(process.env.ASSEMBLY_RETRIES ?? APIFY_RETRIES);
 
 const ASSEMBLY_BASE = 'https://api.assemblyai.com/v2';
 const TRIGGER_WORDS = ['you', 'your', 'yourself'];
@@ -8,23 +22,53 @@ const TRIGGER_WORDS = ['you', 'your', 'yourself'];
 const limit = pLimit(10);
 
 function getAssemblyHeaders() {
+  requireEnv(['ASSEMBLYAI_API_KEY'], 'ASSEMBLYAI');
+  const apiKey = env('ASSEMBLYAI_API_KEY')!;
   return {
-    authorization: process.env.ASSEMBLYAI_API_KEY || '',
+    authorization: apiKey,
     'content-type': 'application/json',
   };
 }
 
-async function startTranscriptForAsset(audioUrl: string): Promise<string> {
-  const res = await fetch(`${ASSEMBLY_BASE}/transcript`, {
-    method: 'POST',
-    headers: getAssemblyHeaders(),
-    body: JSON.stringify({ audio_url: audioUrl }),
-  });
+function isAssemblyRetryable(err: any) {
+  const msg = String(err?.message ?? err).toLowerCase();
+  return (
+    msg.includes('timed out') ||
+    msg.includes('timeout') ||
+    msg.includes('fetch') ||
+    msg.includes('network') ||
+    msg.includes('429') ||
+    msg.includes('rate') ||
+    msg.includes('503') ||
+    msg.includes('502') ||
+    msg.includes('504')
+  );
+}
 
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`AssemblyAI start failed: ${res.status} ${text}`);
-  }
+async function startTranscriptForAsset(audioUrl: string): Promise<string> {
+  const headers = getAssemblyHeaders();
+  const res = await guardedExternalCall({
+    breakerKey: 'assemblyai:ad-transcripts',
+    breaker: { failureThreshold: ASSEMBLY_BREAKER_FAILS, cooldownMs: ASSEMBLY_BREAKER_COOLDOWN_MS },
+    timeoutMs: ASSEMBLY_TIMEOUT_MS,
+    retry: { retries: ASSEMBLY_RETRIES, baseDelayMs: 500, maxDelayMs: 5000 },
+    label: 'AssemblyAI start transcript',
+    fn: async () => {
+      const r = await fetch(`${ASSEMBLY_BASE}/transcript`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ audio_url: audioUrl }),
+      });
+
+      if (!r.ok) {
+        const body = await r.text().catch(() => '');
+        throw new Error(`AssemblyAI HTTP ${r.status}: ${body}`);
+      }
+
+      return r;
+    },
+    isRetryable: isAssemblyRetryable,
+  });
 
   const data = await res.json();
   return data.id;
@@ -41,16 +85,29 @@ type AssemblyTranscript = {
 async function pollTranscript(transcriptId: string, maxRetries = 20, delayMs = 10000): Promise<AssemblyTranscript> {
   let retries = 0;
 
+  const headers = getAssemblyHeaders();
   while (retries < maxRetries) {
-    const res = await fetch(`${ASSEMBLY_BASE}/transcript/${transcriptId}`, {
-      method: 'GET',
-      headers: getAssemblyHeaders(),
-    });
+    const res = await guardedExternalCall({
+      breakerKey: 'assemblyai:ad-transcripts',
+      breaker: { failureThreshold: ASSEMBLY_BREAKER_FAILS, cooldownMs: ASSEMBLY_BREAKER_COOLDOWN_MS },
+      timeoutMs: ASSEMBLY_TIMEOUT_MS,
+      retry: { retries: ASSEMBLY_RETRIES, baseDelayMs: 500, maxDelayMs: 5000 },
+      label: 'AssemblyAI poll transcript',
+      fn: async () => {
+        const r = await fetch(`${ASSEMBLY_BASE}/transcript/${transcriptId}`, {
+          method: 'GET',
+          headers,
+        });
 
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`AssemblyAI poll failed: ${res.status} ${text}`);
-    }
+        if (!r.ok) {
+          const body = await r.text().catch(() => '');
+          throw new Error(`AssemblyAI HTTP ${r.status}: ${body}`);
+        }
+
+        return r;
+      },
+      isRetryable: isAssemblyRetryable,
+    });
 
     const data = (await res.json()) as AssemblyTranscript;
 
@@ -125,7 +182,9 @@ async function enrichAssetWithTranscript(assetId: string) {
   const transcriptId = await startTranscriptForAsset(audioUrl);
   const transcript = await pollTranscript(transcriptId);
 
-  if (transcript.status !== 'completed') return;
+  if (transcript.status !== 'completed') {
+    throw new Error(`AssemblyAI transcript ${transcript.status}: ${transcript.error ?? 'unknown error'}`);
+  }
 
   const text = transcript.text || '';
   const words = transcript.words || [];
@@ -162,6 +221,8 @@ export async function runAdTranscriptCollection(args: {
 }) {
   const { projectId, jobId, onProgress } = args;
 
+  requireEnv(['ASSEMBLYAI_API_KEY'], 'ASSEMBLYAI');
+
   const assets = await prisma.adAsset.findMany({
     where: {
       projectId,
@@ -177,6 +238,7 @@ export async function runAdTranscriptCollection(args: {
 
   let processed = 0;
   const total = assets.length;
+  const errors: Array<{ assetId: string; error: any }> = [];
 
   const promises = assets.map((asset) =>
     limit(async () => {
@@ -187,12 +249,20 @@ export async function runAdTranscriptCollection(args: {
           onProgress(Math.floor((processed / total) * 100));
         }
       } catch (err) {
-        console.error(`Asset ${asset.id} failed:`, err);
+        errors.push({ assetId: asset.id, error: err });
       }
     })
   );
 
   await Promise.all(promises);
+
+  if (errors.length > 0) {
+    const first = errors[0];
+    const firstMsg = String(first?.error?.message ?? first?.error ?? 'Unknown error');
+    throw new Error(
+      `Transcript collection failed for ${errors.length}/${total} assets (first ${first.assetId}: ${firstMsg})`
+    );
+  }
 
   return { totalAssets: total, processed };
 }

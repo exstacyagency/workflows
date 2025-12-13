@@ -1,6 +1,7 @@
 // lib/characterGenerationService.ts
 import prisma from '@/lib/prisma';
 import { JobStatus } from '@prisma/client';
+import { env, requireEnv } from './configGuard.ts';
 
 type CharacterSpec = {
   age?: number;
@@ -21,10 +22,8 @@ type CharacterResponse = {
 };
 
 function getAnthropicHeaders() {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    throw new Error('ANTHROPIC_API_KEY is not set');
-  }
+  requireEnv(['ANTHROPIC_API_KEY'], 'ANTHROPIC');
+  const apiKey = env('ANTHROPIC_API_KEY')!;
   return {
     'x-api-key': apiKey,
     'anthropic-version': '2023-06-01',
@@ -199,6 +198,8 @@ export async function runCharacterGeneration(args: {
   jobId?: string;
 }) {
   const { projectId, productName, jobId } = args;
+
+  requireEnv(['ANTHROPIC_API_KEY'], 'ANTHROPIC');
 
   // Load latest customer avatar for this project
   const avatar = await prisma.customerAvatar.findFirst({

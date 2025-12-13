@@ -3,6 +3,7 @@ import prisma from './prisma.ts';
 import { JobStatus, JobType } from '@prisma/client';
 import type { Job } from '@prisma/client';
 import { guardedExternalCall } from './externalCallGuard.ts';
+import { env, requireEnv } from './configGuard.ts';
 
 const LLM_TIMEOUT_MS = Number(process.env.LLM_TIMEOUT_MS ?? 30_000);
 const LLM_BREAKER_FAILS = Number(process.env.LLM_BREAKER_FAILS ?? 3);
@@ -56,11 +57,7 @@ type ScriptJSON = {
   [key: string]: any;
 };
 
-function getAnthropicHeaders() {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    throw new Error('ANTHROPIC_API_KEY is not set');
-  }
+function getAnthropicHeaders(apiKey: string) {
   return {
     'x-api-key': apiKey,
     'anthropic-version': '2023-06-01',
@@ -70,6 +67,9 @@ function getAnthropicHeaders() {
 
 async function callAnthropic(system: string, prompt: string): Promise<string> {
   const model = process.env.ANTHROPIC_MODEL ?? 'claude-3-opus-20240229';
+  requireEnv(['ANTHROPIC_API_KEY'], 'ANTHROPIC');
+  const apiKey = env('ANTHROPIC_API_KEY')!;
+  const headers = getAnthropicHeaders(apiKey);
 
   const isRetryable = (err: any) => {
     const msg = String(err?.message ?? err).toLowerCase();
@@ -104,7 +104,7 @@ async function callAnthropic(system: string, prompt: string): Promise<string> {
 
       const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
-        headers: getAnthropicHeaders(),
+        headers,
         body: JSON.stringify({
           model,
           max_tokens: 8000,
@@ -426,7 +426,7 @@ export async function runScriptGeneration(args: { projectId: string; jobId?: str
     },
   });
 
-  if (!process.env.ANTHROPIC_API_KEY) {
+  if (!env('ANTHROPIC_API_KEY')) {
     console.warn(
       'ANTHROPIC_API_KEY not set – dev mode, skipping LLM call for script generation',
     );

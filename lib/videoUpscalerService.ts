@@ -1,13 +1,12 @@
 // lib/videoUpscalerService.ts
 import prisma from '@/lib/prisma';
+import { env, requireEnv } from './configGuard.ts';
 
 const FAL_UPSCALE_URL = 'https://queue.fal.run/fal-ai/video-upscaler';
 
 function falHeaders() {
-  const apiKey = process.env.FAL_API_KEY;
-  if (!apiKey) {
-    throw new Error('FAL_API_KEY is not set in .env');
-  }
+  requireEnv(['FAL_API_KEY'], 'FAL');
+  const apiKey = env('FAL_API_KEY')!;
   return {
     Authorization: `Bearer ${apiKey}`,
     'Content-Type': 'application/json',
@@ -124,6 +123,8 @@ async function upscaleSingleScript(scriptId: string) {
  * and have a mergedVideoUrl but no upscaledVideoUrl yet.
  */
 export async function runVideoUpscalerBatch() {
+  requireEnv(['FAL_API_KEY'], 'FAL');
+
   const scripts = await prisma.script.findMany({
     where: {
       status: 'upscale_pending',

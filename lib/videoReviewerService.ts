@@ -1,13 +1,12 @@
 // lib/videoReviewerService.ts
 import prisma from '@/lib/prisma';
+import { env, requireEnv } from './configGuard.ts';
 
 const FAL_MERGE_URL = 'https://queue.fal.run/fal-ai/ffmpeg-api/merge-videos';
 
 function falHeaders() {
-  const apiKey = process.env.FAL_API_KEY;
-  if (!apiKey) {
-    throw new Error('FAL_API_KEY is not set in .env');
-  }
+  requireEnv(['FAL_API_KEY'], 'FAL');
+  const apiKey = env('FAL_API_KEY')!;
   return {
     Authorization: `Bearer ${apiKey}`,
     'Content-Type': 'application/json',
@@ -118,6 +117,8 @@ async function mergeStoryboardIfComplete(storyboardId: string) {
  * Main entrypoint: scan all storyboards, merge those where all scenes are accepted.
  */
 export async function runVideoReviewer() {
+  requireEnv(['FAL_API_KEY'], 'FAL');
+
   const storyboards = await prisma.storyboard.findMany({
     include: {
       scenes: true,

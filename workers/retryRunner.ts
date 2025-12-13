@@ -169,11 +169,11 @@ async function processOnce() {
 
     const latest = await prisma.job.findUnique({
       where: { id: jobId },
-      select: { status: true, payload: true, type: true },
+      select: { status: true, payload: true, type: true, error: true },
     });
     const p = (latest?.payload as any) ?? {};
     console.log(
-      `[retryRunner] job=${jobId} type=${latest?.type} ok=${state.ok} skipped=${(state as any).skipped ?? ""} status=${latest?.status} attempts=${p.attempts ?? 0} nextRunAt=${p.nextRunAt ?? null}`
+      `[retryRunner] job=${jobId} type=${latest?.type} ok=${state.ok} skipped=${(state as any).skipped ?? ""} status=${latest?.status} attempts=${p.attempts ?? 0} nextRunAt=${p.nextRunAt ?? null} lastError=${p.lastError ?? null} errorCol=${latest?.error ?? null}`
     );
     executed++;
   }

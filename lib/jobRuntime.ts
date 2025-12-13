@@ -7,13 +7,68 @@ const MAX_MS = Number(process.env.JOB_RETRY_MAX_MS ?? 60_000);
 
 type Payload = Record<string, any>;
 
+function isConfigError(msg: string) {
+  const m = msg.toLowerCase();
+  return (
+    m.includes("must be set in .env") ||
+    m.includes("redis_url missing") ||
+    m.includes("redis not configured") ||
+    m.includes("apify_api_token") ||
+    m.includes("kie_api_key")
+  );
+}
+
 function isPermanentError(msg: string) {
   const m = msg.toLowerCase();
   return (
     m.includes("missing dependencies") ||
+    isConfigError(m) ||
+    m.includes("must be set in .env") ||
+    m.includes("configerror") ||
+    m.includes("redis_url missing") ||
+    m.includes("redis not configured") ||
+    m.includes("apify_api_token") ||
+    m.includes("kie_api_key") ||
+    (m.includes("missing") &&
+      (m.includes("api key") ||
+        m.includes("api_key") ||
+        m.includes("apikey") ||
+        m.includes("token") ||
+        m.includes("secret") ||
+        m.includes("auth"))) ||
+    m.includes("must be set") ||
+    m.includes("not set") ||
     m.includes("required") ||
+    m.includes("invalid input") ||
     m.includes("forbidden") ||
-    m.includes("unauthorized")
+    m.includes("unauthorized") ||
+    m.includes("401") ||
+    m.includes("403")
+  );
+}
+
+function isTransientError(msg: string) {
+  const m = msg.toLowerCase();
+  return (
+    m.includes("timed out") ||
+    m.includes("timeout") ||
+    m.includes("etimedout") ||
+    m.includes("429") ||
+    m.includes("rate limit") ||
+    m.includes("too many requests") ||
+    m.includes("502") ||
+    m.includes("503") ||
+    m.includes("504") ||
+    m.includes("bad gateway") ||
+    m.includes("service unavailable") ||
+    m.includes("gateway timeout") ||
+    m.includes("network") ||
+    m.includes("fetch") ||
+    m.includes("socket hang up") ||
+    m.includes("econnreset") ||
+    m.includes("econnrefused") ||
+    m.includes("enotfound") ||
+    m.includes("eai_again")
   );
 }
 
@@ -60,20 +115,31 @@ export async function getRetryState(jobId: string) {
 }
 
 export async function recordFailureForRetry(jobId: string, errMsg: string) {
-  const { payload, attempts } = await getRetryState(jobId);
-  const nextAttempts = attempts + 1;
+  const { payload } = await getRetryState(jobId);
+  const attempts = Number(payload.attempts ?? 0);
 
-  if (isPermanentError(errMsg) || nextAttempts >= MAX_ATTEMPTS) {
-    await setStatus(
-      jobId,
-      JobStatus.FAILED,
-      nextAttempts >= MAX_ATTEMPTS
-        ? `Max attempts exceeded: ${errMsg}`
-        : errMsg
-    );
+  const permanent = isPermanentError(errMsg) || !isTransientError(errMsg);
+  if (permanent) {
+    const nextPayload = {
+      ...payload,
+      lastError: errMsg,
+      nextRunAt: null,
+      attempts: isConfigError(errMsg) ? 0 : attempts,
+    };
+    await prisma.job.update({
+      where: { id: jobId },
+      data: { status: JobStatus.FAILED, error: errMsg, payload: nextPayload },
+    });
+    return { willRetry: false, attempts: nextPayload.attempts, backoffMs: null };
+  }
+
+  const nextAttempts = attempts + 1;
+  if (nextAttempts >= MAX_ATTEMPTS) {
     await prisma.job.update({
       where: { id: jobId },
       data: {
+        status: JobStatus.FAILED,
+        error: `Max attempts exceeded: ${errMsg}`,
         payload: {
           ...payload,
           attempts: nextAttempts,
@@ -88,11 +154,11 @@ export async function recordFailureForRetry(jobId: string, errMsg: string) {
   const backoffMs = computeBackoffMs(nextAttempts);
   const nextRunAt = Date.now() + backoffMs;
 
-  await setStatus(jobId, JobStatus.PENDING, errMsg);
-
   await prisma.job.update({
     where: { id: jobId },
     data: {
+      status: JobStatus.PENDING,
+      error: errMsg,
       payload: {
         ...payload,
         attempts: nextAttempts,

@@ -1,31 +1,78 @@
 import Bull from 'bull';
 import Redis from 'ioredis';
 
-const redisConfig = {
-  host: process.env.REDIS_HOST || 'localhost',
-  port: parseInt(process.env.REDIS_PORT || '6379'),
+const REDIS_URL = (process.env.REDIS_URL ?? '').trim();
+
+const redisBaseOptions = {
   maxRetriesPerRequest: null,
   enableReadyCheck: false,
-};
+} as const;
 
-const connection = new Redis(redisConfig);
+export const redis: Redis | null = (() => {
+  if (!REDIS_URL) return null;
+  try {
+    const client = new Redis(REDIS_URL, { ...redisBaseOptions });
+    client.on('error', (err) => {
+      console.error('[redis] error', (err as any)?.message ?? err);
+    });
+    return client;
+  } catch (err) {
+    console.error('[redis] init error', (err as any)?.message ?? err);
+    return null;
+  }
+})();
 
-export enum QueueName {
-  CUSTOMER_RESEARCH = 'customer-research',
-  AD_COLLECTION = 'ad-collection',
-  AD_TRANSCRIPTS = 'ad-transcripts',
-  PATTERN_ANALYSIS = 'pattern-analysis',
-  SCRIPT_GENERATION = 'script-generation',
-  VIDEO_GENERATION = 'video-generation',
-  VIDEO_UPSCALE = 'video-upscale',
-}
+export const QueueName = {
+  CUSTOMER_RESEARCH: 'customer-research',
+  AD_COLLECTION: 'ad-collection',
+  AD_TRANSCRIPTS: 'ad-transcripts',
+  PATTERN_ANALYSIS: 'pattern-analysis',
+  SCRIPT_GENERATION: 'script-generation',
+  VIDEO_GENERATION: 'video-generation',
+  VIDEO_UPSCALE: 'video-upscale',
+} as const;
+export type QueueName = typeof QueueName[keyof typeof QueueName];
 
 const queues = new Map<QueueName, Bull.Queue>();
 
+function createNoopQueue(name: QueueName) {
+  const queueName = String(name);
+  return {
+    process: () => {
+      console.warn(`[queue] noop process(): redis disabled queue=${queueName}`);
+    },
+    add: async () => {
+      throw new Error('Redis not configured (REDIS_URL missing)');
+    },
+    getJob: async () => null,
+  } as any as Bull.Queue;
+}
+
+function createBullRedisClient(type: string, config: any) {
+  const client =
+    type === 'bclient' || type === 'subscriber'
+      ? new Redis({ ...config, maxRetriesPerRequest: null, enableReadyCheck: false })
+      : new Redis({ ...config, ...redisBaseOptions });
+
+  client.on('error', (err) => {
+    console.error('[redis] error', (err as any)?.message ?? err);
+  });
+
+  return client;
+}
+
+function assertRedisAvailable() {
+  if (!REDIS_URL) throw new Error('Redis not configured (REDIS_URL missing)');
+  if (!redis) throw new Error('Redis not available (failed to initialize)');
+}
+
 export function getQueue(name: QueueName): Bull.Queue {
+  if (!REDIS_URL || !redis) return createNoopQueue(name);
+
   if (!queues.has(name)) {
-    queues.set(name, new Bull(name, { 
-      redis: redisConfig,
+    queues.set(name, new Bull(name, REDIS_URL, { 
+      redis: { ...redisBaseOptions },
+      createClient: createBullRedisClient,
       defaultJobOptions: {
         attempts: 3,
         backoff: {
@@ -46,6 +93,7 @@ export async function addJob<T>(
   data: T,
   opts?: Bull.JobOptions
 ) {
+  assertRedisAvailable();
   const queue = getQueue(queueName);
   return queue.add(data, {
     jobId,
@@ -54,6 +102,7 @@ export async function addJob<T>(
 }
 
 export async function getJobStatus(queueName: QueueName, jobId: string) {
+  assertRedisAvailable();
   const queue = getQueue(queueName);
   const job = await queue.getJob(jobId);
   

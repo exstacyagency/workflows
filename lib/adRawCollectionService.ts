@@ -1,6 +1,7 @@
 // lib/adRawCollectionService.ts
 import prisma from '@/lib/prisma';
 import { AdPlatform, JobStatus } from '@prisma/client';
+import { env, requireEnv } from './configGuard.ts';
 
 type ApifyAd = {
   id: string;
@@ -57,12 +58,9 @@ function extractRetention(
  * we simplify: we fetch items from a dataset ID and then filter/normalize in code.
  */
 async function fetchApifyAds(industryCode: string): Promise<ApifyAd[]> {
-  const token = process.env.APIFY_API_TOKEN;
-  const datasetId = process.env.APIFY_DATASET_ID;
-
-  if (!token || !datasetId) {
-    throw new Error('APIFY_API_TOKEN and APIFY_DATASET_ID must be set in .env');
-  }
+  requireEnv(['APIFY_API_TOKEN', 'APIFY_DATASET_ID'], 'APIFY');
+  const token = env('APIFY_API_TOKEN')!;
+  const datasetId = env('APIFY_DATASET_ID')!;
 
   const url = new URL(
     `https://api.apify.com/v2/datasets/${datasetId}/items`,

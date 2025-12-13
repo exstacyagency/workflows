@@ -1,6 +1,7 @@
 // lib/customerAnalysisService.ts
 import prisma from '@/lib/prisma';
 import { JobType, ResearchSource } from '@prisma/client';
+import { env, requireEnv } from './configGuard.ts';
 
 type CustomerAvatarJSON = {
   avatar_snapshot?: {
@@ -223,12 +224,9 @@ Return valid JSON with this EXACT structure:
  * Generic helper to call Anthropic Claude with retries.
  */
 async function callAnthropic(system: string, prompt: string): Promise<string> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  requireEnv(['ANTHROPIC_API_KEY'], 'ANTHROPIC');
+  const apiKey = env('ANTHROPIC_API_KEY')!;
   const model = process.env.ANTHROPIC_MODEL ?? 'claude-3-opus-20240229';
-
-  if (!apiKey) {
-    throw new Error('ANTHROPIC_API_KEY is not set');
-  }
 
   const body = JSON.stringify({
     model,
@@ -362,6 +360,7 @@ export async function runCustomerAnalysis(args: {
   jobId?: string;
 }) {
   const { projectId, jobId } = args;
+  requireEnv(['ANTHROPIC_API_KEY'], 'ANTHROPIC');
 
   const { productName, productProblemSolved } = await resolveProductContext(projectId, args.productName, args.productProblemSolved);
 

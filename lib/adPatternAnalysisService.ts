@@ -1,10 +1,42 @@
 import { prisma } from './prisma.ts';
 import { JobStatus, JobType } from '@prisma/client';
 import Anthropic from '@anthropic-ai/sdk';
+import { guardedExternalCall } from './externalCallGuard.ts';
+import { requireEnv } from './configGuard.ts';
+
+const APIFY_TIMEOUT_MS = Number(process.env.APIFY_TIMEOUT_MS ?? 30_000);
+const APIFY_BREAKER_FAILS = Number(process.env.APIFY_BREAKER_FAILS ?? 3);
+const APIFY_BREAKER_COOLDOWN_MS = Number(process.env.APIFY_BREAKER_COOLDOWN_MS ?? 60_000);
+const APIFY_RETRIES = Number(process.env.APIFY_RETRIES ?? 1);
+
+const ANTHROPIC_TIMEOUT_MS = Number(process.env.ANTHROPIC_TIMEOUT_MS ?? APIFY_TIMEOUT_MS);
+const ANTHROPIC_BREAKER_FAILS = Number(process.env.ANTHROPIC_BREAKER_FAILS ?? APIFY_BREAKER_FAILS);
+const ANTHROPIC_BREAKER_COOLDOWN_MS = Number(
+  process.env.ANTHROPIC_BREAKER_COOLDOWN_MS ?? APIFY_BREAKER_COOLDOWN_MS
+);
+const ANTHROPIC_RETRIES = Number(process.env.ANTHROPIC_RETRIES ?? APIFY_RETRIES);
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
+
+function isAnthropicRetryable(err: any) {
+  const status = Number((err as any)?.status ?? (err as any)?.response?.status ?? NaN);
+  if ([429, 500, 502, 503, 504].includes(status)) return true;
+
+  const msg = String(err?.message ?? err).toLowerCase();
+  return (
+    msg.includes('timed out') ||
+    msg.includes('timeout') ||
+    msg.includes('fetch') ||
+    msg.includes('network') ||
+    msg.includes('429') ||
+    msg.includes('rate') ||
+    msg.includes('503') ||
+    msg.includes('502') ||
+    msg.includes('504')
+  );
+}
 
 export async function runPatternAnalysis(args: { projectId: string; jobId: string }) {
   const { projectId, jobId } = args;
@@ -20,6 +52,8 @@ export async function runPatternAnalysis(args: { projectId: string; jobId: strin
   });
 
   try {
+    requireEnv(['ANTHROPIC_API_KEY'], 'ANTHROPIC');
+
     const assets = await prisma.adAsset.findMany({
       where: { projectId, transcript: { not: null } },
       take: 50,
@@ -31,10 +65,20 @@ export async function runPatternAnalysis(args: { projectId: string; jobId: strin
 
     const prompt = buildPatternPrompt(assets);
 
-    const message = await anthropic.messages.create({
-      model: 'claude-opus-4-20250514',
-      max_tokens: 8000,
-      messages: [{ role: 'user', content: prompt }],
+    const message = await guardedExternalCall({
+      breakerKey: 'anthropic:pattern-analysis',
+      breaker: { failureThreshold: ANTHROPIC_BREAKER_FAILS, cooldownMs: ANTHROPIC_BREAKER_COOLDOWN_MS },
+      timeoutMs: ANTHROPIC_TIMEOUT_MS,
+      retry: { retries: ANTHROPIC_RETRIES, baseDelayMs: 500, maxDelayMs: 5000 },
+      label: 'Anthropic messages.create',
+      fn: async () => {
+        return anthropic.messages.create({
+          model: 'claude-opus-4-20250514',
+          max_tokens: 8000,
+          messages: [{ role: 'user', content: prompt }],
+        });
+      },
+      isRetryable: isAnthropicRetryable,
     });
 
     const rawText = message.content[0].type === 'text' ? message.content[0].text : '';

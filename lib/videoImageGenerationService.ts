@@ -1,14 +1,13 @@
 // lib/videoImageGenerationService.ts
 import prisma from '@/lib/prisma';
 import { JobStatus } from '@prisma/client';
+import { env, requireEnv } from './configGuard.ts';
 
-const KIE_BASE = process.env.KIE_API_BASE ?? 'https://api.kie.ai/api/v1';
+const KIE_BASE = env('KIE_API_BASE') ?? 'https://api.kie.ai/api/v1';
 
 function getKieHeaders() {
-  const apiKey = process.env.KIE_API_KEY;
-  if (!apiKey) {
-    throw new Error('KIE_API_KEY is not set');
-  }
+  requireEnv(['KIE_API_KEY'], 'KIE');
+  const apiKey = env('KIE_API_KEY')!;
   return {
     Authorization: `Bearer ${apiKey}`,
     'content-type': 'application/json',
@@ -165,6 +164,8 @@ export async function runVideoImageGeneration(args: {
   jobId?: string;
 }) {
   const { storyboardId } = args;
+
+  requireEnv(['KIE_API_KEY'], 'KIE');
 
   const storyboard = await prisma.storyboard.findUnique({
     where: { id: storyboardId },
