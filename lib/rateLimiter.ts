@@ -7,7 +7,38 @@ const LIMITS = {
   projectsPerHour: 5,
 };
 
-export async function checkRateLimit(identifier: string): Promise<{ allowed: boolean; reason?: string }> {
+type RateLimitResult = { allowed: boolean; reason?: string };
+type RateLimitOptions = { limit?: number; windowMs?: number };
+
+const inMemoryBuckets = new Map<string, { resetAt: number; count: number }>();
+
+function checkInMemoryRateLimit(identifier: string, opts: RateLimitOptions = {}): RateLimitResult {
+  const windowMs = opts.windowMs ?? 60 * 1000;
+  const limit = opts.limit ?? 60;
+  const now = Date.now();
+
+  const bucket = inMemoryBuckets.get(identifier);
+  if (!bucket || now > bucket.resetAt) {
+    inMemoryBuckets.set(identifier, { resetAt: now + windowMs, count: 1 });
+    return { allowed: true };
+  }
+
+  if (bucket.count >= limit) {
+    const seconds = Math.max(1, Math.round(windowMs / 1000));
+    return { allowed: false, reason: `Rate limit exceeded (max ${limit} per ${seconds}s)` };
+  }
+
+  bucket.count += 1;
+  return { allowed: true };
+}
+
+export async function checkRateLimit(
+  identifier: string,
+  opts: RateLimitOptions = {},
+): Promise<RateLimitResult> {
+  if (identifier.startsWith('deadletter:')) {
+    return checkInMemoryRateLimit(identifier, opts);
+  }
   const now = new Date();
 
   if (identifier.startsWith('project:create:')) {

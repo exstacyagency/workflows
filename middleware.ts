@@ -1,5 +1,5 @@
 // middleware.ts
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { withAuth } from "next-auth/middleware";
 
 function applySecurityHeaders(res: NextResponse) {
@@ -39,11 +39,17 @@ const authMiddleware = withAuth(
   }
 );
 
-export default function combinedMiddleware(req: Request) {
+export default function combinedMiddleware(req: NextRequest) {
+  const isProd = process.env.NODE_ENV === "production";
+  const pathname = req.nextUrl.pathname;
+
+  if (isProd && pathname.startsWith("/api/debug")) {
+    return new Response(null, { status: 404 });
+  }
+
   // Run auth + security headers for all matched routes
   // withAuth will set NextResponse and we apply headers in the handler above.
   // This wrapper exists to keep a single default export.
-  // @ts-expect-error - authMiddleware expects NextRequest, but Request is compatible at runtime.
   return authMiddleware(req);
 }
 
@@ -54,5 +60,6 @@ export const config = {
     "/api/projects/:path*",
     "/api/jobs/:path*",
     "/api/media/:path*",
+    "/api/debug/:path*",
   ],
 };

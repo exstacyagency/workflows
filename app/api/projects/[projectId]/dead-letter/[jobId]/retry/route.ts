@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/getSessionUser";
 import { requireProjectOwner } from "@/lib/requireProjectOwner";
+import { checkRateLimit } from "@/lib/rateLimiter";
 
 export async function POST(
   req: NextRequest,
@@ -9,6 +10,14 @@ export async function POST(
 ) {
   const user = await getSessionUser();
   if (!user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const rate = await checkRateLimit(`deadletter:retry:${user.id}`, {
+    limit: 20,
+    windowMs: 60 * 1000,
+  });
+  if (!rate.allowed) {
+    return NextResponse.json({ error: rate.reason ?? "Rate limit exceeded" }, { status: 429 });
+  }
 
   const { projectId, jobId } = params;
   const auth = await requireProjectOwner(projectId);
@@ -21,8 +30,26 @@ export async function POST(
   if (!job) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const payload: any = job.payload ?? {};
+  const now = Date.now();
+
+  if (job.status === "PENDING") {
+    const nextRunAt = payload?.nextRunAt;
+    const nextRunAtNum = typeof nextRunAt === "number" ? nextRunAt : Number(nextRunAt);
+    if (!nextRunAtNum || Number.isNaN(nextRunAtNum) || nextRunAtNum <= now) {
+      return NextResponse.json(
+        { error: "Job is already pending and not in backoff" },
+        { status: 409 }
+      );
+    }
+  } else if (job.status !== "FAILED") {
+    return NextResponse.json(
+      { error: "Job is not retryable in current status" },
+      { status: 409 }
+    );
+  }
+
   payload.dismissed = false;
-  payload.nextRunAt = Date.now() - 1000;
+  payload.nextRunAt = now - 1000;
 
   await prisma.job.update({
     where: { id: jobId },
@@ -35,4 +62,3 @@ export async function POST(
 
   return NextResponse.json({ ok: true }, { status: 200 });
 }
-
