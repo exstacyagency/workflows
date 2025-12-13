@@ -150,12 +150,20 @@ export default async function ProjectDashboardPage({ params }: Params) {
           </div>
         </div>
         <div className="flex flex-col gap-2 md:items-end">
-          <Link
-            href={`/projects/${project.id}/research`}
-            className="inline-flex items-center justify-center rounded-md bg-sky-500 hover:bg-sky-400 px-4 py-2 text-sm font-medium text-white"
-          >
-            Start Customer Research
-          </Link>
+          <div className="flex flex-col gap-2 md:flex-row md:justify-end">
+            <Link
+              href={`/projects/${project.id}/research`}
+              className="inline-flex items-center justify-center rounded-md bg-sky-500 hover:bg-sky-400 px-4 py-2 text-sm font-medium text-white"
+            >
+              Start Customer Research
+            </Link>
+            <Link
+              href={`/projects/${project.id}/dead-letter`}
+              className="inline-flex items-center justify-center rounded-md border border-slate-700 bg-slate-950/60 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-900"
+            >
+              Dead Letter
+            </Link>
+          </div>
           <p className="text-xs text-slate-400 max-w-xs text-center md:text-right">
             Phase 1A runs Reddit + review scrapers and stores results for downstream phases.
           </p>
