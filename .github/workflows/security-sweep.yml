@@ -26,6 +26,11 @@ jobs:
       - name: Prisma generate
         run: npx prisma generate
 
+      - name: Migrate DB
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: npx prisma migrate deploy
+
       # CI needs a database. Use a DATABASE_URL secret (Neon test DB).
       - name: Build
         env:
