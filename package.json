@@ -13,7 +13,8 @@
     "prisma:migrate": "prisma migrate dev --name init",
     "workers": "tsx workers.ts",
     "retry-worker": "ts-node -r tsconfig-paths/register workers/retryRunner.ts",
-    "security:sweep": "node scripts/attacker_sweep.mjs"
+    "security:sweep": "node scripts/attacker_sweep.mjs",
+    "seed:ci": "node scripts/seed_ci.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.2",

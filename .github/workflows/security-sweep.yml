@@ -34,6 +34,11 @@ jobs:
         run: |
           npx prisma db push --force-reset --accept-data-loss
 
+      - name: Seed CI reference data
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: npm run seed:ci
+
       # CI needs a database. Use a DATABASE_URL secret (Neon test DB).
       - name: Build
         env:
