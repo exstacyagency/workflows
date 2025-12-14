@@ -3,7 +3,7 @@ import { flag, nodeEnv } from "@/lib/flags";
 
 export async function GET(_req: NextRequest) {
   if (process.env.NODE_ENV === "production") {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
+    return new Response(null, { status: 404 });
   }
 
   return NextResponse.json(

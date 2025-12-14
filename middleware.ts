@@ -39,7 +39,7 @@ const authMiddleware = withAuth(
   }
 );
 
-export default function combinedMiddleware(req: NextRequest, event: NextFetchEvent) {
+export default async function combinedMiddleware(req: NextRequest, event: NextFetchEvent) {
   const isProd = process.env.NODE_ENV === "production";
   const pathname = req.nextUrl.pathname;
 
@@ -47,10 +47,17 @@ export default function combinedMiddleware(req: NextRequest, event: NextFetchEve
     return new Response(null, { status: 404 });
   }
 
+  const requestId = (
+    req.headers.get("x-request-id") ??
+    (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`)
+  ).toString();
+
   // Run auth + security headers for all matched routes
   // withAuth will set NextResponse and we apply headers in the handler above.
   // This wrapper exists to keep a single default export.
-  return authMiddleware(req as any, event);
+  const res = (await authMiddleware(req as any, event)) as any;
+  res.headers.set("x-request-id", requestId);
+  return res;
 }
 
 export const config = {

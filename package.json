@@ -14,7 +14,8 @@
     "workers": "tsx workers.ts",
     "retry-worker": "ts-node -r tsconfig-paths/register workers/retryRunner.ts",
     "security:sweep": "node scripts/attacker_sweep.mjs",
-    "seed:ci": "node scripts/seed_ci.mjs"
+    "seed:ci": "node scripts/seed_ci.mjs",
+    "smoke:prod": "NODE_ENV=production npm run build && node scripts/prod_smoke.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.2",

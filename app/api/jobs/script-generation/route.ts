@@ -12,8 +12,12 @@ import { enforcePlanLimits, incrementUsage } from '@/lib/billing';
 import { enforceUserConcurrency } from '@/lib/jobGuards';
 import { runWithState } from '@/lib/jobRuntime';
 import { flag } from "@/lib/flags";
+import { getRequestId, logError, logInfo } from "@/lib/observability";
 
 export async function POST(req: NextRequest) {
+  const requestId = getRequestId(req);
+  logInfo("api.request", { requestId, path: req.nextUrl?.pathname });
+
   try {
     const userId = await getSessionUserId();
     if (!userId) {
@@ -173,6 +177,7 @@ export async function POST(req: NextRequest) {
       { status: state.ok ? 200 : 500 },
     );
   } catch (err: any) {
+    logError("api.error", err, { requestId, path: req.nextUrl?.pathname });
     console.error('script-generation POST failed', err);
     return NextResponse.json(
       {
