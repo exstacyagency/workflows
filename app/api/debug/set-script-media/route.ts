@@ -9,7 +9,8 @@ export async function POST(req: NextRequest) {
   }
 
   const user = await getSessionUser();
-  if (!user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const userId = (user as any)?.id as string | undefined;
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json().catch(() => null);
   const scriptId = typeof body?.scriptId === "string" ? body.scriptId : "";
@@ -26,7 +27,7 @@ export async function POST(req: NextRequest) {
   });
 
   if (!script) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  if (script.project.userId !== user.id) {
+  if (script.project.userId !== userId) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -38,4 +39,3 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ ok: true, script: updated }, { status: 200 });
 }
-

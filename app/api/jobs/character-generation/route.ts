@@ -6,7 +6,7 @@ import { ProjectJobSchema, parseJson } from '@/lib/validation/jobs';
 import { z } from 'zod';
 import { checkRateLimit } from '@/lib/rateLimiter';
 import { logAudit } from '@/lib/logger';
-import { getSessionUser } from '@/lib/getSessionUser';
+import { getSessionUserId } from '@/lib/getSessionUserId';
 import { enforcePlanLimits, incrementUsage } from '@/lib/billing';
 import { createJobWithIdempotency, enforceUserConcurrency } from '@/lib/jobGuards';
 import { JobType } from '@prisma/client';
@@ -16,8 +16,8 @@ const CharacterGenerationSchema = ProjectJobSchema.extend({
 });
 
 export async function POST(req: NextRequest) {
-  const user = await getSessionUser();
-  if (!user) {
+  const userId = await getSessionUserId();
+  if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   let projectId: string | null = null;
@@ -40,7 +40,6 @@ export async function POST(req: NextRequest) {
     if (auth.error) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
-    const userId = auth.user?.id ?? user.id;
     const limitCheck = await enforcePlanLimits(userId);
     if (!limitCheck.allowed) {
       return NextResponse.json(
@@ -92,7 +91,7 @@ export async function POST(req: NextRequest) {
     });
 
     await logAudit({
-      userId: user?.id ?? null,
+      userId,
       projectId,
       jobId,
       action: 'job.create',
@@ -106,7 +105,7 @@ export async function POST(req: NextRequest) {
   } catch (err: any) {
     console.error(err);
     await logAudit({
-      userId: user?.id ?? null,
+      userId,
       projectId,
       jobId,
       action: 'job.error',

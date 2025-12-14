@@ -4,6 +4,7 @@ import { JobStatus, JobType } from '@prisma/client';
 import type { Job } from '@prisma/client';
 import { guardedExternalCall } from './externalCallGuard.ts';
 import { env, requireEnv } from './configGuard.ts';
+import { flag, devNumber } from './flags.ts';
 
 const LLM_TIMEOUT_MS = Number(process.env.LLM_TIMEOUT_MS ?? 30_000);
 const LLM_BREAKER_FAILS = Number(process.env.LLM_BREAKER_FAILS ?? 3);
@@ -94,11 +95,11 @@ async function callAnthropic(system: string, prompt: string): Promise<string> {
     isRetryable,
     fn: async () => {
       console.log("[LLM] inside guarded fn");
-      if (process.env.FF_SIMULATE_LLM_FAIL === "true") {
+      if (flag("FF_SIMULATE_LLM_FAIL")) {
         throw new Error("Simulated LLM 500");
       }
 
-      if (process.env.FF_SIMULATE_LLM_HANG === "true") {
+      if (flag("FF_SIMULATE_LLM_HANG")) {
         await new Promise(() => {}); // simulate hang for timeout testing
       }
 
@@ -456,12 +457,12 @@ export async function runScriptGeneration(args: { projectId: string; jobId?: str
  */
 export async function startScriptGenerationJob(projectId: string, job: Job) {
   try {
-    const sleepMs = Number(process.env.FF_WORKER_SLEEP_MS ?? 0);
+    const sleepMs = devNumber("FF_WORKER_SLEEP_MS", 0);
     if (sleepMs > 0) {
       await new Promise((r) => setTimeout(r, sleepMs));
     }
 
-    if (process.env.FF_FORCE_SCRIPT_FAIL === "true") {
+    if (flag("FF_FORCE_SCRIPT_FAIL")) {
       throw new Error("Transient: forced failure for retry test");
     }
 

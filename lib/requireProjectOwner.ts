@@ -3,10 +3,11 @@ import { getSessionUser } from "./getSessionUser";
 
 export async function requireProjectOwner(projectId: string) {
   const user = await getSessionUser();
-  if (!user) return { error: "Unauthorized", status: 401 };
+  const userId = (user as any)?.id as string | undefined;
+  if (!userId) return { error: "Unauthorized", status: 401 };
 
   const project = await prisma.project.findFirst({
-    where: { id: projectId, userId: user.id },
+    where: { id: projectId, userId },
     select: { id: true },
   });
 

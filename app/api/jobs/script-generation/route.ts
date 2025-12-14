@@ -7,15 +7,16 @@ import { checkRateLimit } from '@/lib/rateLimiter';
 import { prisma } from '@/lib/prisma';
 import { JobStatus, JobType } from '@prisma/client';
 import { logAudit } from '@/lib/logger';
-import { getSessionUser } from '@/lib/getSessionUser';
+import { getSessionUserId } from '@/lib/getSessionUserId';
 import { enforcePlanLimits, incrementUsage } from '@/lib/billing';
 import { enforceUserConcurrency } from '@/lib/jobGuards';
 import { runWithState } from '@/lib/jobRuntime';
+import { flag } from "@/lib/flags";
 
 export async function POST(req: NextRequest) {
   try {
-    const user = await getSessionUser();
-    if (!user?.id) {
+    const userId = await getSessionUserId();
+    if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     const ip =
@@ -39,10 +40,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const userId = user.id;
-    const devTest = process.env.FF_DEV_TEST_MODE === 'true';
+    const devTest = flag("FF_DEV_TEST_MODE");
+    const breakerTest = flag("FF_BREAKER_TEST");
     let idempotencyKey = `script-generation:${projectId}`;
-    if (process.env.FF_BREAKER_TEST === 'true') {
+    if (breakerTest) {
       idempotencyKey = `${idempotencyKey}:${Date.now()}`;
     }
 

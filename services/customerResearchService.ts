@@ -34,7 +34,10 @@ type AmazonReview = {
   date?: string;
 };
 
-type ResearchRowInput = Parameters<(typeof prisma.researchRow)['createMany']>[0]['data'][number];
+type ArrayElement<T> = T extends (infer U)[] ? U : T;
+type ResearchRowInput = ArrayElement<
+  NonNullable<Parameters<(typeof prisma.researchRow)['createMany']>[0]>['data']
+>;
 
 const APIFY_BASE = 'https://api.apify.com/v2';
 const FETCH_RETRY_ATTEMPTS = 3;
@@ -316,42 +319,42 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
       ...processed5Star.map((r, idx) => ({
         projectId,
         jobId,
-        source: ResearchSource.AMAZON_PRODUCT_5_STAR,
+        source: ResearchSource.AMAZON,
         indexLabel: `${idx + 1}`,
         content: r.text,
         rating: r.rating,
         verified: r.verified,
-        metadata: { date: r.date, wordCount: r.wordCount }
+        metadata: { date: r.date, wordCount: r.wordCount, amazonKind: 'product_5_star' }
       })),
       ...processed4Star.map((r, idx) => ({
         projectId,
         jobId,
-        source: ResearchSource.AMAZON_PRODUCT_4_STAR,
+        source: ResearchSource.AMAZON,
         indexLabel: `${idx + 1}`,
         content: r.text,
         rating: r.rating,
         verified: r.verified,
-        metadata: { date: r.date, wordCount: r.wordCount }
+        metadata: { date: r.date, wordCount: r.wordCount, amazonKind: 'product_4_star' }
       })),
       ...processedCompetitor1.map((r, idx) => ({
         projectId,
         jobId,
-        source: ResearchSource.AMAZON_COMPETITOR_1,
+        source: ResearchSource.AMAZON,
         indexLabel: `${idx + 1}`,
         content: r.text,
         rating: r.rating,
         verified: r.verified,
-        metadata: { date: r.date, wordCount: r.wordCount }
+        metadata: { date: r.date, wordCount: r.wordCount, amazonKind: 'competitor_1' }
       })),
       ...processedCompetitor2.map((r, idx) => ({
         projectId,
         jobId,
-        source: ResearchSource.AMAZON_COMPETITOR_2,
+        source: ResearchSource.AMAZON,
         indexLabel: `${idx + 1}`,
         content: r.text,
         rating: r.rating,
         verified: r.verified,
-        metadata: { date: r.date, wordCount: r.wordCount }
+        metadata: { date: r.date, wordCount: r.wordCount, amazonKind: 'competitor_2' }
       }))
     ];
 

@@ -1,5 +1,5 @@
 // middleware.ts
-import { NextRequest, NextResponse } from "next/server";
+import { NextFetchEvent, NextRequest, NextResponse } from "next/server";
 import { withAuth } from "next-auth/middleware";
 
 function applySecurityHeaders(res: NextResponse) {
@@ -39,7 +39,7 @@ const authMiddleware = withAuth(
   }
 );
 
-export default function combinedMiddleware(req: NextRequest) {
+export default function combinedMiddleware(req: NextRequest, event: NextFetchEvent) {
   const isProd = process.env.NODE_ENV === "production";
   const pathname = req.nextUrl.pathname;
 
@@ -50,7 +50,7 @@ export default function combinedMiddleware(req: NextRequest) {
   // Run auth + security headers for all matched routes
   // withAuth will set NextResponse and we apply headers in the handler above.
   // This wrapper exists to keep a single default export.
-  return authMiddleware(req);
+  return authMiddleware(req as any, event);
 }
 
 export const config = {

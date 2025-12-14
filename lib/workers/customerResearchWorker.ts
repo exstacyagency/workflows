@@ -6,7 +6,15 @@ import { JobStatus } from '@prisma/client';
 const queue = getQueue(QueueName.CUSTOMER_RESEARCH);
 
 queue.process(async (job) => {
-  const { jobId, projectId, businessIdentifier } = job.data;
+  const {
+    jobId,
+    projectId,
+    productName,
+    productProblemSolved,
+    productAmazonAsin,
+    competitor1AmazonAsin,
+    competitor2AmazonAsin,
+  } = job.data as any;
 
   try {
     await prisma.job.update({
@@ -18,7 +26,12 @@ queue.process(async (job) => {
 
     const result = await runCustomerResearch({
       projectId,
-      businessIdentifier,
+      jobId,
+      productName,
+      productProblemSolved,
+      productAmazonAsin,
+      competitor1AmazonAsin,
+      competitor2AmazonAsin,
     });
 
     job.progress(90);
@@ -27,7 +40,7 @@ queue.process(async (job) => {
       where: { id: jobId },
       data: {
         status: JobStatus.COMPLETED,
-        resultSummary: `Research complete: ${result.totalRows} rows collected`,
+        resultSummary: `Research complete: ${result.length} rows collected`,
       },
     });
 

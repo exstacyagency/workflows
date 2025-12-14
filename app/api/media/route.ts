@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSessionUser } from '@/lib/getSessionUser';
+import { getSessionUserId } from '@/lib/getSessionUserId';
 import { prisma } from '@/lib/prisma';
 import { getSignedMediaUrl } from '@/lib/mediaStorage';
 
 export async function GET(req: NextRequest) {
-  const user = await getSessionUser();
-  if (!user?.id) {
+  const userId = await getSessionUserId();
+  if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
 
   const scriptMatch = await prisma.script.findFirst({
     where: {
-      project: { userId: user.id },
+      project: { userId },
       OR: [{ mergedVideoUrl: key }, { upscaledVideoUrl: key }],
     },
     select: { id: true },
@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
         where: {
           videoUrl: key,
           storyboard: {
-            project: { userId: user.id },
+            project: { userId },
           },
         },
         select: { id: true },

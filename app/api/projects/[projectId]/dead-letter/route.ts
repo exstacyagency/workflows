@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSessionUser } from "@/lib/getSessionUser";
+import { getSessionUserId } from "@/lib/getSessionUserId";
 import { requireProjectOwner } from "@/lib/requireProjectOwner";
 
 export async function GET(
   req: NextRequest,
   { params }: { params: { projectId: string } }
 ) {
-  const user = await getSessionUser();
-  if (!user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const userId = await getSessionUserId();
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { projectId } = params;
   const auth = await requireProjectOwner(projectId);
@@ -45,4 +45,3 @@ export async function GET(
 
   return NextResponse.json({ jobs: rows }, { status: 200 });
 }
-

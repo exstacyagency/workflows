@@ -1,13 +1,13 @@
 import { prisma } from '@/lib/prisma';
-import { getSessionUser } from '@/lib/getSessionUser';
+import { getSessionUserId } from '@/lib/getSessionUserId';
 import { NextRequest, NextResponse } from 'next/server';
 import { logAudit } from '@/lib/logger';
 import { CreateProjectSchema, parseJson } from '@/lib/validation/projects';
 import { checkRateLimit } from '@/lib/rateLimiter';
 
 export async function POST(request: NextRequest) {
-  const user = await getSessionUser();
-  if (!user) {
+  const userId = await getSessionUserId();
+  if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
     }
     const { name, description } = parsed.data;
 
-    const rateKey = `project:create:${user.id}`;
+    const rateKey = `project:create:${userId}`;
     if (process.env.NODE_ENV === 'production') {
       const rateCheck = await checkRateLimit(rateKey);
       if (!rateCheck.allowed) {
@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
       data: {
         name,
         description: description ?? undefined,
-        userId: user.id,
+        userId,
       },
     });
 
@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
       request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null;
 
     await logAudit({
-      userId: user.id,
+      userId,
       projectId: project.id,
       action: 'project.create',
       ip,
@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Failed to create project', error);
     await logAudit({
-      userId: user.id,
+      userId,
       action: 'project.error',
       metadata: {
         error: String(error),
@@ -71,13 +71,13 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET() {
-  const user = await getSessionUser();
-  if (!user) {
+  const userId = await getSessionUserId();
+  if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   const projects = await prisma.project.findMany({
-    where: { userId: user.id },
+    where: { userId },
     orderBy: { createdAt: 'desc' },
   });
   return NextResponse.json(projects);

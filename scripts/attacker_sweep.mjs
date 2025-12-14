@@ -48,6 +48,42 @@ async function http(jar, path, opts = {}) {
   return { res, text };
 }
 
+async function setScriptMedia(jar, { scriptId, projectId, field, key }) {
+  const setMedia = await http(jar, "/api/debug/set-script-media", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ scriptId, field, key }),
+  });
+
+  if (setMedia.res.ok) return;
+
+  // In production, /api/debug/* is blocked. Fall back to directly seeding via DB.
+  if (setMedia.res.status !== 404) {
+    throw new Error(`set-script-media failed ${setMedia.res.status}: ${setMedia.text}`);
+  }
+
+  assert(process.env.DATABASE_URL, "DATABASE_URL is required to seed media in production");
+  const prismaMod = await import("@prisma/client");
+  const prisma = new prismaMod.PrismaClient();
+
+  try {
+    const script = await prisma.script.findUnique({
+      where: { id: scriptId },
+      select: { id: true, projectId: true },
+    });
+    assert(script, `script not found: ${scriptId}`);
+    if (projectId) {
+      assert(script.projectId === projectId, "script.projectId mismatch");
+    }
+    await prisma.script.update({
+      where: { id: scriptId },
+      data: { [field]: key },
+    });
+  } finally {
+    await prisma.$disconnect().catch(() => {});
+  }
+}
+
 async function register(email, password, name) {
   const jar = new CookieJar();
   const { res, text } = await http(jar, "/api/auth/register", {
@@ -141,14 +177,14 @@ async function run() {
   const scriptId = scripts[0].id;
   assert(scriptId, "missing scriptId");
 
-  // Set a media key on the script via dev endpoint
+  // Set a media key on the script (dev endpoint; DB fallback in production)
   const mediaKey = `users/${A.email}/projects/${projectId}/scripts/${scriptId}/merged.mp4`;
-  const setMedia = await http(jarA, "/api/debug/set-script-media", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ scriptId, field: "mergedVideoUrl", key: mediaKey }),
+  await setScriptMedia(jarA, {
+    scriptId,
+    projectId,
+    field: "mergedVideoUrl",
+    key: mediaKey,
   });
-  assert(setMedia.res.ok, `set-script-media failed ${setMedia.res.status}: ${setMedia.text}`);
 
   // Owner can sign media
   const mediaA = await http(jarA, `/api/media?key=${encodeURIComponent(mediaKey)}`);
@@ -180,4 +216,3 @@ run().catch((e) => {
   console.error("❌ attacker sweep failed:", e?.message ?? e);
   process.exit(1);
 });
-

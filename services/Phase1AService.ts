@@ -39,7 +39,10 @@ type GenericReview = {
   author?: string;
 };
 
-type ResearchRowInput = Parameters<(typeof prisma.researchRow)['createMany']>[0]['data'][number];
+type ArrayElement<T> = T extends (infer U)[] ? U : T;
+type ResearchRowInput = ArrayElement<
+  NonNullable<Parameters<(typeof prisma.researchRow)['createMany']>[0]>['data']
+>;
 type ResearchRowPayload = Omit<ResearchRowInput, 'projectId' | 'jobId'>;
 
 const APIFY_BASE = 'https://api.apify.com/v2';

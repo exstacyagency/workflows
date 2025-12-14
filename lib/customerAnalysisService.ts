@@ -49,7 +49,18 @@ type GroupedResearch = {
   competitor2: string[];
 };
 
-function groupResearchRows(rows: { source: ResearchSource; content: string }[], productName: string, productProblemSolved: string): GroupedResearch {
+type ResearchRowForGrouping = {
+  source: ResearchSource;
+  content: string;
+  rating?: number | null;
+  metadata?: any;
+};
+
+function groupResearchRows(
+  rows: ResearchRowForGrouping[],
+  productName: string,
+  productProblemSolved: string
+): GroupedResearch {
   const amazon5: string[] = [];
   const amazon4: string[] = [];
   const redditProduct: string[] = [];
@@ -59,24 +70,41 @@ function groupResearchRows(rows: { source: ResearchSource; content: string }[], 
 
   for (const row of rows) {
     switch (row.source) {
-      case ResearchSource.AMAZON_PRODUCT_5_STAR:
-        amazon5.push(row.content);
-        break;
-      case ResearchSource.AMAZON_PRODUCT_4_STAR:
-        amazon4.push(row.content);
-        break;
       case ResearchSource.REDDIT_PRODUCT:
         redditProduct.push(row.content);
         break;
       case ResearchSource.REDDIT_PROBLEM:
         redditProblem.push(row.content);
         break;
-      case ResearchSource.AMAZON_COMPETITOR_1:
-        competitor1.push(row.content);
+      case ResearchSource.AMAZON: {
+        const meta = (row.metadata ?? {}) as any;
+        const amazonKind = typeof meta?.amazonKind === 'string' ? meta.amazonKind : null;
+
+        if (amazonKind === 'product_5_star') {
+          amazon5.push(row.content);
+          break;
+        }
+        if (amazonKind === 'product_4_star') {
+          amazon4.push(row.content);
+          break;
+        }
+        if (amazonKind === 'competitor_1') {
+          competitor1.push(row.content);
+          break;
+        }
+        if (amazonKind === 'competitor_2') {
+          competitor2.push(row.content);
+          break;
+        }
+
+        const rating = typeof row.rating === 'number' ? row.rating : Number(row.rating);
+        if (!Number.isNaN(rating) && rating >= 5) {
+          amazon5.push(row.content);
+        } else if (!Number.isNaN(rating) && rating >= 4) {
+          amazon4.push(row.content);
+        }
         break;
-      case ResearchSource.AMAZON_COMPETITOR_2:
-        competitor2.push(row.content);
-        break;
+      }
     }
   }
 
@@ -373,6 +401,8 @@ export async function runCustomerAnalysis(args: {
     select: {
       source: true,
       content: true,
+      rating: true,
+      metadata: true,
     },
   });
 
@@ -382,11 +412,7 @@ export async function runCustomerAnalysis(args: {
     );
   }
 
-  const grouped = groupResearchRows(
-    researchRows.map(r => ({ source: r.source, content: r.content })),
-    productName,
-    productProblemSolved,
-  );
+  const grouped = groupResearchRows(researchRows, productName, productProblemSolved);
 
   const avatarPrompt = buildCustomerAvatarPrompt(grouped);
   const productPrompt = buildProductIntelPrompt(productName);

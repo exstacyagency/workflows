@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSessionUser } from "@/lib/getSessionUser";
+import { getSessionUserId } from "@/lib/getSessionUserId";
 import { requireProjectOwner } from "@/lib/requireProjectOwner";
 import { checkRateLimit } from "@/lib/rateLimiter";
 
@@ -8,10 +8,10 @@ export async function POST(
   req: NextRequest,
   { params }: { params: { projectId: string } }
 ) {
-  const user = await getSessionUser();
-  if (!user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const userId = await getSessionUserId();
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const rate = await checkRateLimit(`deadletter:bulk:${user.id}`, {
+  const rate = await checkRateLimit(`deadletter:bulk:${userId}`, {
     limit: 3,
     windowMs: 60 * 1000,
   });
