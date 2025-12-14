@@ -28,20 +28,24 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: npx prisma generate
 
-      - name: Reset CI DB schema
+      - name: Reset + Migrate DB
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
+          echo "Resetting schema..."
           cat <<'SQL' | npx prisma db execute --stdin
           DROP SCHEMA IF EXISTS public CASCADE;
           CREATE SCHEMA public;
           GRANT ALL ON SCHEMA public TO CURRENT_USER;
           SQL
 
-      - name: Migrate DB
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: npx prisma migrate deploy
+          echo "Verifying reset..."
+          cat <<'SQL' | npx prisma db execute --stdin
+          SELECT to_regclass('public._prisma_migrations') AS migrations_table;
+          SQL
+
+          echo "Applying migrations..."
+          npx prisma migrate deploy
 
       # CI needs a database. Use a DATABASE_URL secret (Neon test DB).
       - name: Build
