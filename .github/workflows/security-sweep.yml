@@ -24,6 +24,8 @@ jobs:
         run: npm ci
 
       - name: Prisma generate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: npx prisma generate
 
       - name: Migrate DB
