@@ -3,9 +3,8 @@ import { getSessionUser } from "@/lib/getSessionUser";
 import { prisma } from "@/lib/prisma";
 
 export async function POST(req: NextRequest) {
-  // Dev-only guard
   if (process.env.NODE_ENV === "production") {
-    return NextResponse.json({ error: "Not available in production" }, { status: 404 });
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
   const user = await getSessionUser();

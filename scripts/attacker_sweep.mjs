@@ -168,6 +168,25 @@ async function run() {
     body: JSON.stringify({ projectId }),
   });
   assert(sgen.res.status === 200, `script-generation failed ${sgen.res.status}: ${sgen.text}`);
+  const sgenJson = JSON.parse(sgen.text);
+  const jobId = sgenJson?.jobId;
+  assert(jobId, `missing jobId from script-generation response: ${sgen.text}`);
+
+  // Attacker cannot list dead-letter jobs
+  const dlB = await http(jarB, `/api/projects/${projectId}/dead-letter`);
+  assert(dlB.res.status === 403, `attacker dead-letter list should 403, got ${dlB.res.status}: ${dlB.text}`);
+
+  // Attacker cannot bulk-modify dead-letter jobs
+  const bulkB = await http(jarB, `/api/projects/${projectId}/dead-letter/bulk`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ action: "dismiss_all" }),
+  });
+  assert(bulkB.res.status === 403, `attacker dead-letter bulk should 403, got ${bulkB.res.status}: ${bulkB.text}`);
+
+  // Attacker cannot read owner job by id
+  const jobReadB = await http(jarB, `/api/jobs/${jobId}`);
+  assert([403, 404].includes(jobReadB.res.status), `attacker job read should 403/404, got ${jobReadB.res.status}: ${jobReadB.text}`);
 
   // Get scripts and pick one
   const scriptsResp = await http(jarA, `/api/projects/${projectId}/scripts`);
