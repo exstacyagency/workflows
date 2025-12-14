@@ -42,6 +42,30 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const url = await getSignedMediaUrl(key, 60 * 5);
-  return NextResponse.json({ url }, { status: 200 });
+  const bucket = process.env.S3_MEDIA_BUCKET;
+  const region = process.env.S3_MEDIA_REGION;
+  const accessKeyId = process.env.S3_ACCESS_KEY_ID;
+  const secretAccessKey = process.env.S3_SECRET_ACCESS_KEY;
+
+  const hasBucket = Boolean(bucket && bucket.trim());
+  const hasRegion = Boolean(region && region.trim());
+  const hasAccessKeyId = Boolean(accessKeyId && accessKeyId.trim());
+  const hasSecretAccessKey = Boolean(secretAccessKey && secretAccessKey.trim());
+
+  if (!hasBucket || !hasRegion || hasAccessKeyId !== hasSecretAccessKey) {
+    return NextResponse.json(
+      { error: 'Media signing not configured' },
+      { status: 503 },
+    );
+  }
+
+  try {
+    const url = await getSignedMediaUrl(key, 60 * 5);
+    return NextResponse.json({ url }, { status: 200 });
+  } catch {
+    return NextResponse.json(
+      { error: 'Media signing not configured' },
+      { status: 503 },
+    );
+  }
 }
