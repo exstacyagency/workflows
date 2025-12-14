@@ -28,6 +28,16 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: npx prisma generate
 
+      - name: Reset CI DB schema
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          cat <<'SQL' | npx prisma db execute --stdin
+          DROP SCHEMA IF EXISTS public CASCADE;
+          CREATE SCHEMA public;
+          GRANT ALL ON SCHEMA public TO CURRENT_USER;
+          SQL
+
       - name: Migrate DB
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
