@@ -8,7 +8,6 @@ export async function getUserSubscription(userId: string) {
       userId,
       status: "active",
     },
-    include: { plan: true },
   });
 
   if (!sub) {
@@ -26,8 +25,16 @@ export async function getUserSubscription(userId: string) {
     };
   }
 
+  const planName = sub.planId === "SCALE" ? "Scale" : "Growth";
+  const plan = await prisma.plan.findFirst({
+    where: { name: planName },
+  });
+  if (!plan) {
+    throw new Error(`${planName} plan not found in database`);
+  }
+
   return {
-    plan: sub.plan,
+    plan,
     subscription: sub,
   };
 }
