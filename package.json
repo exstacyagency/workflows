@@ -15,6 +15,7 @@
     "retry-worker": "ts-node -r tsconfig-paths/register workers/retryRunner.ts",
     "security:sweep": "node scripts/attacker_sweep.mjs",
     "seed:ci": "node scripts/seed_ci.mjs",
+    "auth:cleanup": "node scripts/cleanup_auth_throttle.mjs",
     "smoke:prod": "NODE_ENV=production npm run build && node scripts/prod_smoke.mjs"
   },
   "dependencies": {

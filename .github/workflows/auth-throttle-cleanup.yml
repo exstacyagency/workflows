@@ -1,0 +1,27 @@
+name: AuthThrottle Cleanup
+
+on:
+  schedule:
+    - cron: "23 4 * * *" # daily 04:23 UTC
+  workflow_dispatch:
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci
+      - run: npx prisma generate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      - run: npm run auth:cleanup
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          AUTH_THROTTLE_GRACE_MS: 3600000
+          AUTH_THROTTLE_CLEANUP_MAX: 5000
+
