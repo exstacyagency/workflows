@@ -91,11 +91,57 @@ export function checkAuthAllowed(params: {
   return { allowed: true as const };
 }
 
+export function consumeAuthAttempt(params: {
+  kind: Kind;
+  ip?: string | null;
+  email?: string | null;
+}) {
+  cleanupIfHuge();
+  const t = now();
+  const ip = (params.ip ?? "unknown").trim() || "unknown";
+  const email = params.email ? normEmail(params.email) : null;
+
+  const ipEntry = getOrInit(key(params.kind, "ip", ip));
+  if (ipEntry.lockedUntil && t < ipEntry.lockedUntil) {
+    return { allowed: false as const, retryAfterMs: ipEntry.lockedUntil - t };
+  }
+
+  // count every attempt for rate limiting
+  ipEntry.count += 1;
+  if (ipEntry.count >= MAX_ATTEMPTS) {
+    ipEntry.lockedUntil = t + LOCKOUT_MS;
+    return { allowed: false as const, retryAfterMs: ipEntry.lockedUntil - t };
+  }
+
+  // For register, email-scoped limiting is optional; keep it for login only.
+  if (params.kind === "login" && email) {
+    const emailEntry = getOrInit(key(params.kind, "email", email));
+    if (emailEntry.lockedUntil && t < emailEntry.lockedUntil) {
+      return {
+        allowed: false as const,
+        retryAfterMs: emailEntry.lockedUntil - t,
+      };
+    }
+    emailEntry.count += 1;
+    if (emailEntry.count >= MAX_ATTEMPTS) {
+      emailEntry.lockedUntil = t + LOCKOUT_MS;
+      return {
+        allowed: false as const,
+        retryAfterMs: emailEntry.lockedUntil - t,
+      };
+    }
+  }
+
+  return { allowed: true as const };
+}
+
 export function recordAuthFailure(params: {
   kind: Kind;
   ip?: string | null;
   email?: string | null;
 }) {
+  if (params.kind !== "login") return;
+
   cleanupIfHuge();
   const t = now();
   const ip = (params.ip ?? "unknown").trim() || "unknown";
@@ -121,6 +167,8 @@ export function recordAuthSuccess(params: {
   ip?: string | null;
   email?: string | null;
 }) {
+  if (params.kind !== "login") return; // do not reset register attempt counters
+
   cleanupIfHuge();
   const ip = (params.ip ?? "unknown").trim() || "unknown";
   const email = params.email ? normEmail(params.email) : null;

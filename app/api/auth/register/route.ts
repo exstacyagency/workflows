@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { hash } from "bcryptjs";
 import { logAudit } from "@/lib/logger";
 import {
-  checkAuthAllowed,
+  consumeAuthAttempt,
   recordAuthFailure,
   recordAuthSuccess,
 } from "@/lib/authAbuseGuard";
@@ -27,17 +27,14 @@ export async function POST(req: NextRequest) {
         ? body.name.trim()
         : null;
 
-    const allowed = checkAuthAllowed({ kind: "register", ip, email });
-    if (!allowed.allowed) {
-      const retryAfterSeconds = Math.max(
-        1,
-        Math.ceil(allowed.retryAfterMs / 1000)
-      );
+    const gate = consumeAuthAttempt({ kind: "register", ip, email });
+    if (!gate.allowed) {
+      const retryAfter = Math.ceil((gate.retryAfterMs ?? 0) / 1000);
       return NextResponse.json(
         { error: "Too many attempts. Try again later." },
         {
           status: 429,
-          headers: { "Retry-After": String(retryAfterSeconds) },
+          headers: { "Retry-After": String(retryAfter) },
         }
       );
     }
