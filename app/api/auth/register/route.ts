@@ -3,8 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { hash } from "bcryptjs";
 import { logAudit } from "@/lib/logger";
+import { consumeRegisterAttemptDb } from "@/lib/authAbuseGuardDb";
 import {
-  consumeAuthAttempt,
   recordAuthFailure,
   recordAuthSuccess,
 } from "@/lib/authAbuseGuard";
@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
         ? body.name.trim()
         : null;
 
-    const gate = consumeAuthAttempt({ kind: "register", ip, email });
+    const gate = await consumeRegisterAttemptDb({ ip, email });
     if (!gate.allowed) {
       const retryAfter = Math.ceil((gate.retryAfterMs ?? 0) / 1000);
       return NextResponse.json(

@@ -5,10 +5,10 @@ import type { NextAuthOptions } from "next-auth";
 import { getServerSession } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import {
-  checkAuthAllowed,
-  recordAuthFailure,
-  recordAuthSuccess,
-} from "@/lib/authAbuseGuard";
+  checkAuthAllowedDb,
+  recordLoginFailureDb,
+  recordLoginSuccessDb,
+} from "@/lib/authAbuseGuardDb";
 
 export const authOptions: NextAuthOptions = {
   secret: process.env.NEXTAUTH_SECRET,
@@ -29,8 +29,8 @@ export const authOptions: NextAuthOptions = {
           (req as any)?.headers?.["x-forwarded-for"]?.split?.(",")?.[0]?.trim?.() ??
           null;
 
-        const allowed = checkAuthAllowed({ kind: "login", ip, email });
-        if (!allowed.allowed) {
+        const gate = await checkAuthAllowedDb({ kind: "login", ip, email });
+        if (!gate.allowed) {
           throw new Error("Too many attempts. Try again later.");
         }
 
@@ -38,17 +38,17 @@ export const authOptions: NextAuthOptions = {
           where: { email: credentials.email },
         });
         if (!user || !user.passwordHash) {
-          recordAuthFailure({ kind: "login", ip, email });
+          await recordLoginFailureDb({ ip, email });
           return null;
         }
 
         const isValid = await compare(credentials.password, user.passwordHash);
         if (!isValid) {
-          recordAuthFailure({ kind: "login", ip, email });
+          await recordLoginFailureDb({ ip, email });
           return null;
         }
 
-        recordAuthSuccess({ kind: "login", ip, email });
+        await recordLoginSuccessDb({ ip, email });
 
         return {
           id: user.id,
