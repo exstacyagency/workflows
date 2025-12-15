@@ -13,6 +13,7 @@ import { enforceUserConcurrency } from '@/lib/jobGuards';
 import { runWithState } from '@/lib/jobRuntime';
 import { flag } from "@/lib/flags";
 import { getRequestId, logError, logInfo } from "@/lib/observability";
+import { assertMinPlan, UpgradeRequiredError } from "@/lib/billing/requirePlan";
 
 export async function POST(req: NextRequest) {
   const requestId = getRequestId(req);
@@ -22,6 +23,18 @@ export async function POST(req: NextRequest) {
     const userId = await getSessionUserId();
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    try {
+      await assertMinPlan(userId, "GROWTH");
+    } catch (err: any) {
+      if (err instanceof UpgradeRequiredError) {
+        return NextResponse.json(
+          { error: "Upgrade required", requiredPlan: err.requiredPlan },
+          { status: 402 },
+        );
+      }
+      console.error(err);
+      return NextResponse.json({ error: "Billing check failed" }, { status: 500 });
     }
     const ip =
       req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null;
