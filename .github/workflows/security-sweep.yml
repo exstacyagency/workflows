@@ -77,6 +77,12 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: npm run security:sweep
 
+      - name: Run login lockout test
+        env:
+          BASE_URL: http://localhost:3001
+          AUTH_MAX_ATTEMPTS: 5
+        run: npm run security:login-lockout
+
       - name: Print server log
         if: always()
         run: |
