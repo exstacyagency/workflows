@@ -29,6 +29,12 @@ enum JobStatus {
   FAILED
 }
 
+enum PlanId {
+  FREE
+  GROWTH
+  SCALE
+}
+
 enum ResearchSource {
   REDDIT_PRODUCT
   REDDIT_PROBLEM
@@ -53,7 +59,7 @@ model User {
 
   projects     Project[]
   auditLogs    AuditLog[]
-  subscriptions Subscription[]
+  subscription Subscription?
   usage        Usage[]
 }
 
@@ -364,10 +370,10 @@ model Plan {
 
 model Subscription {
   id        String   @id @default(cuid())
-  userId    String
-  planId    String
+  userId    String   @unique
+  planId    PlanId
 
-  user      User     @relation(fields: [userId], references: [id])
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   status    String   @default("active")
   stripeCustomerId String?
