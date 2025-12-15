@@ -360,8 +360,6 @@ model Plan {
   maxJobsPerDay      Int
   maxVideoJobsPerDay Int
   maxMonthlyUsage    Int
-
-  subscriptions Subscription[]
 }
 
 model Subscription {
@@ -369,10 +367,14 @@ model Subscription {
   userId    String
   planId    String
 
-  plan      Plan     @relation(fields: [planId], references: [id])
   user      User     @relation(fields: [userId], references: [id])
 
   status    String   @default("active")
+  stripeCustomerId String?
+  stripeSubscriptionId String?
+  stripePriceId String?
+  currentPeriodEnd DateTime?
+  cancelAtPeriodEnd Boolean @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }

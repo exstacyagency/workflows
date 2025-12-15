@@ -1,7 +1,5 @@
-import { NextResponse } from "next/server";
-import { validateEnvOnce } from "@/lib/config/validateEnv";
+export const dynamic = "force-dynamic";
 
 export async function GET() {
-  validateEnvOnce();
-  return NextResponse.json({ status: 'ok' });
+  return Response.json({ ok: true, ts: new Date().toISOString() });
 }
