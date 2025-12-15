@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUserId } from "@/lib/getSessionUserId";
-import { stripe } from "@/lib/stripe";
-import { PLAN_PRICE_IDS } from "@/lib/billing/plans";
+import { getStripe } from "@/lib/stripe";
+import { getPriceIdForPlan } from "@/lib/billing/plans";
 
 export async function POST(req: NextRequest) {
   const userId = await getSessionUserId();
@@ -46,7 +46,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const priceId = PLAN_PRICE_IDS[planId];
+  let stripe;
+  let priceId: string;
+  try {
+    stripe = getStripe();
+    priceId = getPriceIdForPlan(planId);
+  } catch (err) {
+    console.error("Stripe config error", err);
+    return NextResponse.json(
+      { error: "Stripe is not configured" },
+      { status: 500 }
+    );
+  }
 
   try {
     const existing = await prisma.$queryRaw<
@@ -93,6 +104,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ url: session.url }, { status: 200 });
   } catch (err) {
     console.error("Stripe checkout error", err);
-    return NextResponse.json({ error: "Billing provider error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Stripe is not configured" },
+      { status: 500 }
+    );
   }
 }
