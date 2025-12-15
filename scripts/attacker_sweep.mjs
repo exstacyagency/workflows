@@ -84,6 +84,40 @@ async function setScriptMedia(jar, { scriptId, projectId, field, key }) {
   }
 }
 
+async function ensureActiveSubscription(email, planId = "GROWTH") {
+  if (!process.env.DATABASE_URL) return;
+  const prismaMod = await import("@prisma/client");
+  const prisma = new prismaMod.PrismaClient();
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { email },
+      select: { id: true },
+    });
+    assert(user?.id, `user not found for subscription seed: ${email}`);
+
+    const existing = await prisma.subscription.findFirst({
+      where: { userId: user.id },
+      select: { id: true },
+      orderBy: { updatedAt: "desc" },
+    });
+
+    if (existing) {
+      await prisma.subscription.update({
+        where: { id: existing.id },
+        data: { status: "active", planId },
+      });
+      return;
+    }
+
+    await prisma.subscription.create({
+      data: { userId: user.id, status: "active", planId },
+    });
+  } finally {
+    await prisma.$disconnect().catch(() => {});
+  }
+}
+
 async function register(email, password, name) {
   const jar = new CookieJar();
   const { res, text } = await http(jar, "/api/auth/register", {
@@ -142,6 +176,10 @@ async function run() {
 
   const jarA = await login(A.email, A.pass);
   const jarB = await login(B.email, B.pass);
+
+  // Ensure both users pass billing gate for paid endpoints so we can test auth isolation.
+  await ensureActiveSubscription(A.email, "GROWTH");
+  await ensureActiveSubscription(B.email, "GROWTH");
 
   // A creates project
   const projName = `Sweep Project ${ts}`;
