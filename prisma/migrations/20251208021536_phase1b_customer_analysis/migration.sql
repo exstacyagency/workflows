@@ -1,5 +1,15 @@
 -- AlterEnum
-ALTER TYPE "JobType" ADD VALUE 'CUSTOMER_ANALYSIS';
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_type t
+    JOIN pg_enum e ON t.oid = e.enumtypid
+    WHERE t.typname = 'JobType' AND e.enumlabel = 'CUSTOMER_ANALYSIS'
+  ) THEN
+    ALTER TYPE "JobType" ADD VALUE /* guarded */ 'CUSTOMER_ANALYSIS';
+  END IF;
+END$$;
 
 -- CreateTable
 CREATE TABLE "CustomerAvatar" (
