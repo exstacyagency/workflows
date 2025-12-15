@@ -20,13 +20,6 @@ function getStripeCustomerIdFromSubscription(sub: Stripe.Subscription): string |
   return null;
 }
 
-function getStripeCustomerIdFromSession(session: Stripe.Checkout.Session): string | null {
-  const c: any = (session as any).customer;
-  if (typeof c === "string") return c;
-  if (c && typeof c === "object" && typeof c.id === "string") return c.id;
-  return null;
-}
-
 function getStripePriceIdFromSubscription(sub: Stripe.Subscription): string | null {
   const item0: any = (sub as any).items?.data?.[0];
   const price: any = item0?.price;
@@ -36,22 +29,26 @@ function getStripePriceIdFromSubscription(sub: Stripe.Subscription): string | nu
 }
 
 async function findUserIdByStripeCustomerId(stripeCustomerId: string): Promise<string | null> {
-  const rows = await prisma.$queryRaw<{ id: string }[]>`
-    SELECT id
-    FROM "User"
-    WHERE "stripeCustomerId" = ${stripeCustomerId}
-    LIMIT 1
-  `;
-  return rows[0]?.id ?? null;
+  const user = await prisma.user.findUnique({
+    where: { stripeCustomerId },
+    select: { id: true },
+  });
+  return user?.id ?? null;
+}
+
+async function findExistingUserId(userId: string): Promise<string | null> {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
+  return user?.id ?? null;
 }
 
 async function ensureUserHasStripeCustomerId(userId: string, stripeCustomerId: string) {
-  await prisma.$executeRaw`
-    UPDATE "User"
-    SET "stripeCustomerId" = ${stripeCustomerId}
-    WHERE id = ${userId}
-      AND ("stripeCustomerId" IS NULL OR "stripeCustomerId" = '')
-  `;
+  await prisma.user.updateMany({
+    where: {
+      id: userId,
+      OR: [{ stripeCustomerId: null }, { stripeCustomerId: "" }],
+    },
+    data: { stripeCustomerId },
+  });
 }
 
 async function upsertUserSubscription(params: {
@@ -64,53 +61,59 @@ async function upsertUserSubscription(params: {
   currentPeriodEnd: Date | null;
   cancelAtPeriodEnd: boolean;
 }) {
-  const existing = await prisma.subscription.findFirst({
+  await prisma.subscription.upsert({
     where: { userId: params.userId },
-    orderBy: { createdAt: "desc" },
-    select: { id: true },
+    create: {
+      userId: params.userId,
+      planId: params.planId as any,
+      status: params.status,
+      stripeCustomerId: params.stripeCustomerId,
+      stripeSubscriptionId: params.stripeSubscriptionId,
+      stripePriceId: params.stripePriceId,
+      currentPeriodEnd: params.currentPeriodEnd,
+      cancelAtPeriodEnd: params.cancelAtPeriodEnd,
+    },
+    update: {
+      planId: params.planId as any,
+      status: params.status,
+      stripeCustomerId: params.stripeCustomerId,
+      stripeSubscriptionId: params.stripeSubscriptionId,
+      stripePriceId: params.stripePriceId,
+      currentPeriodEnd: params.currentPeriodEnd,
+      cancelAtPeriodEnd: params.cancelAtPeriodEnd,
+    },
   });
+}
 
-  const data: any = {
-    planId: params.planId,
-    status: params.status,
-    stripeCustomerId: params.stripeCustomerId,
-    stripeSubscriptionId: params.stripeSubscriptionId,
-    stripePriceId: params.stripePriceId,
-    currentPeriodEnd: params.currentPeriodEnd,
-    cancelAtPeriodEnd: params.cancelAtPeriodEnd,
-  };
-
-  if (existing?.id) {
-    await (prisma.subscription as any).update({
-      where: { id: existing.id },
-      data,
-      select: { id: true },
+async function handleSubscriptionEvent(
+  sub: Stripe.Subscription,
+  opts?: { deleted?: boolean; userIdHint?: string | null }
+) {
+  const stripeSubscriptionId = sub.id;
+  const stripeCustomerId = getStripeCustomerIdFromSubscription(sub);
+  if (!stripeCustomerId) {
+    console.warn("[stripe.webhook] missing subscription.customer; skipping", {
+      stripeSubscriptionId,
     });
     return;
   }
 
-  await (prisma.subscription as any).create({
-    data: {
-      userId: params.userId,
-      ...data,
-    },
-    select: { id: true },
-  });
-}
-
-async function handleSubscriptionEvent(sub: Stripe.Subscription, opts?: { deleted?: boolean }) {
-  const stripeSubscriptionId = sub.id;
-  const stripeCustomerId = getStripeCustomerIdFromSubscription(sub);
-  if (!stripeCustomerId) {
-    throw new Error("Missing Stripe customer id");
-  }
-
   const stripePriceId = getStripePriceIdFromSubscription(sub);
 
+  const hintUserId = asString(opts?.userIdHint);
+  const hintExists = hintUserId ? await findExistingUserId(hintUserId) : null;
   const metadataUserId = asString((sub as any)?.metadata?.userId);
-  const userId = metadataUserId || (await findUserIdByStripeCustomerId(stripeCustomerId));
+  const metadataExists = metadataUserId ? await findExistingUserId(metadataUserId) : null;
+
+  const userId =
+    hintExists ||
+    metadataExists ||
+    (await findUserIdByStripeCustomerId(stripeCustomerId));
   if (!userId) {
-    // Nothing to sync; acknowledge webhook to avoid retries.
+    console.warn("[stripe.webhook] user not found; skipping", {
+      stripeCustomerId,
+      stripeSubscriptionId,
+    });
     return;
   }
 
@@ -138,12 +141,14 @@ async function handleSubscriptionEvent(sub: Stripe.Subscription, opts?: { delete
 }
 
 export async function POST(req: NextRequest) {
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET?.trim();
-  if (!webhookSecret) {
-    return NextResponse.json({ error: "Stripe is not configured" }, { status: 500 });
+  const body = await req.text();
+  const sig = req.headers.get("stripe-signature");
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  if (!webhookSecret || !sig) {
+    return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }
 
-  let stripe;
+  let stripe: Stripe;
   try {
     stripe = getStripe();
   } catch (err) {
@@ -151,16 +156,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Stripe is not configured" }, { status: 500 });
   }
 
-  const signature = req.headers.get("stripe-signature");
-  if (!signature) {
-    return NextResponse.json({ error: "Missing Stripe signature" }, { status: 400 });
-  }
-
-  const rawBody = Buffer.from(await req.arrayBuffer());
-
   let event: Stripe.Event;
   try {
-    event = stripe.webhooks.constructEvent(rawBody, signature, webhookSecret);
+    event = stripe.webhooks.constructEvent(body, sig, webhookSecret);
   } catch (err) {
     console.error("Stripe webhook signature verification failed", err);
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
@@ -169,42 +167,56 @@ export async function POST(req: NextRequest) {
   try {
     if (event.type === "checkout.session.completed") {
       const session = event.data.object as Stripe.Checkout.Session;
-      const subscriptionId =
-        typeof session.subscription === "string"
-          ? session.subscription
-          : (session.subscription as any)?.id ?? null;
-
-      if (!subscriptionId) {
+      if ((session as any)?.mode !== "subscription") {
         return NextResponse.json({ ok: true }, { status: 200 });
       }
 
-      // Retrieve full subscription to read metadata/price details.
+      const userId =
+        asString((session as any)?.client_reference_id) ||
+        asString((session as any)?.metadata?.userId);
+      if (!userId) {
+        console.warn("[stripe.webhook] checkout.session.completed missing user id; skipping", {
+          sessionId: session.id,
+        });
+        return NextResponse.json({ ok: true }, { status: 200 });
+      }
+
+      const subscriptionId =
+        typeof (session as any)?.subscription === "string"
+          ? (session as any).subscription
+          : (session as any)?.subscription?.id ?? null;
+      if (!subscriptionId) {
+        console.warn("[stripe.webhook] checkout.session.completed missing subscription id; skipping", {
+          sessionId: session.id,
+          userId,
+        });
+        return NextResponse.json({ ok: true }, { status: 200 });
+      }
+
       const sub = await stripe.subscriptions.retrieve(subscriptionId, {
         expand: ["items.data.price"],
       });
-      await handleSubscriptionEvent(sub);
+      await handleSubscriptionEvent(sub, { userIdHint: userId });
 
-      // Best-effort: ensure customer id is persisted on user when possible.
-      const stripeCustomerId = getStripeCustomerIdFromSession(session);
-      const userId = asString((sub as any)?.metadata?.userId);
-      if (stripeCustomerId && userId) {
-        await ensureUserHasStripeCustomerId(userId, stripeCustomerId);
-      }
+      return NextResponse.json({ ok: true }, { status: 200 });
     }
 
     if (event.type === "customer.subscription.created") {
       const sub = event.data.object as Stripe.Subscription;
       await handleSubscriptionEvent(sub);
+      return NextResponse.json({ ok: true }, { status: 200 });
     }
 
     if (event.type === "customer.subscription.updated") {
       const sub = event.data.object as Stripe.Subscription;
       await handleSubscriptionEvent(sub);
+      return NextResponse.json({ ok: true }, { status: 200 });
     }
 
     if (event.type === "customer.subscription.deleted") {
       const sub = event.data.object as Stripe.Subscription;
       await handleSubscriptionEvent(sub, { deleted: true });
+      return NextResponse.json({ ok: true }, { status: 200 });
     }
 
     return NextResponse.json({ ok: true }, { status: 200 });
@@ -213,4 +225,3 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Webhook processing failed" }, { status: 500 });
   }
 }
-
