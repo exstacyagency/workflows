@@ -4,6 +4,11 @@ import { prisma } from "@/lib/prisma";
 import type { NextAuthOptions } from "next-auth";
 import { getServerSession } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
+import {
+  checkAuthAllowed,
+  recordAuthFailure,
+  recordAuthSuccess,
+} from "@/lib/authAbuseGuard";
 
 export const authOptions: NextAuthOptions = {
   secret: process.env.NEXTAUTH_SECRET,
@@ -15,16 +20,35 @@ export const authOptions: NextAuthOptions = {
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
       },
-      async authorize(credentials) {
+      async authorize(credentials, req) {
         if (!credentials?.email || !credentials?.password) return null;
+
+        const email = credentials.email;
+        const ip =
+          (req as any)?.headers?.get?.("x-forwarded-for")?.split(",")?.[0]?.trim() ??
+          (req as any)?.headers?.["x-forwarded-for"]?.split?.(",")?.[0]?.trim?.() ??
+          null;
+
+        const allowed = checkAuthAllowed({ kind: "login", ip, email });
+        if (!allowed.allowed) {
+          throw new Error("Too many attempts. Try again later.");
+        }
 
         const user = await prisma.user.findUnique({
           where: { email: credentials.email },
         });
-        if (!user || !user.passwordHash) return null;
+        if (!user || !user.passwordHash) {
+          recordAuthFailure({ kind: "login", ip, email });
+          return null;
+        }
 
         const isValid = await compare(credentials.password, user.passwordHash);
-        if (!isValid) return null;
+        if (!isValid) {
+          recordAuthFailure({ kind: "login", ip, email });
+          return null;
+        }
+
+        recordAuthSuccess({ kind: "login", ip, email });
 
         return {
           id: user.id,
