@@ -10,6 +10,7 @@ import { logAudit } from '@/lib/logger';
 import { getSessionUserId } from '@/lib/getSessionUserId';
 import { createJobWithIdempotency, enforceUserConcurrency } from '@/lib/jobGuards';
 import { JobType } from '@prisma/client';
+import { assertMinPlan, UpgradeRequiredError } from '@/lib/billing/requirePlan';
 
 const AdPerformanceSchema = ProjectJobSchema.extend({
   industryCode: z.string().min(1, 'industryCode is required'),
@@ -24,6 +25,19 @@ export async function POST(req: NextRequest) {
   let jobId: string | null = null;
   const ip =
     req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null;
+
+  try {
+    await assertMinPlan(userId, 'GROWTH');
+  } catch (err: any) {
+    if (err instanceof UpgradeRequiredError) {
+      return NextResponse.json(
+        { error: 'Upgrade required', requiredPlan: err.requiredPlan },
+        { status: 402 },
+      );
+    }
+    console.error(err);
+    return NextResponse.json({ error: 'Billing check failed' }, { status: 500 });
+  }
 
   try {
     const parsed = await parseJson(req, AdPerformanceSchema);
