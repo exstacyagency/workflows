@@ -68,6 +68,12 @@ export async function POST(req: NextRequest) {
     const isCI = process.env.CI === "true";
     const hasAnthropic = !!process.env.ANTHROPIC_API_KEY;
     if (isCI && !hasAnthropic) {
+      const project = await prisma.project.findUnique({
+        where: { id: projectId },
+        select: { name: true },
+      });
+      const productName = project?.name ?? "Your product";
+
       const skipPayload = {
         ...parsed.data,
         idempotencyKey,
@@ -125,18 +131,54 @@ export async function POST(req: NextRequest) {
         );
       }
 
+      const hook = `Meet ${productName}: a faster way to create video ads.`;
+      const body =
+        "This script was generated in CI mode without calling an LLM, so it contains deterministic placeholder copy.";
+      const cta = `Get started with ${productName} today.`;
+      const text = `${hook}\n\n${body}\n\n${cta}`;
+      const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
+
+      const scriptJson = {
+        title: "CI placeholder script",
+        hook,
+        body,
+        cta,
+        text,
+        word_count: wordCount,
+        skipped: true,
+        reason: "LLM not configured",
+      };
+
+      const script = await prisma.script.create({
+        data: {
+          projectId,
+          jobId,
+          mergedVideoUrl: null,
+          upscaledVideoUrl: null,
+          status: "READY",
+          rawJson: scriptJson as any,
+          wordCount,
+        },
+      });
+
       await prisma.job.update({
         where: { id: jobId },
         data: {
           status: JobStatus.COMPLETED,
-          payload: skipPayload,
-          resultSummary: "Skipped: LLM not configured",
+          payload: { ...skipPayload, scriptIds: [script.id] },
+          resultSummary: `Skipped: LLM not configured (scriptId=${script.id})`,
           error: null,
         },
       });
 
       return Response.json(
-        { ok: true, skipped: true, reason: "LLM not configured", jobId },
+        {
+          ok: true,
+          skipped: true,
+          reason: "LLM not configured",
+          jobId,
+          scripts: [{ id: script.id, text }],
+        },
         { status: 200 },
       );
     }
