@@ -51,6 +51,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
+    if (!process.env.ANTHROPIC_API_KEY) {
+      return NextResponse.json(
+        { error: 'Anthropic is not configured' },
+        { status: 500 },
+      );
+    }
+
     const concurrency = await enforceUserConcurrency(userId);
     if (!concurrency.allowed) {
       return NextResponse.json(
@@ -59,10 +66,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const periodKey = getCurrentPeriodKey();
+    let periodKey = getCurrentPeriodKey();
     try {
-      await assertQuota(userId, planId, 'researchQueries', 1);
-      await incrementUsage(userId, periodKey, 'researchQueries', 1);
+      const quota = await assertQuota(userId, planId, 'researchQueries', 1);
+      periodKey = quota.periodKey;
     } catch (err: any) {
       if (err instanceof QuotaExceededError) {
         return NextResponse.json(
@@ -122,6 +129,8 @@ export async function POST(req: NextRequest) {
           resultSummary: `Pattern analysis complete (resultId=${result.id})`,
         },
       });
+
+      await incrementUsage(userId, periodKey, 'researchQueries', 1);
 
       return NextResponse.json(
         { jobId: job.id, resultId: result.id },
