@@ -58,6 +58,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const isCI = process.env.CI === "true";
+    const hasAnthropic = !!process.env.ANTHROPIC_API_KEY;
+    if (isCI && !hasAnthropic)
+      return Response.json(
+        { ok: true, skipped: true, reason: "LLM not configured" },
+        { status: 200 },
+      );
+
     const devTest = flag("FF_DEV_TEST_MODE");
     const breakerTest = flag("FF_BREAKER_TEST");
     let idempotencyKey = `script-generation:${projectId}`;
