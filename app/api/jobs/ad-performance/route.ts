@@ -9,7 +9,7 @@ import { logAudit } from '@/lib/logger';
 import { getSessionUserId } from '@/lib/getSessionUserId';
 import { createJobWithIdempotency, enforceUserConcurrency } from '@/lib/jobGuards';
 import { JobType } from '@prisma/client';
-import { assertMinPlan, getUserSubscription, UpgradeRequiredError } from '@/lib/billing/requirePlan';
+import { assertMinPlan, UpgradeRequiredError } from '@/lib/billing/requirePlan';
 import { assertQuota, getCurrentPeriodKey, incrementUsage, QuotaExceededError } from '../../../../lib/billing/usage';
 
 const AdPerformanceSchema = ProjectJobSchema.extend({
@@ -28,16 +28,7 @@ export async function POST(req: NextRequest) {
   let planId: 'FREE' | 'GROWTH' | 'SCALE' = 'FREE';
 
   try {
-    await assertMinPlan(userId, 'GROWTH');
-    const sub = await getUserSubscription(userId);
-    const status = String(sub?.status ?? '').toLowerCase();
-    const statusOk = status === 'active' || status === 'trialing';
-    planId =
-      statusOk && sub?.planId === 'SCALE'
-        ? 'SCALE'
-        : statusOk && sub?.planId === 'GROWTH'
-          ? 'GROWTH'
-          : 'FREE';
+    planId = await assertMinPlan(userId, 'GROWTH');
   } catch (err: any) {
     if (err instanceof UpgradeRequiredError) {
       return NextResponse.json(

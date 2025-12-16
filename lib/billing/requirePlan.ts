@@ -30,16 +30,15 @@ function normalizePlanId(planId: unknown): PlanId {
   return "FREE";
 }
 
-export async function assertMinPlan(userId: string, minPlan: PlanId) {
-  if (minPlan === "FREE") return;
+export async function assertMinPlan(userId: string, minPlan: PlanId): Promise<PlanId> {
+  if (minPlan === "FREE") return "FREE";
 
   const sub = await getUserSubscription(userId);
   const status = String(sub?.status ?? "").toLowerCase();
   const statusOk = status === "active" || status === "trialing";
   const planId = normalizePlanId(sub?.planId);
 
-  if (sub && statusOk && rank(planId) >= rank(minPlan)) return;
+  if (sub && statusOk && rank(planId) >= rank(minPlan)) return planId;
 
   throw new UpgradeRequiredError(minPlan);
 }
-
