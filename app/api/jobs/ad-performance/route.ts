@@ -5,7 +5,6 @@ import { requireProjectOwner } from '@/lib/requireProjectOwner';
 import { ProjectJobSchema, parseJson } from '@/lib/validation/jobs';
 import { z } from 'zod';
 import { checkRateLimit } from '@/lib/rateLimiter';
-import { enforcePlanLimits } from '@/lib/billing';
 import { logAudit } from '@/lib/logger';
 import { getSessionUserId } from '@/lib/getSessionUserId';
 import { createJobWithIdempotency, enforceUserConcurrency } from '@/lib/jobGuards';
@@ -64,13 +63,6 @@ export async function POST(req: NextRequest) {
     const auth = await requireProjectOwner(projectId);
     if (auth.error) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
-    }
-    const limitCheck = await enforcePlanLimits(userId);
-    if (!limitCheck.allowed) {
-      return NextResponse.json(
-        { error: limitCheck.reason },
-        { status: 403 },
-      );
     }
 
     const concurrency = await enforceUserConcurrency(userId);
