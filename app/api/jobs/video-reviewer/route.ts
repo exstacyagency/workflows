@@ -1,16 +1,16 @@
 // app/api/jobs/video-reviewer/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { runVideoReviewer } from '@/lib/videoReviewerService';
-import { requireProjectOwner } from '@/lib/requireProjectOwner';
-import prisma from '@/lib/prisma';
-import { StoryboardJobSchema, parseJson } from '@/lib/validation/jobs';
-import { checkRateLimit } from '@/lib/rateLimiter';
-import { logAudit } from '@/lib/logger';
-import { getSessionUserId } from '@/lib/getSessionUserId';
-import { createJobWithIdempotency, enforceUserConcurrency } from '@/lib/jobGuards';
+import { runVideoReviewer } from '../../../../lib/videoReviewerService';
+import { requireProjectOwner } from '../../../../lib/requireProjectOwner';
+import prisma from '../../../../lib/prisma';
+import { StoryboardJobSchema, parseJson } from '../../../../lib/validation/jobs';
+import { checkRateLimit } from '../../../../lib/rateLimiter';
+import { logAudit } from '../../../../lib/logger';
+import { getSessionUserId } from '../../../../lib/getSessionUserId';
+import { enforceUserConcurrency, findIdempotentJob } from '../../../../lib/jobGuards';
 import { JobStatus, JobType } from '@prisma/client';
-import { assertMinPlan, UpgradeRequiredError } from '@/lib/billing/requirePlan';
-import { assertQuota, getCurrentPeriodKey, incrementUsage, QuotaExceededError } from '../../../../lib/billing/usage';
+import { assertMinPlan, UpgradeRequiredError } from '../../../../lib/billing/requirePlan';
+import { reserveQuota, rollbackQuota, QuotaExceededError } from '../../../../lib/billing/usage';
 
 export async function POST(req: NextRequest) {
   const userId = await getSessionUserId();
@@ -19,6 +19,8 @@ export async function POST(req: NextRequest) {
   }
   let projectId: string | null = null;
   let jobId: string | null = null;
+  let reservation: { periodKey: string; metric: string; amount: number } | null =
+    null;
   const ip =
     req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null;
   let planId: 'FREE' | 'GROWTH' | 'SCALE' = 'FREE';
@@ -83,20 +85,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    let periodKey = getCurrentPeriodKey();
-    try {
-      const quota = await assertQuota(userId, planId, 'videoJobs', 1);
-      periodKey = quota.periodKey;
-    } catch (err: any) {
-      if (err instanceof QuotaExceededError) {
-        return NextResponse.json(
-          { error: 'Quota exceeded', metric: 'videoJobs', limit: err.limit, used: err.used },
-          { status: 429 },
-        );
-      }
-      throw err;
-    }
-
     if (process.env.NODE_ENV === 'production') {
       const rateCheck = await checkRateLimit(projectId);
       if (!rateCheck.allowed) {
@@ -112,17 +100,36 @@ export async function POST(req: NextRequest) {
       JobType.VIDEO_REVIEW,
       storyboardId,
     ]);
-    const { job, reused } = await createJobWithIdempotency({
+    const existing = await findIdempotentJob({
       projectId,
       type: JobType.VIDEO_REVIEW,
       idempotencyKey,
-      payload: { storyboardId },
+    });
+    if (existing) {
+      return NextResponse.json({ jobId: existing.id, reused: true }, { status: 200 });
+    }
+
+    try {
+      reservation = await reserveQuota(userId, planId, 'videoJobs', 1);
+    } catch (err: any) {
+      if (err instanceof QuotaExceededError) {
+        return NextResponse.json(
+          { error: 'Quota exceeded', metric: 'videoJobs', limit: err.limit, used: err.used },
+          { status: 429 },
+        );
+      }
+      throw err;
+    }
+
+    const job = await prisma.job.create({
+      data: {
+        projectId,
+        type: JobType.VIDEO_REVIEW,
+        status: JobStatus.PENDING,
+        payload: { storyboardId, idempotencyKey },
+      },
     });
     jobId = job.id;
-
-    if (reused) {
-      return NextResponse.json({ jobId: job.id, reused: true }, { status: 200 });
-    }
 
     await prisma.job.update({
       where: { id: job.id },
@@ -139,8 +146,6 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    await incrementUsage(userId, periodKey, 'videoJobs', 1);
-
     await logAudit({
       userId,
       projectId,
@@ -155,6 +160,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(result, { status: 200 });
   } catch (err: any) {
     console.error(err);
+    if (reservation) {
+      await rollbackQuota(userId, reservation.periodKey, 'videoJobs', 1);
+    }
     if (jobId) {
       await prisma.job.update({
         where: { id: jobId },
