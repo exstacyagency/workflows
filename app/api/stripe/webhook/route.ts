@@ -13,6 +13,16 @@ function asString(v: unknown): string | null {
   return t.length > 0 ? t : null;
 }
 
+function isPrismaDuplicateStripeEventId(err: unknown): boolean {
+  const e: any = err as any;
+  if (!e || typeof e !== "object") return false;
+  if (e.code !== "P2002") return false;
+  const target = e.meta?.target;
+  if (Array.isArray(target)) return target.includes("stripeEventId");
+  if (typeof target === "string") return target.includes("stripeEventId");
+  return true;
+}
+
 function getStripeCustomerIdFromSubscription(sub: Stripe.Subscription): string | null {
   const c: any = (sub as any).customer;
   if (typeof c === "string") return c;
@@ -26,6 +36,39 @@ function getStripePriceIdFromSubscription(sub: Stripe.Subscription): string | nu
   if (price && typeof price === "object" && typeof price.id === "string") return price.id;
   if (typeof price === "string") return price;
   return null;
+}
+
+function getStripeCustomerIdFromEventObject(obj: unknown): string | null {
+  const o: any = obj as any;
+  const c: any = o?.customer;
+  if (typeof c === "string") return c;
+  if (c && typeof c === "object" && typeof c.id === "string") return c.id;
+  return null;
+}
+
+function getStripeSubscriptionIdFromEventObject(obj: unknown, eventType: string): string | null {
+  const o: any = obj as any;
+
+  if (eventType.startsWith("customer.subscription.") && typeof o?.id === "string") {
+    return o.id;
+  }
+  if (o?.object === "subscription" && typeof o?.id === "string") {
+    return o.id;
+  }
+
+  const sub: any = o?.subscription;
+  if (typeof sub === "string") return sub;
+  if (sub && typeof sub === "object" && typeof sub.id === "string") return sub.id;
+
+  return null;
+}
+
+function getUserIdFromEventObject(obj: unknown, eventType: string): string | null {
+  const o: any = obj as any;
+  if (eventType === "checkout.session.completed") {
+    return asString(o?.client_reference_id) || asString(o?.metadata?.userId);
+  }
+  return asString(o?.metadata?.userId);
 }
 
 async function findUserIdByStripeCustomerId(stripeCustomerId: string): Promise<string | null> {
@@ -141,7 +184,7 @@ async function handleSubscriptionEvent(
 }
 
 export async function POST(req: NextRequest) {
-  const body = await req.text();
+  const rawBody = await req.text();
   const sig = req.headers.get("stripe-signature");
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
   if (!webhookSecret || !sig) {
@@ -158,10 +201,47 @@ export async function POST(req: NextRequest) {
 
   let event: Stripe.Event;
   try {
-    event = stripe.webhooks.constructEvent(body, sig, webhookSecret);
+    event = stripe.webhooks.constructEvent(rawBody, sig, webhookSecret);
   } catch (err) {
     console.error("Stripe webhook signature verification failed", err);
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
+  }
+
+  const payloadJson = JSON.parse(rawBody);
+  const eventObject: any = (event.data as any)?.object;
+  const stripeCustomerId = getStripeCustomerIdFromEventObject(eventObject);
+  const stripeSubscriptionId = getStripeSubscriptionIdFromEventObject(eventObject, event.type);
+  const userId = getUserIdFromEventObject(eventObject, event.type);
+
+  const billingEventModel = (prisma as any).billingEvent;
+  if (!billingEventModel?.create) {
+    console.error("[stripe.webhook] Prisma client is missing BillingEvent; did you run prisma generate?", {
+      stripeEventId: event.id,
+      type: event.type,
+    });
+    return NextResponse.json({ error: "Server is not configured" }, { status: 500 });
+  }
+
+  try {
+    await billingEventModel.create({
+      data: {
+        stripeEventId: event.id,
+        type: event.type,
+        stripeCustomerId,
+        stripeSubscriptionId,
+        userId,
+        payloadJson,
+      },
+    });
+  } catch (err) {
+    if (isPrismaDuplicateStripeEventId(err)) {
+      return NextResponse.json({ ok: true }, { status: 200 });
+    }
+    console.error("[stripe.webhook] failed to record BillingEvent", err, {
+      stripeEventId: event.id,
+      type: event.type,
+    });
+    return NextResponse.json({ error: "Webhook processing failed" }, { status: 500 });
   }
 
   try {
