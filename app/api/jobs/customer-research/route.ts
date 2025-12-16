@@ -77,10 +77,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const periodKey = getCurrentPeriodKey();
+    if (!process.env.APIFY_TOKEN) {
+      return NextResponse.json(
+        { error: 'Apify is not configured' },
+        { status: 500 },
+      );
+    }
+
+    let periodKey = getCurrentPeriodKey();
     try {
-      await assertQuota(userId, planId, 'researchQueries', 1);
-      await incrementUsage(userId, periodKey, 'researchQueries', 1);
+      const quota = await assertQuota(userId, planId, 'researchQueries', 1);
+      periodKey = quota.periodKey;
     } catch (err: any) {
       if (err instanceof QuotaExceededError) {
         return NextResponse.json(
@@ -159,6 +166,8 @@ export async function POST(req: NextRequest) {
       competitor1AmazonAsin,
       competitor2AmazonAsin,
     });
+
+    await incrementUsage(userId, periodKey, 'researchQueries', 1);
 
     await logAudit({
       userId,

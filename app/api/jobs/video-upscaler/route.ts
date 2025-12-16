@@ -76,10 +76,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const periodKey = getCurrentPeriodKey();
+    if (!process.env.FAL_API_KEY) {
+      return NextResponse.json(
+        { error: 'FAL is not configured' },
+        { status: 500 },
+      );
+    }
+
+    let periodKey = getCurrentPeriodKey();
     try {
-      await assertQuota(userId, planId, 'videoJobs', 1);
-      await incrementUsage(userId, periodKey, 'videoJobs', 1);
+      const quota = await assertQuota(userId, planId, 'videoJobs', 1);
+      periodKey = quota.periodKey;
     } catch (err: any) {
       if (err instanceof QuotaExceededError) {
         return NextResponse.json(
@@ -131,6 +138,8 @@ export async function POST(req: NextRequest) {
         resultSummary: `Video upscaler processed ${result.count} scripts`,
       },
     });
+
+    await incrementUsage(userId, periodKey, 'videoJobs', 1);
 
     await logAudit({
       userId,
