@@ -1,16 +1,17 @@
 // app/api/jobs/character-generation/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { startCharacterGenerationJob } from '@/lib/characterGenerationService';
-import { requireProjectOwner } from '@/lib/requireProjectOwner';
-import { ProjectJobSchema, parseJson } from '@/lib/validation/jobs';
+import { startCharacterGenerationJob } from '../../../../lib/characterGenerationService';
+import { prisma } from '../../../../lib/prisma';
+import { requireProjectOwner } from '../../../../lib/requireProjectOwner';
+import { ProjectJobSchema, parseJson } from '../../../../lib/validation/jobs';
 import { z } from 'zod';
-import { checkRateLimit } from '@/lib/rateLimiter';
-import { logAudit } from '@/lib/logger';
-import { getSessionUserId } from '@/lib/getSessionUserId';
-import { createJobWithIdempotency, enforceUserConcurrency } from '@/lib/jobGuards';
-import { JobType } from '@prisma/client';
-import { assertMinPlan, UpgradeRequiredError } from '@/lib/billing/requirePlan';
-import { assertQuota, getCurrentPeriodKey, incrementUsage, QuotaExceededError } from '../../../../lib/billing/usage';
+import { checkRateLimit } from '../../../../lib/rateLimiter';
+import { logAudit } from '../../../../lib/logger';
+import { getSessionUserId } from '../../../../lib/getSessionUserId';
+import { enforceUserConcurrency, findIdempotentJob } from '../../../../lib/jobGuards';
+import { JobStatus, JobType } from '@prisma/client';
+import { assertMinPlan, UpgradeRequiredError } from '../../../../lib/billing/requirePlan';
+import { reserveQuota, rollbackQuota, QuotaExceededError } from '../../../../lib/billing/usage';
 
 const CharacterGenerationSchema = ProjectJobSchema.extend({
   productName: z.string().min(1, 'productName is required'),
@@ -23,6 +24,8 @@ export async function POST(req: NextRequest) {
   }
   let projectId: string | null = null;
   let jobId: string | null = null;
+  let reservation: { periodKey: string; metric: string; amount: number } | null =
+    null;
   const ip =
     req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null;
   let planId: 'FREE' | 'GROWTH' | 'SCALE' = 'FREE';
@@ -71,10 +74,22 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    let periodKey = getCurrentPeriodKey();
+    const idempotencyKey = JSON.stringify([
+      projectId,
+      JobType.CHARACTER_GENERATION,
+      productName,
+    ]);
+    const existing = await findIdempotentJob({
+      projectId,
+      type: JobType.CHARACTER_GENERATION,
+      idempotencyKey,
+    });
+    if (existing) {
+      return NextResponse.json({ jobId: existing.id, reused: true }, { status: 200 });
+    }
+
     try {
-      const quota = await assertQuota(userId, planId, 'imageJobs', 1);
-      periodKey = quota.periodKey;
+      reservation = await reserveQuota(userId, planId, 'imageJobs', 1);
     } catch (err: any) {
       if (err instanceof QuotaExceededError) {
         return NextResponse.json(
@@ -94,30 +109,21 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const idempotencyKey = JSON.stringify([
-      projectId,
-      JobType.CHARACTER_GENERATION,
-      productName,
-    ]);
-    const { job, reused } = await createJobWithIdempotency({
-      projectId,
-      type: JobType.CHARACTER_GENERATION,
-      idempotencyKey,
-      payload: { projectId, productName },
+    const job = await prisma.job.create({
+      data: {
+        projectId,
+        type: JobType.CHARACTER_GENERATION,
+        status: JobStatus.PENDING,
+        payload: { projectId, productName, idempotencyKey },
+      },
     });
     jobId = job.id;
-
-    if (reused) {
-      return NextResponse.json({ jobId: job.id, reused: true }, { status: 200 });
-    }
 
     const result = await startCharacterGenerationJob({
       projectId,
       productName,
-      jobId: job.id,
+      jobId,
     });
-
-    await incrementUsage(userId, periodKey, 'imageJobs', 1);
 
     await logAudit({
       userId,
@@ -133,6 +139,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(result, { status: 200 });
   } catch (err: any) {
     console.error(err);
+    if (reservation) {
+      await rollbackQuota(userId, reservation.periodKey, 'imageJobs', 1);
+    }
     await logAudit({
       userId,
       projectId,

@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import { JobType } from '@prisma/client';
-import { estimateCustomerResearchCost, checkBudget } from '@/lib/costEstimator';
-import { checkRateLimit } from '@/lib/rateLimiter';
-import { requireProjectOwner } from '@/lib/requireProjectOwner';
+import { prisma } from '../../../../lib/prisma';
+import { JobStatus, JobType } from '@prisma/client';
+import { estimateCustomerResearchCost, checkBudget } from '../../../../lib/costEstimator';
+import { checkRateLimit } from '../../../../lib/rateLimiter';
+import { requireProjectOwner } from '../../../../lib/requireProjectOwner';
 import { z } from 'zod';
-import { ProjectJobSchema, parseJson } from '@/lib/validation/jobs';
-import { logAudit } from '@/lib/logger';
-import { getSessionUserId } from '@/lib/getSessionUserId';
-import { createJobWithIdempotency, enforceUserConcurrency } from '@/lib/jobGuards';
-import { assertMinPlan, UpgradeRequiredError } from '@/lib/billing/requirePlan';
-import { assertQuota, getCurrentPeriodKey, incrementUsage, QuotaExceededError } from '../../../../lib/billing/usage';
+import { ProjectJobSchema, parseJson } from '../../../../lib/validation/jobs';
+import { logAudit } from '../../../../lib/logger';
+import { getSessionUserId } from '../../../../lib/getSessionUserId';
+import { enforceUserConcurrency, findIdempotentJob } from '../../../../lib/jobGuards';
+import { assertMinPlan, UpgradeRequiredError } from '../../../../lib/billing/requirePlan';
+import { reserveQuota, rollbackQuota, QuotaExceededError } from '../../../../lib/billing/usage';
 
 export const runtime = 'nodejs';
 
@@ -29,6 +29,8 @@ export async function POST(req: NextRequest) {
   }
   let projectId: string | null = null;
   let jobId: string | null = null;
+  let reservation: { periodKey: string; metric: string; amount: number } | null =
+    null;
   const ip =
     req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null;
   let planId: 'FREE' | 'GROWTH' | 'SCALE' = 'FREE';
@@ -84,20 +86,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    let periodKey = getCurrentPeriodKey();
-    try {
-      const quota = await assertQuota(userId, planId, 'researchQueries', 1);
-      periodKey = quota.periodKey;
-    } catch (err: any) {
-      if (err instanceof QuotaExceededError) {
-        return NextResponse.json(
-          { error: 'Quota exceeded', metric: 'researchQueries', limit: err.limit, used: err.used },
-          { status: 429 },
-        );
-      }
-      throw err;
-    }
-
     if (process.env.NODE_ENV === 'production') {
       const rateCheck = await checkRateLimit(projectId);
       if (!rateCheck.allowed) {
@@ -135,27 +123,47 @@ export async function POST(req: NextRequest) {
       productProblemSolved,
     ]);
 
-    const { job, reused } = await createJobWithIdempotency({
+    const existing = await findIdempotentJob({
       projectId,
       type: JobType.CUSTOMER_RESEARCH,
       idempotencyKey,
-      payload: {
+    });
+    if (existing) {
+      return NextResponse.json({ jobId: existing.id, reused: true }, { status: 202 });
+    }
+
+    try {
+      reservation = await reserveQuota(userId, planId, 'researchQueries', 1);
+    } catch (err: any) {
+      if (err instanceof QuotaExceededError) {
+        return NextResponse.json(
+          { error: 'Quota exceeded', metric: 'researchQueries', limit: err.limit, used: err.used },
+          { status: 429 },
+        );
+      }
+      throw err;
+    }
+
+    const job = await prisma.job.create({
+      data: {
         projectId,
-        productName,
-        productProblemSolved,
-        productAmazonAsin,
-        competitor1AmazonAsin,
-        competitor2AmazonAsin,
-        estimatedCost: costEstimate.totalCost,
+        type: JobType.CUSTOMER_RESEARCH,
+        status: JobStatus.PENDING,
+        payload: {
+          projectId,
+          productName,
+          productProblemSolved,
+          productAmazonAsin,
+          competitor1AmazonAsin,
+          competitor2AmazonAsin,
+          estimatedCost: costEstimate.totalCost,
+          idempotencyKey,
+        },
       },
     });
     jobId = job.id;
 
-    if (reused) {
-      return NextResponse.json({ jobId: job.id, reused: true }, { status: 202 });
-    }
-
-    const { addJob, QueueName } = await import('@/lib/queue');
+    const { addJob, QueueName } = await import('../../../../lib/queue');
 
     await addJob(QueueName.CUSTOMER_RESEARCH, job.id, {
       jobId: job.id,
@@ -166,8 +174,6 @@ export async function POST(req: NextRequest) {
       competitor1AmazonAsin,
       competitor2AmazonAsin,
     });
-
-    await incrementUsage(userId, periodKey, 'researchQueries', 1);
 
     await logAudit({
       userId,
@@ -182,13 +188,16 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(
       {
-        jobId: job.id,
+        jobId,
         estimatedCost: costEstimate.totalCost,
         breakdown: costEstimate.breakdown,
       },
       { status: 202 }
     );
   } catch (error: any) {
+    if (reservation) {
+      await rollbackQuota(userId, reservation.periodKey, 'researchQueries', 1);
+    }
     await logAudit({
       userId,
       projectId,

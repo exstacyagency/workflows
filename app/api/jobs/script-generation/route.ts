@@ -1,29 +1,34 @@
 // app/api/jobs/script-generation/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { startScriptGenerationJob } from '@/lib/scriptGenerationService';
-import { requireProjectOwner } from '@/lib/requireProjectOwner';
-import { ProjectJobSchema, parseJson } from '@/lib/validation/jobs';
-import { checkRateLimit } from '@/lib/rateLimiter';
-import { prisma } from '@/lib/prisma';
+import { startScriptGenerationJob } from '../../../../lib/scriptGenerationService';
+import { requireProjectOwner } from '../../../../lib/requireProjectOwner';
+import { ProjectJobSchema, parseJson } from '../../../../lib/validation/jobs';
+import { checkRateLimit } from '../../../../lib/rateLimiter';
+import { prisma } from '../../../../lib/prisma';
 import { JobStatus, JobType } from '@prisma/client';
-import { logAudit } from '@/lib/logger';
-import { getSessionUserId } from '@/lib/getSessionUserId';
-import { enforceUserConcurrency } from '@/lib/jobGuards';
-import { runWithState } from '@/lib/jobRuntime';
-import { flag } from "@/lib/flags";
-import { getRequestId, logError, logInfo } from "@/lib/observability";
-import { assertMinPlan, UpgradeRequiredError } from "@/lib/billing/requirePlan";
-import { assertQuota, getCurrentPeriodKey, incrementUsage, QuotaExceededError } from "../../../../lib/billing/usage";
+import { logAudit } from '../../../../lib/logger';
+import { getSessionUserId } from '../../../../lib/getSessionUserId';
+import { enforceUserConcurrency } from '../../../../lib/jobGuards';
+import { runWithState } from '../../../../lib/jobRuntime';
+import { flag } from "../../../../lib/flags";
+import { getRequestId, logError, logInfo } from "../../../../lib/observability";
+import { assertMinPlan, UpgradeRequiredError } from "../../../../lib/billing/requirePlan";
+import { reserveQuota, rollbackQuota, QuotaExceededError } from "../../../../lib/billing/usage";
 
 export async function POST(req: NextRequest) {
   const requestId = getRequestId(req);
   logInfo("api.request", { requestId, path: req.nextUrl?.pathname });
+
+  let reservation: { periodKey: string; metric: string; amount: number } | null =
+    null;
+  let userIdForQuota: string | null = null;
 
   try {
     const userId = await getSessionUserId();
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    userIdForQuota = userId;
     let planId: "FREE" | "GROWTH" | "SCALE" = "FREE";
     try {
       planId = await assertMinPlan(userId, "GROWTH");
@@ -183,7 +188,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    let periodKey: string | null = null;
     if (!devTest) {
       const concurrency = await enforceUserConcurrency(userId);
       if (!concurrency.allowed) {
@@ -200,20 +204,6 @@ export async function POST(req: NextRequest) {
           { error: 'Anthropic is not configured' },
           { status: 500 },
         );
-      }
-
-      periodKey = getCurrentPeriodKey();
-      try {
-        const quota = await assertQuota(userId, planId, "researchQueries", 1);
-        periodKey = quota.periodKey;
-      } catch (err: any) {
-        if (err instanceof QuotaExceededError) {
-          return NextResponse.json(
-            { error: "Quota exceeded", metric: "researchQueries", limit: err.limit, used: err.used },
-            { status: 429 },
-          );
-        }
-        throw err;
       }
     }
 
@@ -245,6 +235,20 @@ export async function POST(req: NextRequest) {
     }
 
     if (!jobId) {
+      if (!devTest) {
+        try {
+          reservation = await reserveQuota(userId, planId, "researchQueries", 1);
+        } catch (err: any) {
+          if (err instanceof QuotaExceededError) {
+            return NextResponse.json(
+              { error: "Quota exceeded", metric: "researchQueries", limit: err.limit, used: err.used },
+              { status: 429 },
+            );
+          }
+          throw err;
+        }
+      }
+
       try {
         const job = await prisma.job.create({
           data: {
@@ -265,6 +269,10 @@ export async function POST(req: NextRequest) {
           message.includes('Unique constraint failed');
 
         if (isUnique) {
+          if (!devTest && reservation) {
+            await rollbackQuota(userId, reservation.periodKey, "researchQueries", 1);
+            reservation = null;
+          }
           const raced = await prisma.job.findFirst({
             where: {
               projectId,
@@ -316,8 +324,9 @@ export async function POST(req: NextRequest) {
     });
     console.log("[script-generation] runWithState result", state);
 
-    if (!devTest && createdNew && state.ok && periodKey) {
-      await incrementUsage(userId, periodKey, "researchQueries", 1);
+    if (!devTest && createdNew && reservation && !state.ok) {
+      await rollbackQuota(userId, reservation.periodKey, "researchQueries", 1);
+      reservation = null;
     }
 
     return NextResponse.json(
@@ -325,6 +334,9 @@ export async function POST(req: NextRequest) {
       { status: state.ok ? 200 : 500 },
     );
   } catch (err: any) {
+    if (reservation && userIdForQuota) {
+      await rollbackQuota(userIdForQuota, reservation.periodKey, "researchQueries", 1);
+    }
     logError("api.error", err, { requestId, path: req.nextUrl?.pathname });
     console.error('script-generation POST failed', err);
     return NextResponse.json(

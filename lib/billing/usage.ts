@@ -1,6 +1,6 @@
-import { prisma } from "@/lib/prisma";
-import type { PlanId } from "@/lib/billing/plans";
-import { getPlanLimits, type PlanLimits } from "@/lib/billing/quotas";
+import { prisma } from "../prisma";
+import type { PlanId } from "./plans";
+import { getPlanLimits, type PlanLimits } from "./quotas";
 
 export type UsageMetric = keyof PlanLimits;
 
@@ -69,6 +69,12 @@ export async function incrementUsage(
   });
 }
 
+export type QuotaReservation = {
+  periodKey: string;
+  metric: UsageMetric;
+  amount: number;
+};
+
 export class QuotaExceededError extends Error {
   metric: UsageMetric;
   used: number;
@@ -81,6 +87,80 @@ export class QuotaExceededError extends Error {
     this.used = params.used;
     this.limit = params.limit;
   }
+}
+
+export async function reserveQuota(
+  userId: string,
+  planId: PlanId,
+  metric: UsageMetric,
+  amount = 1
+): Promise<QuotaReservation> {
+  const periodKey = getCurrentPeriodKey();
+  const period = periodKeyToUtcDate(periodKey);
+
+  const limits = getPlanLimits(planId);
+  const limit = limits[metric] ?? 0;
+  const column = USAGE_COLUMN_BY_METRIC[metric];
+
+  await getOrCreateUsage(userId, periodKey);
+
+  const maxAllowed = limit - amount;
+  if (maxAllowed < 0) {
+    const usage = await prisma.usage.findUnique({
+      where: { userId_period: { userId, period } },
+    });
+    const used = Number((usage as any)?.[column] ?? 0);
+    throw new QuotaExceededError({ metric, used, limit });
+  }
+
+  const updated = await prisma.usage.updateMany({
+    where: {
+      userId,
+      period,
+      [column]: { lte: maxAllowed },
+    } as any,
+    data: {
+      [column]: { increment: amount },
+    } as any,
+  });
+
+  if (updated.count === 0) {
+    const usage = await prisma.usage.findUnique({
+      where: { userId_period: { userId, period } },
+    });
+    const used = Number((usage as any)?.[column] ?? 0);
+    throw new QuotaExceededError({ metric, used, limit });
+  }
+
+  return { periodKey, metric, amount };
+}
+
+export async function rollbackQuota(
+  userId: string,
+  periodKey: string,
+  metric: UsageMetric,
+  amount = 1
+) {
+  const period = periodKeyToUtcDate(periodKey);
+  const column = USAGE_COLUMN_BY_METRIC[metric];
+
+  const dec = await prisma.usage.updateMany({
+    where: {
+      userId,
+      period,
+      [column]: { gte: amount },
+    } as any,
+    data: {
+      [column]: { decrement: amount },
+    } as any,
+  });
+
+  if (dec.count > 0) return;
+
+  await prisma.usage.updateMany({
+    where: { userId, period },
+    data: { [column]: 0 } as any,
+  });
 }
 
 export async function assertQuota(
@@ -103,4 +183,3 @@ export async function assertQuota(
 
   return { periodKey, used, limit };
 }
-
