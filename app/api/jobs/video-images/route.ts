@@ -76,10 +76,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const periodKey = getCurrentPeriodKey();
+    if (!process.env.KIE_API_KEY) {
+      return NextResponse.json(
+        { error: 'KIE is not configured' },
+        { status: 500 },
+      );
+    }
+
+    let periodKey = getCurrentPeriodKey();
     try {
-      await assertQuota(userId, planId, 'imageJobs', 1);
-      await incrementUsage(userId, periodKey, 'imageJobs', 1);
+      const quota = await assertQuota(userId, planId, 'imageJobs', 1);
+      periodKey = quota.periodKey;
     } catch (err: any) {
       if (err instanceof QuotaExceededError) {
         return NextResponse.json(
@@ -121,6 +128,8 @@ export async function POST(req: NextRequest) {
       storyboardId,
       jobId: job.id,
     });
+
+    await incrementUsage(userId, periodKey, 'imageJobs', 1);
 
     await logAudit({
       userId,
