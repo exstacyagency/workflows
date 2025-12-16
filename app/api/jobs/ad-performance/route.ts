@@ -11,7 +11,7 @@ import { getSessionUserId } from '@/lib/getSessionUserId';
 import { createJobWithIdempotency, enforceUserConcurrency } from '@/lib/jobGuards';
 import { JobType } from '@prisma/client';
 import { assertMinPlan, getUserSubscription, UpgradeRequiredError } from '@/lib/billing/requirePlan';
-import { assertQuota, getCurrentPeriodKey, incrementUsage, QuotaExceededError } from '@/lib/billing/usage';
+import { assertQuota, getCurrentPeriodKey, incrementUsage, QuotaExceededError } from '../../../../lib/billing/usage';
 
 const AdPerformanceSchema = ProjectJobSchema.extend({
   industryCode: z.string().min(1, 'industryCode is required'),
