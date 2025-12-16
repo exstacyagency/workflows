@@ -38,39 +38,6 @@ function getStripePriceIdFromSubscription(sub: Stripe.Subscription): string | nu
   return null;
 }
 
-function getStripeCustomerIdFromEventObject(obj: unknown): string | null {
-  const o: any = obj as any;
-  const c: any = o?.customer;
-  if (typeof c === "string") return c;
-  if (c && typeof c === "object" && typeof c.id === "string") return c.id;
-  return null;
-}
-
-function getStripeSubscriptionIdFromEventObject(obj: unknown, eventType: string): string | null {
-  const o: any = obj as any;
-
-  if (eventType.startsWith("customer.subscription.") && typeof o?.id === "string") {
-    return o.id;
-  }
-  if (o?.object === "subscription" && typeof o?.id === "string") {
-    return o.id;
-  }
-
-  const sub: any = o?.subscription;
-  if (typeof sub === "string") return sub;
-  if (sub && typeof sub === "object" && typeof sub.id === "string") return sub.id;
-
-  return null;
-}
-
-function getUserIdFromEventObject(obj: unknown, eventType: string): string | null {
-  const o: any = obj as any;
-  if (eventType === "checkout.session.completed") {
-    return asString(o?.client_reference_id) || asString(o?.metadata?.userId);
-  }
-  return asString(o?.metadata?.userId);
-}
-
 async function findUserIdByStripeCustomerId(stripeCustomerId: string): Promise<string | null> {
   const user = await prisma.user.findUnique({
     where: { stripeCustomerId },
@@ -207,11 +174,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }
 
-  const payloadJson = JSON.parse(rawBody);
-  const eventObject: any = (event.data as any)?.object;
-  const stripeCustomerId = getStripeCustomerIdFromEventObject(eventObject);
-  const stripeSubscriptionId = getStripeSubscriptionIdFromEventObject(eventObject, event.type);
-  const userId = getUserIdFromEventObject(eventObject, event.type);
+  const payload = JSON.parse(rawBody);
+  const payloadObject: any = (payload as any)?.data?.object;
+  const stripeCustomerId =
+    typeof payloadObject?.customer === "string" ? payloadObject.customer : null;
+  const stripeSubscriptionId = event.type.startsWith("customer.subscription.")
+    ? typeof payloadObject?.id === "string"
+      ? payloadObject.id
+      : null
+    : typeof payloadObject?.subscription === "string"
+      ? payloadObject.subscription
+      : null;
+  const userId = asString(payloadObject?.metadata?.userId) || asString(payloadObject?.client_reference_id);
 
   const billingEventModel = (prisma as any).billingEvent;
   if (!billingEventModel?.create) {
@@ -230,7 +204,7 @@ export async function POST(req: NextRequest) {
         stripeCustomerId,
         stripeSubscriptionId,
         userId,
-        payloadJson,
+        payloadJson: payload,
       },
     });
   } catch (err) {
