@@ -7,6 +7,311 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model User {
+  id               String        @id @default(cuid())
+  email            String        @unique
+  name             String?
+  passwordHash     String?
+  stripeCustomerId String?       @unique
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  auditLogs        AuditLog[]
+  projects         Project[]
+  subscription     Subscription?
+  usage            Usage[]
+}
+
+model Project {
+  id                   String                @id @default(uuid())
+  name                 String
+  description          String?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  userId               String
+  adAssets             AdAsset[]
+  adPatternReferences  AdPatternReference[]
+  adPatternResults     AdPatternResult[]
+  auditLogs            AuditLog[]
+  characters           Character[]
+  customerAvatars      CustomerAvatar[]
+  jobs                 Job[]
+  productIntelligences ProductIntelligence[]
+  user                 User                  @relation(fields: [userId], references: [id])
+  researchRows         ResearchRow[]
+  scripts              Script[]
+  storyboards          Storyboard[]
+}
+
+model Job {
+  id                   String                @id @default(uuid())
+  type                 JobType
+  status               JobStatus             @default(PENDING)
+  projectId            String
+  idempotencyKey       String?
+  payload              Json?
+  resultSummary        String?
+  error                String?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  estimatedCost        Float?
+  actualCost           Float?
+  costBreakdown        Json?
+  adAssets             AdAsset[]
+  adPatternResults     AdPatternResult[]
+  auditLogs            AuditLog[]
+  characters           Character[]
+  customerAvatars      CustomerAvatar[]
+  project              Project               @relation(fields: [projectId], references: [id])
+  productIntelligences ProductIntelligence[]
+  researchRows         ResearchRow[]
+  scripts              Script[]
+  storyboards          Storyboard[]
+
+  @@unique([projectId, type, idempotencyKey])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  projectId String?
+  jobId     String?
+  action    String
+  metadata  Json?
+  ip        String?
+  createdAt DateTime @default(now())
+  job       Job?     @relation(fields: [jobId], references: [id])
+  project   Project? @relation(fields: [projectId], references: [id])
+  user      User?    @relation(fields: [userId], references: [id])
+}
+
+model ResearchRow {
+  id         String         @id @default(uuid())
+  projectId  String
+  jobId      String?
+  source     ResearchSource
+  indexLabel String?
+  title      String?
+  content    String
+  sentiment  Float?
+  importance Int?
+  rating     Float?
+  verified   Boolean?
+  sourceUrl  String?
+  metadata   Json?
+  createdAt  DateTime       @default(now())
+  job        Job?           @relation(fields: [jobId], references: [id])
+  project    Project        @relation(fields: [projectId], references: [id])
+}
+
+model AdAsset {
+  id         String     @id @default(uuid())
+  projectId  String
+  jobId      String?
+  platform   AdPlatform
+  url        String
+  metrics    Json?
+  transcript String?
+  ocr        Json?
+  createdAt  DateTime   @default(now())
+  job        Job?       @relation(fields: [jobId], references: [id])
+  project    Project    @relation(fields: [projectId], references: [id])
+}
+
+model AdPatternResult {
+  id                  String               @id @default(uuid())
+  projectId           String
+  jobId               String?
+  rawJson             Json
+  baselineRetention3s Float?
+  baselineCtr         Float?
+  totalConverters     Int?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  patternReferences   AdPatternReference[]
+  job                 Job?                 @relation(fields: [jobId], references: [id])
+  project             Project              @relation(fields: [projectId], references: [id])
+}
+
+model AdPatternReference {
+  id                   String          @id @default(uuid())
+  projectId            String
+  resultId             String
+  patternName          String
+  category             String
+  timing               String
+  description          String
+  example              String
+  exampleTimestamp     Int?
+  visualNotes          String
+  occurrenceRate       Float?
+  sampleCount          Int?
+  performanceLift      String
+  productionComplexity String?
+  standaloneViable     Boolean?
+  canCoexist           Boolean?
+  createdAt            DateTime        @default(now())
+  project              Project         @relation(fields: [projectId], references: [id])
+  result               AdPatternResult @relation(fields: [resultId], references: [id])
+}
+
+model CustomerAvatar {
+  id          String    @id @default(uuid())
+  projectId   String
+  jobId       String?
+  rawJson     Json
+  age         Int?
+  gender      String?
+  income      Int?
+  jobTitle    String?
+  location    String?
+  ethnicity   String?
+  primaryPain String?
+  primaryGoal String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  archivedAt  DateTime?
+  job         Job?      @relation(fields: [jobId], references: [id])
+  project     Project   @relation(fields: [projectId], references: [id])
+}
+
+model ProductIntelligence {
+  id              String    @id @default(uuid())
+  projectId       String
+  jobId           String?
+  rawJson         Json
+  heroIngredient  String?
+  heroMechanism   String?
+  form            String?
+  initialTimeline String?
+  peakTimeline    String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  archivedAt      DateTime?
+  job             Job?      @relation(fields: [jobId], references: [id])
+  project         Project   @relation(fields: [projectId], references: [id])
+}
+
+model Character {
+  id        String   @id @default(uuid())
+  projectId String
+  jobId     String?
+  gender    String
+  age       Int?
+  ethnicity String?
+  face      String?
+  skin      String?
+  hair      String?
+  eyes      String?
+  build     String?
+  height    String?
+  rawJson   Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  job       Job?     @relation(fields: [jobId], references: [id])
+  project   Project  @relation(fields: [projectId], references: [id])
+}
+
+model Script {
+  id               String       @id @default(uuid())
+  projectId        String
+  jobId            String?
+  rawJson          Json
+  wordCount        Int?
+  mergedVideoUrl   String?
+  status           String?
+  upscaledVideoUrl String?
+  upscaleError     String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  job              Job?         @relation(fields: [jobId], references: [id])
+  project          Project      @relation(fields: [projectId], references: [id])
+  storyboards      Storyboard[]
+}
+
+model Storyboard {
+  id        String            @id @default(uuid())
+  projectId String
+  jobId     String?
+  scriptId  String?
+  label     String?
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+  job       Job?              @relation(fields: [jobId], references: [id])
+  project   Project           @relation(fields: [projectId], references: [id])
+  script    Script?           @relation(fields: [scriptId], references: [id])
+  scenes    StoryboardScene[]
+}
+
+model StoryboardScene {
+  id            String     @id @default(uuid())
+  storyboardId  String
+  sceneNumber   Int
+  durationSec   Int
+  aspectRatio   String
+  sceneFull     String
+  rawJson       Json?
+  status        String     @default("pending")
+  firstFrameUrl String?
+  lastFrameUrl  String?
+  videoPrompt   String?
+  videoUrl      String?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  storyboard    Storyboard @relation(fields: [storyboardId], references: [id])
+}
+
+model Plan {
+  id                 String  @id @default(cuid())
+  name               String  @unique
+  description        String?
+  maxJobsPerDay      Int
+  maxVideoJobsPerDay Int
+  maxMonthlyUsage    Int
+}
+
+model Subscription {
+  id                   String    @id @default(cuid())
+  userId               String    @unique
+  planId               PlanId
+  status               String    @default("active")
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  stripePriceId        String?
+  currentPeriodEnd     DateTime?
+  cancelAtPeriodEnd    Boolean   @default(false)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Usage {
+  id            String   @id @default(cuid())
+  userId        String
+  period        DateTime
+  jobsUsed      Int      @default(0)
+  videoJobsUsed Int      @default(0)
+  tokensUsed    Int      @default(0)
+  user          User     @relation(fields: [userId], references: [id])
+
+  @@unique([userId, period])
+}
+
+model AuthThrottle {
+  id          String    @id @default(cuid())
+  kind        String
+  scope       String
+  identifier  String
+  count       Int       @default(0)
+  resetAt     DateTime
+  lockedUntil DateTime?
+  updatedAt   DateTime  @updatedAt
+  createdAt   DateTime  @default(now())
+
+  @@unique([kind, scope, identifier], name: "auth_throttle_key")
+  @@index([resetAt])
+  @@index([lockedUntil])
+}
+
 enum JobType {
   CUSTOMER_RESEARCH
   AD_PERFORMANCE
@@ -46,371 +351,4 @@ enum ResearchSource {
 enum AdPlatform {
   TIKTOK
   META
-}
-
-model User {
-  id           String    @id @default(cuid())
-  email        String    @unique
-  name         String?
-  passwordHash String?
-  stripeCustomerId String? @unique
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-
-  projects     Project[]
-  auditLogs    AuditLog[]
-  subscription Subscription?
-  usage        Usage[]
-}
-
-model Project {
-  id            String        @id @default(uuid())
-  name          String
-  description   String?
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
-  userId        String
-  user          User          @relation(fields: [userId], references: [id])
-  jobs          Job[]
-  researchRows  ResearchRow[]
-  adAssets      AdAsset[]
-  adPatternResults    AdPatternResult[]
-  adPatternReferences AdPatternReference[]
-
-  customerAvatars       CustomerAvatar[]
-  productIntelligences  ProductIntelligence[]
-  characters            Character[]
-  scripts               Script[]
-  storyboards           Storyboard[]
-  auditLogs             AuditLog[]
-}
-
-model Job {
-  id            String        @id @default(uuid())
-  type          JobType
-  status        JobStatus     @default(PENDING)
-  project       Project       @relation(fields: [projectId], references: [id])
-  projectId     String
-  idempotencyKey String?
-  payload       Json?
-  resultSummary String?
-  error         String?
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
-  estimatedCost Float?
-  actualCost    Float?
-  costBreakdown Json?
-  researchRows  ResearchRow[]
-  adAssets      AdAsset[]
-  adPatternResults AdPatternResult[]
-  customerAvatars      CustomerAvatar[]
-  productIntelligences ProductIntelligence[]
-  characters            Character[]
-  scripts               Script[]
-  storyboards           Storyboard[]
-  auditLogs             AuditLog[]
-
-  @@unique([projectId, type, idempotencyKey])
-}
-
-model AuditLog {
-  id        String   @id @default(cuid())
-  userId    String?
-  user      User?    @relation(fields: [userId], references: [id])
-  projectId String?
-  project   Project? @relation(fields: [projectId], references: [id])
-  jobId     String?
-  job       Job?     @relation(fields: [jobId], references: [id])
-
-  action   String
-  metadata Json?
-  ip       String?
-
-  createdAt DateTime @default(now())
-}
-
-model ResearchRow {
-  id          String         @id @default(uuid())
-  project     Project        @relation(fields: [projectId], references: [id])
-  projectId   String
-  job         Job?           @relation(fields: [jobId], references: [id])
-  jobId       String?
-  source      ResearchSource
-  indexLabel  String?
-  title       String?
-  content     String
-  sentiment   Float?
-  importance  Int?
-  rating      Float?
-  verified    Boolean?
-  sourceUrl   String?
-  metadata    Json?
-  createdAt   DateTime       @default(now())
-}
-
-model AdAsset {
-  id          String      @id @default(uuid())
-  project     Project     @relation(fields: [projectId], references: [id])
-  projectId   String
-  job         Job?        @relation(fields: [jobId], references: [id])
-  jobId       String?
-  platform    AdPlatform
-  url         String
-  metrics     Json?
-  transcript  String?
-  ocr         Json?
-  createdAt   DateTime    @default(now())
-}
-
-model AdPatternResult {
-  id         String   @id @default(uuid())
-
-  project    Project  @relation(fields: [projectId], references: [id])
-  projectId  String
-
-  job        Job?     @relation(fields: [jobId], references: [id])
-  jobId      String?
-
-  rawJson    Json
-
-  baselineRetention3s Float?
-  baselineCtr         Float?
-  totalConverters     Int?
-
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-
-  patternReferences   AdPatternReference[]
-}
-
-model AdPatternReference {
-  id        String          @id @default(uuid())
-
-  project   Project         @relation(fields: [projectId], references: [id])
-  projectId String
-
-  result    AdPatternResult @relation(fields: [resultId], references: [id])
-  resultId  String
-
-  patternName          String
-  category             String
-  timing               String
-  description          String
-  example              String
-  exampleTimestamp     Int?
-  visualNotes          String
-  occurrenceRate       Float?
-  sampleCount          Int?
-  performanceLift      String
-  productionComplexity String?
-  standaloneViable     Boolean?
-  canCoexist           Boolean?
-
-  createdAt DateTime @default(now())
-}
-
-model CustomerAvatar {
-  id        String   @id @default(uuid())
-
-  project   Project  @relation(fields: [projectId], references: [id])
-  projectId String
-
-  job       Job?     @relation(fields: [jobId], references: [id])
-  jobId     String?
-
-  rawJson   Json
-
-  // Common top-level fields pulled from avatar_snapshot / top_pains
-  age           Int?
-  gender        String?
-  income        Int?
-  jobTitle      String?
-  location      String?
-  ethnicity     String?
-  primaryPain   String?   // e.g. first top_pains.pain
-  primaryGoal   String?   // optional summary of goals.now[0]
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  archivedAt    DateTime?
-}
-
-model ProductIntelligence {
-  id        String   @id @default(uuid())
-
-  project   Project  @relation(fields: [projectId], references: [id])
-  projectId String
-
-  job       Job?     @relation(fields: [jobId], references: [id])
-  jobId     String?
-
-  rawJson   Json
-
-  // Helpful top-level fields pulled from ingredients/mechanism/timeline
-  heroIngredient   String?
-  heroMechanism    String?
-  form             String?
-  initialTimeline  String?
-  peakTimeline     String?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-  archivedAt       DateTime?
-}
-
-model Character {
-  id        String   @id @default(uuid())
-
-  project   Project  @relation(fields: [projectId], references: [id])
-  projectId String
-
-  job       Job?     @relation(fields: [jobId], references: [id])
-  jobId     String?
-
-  // "male" / "female" – keep as string for flexibility
-  gender    String
-
-  age       Int?
-  ethnicity String?
-  face      String?
-  skin      String?
-  hair      String?
-  eyes      String?
-  build     String?
-  height    String?
-
-  // Full JSON object as returned by the LLM for this character
-  rawJson   Json
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model Script {
-  id        String   @id @default(uuid())
-
-  project   Project  @relation(fields: [projectId], references: [id])
-  projectId String
-
-  job       Job?     @relation(fields: [jobId], references: [id])
-  jobId     String?
-
-  rawJson   Json
-  wordCount Int?
-
-  mergedVideoUrl String?
-  status         String?   // e.g. "upscale_pending"
-  upscaledVideoUrl String?
-  upscaleError     String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  storyboards Storyboard[]
-}
-
-
-model Storyboard {
-  id        String   @id @default(uuid())
-
-  project   Project  @relation(fields: [projectId], references: [id])
-  projectId String
-
-  job       Job?     @relation(fields: [jobId], references: [id])
-  jobId     String?
-
-  script    Script?  @relation(fields: [scriptId], references: [id])
-  scriptId  String?
-
-  // optional label or name
-  label     String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  scenes    StoryboardScene[]
-}
-
-model StoryboardScene {
-  id            String     @id @default(uuid())
-
-  storyboard    Storyboard @relation(fields: [storyboardId], references: [id])
-  storyboardId  String
-
-  sceneNumber   Int
-  durationSec   Int
-  aspectRatio   String
-
-  // Full “scene_full” string like in the workflow
-  sceneFull     String
-
-  // Raw JSON from the LLM for this scene
-  rawJson       Json?
-
-  status        String     @default("pending")
-
-  firstFrameUrl String?
-  lastFrameUrl  String?
-  
-  videoPrompt   String?
-  videoUrl      String?
-  
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
-
-}
-
-model Plan {
-  id          String   @id @default(cuid())
-  name        String   @unique
-  description String?
-
-  maxJobsPerDay      Int
-  maxVideoJobsPerDay Int
-  maxMonthlyUsage    Int
-}
-
-model Subscription {
-  id        String   @id @default(cuid())
-  userId    String   @unique
-  planId    PlanId
-
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  status    String   @default("active")
-  stripeCustomerId String?
-  stripeSubscriptionId String?
-  stripePriceId String?
-  currentPeriodEnd DateTime?
-  cancelAtPeriodEnd Boolean @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model Usage {
-  id        String   @id @default(cuid())
-  userId    String
-  period    DateTime
-
-  jobsUsed      Int   @default(0)
-  videoJobsUsed Int   @default(0)
-  tokensUsed    Int   @default(0)
-
-  user      User   @relation(fields: [userId], references: [id])
-
-  @@unique([userId, period])
-}
-
-model AuthThrottle {
-  id          String   @id @default(cuid())
-  kind        String   // "register" | "login"
-  scope       String   // "ip" | "email"
-  identifier  String   // ip or normalized email
-  count       Int      @default(0)
-  resetAt     DateTime
-  lockedUntil DateTime?
-  updatedAt   DateTime @updatedAt
-  createdAt   DateTime @default(now())
-
-  @@unique([kind, scope, identifier], name: "auth_throttle_key")
-  @@index([resetAt])
-  @@index([lockedUntil])
 }
