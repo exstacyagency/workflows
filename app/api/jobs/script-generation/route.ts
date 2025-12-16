@@ -58,19 +58,87 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const isCI = process.env.CI === "true";
-    const hasAnthropic = !!process.env.ANTHROPIC_API_KEY;
-    if (isCI && !hasAnthropic)
-      return Response.json(
-        { ok: true, skipped: true, reason: "LLM not configured" },
-        { status: 200 },
-      );
-
     const devTest = flag("FF_DEV_TEST_MODE");
     const breakerTest = flag("FF_BREAKER_TEST");
     let idempotencyKey = `script-generation:${projectId}`;
     if (breakerTest) {
       idempotencyKey = `${idempotencyKey}:${Date.now()}`;
+    }
+
+    const isCI = process.env.CI === "true";
+    const hasAnthropic = !!process.env.ANTHROPIC_API_KEY;
+    if (isCI && !hasAnthropic) {
+      const skipPayload = {
+        ...parsed.data,
+        idempotencyKey,
+        skipped: true,
+        reason: "LLM not configured",
+      };
+
+      let jobId: string | null = null;
+      try {
+        const job = await prisma.job.create({
+          data: {
+            projectId,
+            type: JobType.SCRIPT_GENERATION,
+            status: JobStatus.COMPLETED,
+            idempotencyKey,
+            payload: skipPayload,
+            resultSummary: "Skipped: LLM not configured",
+          },
+        });
+        jobId = job.id;
+      } catch (e: any) {
+        const message = String(e?.message ?? '');
+        const isUnique =
+          e?.code === 'P2002' ||
+          (e?.name === 'PrismaClientKnownRequestError' && e?.meta?.target) ||
+          message.includes('Unique constraint failed');
+
+        if (isUnique) {
+          const raced = await prisma.job.findFirst({
+            where: {
+              projectId,
+              type: JobType.SCRIPT_GENERATION,
+              idempotencyKey,
+            },
+            orderBy: { createdAt: 'desc' },
+          });
+
+          if (raced) {
+            jobId = raced.id;
+          } else {
+            return NextResponse.json(
+              { error: 'Failed to resolve job after unique constraint' },
+              { status: 500 },
+            );
+          }
+        } else {
+          throw e;
+        }
+      }
+
+      if (!jobId) {
+        return NextResponse.json(
+          { error: 'Job not found after creation' },
+          { status: 500 },
+        );
+      }
+
+      await prisma.job.update({
+        where: { id: jobId },
+        data: {
+          status: JobStatus.COMPLETED,
+          payload: skipPayload,
+          resultSummary: "Skipped: LLM not configured",
+          error: null,
+        },
+      });
+
+      return Response.json(
+        { ok: true, skipped: true, reason: "LLM not configured", jobId },
+        { status: 200 },
+      );
     }
 
     let periodKey: string | null = null;
