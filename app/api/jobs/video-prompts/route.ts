@@ -7,10 +7,10 @@ import { StoryboardJobSchema, parseJson } from '@/lib/validation/jobs';
 import { checkRateLimit } from '@/lib/rateLimiter';
 import { logAudit } from '@/lib/logger';
 import { getSessionUserId } from '@/lib/getSessionUserId';
-import { enforcePlanLimits, incrementUsage } from '@/lib/billing';
 import { createJobWithIdempotency, enforceUserConcurrency } from '@/lib/jobGuards';
 import { JobType } from '@prisma/client';
 import { assertMinPlan, UpgradeRequiredError } from '@/lib/billing/requirePlan';
+import { assertQuota, getCurrentPeriodKey, incrementUsage, QuotaExceededError } from '../../../../lib/billing/usage';
 
 export async function POST(req: NextRequest) {
   const userId = await getSessionUserId();
@@ -21,9 +21,10 @@ export async function POST(req: NextRequest) {
   let jobId: string | null = null;
   const ip =
     req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null;
+  let planId: 'FREE' | 'GROWTH' | 'SCALE' = 'FREE';
 
   try {
-    await assertMinPlan(userId, 'SCALE');
+    planId = await assertMinPlan(userId, 'SCALE');
   } catch (err: any) {
     if (err instanceof UpgradeRequiredError) {
       return NextResponse.json(
@@ -65,13 +66,6 @@ export async function POST(req: NextRequest) {
     if (auth.error) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
-    const limitCheck = await enforcePlanLimits(userId);
-    if (!limitCheck.allowed) {
-      return NextResponse.json(
-        { error: limitCheck.reason },
-        { status: 403 },
-      );
-    }
 
     const concurrency = await enforceUserConcurrency(userId);
     if (!concurrency.allowed) {
@@ -81,7 +75,19 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    await incrementUsage(userId, 'job', 1);
+    const periodKey = getCurrentPeriodKey();
+    try {
+      await assertQuota(userId, planId, 'videoJobs', 1);
+      await incrementUsage(userId, periodKey, 'videoJobs', 1);
+    } catch (err: any) {
+      if (err instanceof QuotaExceededError) {
+        return NextResponse.json(
+          { error: 'Quota exceeded', metric: 'videoJobs', limit: err.limit, used: err.used },
+          { status: 429 },
+        );
+      }
+      throw err;
+    }
 
     if (process.env.NODE_ENV === 'production') {
       const rateCheck = await checkRateLimit(projectId);

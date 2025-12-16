@@ -9,9 +9,9 @@ import { z } from 'zod';
 import { checkRateLimit } from '@/lib/rateLimiter';
 import { logAudit } from '@/lib/logger';
 import { getSessionUserId } from '@/lib/getSessionUserId';
-import { enforcePlanLimits, incrementUsage } from '@/lib/billing';
 import { createJobWithIdempotency, enforceUserConcurrency } from '@/lib/jobGuards';
 import { assertMinPlan, UpgradeRequiredError } from '@/lib/billing/requirePlan';
+import { assertQuota, getCurrentPeriodKey, incrementUsage, QuotaExceededError } from '../../../../lib/billing/usage';
 
 function formatAnalysisJobSummary(result: Awaited<ReturnType<typeof runCustomerAnalysis>>) {
   const avatar = result.summary?.avatar;
@@ -42,9 +42,10 @@ export async function POST(req: NextRequest) {
   let jobId: string | null = null;
   const ip =
     req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null;
+  let planId: 'FREE' | 'GROWTH' | 'SCALE' = 'FREE';
 
   try {
-    await assertMinPlan(userId, 'GROWTH');
+    planId = await assertMinPlan(userId, 'GROWTH');
   } catch (err: any) {
     if (err instanceof UpgradeRequiredError) {
       return NextResponse.json(
@@ -72,14 +73,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
-    const limitCheck = await enforcePlanLimits(userId);
-    if (!limitCheck.allowed) {
-      return NextResponse.json(
-        { error: limitCheck.reason },
-        { status: 403 },
-      );
-    }
-
     const concurrency = await enforceUserConcurrency(userId);
     if (!concurrency.allowed) {
       return NextResponse.json(
@@ -88,7 +81,19 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    await incrementUsage(userId, 'job', 1);
+    const periodKey = getCurrentPeriodKey();
+    try {
+      await assertQuota(userId, planId, 'researchQueries', 1);
+      await incrementUsage(userId, periodKey, 'researchQueries', 1);
+    } catch (err: any) {
+      if (err instanceof QuotaExceededError) {
+        return NextResponse.json(
+          { error: 'Quota exceeded', metric: 'researchQueries', limit: err.limit, used: err.used },
+          { status: 429 },
+        );
+      }
+      throw err;
+    }
 
     if (process.env.NODE_ENV === 'production') {
       const rateCheck = await checkRateLimit(projectId);

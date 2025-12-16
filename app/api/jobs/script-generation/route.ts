@@ -8,12 +8,12 @@ import { prisma } from '@/lib/prisma';
 import { JobStatus, JobType } from '@prisma/client';
 import { logAudit } from '@/lib/logger';
 import { getSessionUserId } from '@/lib/getSessionUserId';
-import { enforcePlanLimits, incrementUsage } from '@/lib/billing';
 import { enforceUserConcurrency } from '@/lib/jobGuards';
 import { runWithState } from '@/lib/jobRuntime';
 import { flag } from "@/lib/flags";
 import { getRequestId, logError, logInfo } from "@/lib/observability";
 import { assertMinPlan, UpgradeRequiredError } from "@/lib/billing/requirePlan";
+import { assertQuota, getCurrentPeriodKey, incrementUsage, QuotaExceededError } from "../../../../lib/billing/usage";
 
 export async function POST(req: NextRequest) {
   const requestId = getRequestId(req);
@@ -24,8 +24,9 @@ export async function POST(req: NextRequest) {
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    let planId: "FREE" | "GROWTH" | "SCALE" = "FREE";
     try {
-      await assertMinPlan(userId, "GROWTH");
+      planId = await assertMinPlan(userId, "GROWTH");
     } catch (err: any) {
       if (err instanceof UpgradeRequiredError) {
         return NextResponse.json(
@@ -65,16 +66,6 @@ export async function POST(req: NextRequest) {
     }
 
     if (!devTest) {
-      const limitCheck = await enforcePlanLimits(userId);
-      if (!limitCheck.allowed) {
-        return NextResponse.json(
-          { error: limitCheck.reason },
-          { status: 403 },
-        );
-      }
-    }
-
-    if (!devTest) {
       const concurrency = await enforceUserConcurrency(userId);
       if (!concurrency.allowed) {
         return NextResponse.json(
@@ -85,7 +76,19 @@ export async function POST(req: NextRequest) {
     }
 
     if (!devTest) {
-      await incrementUsage(userId, 'job', 1);
+      const periodKey = getCurrentPeriodKey();
+      try {
+        await assertQuota(userId, planId, "researchQueries", 1);
+        await incrementUsage(userId, periodKey, "researchQueries", 1);
+      } catch (err: any) {
+        if (err instanceof QuotaExceededError) {
+          return NextResponse.json(
+            { error: "Quota exceeded", metric: "researchQueries", limit: err.limit, used: err.used },
+            { status: 429 },
+          );
+        }
+        throw err;
+      }
     }
 
     if (!devTest && process.env.NODE_ENV === 'production') {
