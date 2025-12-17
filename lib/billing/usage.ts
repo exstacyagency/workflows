@@ -21,7 +21,7 @@ export function getCurrentPeriodKey(): string {
   return `${now.getUTCFullYear()}-${to2(now.getUTCMonth() + 1)}`;
 }
 
-function periodKeyToUtcDate(periodKey: string): Date {
+export function periodKeyToUtcDate(periodKey: string): Date {
   const m = /^(\d{4})-(\d{2})$/.exec(periodKey);
   if (!m) throw new Error(`Invalid periodKey: ${periodKey}`);
   const year = Number(m[1]);
