@@ -125,40 +125,94 @@ export async function POST(req: NextRequest) {
     });
     jobId = job.id;
 
-    const result = await startAdRawCollectionJob({
-      projectId,
-      industryCode,
-      jobId: job.id,
-    });
+    let result: any;
+    try {
+      result = await startAdRawCollectionJob({
+        projectId,
+        industryCode,
+        jobId: job.id,
+      });
+    } catch (err: any) {
+      const message = String(err?.message ?? err);
+      try {
+        await prisma.job.update({
+          where: { id: job.id },
+          data: {
+            status: JobStatus.FAILED,
+            payload: { projectId, industryCode, idempotencyKey, error: message },
+          },
+        });
+      } catch (updateErr) {
+        console.error('Failed to mark job failed', updateErr);
+      }
+      return NextResponse.json(
+        { jobId: job.id, started: false, error: message },
+        { status: 200 },
+      );
+    }
 
-    await logAudit({
-      userId,
-      projectId,
-      jobId,
-      action: 'job.create',
-      ip,
-      metadata: {
-        type: 'ad-performance',
-      },
-    });
+    try {
+      await logAudit({
+        userId,
+        projectId,
+        jobId,
+        action: 'job.create',
+        ip,
+        metadata: {
+          type: 'ad-performance',
+        },
+      });
+    } catch (err) {
+      console.error('logAudit failed', err);
+    }
 
     return NextResponse.json(result, { status: 200 });
   } catch (err: any) {
     console.error(err);
-    if (reservation) {
+    if (jobId) {
+      const message = String(err?.message ?? err);
+      try {
+        const existing = await prisma.job.findUnique({
+          where: { id: jobId },
+          select: { payload: true },
+        });
+        const payload =
+          existing?.payload && typeof existing.payload === 'object'
+            ? existing.payload
+            : {};
+        await prisma.job.update({
+          where: { id: jobId },
+          data: {
+            status: JobStatus.FAILED,
+            payload: { ...(payload as any), error: message },
+          },
+        });
+      } catch (updateErr) {
+        console.error('Failed to mark job failed', updateErr);
+      }
+      return NextResponse.json(
+        { jobId, started: false, error: message },
+        { status: 200 },
+      );
+    }
+    if (reservation && !jobId) {
       await rollbackQuota(userId, reservation.periodKey, 'researchQueries', 1);
     }
-    await logAudit({
-      userId,
-      projectId,
-      jobId,
-      action: 'job.error',
-      ip,
-      metadata: {
-        type: 'ad-performance',
-        error: String(err?.message ?? err),
-      },
-    });
+    try {
+      await logAudit({
+        userId,
+        projectId,
+        jobId,
+        action: 'job.error',
+        ip,
+        metadata: {
+          type: 'ad-performance',
+          error: String(err?.message ?? err),
+        },
+      });
+    } catch (auditErr) {
+      console.error('logAudit failed', auditErr);
+    }
     return NextResponse.json(
       { error: err?.message ?? 'Ad performance collection failed' },
       { status: 500 },
