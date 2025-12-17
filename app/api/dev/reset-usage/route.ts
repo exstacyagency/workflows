@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSessionUserId } from "@/lib/getSessionUserId";
+import { getSessionUser } from "@/lib/getSessionUser";
 import { getCurrentPeriodKey, periodKeyToUtcDate } from "@/lib/billing/usage";
 
 function devAdminDisabled() {
@@ -13,43 +13,57 @@ function devAdminDisabled() {
 export async function POST(req: NextRequest) {
   if (devAdminDisabled()) return new NextResponse(null, { status: 404 });
 
-  let sessionUserId: string | null = null;
+  let sessionUser: any = null;
   try {
-    sessionUserId = await getSessionUserId();
+    sessionUser = await getSessionUser();
   } catch (err) {
     console.error("reset-usage auth failed", err);
   }
-  if (!sessionUserId) {
+  const userId = (sessionUser as any)?.id as string | undefined;
+  const sessionEmail = (sessionUser as any)?.email as string | undefined;
+  const sessionName = (sessionUser as any)?.name as string | undefined;
+  if (!userId || typeof userId !== "string" || userId.trim().length === 0) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const normalizedUserId = userId.trim();
 
-  let targetUserId = sessionUserId;
-  try {
-    const body: unknown = await req.json();
-    if (body && typeof body === "object") {
-      const userId = (body as any).userId;
-      if (userId !== undefined) {
-        if (typeof userId !== "string" || userId.trim().length === 0) {
-          return NextResponse.json(
-            { error: "Invalid userId" },
-            { status: 400 }
-          );
-        }
-        targetUserId = userId.trim();
-      }
-    }
-  } catch {
-    // Body is optional.
-  }
+  void req;
 
   const periodKey = getCurrentPeriodKey();
   const period = periodKeyToUtcDate(periodKey);
 
   try {
+    const baseEmail = sessionEmail ?? `${normalizedUserId}@local.dev`;
+    try {
+      await prisma.user.upsert({
+        where: { id: normalizedUserId },
+        update: { updatedAt: new Date() },
+        create: {
+          id: normalizedUserId,
+          email: baseEmail,
+          name: sessionName ?? "Dev User",
+        },
+      });
+    } catch (err: any) {
+      if (err?.code === "P2002") {
+        await prisma.user.upsert({
+          where: { id: normalizedUserId },
+          update: { updatedAt: new Date() },
+          create: {
+            id: normalizedUserId,
+            email: `${normalizedUserId}.${Date.now()}@local.dev`,
+            name: sessionName ?? "Dev User",
+          },
+        });
+      } else {
+        throw err;
+      }
+    }
+
     await prisma.usage.upsert({
-      where: { userId_period: { userId: targetUserId, period } },
+      where: { userId_period: { userId: normalizedUserId, period } },
       create: {
-        userId: targetUserId,
+        userId: normalizedUserId,
         period,
         jobsUsed: 0,
         videoJobsUsed: 0,
@@ -63,17 +77,15 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     console.error("reset-usage failed", err);
-    const payload: { error: string; detail?: string } = {
+    const payload: { error: string; detail: string } = {
       error: "Failed to reset usage",
+      detail: String((err as any)?.message ?? err),
     };
-    if (process.env.NODE_ENV !== "production") {
-      payload.detail = String((err as any)?.message ?? err);
-    }
     return NextResponse.json(payload, { status: 500 });
   }
 
   return NextResponse.json(
-    { ok: true, userId: targetUserId, periodKey },
+    { ok: true, userId: normalizedUserId, periodKey },
     { status: 200 }
   );
 }
