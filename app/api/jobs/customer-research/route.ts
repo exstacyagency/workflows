@@ -71,18 +71,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
+    if (!process.env.APIFY_TOKEN && !process.env.APIFY_API_TOKEN) {
+      return NextResponse.json(
+        { error: 'Apify is not configured' },
+        { status: 500 },
+      );
+    }
+
     const concurrency = await enforceUserConcurrency(userId);
     if (!concurrency.allowed) {
       return NextResponse.json(
         { error: concurrency.reason },
         { status: 429 },
-      );
-    }
-
-    if (!process.env.APIFY_TOKEN) {
-      return NextResponse.json(
-        { error: 'Apify is not configured' },
-        { status: 500 },
       );
     }
 
@@ -129,7 +129,7 @@ export async function POST(req: NextRequest) {
       idempotencyKey,
     });
     if (existing) {
-      return NextResponse.json({ jobId: existing.id, reused: true }, { status: 202 });
+      return NextResponse.json({ jobId: existing.id, reused: true }, { status: 200 });
     }
 
     try {
@@ -158,22 +158,13 @@ export async function POST(req: NextRequest) {
           competitor2AmazonAsin,
           estimatedCost: costEstimate.totalCost,
           idempotencyKey,
+          quotaReservation: reservation
+            ? { periodKey: reservation.periodKey, metric: 'researchQueries', amount: 1 }
+            : null,
         },
       },
     });
     jobId = job.id;
-
-    const { addJob, QueueName } = await import('../../../../lib/queue');
-
-    await addJob(QueueName.CUSTOMER_RESEARCH, job.id, {
-      jobId: job.id,
-      projectId,
-      productName,
-      productProblemSolved,
-      productAmazonAsin,
-      competitor1AmazonAsin,
-      competitor2AmazonAsin,
-    });
 
     await logAudit({
       userId,
@@ -186,16 +177,9 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    return NextResponse.json(
-      {
-        jobId,
-        estimatedCost: costEstimate.totalCost,
-        breakdown: costEstimate.breakdown,
-      },
-      { status: 202 }
-    );
+    return NextResponse.json({ jobId, started: false }, { status: 200 });
   } catch (error: any) {
-    if (reservation) {
+    if (reservation && !jobId) {
       await rollbackQuota(userId, reservation.periodKey, 'researchQueries', 1);
     }
     await logAudit({
