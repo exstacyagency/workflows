@@ -46,7 +46,9 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
           NEXTAUTH_URL: http://localhost:3001
-        run: npm run build
+        run: |
+          rm -rf .next
+          npm run build
 
       - name: Start server
         env:
@@ -56,7 +58,7 @@ jobs:
           NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
           NEXTAUTH_URL: http://localhost:3001
         run: |
-          npm run start > server.log 2>&1 &
+          npx next start -p 3001 > server.log 2>&1 &
           echo $! > server.pid
 
       - name: Wait for health
