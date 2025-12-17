@@ -8,40 +8,57 @@ export async function GET(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const jobId = params.id;
+  try {
+    const jobId = params.id;
 
-  const job = await prisma.job.findUnique({
-    where: { id: jobId },
-    include: { project: true },
-  });
+    const job = await prisma.job.findUnique({
+      where: { id: jobId },
+      include: { project: true },
+    });
 
-  if (!job) {
-    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    if (!job) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
+
+    if (!job.project) {
+      return NextResponse.json({ error: 'Job project missing' }, { status: 404 });
+    }
+
+    const auth = await requireProjectOwner(job.project.id);
+    if (auth.error) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+
+    let queueStatus: any = null;
+    try {
+      const { getJobStatus, QueueName } = await import('@/lib/queue');
+
+      const queueMap: Record<string, any> = {
+        CUSTOMER_RESEARCH: QueueName.CUSTOMER_RESEARCH,
+        AD_PERFORMANCE: QueueName.AD_COLLECTION,
+      };
+
+      const queueName = queueMap[job.type];
+      queueStatus = queueName ? await getJobStatus(queueName, jobId) : null;
+    } catch {
+      queueStatus = null;
+    }
+
+    return NextResponse.json({ job, queueStatus });
+  } catch (err: any) {
+    const detail =
+      err instanceof Error
+        ? err.message
+        : (() => {
+            try {
+              return JSON.stringify(err);
+            } catch {
+              return String(err);
+            }
+          })();
+    return NextResponse.json(
+      { error: 'Job status failed', detail },
+      { status: 500 }
+    );
   }
-
-  if (!job.project) {
-    return NextResponse.json({ error: 'Job project missing' }, { status: 404 });
-  }
-
-  const auth = await requireProjectOwner(job.project.id);
-  if (auth.error) {
-    return NextResponse.json({ error: auth.error }, { status: auth.status });
-  }
-
-  const { getJobStatus, QueueName } = await import('@/lib/queue');
-
-  const queueMap: Record<string, any> = {
-    CUSTOMER_RESEARCH: QueueName.CUSTOMER_RESEARCH,
-    AD_PERFORMANCE: QueueName.AD_COLLECTION,
-  };
-
-  const queueName = queueMap[job.type];
-  const queueStatus = queueName 
-    ? await getJobStatus(queueName, jobId)
-    : null;
-
-  return NextResponse.json({
-    job,
-    queue: queueStatus,
-  });
 }
