@@ -1,11 +1,11 @@
-import { PrismaClient, JobStatus, JobType } from "@prisma/client";
+import { JobStatus, JobType } from "@prisma/client";
 
 import { runCustomerResearch } from "../services/customerResearchService.ts";
 import { runAdRawCollection } from "../lib/adRawCollectionService.ts";
 import { runPatternAnalysis } from "../lib/adPatternAnalysisService.ts";
 import { startScriptGenerationJob } from "../lib/scriptGenerationService.ts";
-
-const prisma = new PrismaClient();
+import prisma from "../lib/prisma.ts";
+import { rollbackQuota } from "../lib/billing/usage.ts";
 
 const POLL_MS = Number(process.env.WORKER_POLL_MS ?? 2000);
 const RUN_ONCE = process.env.RUN_ONCE === "1";
@@ -35,6 +35,30 @@ function serializeResult(value: any) {
 
 function envMissing(keys: string[]) {
   return keys.filter((k) => !process.env[k] || String(process.env[k]).trim() === "");
+}
+
+async function rollbackJobQuotaIfNeeded(jobId: string, projectId: string, payload: JsonObject) {
+  const reservation = payload?.quotaReservation;
+  if (!reservation || typeof reservation !== "object") return;
+
+  const periodKey = String((reservation as any).periodKey ?? "");
+  const metric = String((reservation as any).metric ?? "");
+  const amount = Number((reservation as any).amount ?? 0);
+
+  if (!periodKey || !metric || !Number.isFinite(amount) || amount <= 0) return;
+
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: { userId: true },
+  });
+  const userId = project?.userId ?? null;
+  if (!userId) return;
+
+  try {
+    await rollbackQuota(userId, periodKey, metric as any, amount);
+  } catch (e) {
+    console.error("[jobRunner] quota rollback failed", { jobId, e });
+  }
 }
 
 async function markCompleted(jobId: string, result: any, summary?: string) {
@@ -109,8 +133,16 @@ async function runJob(job: { id: string; type: JobType; projectId: string; paylo
   try {
     switch (job.type) {
       case JobType.CUSTOMER_RESEARCH: {
-        const cfg = await handleProviderConfig(jobId, "Apify", ["APIFY_TOKEN"]);
-        if (!cfg.ok) return;
+        const hasApifyToken = !!process.env.APIFY_TOKEN || !!process.env.APIFY_API_TOKEN;
+        if (!hasApifyToken) {
+          await rollbackJobQuotaIfNeeded(jobId, job.projectId, payload);
+          await markCompleted(jobId, { ok: true, skipped: true, reason: "Apify not configured" });
+          return;
+        }
+
+        if (!process.env.APIFY_TOKEN && process.env.APIFY_API_TOKEN) {
+          process.env.APIFY_TOKEN = process.env.APIFY_API_TOKEN;
+        }
 
         const {
           productName,
@@ -121,6 +153,7 @@ async function runJob(job: { id: string; type: JobType; projectId: string; paylo
         } = payload;
 
         if (!productName || !productProblemSolved || !productAmazonAsin) {
+          await rollbackJobQuotaIfNeeded(jobId, job.projectId, payload);
           await markFailed(jobId, "Invalid payload: missing required customer research fields");
           return;
         }
@@ -196,6 +229,7 @@ async function runJob(job: { id: string; type: JobType; projectId: string; paylo
   } catch (e: any) {
     const msg = String(e?.message ?? e ?? "Unknown error");
     try {
+      await rollbackJobQuotaIfNeeded(jobId, job.projectId, payload);
       await markFailed(jobId, msg);
     } catch (updateErr) {
       console.error("[jobRunner] failed to persist job failure", { jobId, updateErr });
