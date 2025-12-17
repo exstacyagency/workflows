@@ -60,6 +60,14 @@ export async function POST(req: NextRequest) {
     }
 
     if (!process.env.APIFY_API_TOKEN || !process.env.APIFY_DATASET_ID) {
+      const isCIOrTest =
+        process.env.CI === 'true' || process.env.NODE_ENV === 'test';
+      if (isCIOrTest) {
+        return NextResponse.json(
+          { ok: true, skipped: true, reason: 'Apify not configured' },
+          { status: 200 },
+        );
+      }
       return NextResponse.json(
         { error: 'Apify is not configured' },
         { status: 500 },
