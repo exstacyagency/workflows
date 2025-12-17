@@ -13,7 +13,12 @@ function devAdminDisabled() {
 export async function POST(req: NextRequest) {
   if (devAdminDisabled()) return new NextResponse(null, { status: 404 });
 
-  const sessionUserId = await getSessionUserId();
+  let sessionUserId: string | null = null;
+  try {
+    sessionUserId = await getSessionUserId();
+  } catch (err) {
+    console.error("reset-usage auth failed", err);
+  }
   if (!sessionUserId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -58,7 +63,13 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     console.error("reset-usage failed", err);
-    return NextResponse.json({ error: "Failed to reset usage" }, { status: 500 });
+    const payload: { error: string; detail?: string } = {
+      error: "Failed to reset usage",
+    };
+    if (process.env.NODE_ENV !== "production") {
+      payload.detail = String((err as any)?.message ?? err);
+    }
+    return NextResponse.json(payload, { status: 500 });
   }
 
   return NextResponse.json(
