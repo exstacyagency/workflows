@@ -1,14 +1,12 @@
-// app/api/jobs/pattern-analysis/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '../../../../lib/prisma';
 import { JobType, JobStatus } from '@prisma/client';
-import { runPatternAnalysis } from '../../../../lib/adPatternAnalysisService';
 import { requireProjectOwner } from '../../../../lib/requireProjectOwner';
 import { ProjectJobSchema, parseJson } from '../../../../lib/validation/jobs';
 import { checkRateLimit } from '../../../../lib/rateLimiter';
 import { logAudit } from '../../../../lib/logger';
 import { getSessionUserId } from '../../../../lib/getSessionUserId';
-import { enforceUserConcurrency, findIdempotentJob } from '../../../../lib/jobGuards';
+import { enforceUserConcurrency } from '../../../../lib/jobGuards';
 import { assertMinPlan, UpgradeRequiredError } from '../../../../lib/billing/requirePlan';
 import { reserveQuota, rollbackQuota, QuotaExceededError } from '../../../../lib/billing/usage';
 
@@ -53,13 +51,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
-    if (!process.env.ANTHROPIC_API_KEY) {
-      return NextResponse.json(
-        { error: 'Anthropic is not configured' },
-        { status: 500 },
-      );
-    }
-
     const concurrency = await enforceUserConcurrency(userId);
     if (!concurrency.allowed) {
       return NextResponse.json(
@@ -68,13 +59,54 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const idempotencyKey = JSON.stringify([projectId, JobType.PATTERN_ANALYSIS]);
-    const existing = await findIdempotentJob({
-      projectId,
-      type: JobType.PATTERN_ANALYSIS,
-      idempotencyKey,
+    const customerResearchJob = await prisma.job.findFirst({
+      where: { projectId, type: JobType.CUSTOMER_RESEARCH, status: JobStatus.COMPLETED },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true },
     });
-    if (existing) {
+    const adPerformanceJob = await prisma.job.findFirst({
+      where: { projectId, type: JobType.AD_PERFORMANCE, status: JobStatus.COMPLETED },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true },
+    });
+
+    const missing: string[] = [];
+    if (!customerResearchJob?.id) missing.push('CUSTOMER_RESEARCH');
+    if (!adPerformanceJob?.id) missing.push('AD_PERFORMANCE');
+    if (missing.length > 0) {
+      return NextResponse.json(
+        { error: 'Missing dependencies', missing },
+        { status: 400 },
+      );
+    }
+    if (!customerResearchJob || !adPerformanceJob) {
+      return NextResponse.json(
+        { error: 'Missing dependencies', missing: ['CUSTOMER_RESEARCH', 'AD_PERFORMANCE'] },
+        { status: 400 },
+      );
+    }
+
+    const idempotencyKey = JSON.stringify([
+      projectId,
+      JobType.PATTERN_ANALYSIS,
+      customerResearchJob.id,
+      adPerformanceJob.id,
+    ]);
+
+    const existing = await prisma.job.findFirst({
+      where: {
+        projectId,
+        type: JobType.PATTERN_ANALYSIS,
+        AND: [
+          { payload: { path: ['customerResearchJobId'], equals: customerResearchJob.id } },
+          { payload: { path: ['adPerformanceJobId'], equals: adPerformanceJob.id } },
+        ],
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true },
+    });
+
+    if (existing?.id) {
       return NextResponse.json({ jobId: existing.id, reused: true }, { status: 200 });
     }
 
@@ -105,15 +137,18 @@ export async function POST(req: NextRequest) {
         projectId,
         type: JobType.PATTERN_ANALYSIS,
         status: JobStatus.PENDING,
-        payload: { ...parsed.data, idempotencyKey },
+        payload: {
+          projectId,
+          customerResearchJobId: customerResearchJob.id,
+          adPerformanceJobId: adPerformanceJob.id,
+          idempotencyKey,
+          quotaReservation: reservation
+            ? { periodKey: reservation.periodKey, metric: 'researchQueries', amount: 1 }
+            : null,
+        },
       },
     });
     jobId = job.id;
-
-    await prisma.job.update({
-      where: { id: jobId },
-      data: { status: JobStatus.RUNNING },
-    });
 
     await logAudit({
       userId,
@@ -126,51 +161,7 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    try {
-      const result = await runPatternAnalysis({ projectId, jobId });
-
-      await prisma.job.update({
-        where: { id: jobId },
-        data: {
-          status: JobStatus.COMPLETED,
-          resultSummary: `Pattern analysis complete (resultId=${result.id})`,
-        },
-      });
-
-      return NextResponse.json(
-        { jobId, resultId: result.id },
-        { status: 200 },
-      );
-    } catch (err: any) {
-      if (reservation) {
-        await rollbackQuota(userId, reservation.periodKey, 'researchQueries', 1);
-        reservation = null;
-      }
-      await prisma.job.update({
-        where: { id: jobId },
-        data: {
-          status: JobStatus.FAILED,
-          error: err?.message ?? 'Unknown error',
-        },
-      });
-
-      await logAudit({
-        userId,
-        projectId,
-        jobId,
-        action: 'job.error',
-        ip,
-        metadata: {
-          type: 'pattern-analysis',
-          error: String(err?.message ?? err),
-        },
-      });
-
-      return NextResponse.json(
-        { error: err?.message ?? 'Pattern analysis failed' },
-        { status: 500 },
-      );
-    }
+    return NextResponse.json({ jobId, started: false }, { status: 200 });
   } catch (err: any) {
     if (reservation) {
       await rollbackQuota(userId, reservation.periodKey, 'researchQueries', 1);

@@ -2,7 +2,7 @@ import { JobStatus, JobType } from "@prisma/client";
 
 import { runCustomerResearch } from "../services/customerResearchService.ts";
 import { runAdRawCollection } from "../lib/adRawCollectionService.ts";
-import { runPatternAnalysis } from "../lib/adPatternAnalysisService.ts";
+import { runPatternAnalysis } from "../lib/patternAnalysisService.ts";
 import { startScriptGenerationJob } from "../lib/scriptGenerationService.ts";
 import prisma from "../lib/prisma.ts";
 import { rollbackQuota } from "../lib/billing/usage.ts";
@@ -81,7 +81,7 @@ async function markFailed(jobId: string, errMsg: string) {
     data: {
       status: JobStatus.FAILED,
       error: errMsg,
-      payload: { ...payload, result: { ok: false, error: errMsg } },
+      payload: { ...payload, error: errMsg, result: { ok: false, error: errMsg } },
     },
   });
 }
@@ -198,12 +198,24 @@ async function runJob(job: { id: string; type: JobType; projectId: string; paylo
       }
 
       case JobType.PATTERN_ANALYSIS: {
-        const cfg = await handleProviderConfig(jobId, "Anthropic", ["ANTHROPIC_API_KEY"]);
-        if (!cfg.ok) return;
+        const { customerResearchJobId, adPerformanceJobId } = payload;
+        if (!customerResearchJobId || !adPerformanceJobId) {
+          await markFailed(jobId, "Invalid payload: missing customerResearchJobId or adPerformanceJobId");
+          return;
+        }
 
-        const result = await runPatternAnalysis({ projectId: job.projectId, jobId });
+        await prisma.job.update({
+          where: { id: jobId },
+          data: { status: JobStatus.RUNNING },
+        });
 
-        await markCompleted(jobId, { ok: true, result });
+        const result = await runPatternAnalysis({
+          projectId: job.projectId,
+          customerResearchJobId: String(customerResearchJobId),
+          adPerformanceJobId: String(adPerformanceJobId),
+        });
+
+        await markCompleted(jobId, result, `Patterns: ${result.patterns.topHooks.length} hooks`);
         return;
       }
 
