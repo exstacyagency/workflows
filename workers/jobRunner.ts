@@ -173,8 +173,13 @@ async function runJob(job: { id: string; type: JobType; projectId: string; paylo
       }
 
       case JobType.AD_PERFORMANCE: {
-        const cfg = await handleProviderConfig(jobId, "Apify", ["APIFY_API_TOKEN", "APIFY_DATASET_ID"]);
-        if (!cfg.ok) return;
+        const cfgToken = await handleProviderConfig(jobId, "Apify", ["APIFY_API_TOKEN"]);
+        if (!cfgToken.ok) return;
+        const datasetId = (process.env.APIFY_DATASET_ID ?? "").trim();
+        if (!datasetId) {
+          const cfgActor = await handleProviderConfig(jobId, "Apify", ["APIFY_ACTOR_ID"]);
+          if (!cfgActor.ok) return;
+        }
 
         const { industryCode } = payload;
         if (!industryCode) {
@@ -188,11 +193,7 @@ async function runJob(job: { id: string; type: JobType; projectId: string; paylo
           jobId,
         });
 
-        await markCompleted(
-          jobId,
-          { ok: true, ...result },
-          `Phase 2A: saved ${result.totalSaved}/${result.totalValidated} ads (raw=${result.totalRaw})`,
-        );
+        await markCompleted(jobId, { ok: true, apify: result.apify, ads: result.ads }, `Ads: ${result.apify.itemCount}`);
         return;
       }
 
