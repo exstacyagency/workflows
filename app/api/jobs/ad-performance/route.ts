@@ -59,7 +59,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
-    if (!process.env.APIFY_API_TOKEN || !process.env.APIFY_DATASET_ID) {
+    const hasApifyToken = !!process.env.APIFY_API_TOKEN && process.env.APIFY_API_TOKEN.trim().length > 0;
+    const hasDatasetId = !!process.env.APIFY_DATASET_ID && process.env.APIFY_DATASET_ID.trim().length > 0;
+    const hasActorId = !!process.env.APIFY_ACTOR_ID && process.env.APIFY_ACTOR_ID.trim().length > 0;
+    if (!hasApifyToken || (!hasDatasetId && !hasActorId)) {
       return NextResponse.json(
         { error: 'Apify is not configured' },
         { status: 500 },
@@ -133,22 +136,11 @@ export async function POST(req: NextRequest) {
         jobId: job.id,
       });
     } catch (err: any) {
-      const message = String(err?.message ?? err);
-      try {
-        await prisma.job.update({
-          where: { id: job.id },
-          data: {
-            status: JobStatus.FAILED,
-            payload: { projectId, industryCode, idempotencyKey, error: message },
-          },
-        });
-      } catch (updateErr) {
-        console.error('Failed to mark job failed', updateErr);
+      if (reservation) {
+        await rollbackQuota(userId, reservation.periodKey, 'researchQueries', 1);
+        reservation = null;
       }
-      return NextResponse.json(
-        { jobId: job.id, started: false, error: message },
-        { status: 200 },
-      );
+      throw err;
     }
 
     try {
