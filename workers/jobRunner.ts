@@ -1,13 +1,44 @@
 import { JobStatus, JobType } from "@prisma/client";
+import fs from "node:fs";
+import path from "node:path";
 
 import { runCustomerResearch } from "../services/customerResearchService.ts";
 import { runAdRawCollection } from "../lib/adRawCollectionService.ts";
 import { runPatternAnalysis } from "../lib/patternAnalysisService.ts";
 import { startScriptGenerationJob } from "../lib/scriptGenerationService.ts";
 import { startVideoPromptGenerationJob } from "../lib/videoPromptGenerationService.ts";
-import { runVideoImageGeneration } from "../lib/videoImageGenerationService.ts";
+import { runVideoImageGenerationJob } from "../lib/videoImageGenerationService.ts";
 import prisma from "../lib/prisma.ts";
 import { rollbackQuota } from "../lib/billing/usage.ts";
+
+function loadDotEnvFile(filename: string) {
+  const filePath = path.join(process.cwd(), filename);
+  if (!fs.existsSync(filePath)) return;
+  const raw = fs.readFileSync(filePath, "utf8");
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eq = trimmed.indexOf("=");
+    if (eq === -1) continue;
+    let key = trimmed.slice(0, eq).trim();
+    let value = trimmed.slice(eq + 1).trim();
+    if (key.startsWith("export ")) key = key.slice("export ".length).trim();
+    if (!key) continue;
+    if (process.env[key] !== undefined) continue;
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    process.env[key] = value;
+  }
+}
+
+if (process.env.NODE_ENV !== "production") {
+  loadDotEnvFile(".env.local");
+  loadDotEnvFile(".env");
+}
 
 const POLL_MS = Number(process.env.WORKER_POLL_MS ?? 2000);
 const RUN_ONCE = process.env.RUN_ONCE === "1";
@@ -251,41 +282,31 @@ async function runJob(job: { id: string; type: JobType; projectId: string; paylo
       }
 
       case JobType.VIDEO_PROMPT_GENERATION: {
-        const payloadStoryboardId = String(payload?.storyboardId ?? "").trim();
-        const scriptId = String(payload?.scriptId ?? "").trim();
-
-        let storyboardId = payloadStoryboardId;
-        let storyboardScriptId = scriptId;
+        const storyboardId = String(payload?.storyboardId ?? "").trim();
         if (!storyboardId) {
-          if (!scriptId) {
-            await markFailed(jobId, "Invalid payload: missing storyboardId or scriptId");
-            return;
-          }
-          const storyboard = await prisma.storyboard.findFirst({
-            where: { projectId: job.projectId, scriptId },
-            orderBy: { createdAt: "desc" },
-            select: { id: true, scriptId: true },
-          });
-          if (!storyboard?.id) {
-            await markFailed(jobId, `Storyboard not found for scriptId=${scriptId}`);
-            return;
-          }
-          storyboardId = storyboard.id;
-          storyboardScriptId = storyboard.scriptId ?? scriptId;
-        } else if (!storyboardScriptId) {
-          const storyboard = await prisma.storyboard.findUnique({
-            where: { id: storyboardId },
-            select: { scriptId: true },
-          });
-          storyboardScriptId = storyboard?.scriptId ?? "";
+          await markFailed(jobId, "Invalid payload: missing storyboardId");
+          return;
+        }
+
+        const storyboard = await prisma.storyboard.findUnique({
+          where: { id: storyboardId },
+          select: { id: true, scriptId: true },
+        });
+        if (!storyboard?.id) {
+          await markFailed(jobId, `Storyboard not found for id=${storyboardId}`);
+          return;
         }
 
         const result = await startVideoPromptGenerationJob({ storyboardId, jobId });
-        await markCompleted(jobId, { ok: true, ...result });
+        await markCompleted(
+          jobId,
+          result,
+          `Video prompts generated: ${result.processed}/${result.sceneCount} scenes`,
+        );
 
         const chainType = String((payload as any)?.chainNext?.type ?? "");
         const rootKey = String(job.idempotencyKey ?? (payload as any)?.idempotencyKey ?? "").trim();
-        if (chainType === "VIDEO_IMAGE_GENERATION" && rootKey && storyboardScriptId) {
+        if (chainType === "VIDEO_IMAGE_GENERATION" && rootKey) {
           const imageKey = `${rootKey}:images`;
           try {
             await prisma.job.create({
@@ -295,9 +316,8 @@ async function runJob(job: { id: string; type: JobType; projectId: string; paylo
                 status: JobStatus.PENDING,
                 idempotencyKey: imageKey,
                 payload: {
-                  projectId: job.projectId,
-                  scriptId: storyboardScriptId,
                   idempotencyKey: imageKey,
+                  storyboardId: storyboard.id,
                   dependsOnJobId: jobId,
                 },
               },
@@ -316,30 +336,52 @@ async function runJob(job: { id: string; type: JobType; projectId: string; paylo
 
       case JobType.VIDEO_IMAGE_GENERATION: {
         const cfg = await handleProviderConfig(jobId, "KIE", ["KIE_API_KEY"]);
-        if (!cfg.ok) return;
+        if (!cfg.ok) {
+          if (!cfg.skipped) {
+            await appendResultSummary(jobId, "Video images failed: KIE not configured");
+          }
+          return;
+        }
 
-        const scriptId = String(payload?.scriptId ?? "").trim();
-        if (!scriptId) {
-          await markFailed(jobId, "Invalid payload: missing scriptId");
+        const storyboardId = String(payload?.storyboardId ?? "").trim();
+        if (!storyboardId) {
+          const msg = "Invalid payload: missing storyboardId";
+          await markFailed(jobId, msg);
+          await appendResultSummary(jobId, `Video images failed: ${msg}`);
           return;
         }
 
         const storyboard = await prisma.storyboard.findFirst({
-          where: { projectId: job.projectId, scriptId },
+          where: { projectId: job.projectId, id: storyboardId },
           orderBy: { createdAt: "desc" },
           select: { id: true },
         });
         if (!storyboard?.id) {
-          await markFailed(jobId, `Storyboard not found for scriptId=${scriptId}`);
+          const msg = `Storyboard not found for id=${storyboardId}`;
+          await markFailed(jobId, msg);
+          await appendResultSummary(jobId, `Video images failed: ${msg}`);
           return;
         }
 
-        const result = await runVideoImageGeneration({ storyboardId: storyboard.id, jobId });
-        await markCompleted(
-          jobId,
-          { ok: true, ...result },
-          `Video image generation complete: ${result.processed}/${result.sceneCount} scenes processed`,
-        );
+        try {
+          const result = await runVideoImageGenerationJob({ storyboardId: storyboard.id, jobId });
+          await markCompleted(
+            jobId,
+            {
+              ok: true,
+              storyboardId: result.storyboardId,
+              scenesUpdated: result.scenesUpdated,
+              firstFrameUrl: result.firstFrameUrl,
+              lastFrameUrl: result.lastFrameUrl,
+            },
+            `Video frames saved: ${result.scenesUpdated}/${result.sceneCount} scenes`,
+          );
+        } catch (e: any) {
+          const msg = String(e?.message ?? e ?? "Unknown error");
+          await rollbackJobQuotaIfNeeded(jobId, job.projectId, payload);
+          await markFailed(jobId, msg);
+          await appendResultSummary(jobId, `Video images failed: ${msg}`);
+        }
         return;
       }
 

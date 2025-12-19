@@ -1,6 +1,5 @@
 // app/api/jobs/video-images/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { startVideoImageGenerationJob } from '../../../../lib/videoImageGenerationService';
 import prisma from '../../../../lib/prisma';
 import { requireProjectOwner } from '../../../../lib/requireProjectOwner';
 import { StoryboardJobSchema, parseJson } from '../../../../lib/validation/jobs';
@@ -19,8 +18,8 @@ export async function POST(req: NextRequest) {
   }
   let projectId: string | null = null;
   let jobId: string | null = null;
-  let reservation: { periodKey: string; metric: string; amount: number } | null =
-    null;
+  let reservationPeriodKey: string | null = null;
+  let reservationRolledBack = false;
   const ip =
     req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null;
   let planId: 'FREE' | 'GROWTH' | 'SCALE' = 'FREE';
@@ -54,6 +53,9 @@ export async function POST(req: NextRequest) {
         script: {
           include: { project: true },
         },
+        _count: {
+          select: { scenes: true },
+        },
       },
     });
 
@@ -65,6 +67,7 @@ export async function POST(req: NextRequest) {
     }
 
     projectId = storyboard.script.project.id;
+    const sceneCount = storyboard._count?.scenes ?? 0;
     const auth = await requireProjectOwner(projectId);
     if (auth.error) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
@@ -75,13 +78,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { error: concurrency.reason },
         { status: 429 },
-      );
-    }
-
-    if (!process.env.KIE_API_KEY) {
-      return NextResponse.json(
-        { error: 'KIE is not configured' },
-        { status: 500 },
       );
     }
 
@@ -106,35 +102,65 @@ export async function POST(req: NextRequest) {
       idempotencyKey,
     });
     if (existing) {
-      return NextResponse.json({ jobId: existing.id, reused: true }, { status: 200 });
+      return NextResponse.json(
+        { jobId: existing.id, reused: true },
+        { status: 200 },
+      );
     }
 
     try {
-      reservation = await reserveQuota(userId, planId, 'imageJobs', 1);
+      const reserved = await reserveQuota(userId, planId, 'videoJobs', 1);
+      reservationPeriodKey = (reserved as any).periodKey;
     } catch (err: any) {
       if (err instanceof QuotaExceededError) {
         return NextResponse.json(
-          { error: 'Quota exceeded', metric: 'imageJobs', limit: err.limit, used: err.used },
+          { error: 'Quota exceeded', metric: 'videoJobs', limit: err.limit, used: err.used },
           { status: 429 },
         );
       }
       throw err;
     }
 
-    const job = await prisma.job.create({
-      data: {
-        projectId,
-        type: JobType.VIDEO_IMAGE_GENERATION,
-        status: JobStatus.PENDING,
-        payload: { storyboardId, idempotencyKey },
-      },
-    });
-    jobId = job.id;
+    try {
+      const job = await prisma.job.create({
+        data: {
+          projectId,
+          type: JobType.VIDEO_IMAGE_GENERATION,
+          status: JobStatus.PENDING,
+          idempotencyKey,
+          payload: { storyboardId, idempotencyKey },
+        },
+      });
+      jobId = job.id;
+    } catch (err: any) {
+      const code = String(err?.code ?? '');
+      const message = String(err?.message ?? '');
+      const isUnique = code === 'P2002' || message.toLowerCase().includes('unique constraint');
+      if (!isUnique) throw err;
 
-    const result = await startVideoImageGenerationJob({
-      storyboardId,
-      jobId: job.id,
-    });
+      if (reservationPeriodKey) {
+        await rollbackQuota(userId, reservationPeriodKey, 'videoJobs', 1);
+        reservationRolledBack = true;
+      }
+
+      const raceExisting = await prisma.job.findFirst({
+        where: {
+          projectId,
+          type: JobType.VIDEO_IMAGE_GENERATION,
+          idempotencyKey,
+        },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true },
+      });
+      if (raceExisting?.id) {
+        return NextResponse.json(
+          { jobId: raceExisting.id, reused: true },
+          { status: 200 },
+        );
+      }
+
+      throw err;
+    }
 
     await logAudit({
       userId,
@@ -147,11 +173,15 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    return NextResponse.json(result, { status: 200 });
+    return NextResponse.json(
+      { jobId, storyboardId, sceneCount },
+      { status: 200 },
+    );
   } catch (err: any) {
     console.error(err);
-    if (reservation) {
-      await rollbackQuota(userId, reservation.periodKey, 'imageJobs', 1);
+    if (reservationPeriodKey && !reservationRolledBack) {
+      await rollbackQuota(userId, reservationPeriodKey, 'videoJobs', 1);
+      reservationRolledBack = true;
     }
     await logAudit({
       userId,
