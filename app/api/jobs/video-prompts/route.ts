@@ -46,35 +46,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid request body', details: 'Invalid JSON body' }, { status: 400 });
     }
 
-    const BodySchema = z
-      .object({
-        storyboardId: z.string().min(1).optional(),
-        projectId: z.string().min(1).optional(),
-        scriptId: z.string().min(1).optional(),
-      })
-      .superRefine((data, ctx) => {
-        const hasStoryboard = !!data.storyboardId;
-        const hasProjectScript = !!data.projectId && !!data.scriptId;
-        const hasPartialProjectScript =
-          (!!data.projectId && !data.scriptId) || (!data.projectId && !!data.scriptId);
-
-        if (hasStoryboard && (data.projectId || data.scriptId)) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: 'Provide either storyboardId or projectId+scriptId',
-          });
-        } else if (hasPartialProjectScript) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: 'Provide both projectId and scriptId',
-          });
-        } else if (!hasStoryboard && !hasProjectScript) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: 'Provide storyboardId or projectId+scriptId',
-          });
-        }
-      });
+    const BodySchema = z.object({
+      storyboardId: z.string().min(1),
+    });
 
     const parsed = BodySchema.safeParse(body);
     if (!parsed.success) {
@@ -84,94 +58,23 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    let storyboardId = parsed.data.storyboardId ?? null;
-    const bodyProjectId = parsed.data.projectId ?? null;
-    const scriptId = parsed.data.scriptId ?? null;
+    const storyboardId = parsed.data.storyboardId;
 
-    if (storyboardId) {
-      const storyboard = await prisma.storyboard.findUnique({
-        where: { id: storyboardId },
-        select: { id: true, projectId: true },
-      });
-      if (!storyboard) {
-        return NextResponse.json(
-          { error: 'Storyboard or project not found' },
-          { status: 404 },
-        );
-      }
-      projectId = storyboard.projectId;
-    } else if (bodyProjectId && scriptId) {
-      const script = await prisma.script.findUnique({
-        where: { id: scriptId },
-        select: { id: true, projectId: true },
-      });
-      if (!script || script.projectId !== bodyProjectId) {
-        return NextResponse.json(
-          { error: 'Script or project not found' },
-          { status: 404 },
-        );
-      }
-
-      projectId = bodyProjectId;
-
-      const auth = await requireProjectOwner(projectId);
-      if (auth.error) {
-        return NextResponse.json({ error: auth.error }, { status: auth.status });
-      }
-
-      let storyboard = await prisma.storyboard.findFirst({
-        where: { scriptId, projectId },
-        orderBy: { createdAt: 'desc' },
-        select: { id: true },
-      });
-
-      if (!storyboard) {
-        storyboard = await prisma.storyboard.create({
-          data: { projectId, scriptId },
-          select: { id: true },
-        });
-      }
-
-      storyboardId = storyboard.id;
-
-      const existingScene = await prisma.storyboardScene.findFirst({
-        where: { storyboardId },
-        select: { id: true },
-      });
-      if (!existingScene) {
-        await prisma.storyboardScene.create({
-          data: {
-            storyboardId,
-            sceneNumber: 1,
-            durationSec: 8,
-            aspectRatio: '9:16',
-            status: 'pending',
-            sceneFull: '',
-            rawJson: {},
-          },
-        });
-      }
-    }
-
-    if (!storyboardId) {
+    const storyboard = await prisma.storyboard.findUnique({
+      where: { id: storyboardId },
+      select: { id: true, projectId: true },
+    });
+    if (!storyboard) {
       return NextResponse.json(
-        { error: 'Invalid request body', details: 'Provide storyboardId or projectId+scriptId' },
-        { status: 400 },
-      );
-    }
-
-    if (!projectId) {
-      return NextResponse.json(
-        { error: 'Project not found' },
+        { error: 'Storyboard or project not found' },
         { status: 404 },
       );
     }
+    projectId = storyboard.projectId;
 
-    if (parsed.data.storyboardId) {
-      const auth = await requireProjectOwner(projectId);
-      if (auth.error) {
-        return NextResponse.json({ error: auth.error }, { status: auth.status });
-      }
+    const auth = await requireProjectOwner(projectId);
+    if (auth.error) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
     const concurrency = await enforceUserConcurrency(userId);
