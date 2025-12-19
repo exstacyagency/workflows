@@ -6,6 +6,8 @@ import { getSessionUserId } from "../../../../lib/getSessionUserId";
 import { requireProjectOwner } from "../../../../lib/requireProjectOwner";
 import { assertMinPlan, UpgradeRequiredError } from "../../../../lib/billing/requirePlan";
 import { JobStatus, JobType } from "@prisma/client";
+import { getRequestId } from "../../../../lib/observability";
+import { findIdempotentJob } from "../../../../lib/jobGuards";
 
 const BodySchema = z.object({
   projectId: z.string().min(1),
@@ -13,78 +15,133 @@ const BodySchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
-  const userId = await getSessionUserId();
-  if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
+  const requestId = getRequestId(req) ?? (globalThis.crypto?.randomUUID?.() ?? `req_${Date.now()}`);
   try {
-    await assertMinPlan(userId, "GROWTH");
-  } catch (err: any) {
-    if (err instanceof UpgradeRequiredError) {
+    const userId = await getSessionUserId();
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    try {
+      await assertMinPlan(userId, "GROWTH");
+    } catch (err: any) {
+      if (err instanceof UpgradeRequiredError) {
+        return NextResponse.json(
+          { error: "Upgrade required", requiredPlan: err.requiredPlan },
+          { status: 402 },
+        );
+      }
+      console.error(err);
+      return NextResponse.json({ error: "Billing check failed" }, { status: 500 });
+    }
+
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+
+    const parsed = BodySchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.message }, { status: 400 });
+    }
+
+    const { projectId, scriptId } = parsed.data;
+
+    const auth = await requireProjectOwner(projectId);
+    if (auth.error) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+
+    const idempotencyKey = JSON.stringify([
+      projectId,
+      "VIDEO_GENERATION",
+      null,
+      scriptId,
+    ]);
+
+    const inflight = await findIdempotentJob({
+      projectId,
+      type: JobType.VIDEO_PROMPT_GENERATION,
+      idempotencyKey,
+    });
+    if (inflight?.id) {
+      return NextResponse.json({ ok: true, jobId: inflight.id, reused: true }, { status: 200 });
+    }
+
+    const existing = await prisma.job.findFirst({
+      where: {
+        projectId,
+        type: JobType.VIDEO_PROMPT_GENERATION,
+        idempotencyKey,
+      },
+      orderBy: { createdAt: "desc" },
+      select: { id: true },
+    });
+
+    if (existing?.id) {
+      return NextResponse.json({ ok: true, jobId: existing.id, reused: true }, { status: 200 });
+    }
+
+    let jobId: string | null = null;
+    try {
+      const job = await prisma.job.create({
+        data: {
+          projectId,
+          type: JobType.VIDEO_PROMPT_GENERATION,
+          status: JobStatus.PENDING,
+          idempotencyKey,
+          payload: {
+            projectId,
+            scriptId,
+            idempotencyKey,
+            chainNext: { type: "VIDEO_IMAGE_GENERATION" },
+          },
+        },
+      });
+      jobId = job.id;
+    } catch (err: any) {
+      const code = String(err?.code ?? "");
+      const message = String(err?.message ?? "");
+      const isUnique = code === "P2002" || message.toLowerCase().includes("unique constraint");
+      if (!isUnique) throw err;
+
+      const raced = await prisma.job.findFirst({
+        where: {
+          projectId,
+          type: JobType.VIDEO_PROMPT_GENERATION,
+          idempotencyKey,
+        },
+        orderBy: { createdAt: "desc" },
+        select: { id: true },
+      });
+      if (raced?.id) {
+        return NextResponse.json({ ok: true, jobId: raced.id, reused: true }, { status: 200 });
+      }
       return NextResponse.json(
-        { error: "Upgrade required", requiredPlan: err.requiredPlan },
-        { status: 402 },
+        {
+          error: "Video generation failed",
+          detail: "Unique constraint but job not found",
+          requestId,
+        },
+        { status: 500 },
       );
     }
+
+    return NextResponse.json(
+      { ok: true, jobId, stage: "VIDEO_PROMPTS_ENQUEUED" },
+      { status: 200 },
+    );
+  } catch (err: any) {
     console.error(err);
-    return NextResponse.json({ error: "Billing check failed" }, { status: 500 });
-  }
-
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-  }
-
-  const parsed = BodySchema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.message }, { status: 400 });
-  }
-
-  const { projectId, scriptId } = parsed.data;
-
-  const auth = await requireProjectOwner(projectId);
-  if (auth.error) {
-    return NextResponse.json({ error: auth.error }, { status: auth.status });
-  }
-
-  const idempotencyKey = `video-generation:${projectId}:${scriptId}`;
-
-  const existing = await prisma.job.findFirst({
-    where: {
-      projectId,
-      type: JobType.VIDEO_PROMPT_GENERATION,
-      idempotencyKey,
-      status: { in: [JobStatus.PENDING, JobStatus.RUNNING, JobStatus.COMPLETED] },
-    },
-    orderBy: { createdAt: "desc" },
-    select: { id: true },
-  });
-
-  if (existing?.id) {
-    return NextResponse.json({ ok: true, jobId: existing.id, reused: true }, { status: 200 });
-  }
-
-  const job = await prisma.job.create({
-    data: {
-      projectId,
-      type: JobType.VIDEO_PROMPT_GENERATION,
-      status: JobStatus.PENDING,
-      idempotencyKey,
-      payload: {
-        projectId,
-        scriptId,
-        idempotencyKey,
-        chainNext: { type: "VIDEO_IMAGE_GENERATION" },
+    return NextResponse.json(
+      {
+        error: "Video generation failed",
+        detail: String(err?.message ?? err),
+        requestId,
       },
-    },
-  });
-
-  return NextResponse.json(
-    { ok: true, jobId: job.id, stage: "VIDEO_PROMPTS_ENQUEUED" },
-    { status: 200 },
-  );
+      { status: 500 },
+    );
+  }
 }
-
