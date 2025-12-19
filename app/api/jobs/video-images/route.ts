@@ -18,8 +18,8 @@ export async function POST(req: NextRequest) {
   }
   let projectId: string | null = null;
   let jobId: string | null = null;
-  let reservation: { periodKey: string; metric: string; amount: number } | null =
-    null;
+  let reservationPeriodKey: string | null = null;
+  let reservationRolledBack = false;
   const ip =
     req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null;
   let planId: 'FREE' | 'GROWTH' | 'SCALE' = 'FREE';
@@ -109,7 +109,8 @@ export async function POST(req: NextRequest) {
     }
 
     try {
-      reservation = await reserveQuota(userId, planId, 'videoJobs', 1);
+      const reserved = await reserveQuota(userId, planId, 'videoJobs', 1);
+      reservationPeriodKey = (reserved as any).periodKey;
     } catch (err: any) {
       if (err instanceof QuotaExceededError) {
         return NextResponse.json(
@@ -137,9 +138,9 @@ export async function POST(req: NextRequest) {
       const isUnique = code === 'P2002' || message.toLowerCase().includes('unique constraint');
       if (!isUnique) throw err;
 
-      if (reservation) {
-        await rollbackQuota(userId, reservation.periodKey, 'videoJobs', 1);
-        reservation = null;
+      if (reservationPeriodKey) {
+        await rollbackQuota(userId, reservationPeriodKey, 'videoJobs', 1);
+        reservationRolledBack = true;
       }
 
       const raceExisting = await prisma.job.findFirst({
@@ -178,8 +179,9 @@ export async function POST(req: NextRequest) {
     );
   } catch (err: any) {
     console.error(err);
-    if (reservation) {
-      await rollbackQuota(userId, reservation.periodKey, 'videoJobs', 1);
+    if (reservationPeriodKey && !reservationRolledBack) {
+      await rollbackQuota(userId, reservationPeriodKey, 'videoJobs', 1);
+      reservationRolledBack = true;
     }
     await logAudit({
       userId,
