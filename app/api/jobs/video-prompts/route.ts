@@ -1,9 +1,9 @@
 // app/api/jobs/video-prompts/route.ts
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { startVideoPromptGenerationJob } from '../../../../lib/videoPromptGenerationService';
-import prisma from '../../../../lib/prisma';
+import { prisma } from '../../../../lib/prisma';
 import { requireProjectOwner } from '../../../../lib/requireProjectOwner';
-import { StoryboardJobSchema, parseJson } from '../../../../lib/validation/jobs';
 import { checkRateLimit } from '../../../../lib/rateLimiter';
 import { logAudit } from '../../../../lib/logger';
 import { getSessionUserId } from '../../../../lib/getSessionUserId';
@@ -39,34 +39,120 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const parsed = await parseJson(req, StoryboardJobSchema);
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: 'Invalid request body', details: 'Invalid JSON body' }, { status: 400 });
+    }
+
+    const BodySchema = z
+      .object({
+        storyboardId: z.string().min(1).optional(),
+        scriptId: z.string().min(1).optional(),
+      })
+      .superRefine((data, ctx) => {
+        if (!data.storyboardId && !data.scriptId) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Provide storyboardId or scriptId',
+          });
+        }
+      });
+
+    const parsed = BodySchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(
-        { error: parsed.error, details: parsed.details },
+        { error: 'Invalid request body', details: parsed.error.flatten() },
         { status: 400 },
       );
     }
-    const { storyboardId } = parsed.data;
 
-    const storyboard = await prisma.storyboard.findUnique({
-      where: { id: storyboardId },
-      include: {
-        script: {
-          include: { project: true },
+    let storyboardId = parsed.data.storyboardId ?? null;
+    const scriptId = parsed.data.scriptId ?? null;
+    let storyboard = null as any;
+    let authChecked = false;
+
+    if (storyboardId) {
+      storyboard = await prisma.storyboard.findUnique({
+        where: { id: storyboardId },
+        include: {
+          script: {
+            include: { project: true },
+          },
         },
-      },
-    });
-    if (!storyboard || !storyboard.script?.project) {
+      });
+      if (!storyboard || !storyboard.script?.project) {
+        return NextResponse.json(
+          { error: 'Storyboard or project not found' },
+          { status: 404 },
+        );
+      }
+
+      projectId = storyboard.script.project.id;
+    } else if (scriptId) {
+      const script = await prisma.script.findUnique({
+        where: { id: scriptId },
+        include: { project: true },
+      });
+      if (!script || !script.project) {
+        return NextResponse.json(
+          { error: 'Script or project not found' },
+          { status: 404 },
+        );
+      }
+
+      projectId = script.project.id;
+
+      const auth = await requireProjectOwner(projectId);
+      if (auth.error) {
+        return NextResponse.json({ error: auth.error }, { status: auth.status });
+      }
+      authChecked = true;
+
+      storyboard = await prisma.storyboard.findFirst({
+        where: { scriptId },
+        orderBy: { createdAt: 'desc' },
+        include: { script: { include: { project: true } } },
+      });
+
+      if (!storyboard) {
+        try {
+          storyboard = await prisma.storyboard.create({
+            data: { scriptId, rawJson: {}, status: 'READY' } as any,
+          });
+        } catch (e) {
+          return NextResponse.json(
+            {
+              error: 'Storyboard required',
+              detail: 'Create a storyboard first (storyboard-generation) or provide storyboardId.',
+            },
+            { status: 400 },
+          );
+        }
+      }
+      storyboardId = storyboard?.id ?? null;
+    }
+
+    if (!storyboardId) {
       return NextResponse.json(
-        { error: 'Storyboard or project not found' },
+        { error: 'Storyboard required', detail: 'Create a storyboard first (storyboard-generation) or provide storyboardId.' },
+        { status: 400 },
+      );
+    }
+
+    if (!projectId) {
+      return NextResponse.json(
+        { error: 'Project not found' },
         { status: 404 },
       );
     }
 
-    projectId = storyboard.script.project.id;
-    const auth = await requireProjectOwner(projectId);
-    if (auth.error) {
-      return NextResponse.json({ error: auth.error }, { status: auth.status });
+    if (!authChecked) {
+      const auth = await requireProjectOwner(projectId);
+      if (auth.error) {
+        return NextResponse.json({ error: auth.error }, { status: auth.status });
+      }
     }
 
     const concurrency = await enforceUserConcurrency(userId);
