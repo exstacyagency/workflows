@@ -29,6 +29,8 @@ type SceneImageResult = {
   firstFrameUrl: string;
   lastFrameUrl: string;
   videoPrompt?: string | null;
+  videoUrl?: string | null;
+  providerPayload?: Record<string, any> | null;
 };
 
 type SceneLike = {
@@ -65,13 +67,31 @@ async function createKieImageJob(prompt: string, imageInputs: string[]): Promise
     throw new Error(`KIE createTask failed: ${res.status} ${text}`);
   }
 
-  const data = (await res.json()) as { data?: { taskId?: string } };
-  const taskId = data?.data?.taskId;
-  if (!taskId) {
-    throw new Error('KIE createTask response missing taskId');
+  const text = await res.text();
+  let data: any = null;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error(`KIE createTask invalid JSON: ${text}`);
   }
 
-  return taskId;
+  const taskId =
+    data?.taskId ??
+    data?.id ??
+    data?.data?.taskId ??
+    data?.data?.id ??
+    data?.result?.taskId;
+  if (!taskId) {
+    let compact = "";
+    try {
+      compact = JSON.stringify(data);
+    } catch {
+      compact = String(data);
+    }
+    throw new Error(`KIE createTask missing taskId: ${compact}`);
+  }
+
+  return String(taskId);
 }
 
 async function pollKieJob(taskId: string, maxTries = 20, delayMs = 30000): Promise<string[]> {
@@ -160,12 +180,21 @@ async function generateFramesForScene(scene: SceneLike): Promise<SceneImageResul
     firstFrameUrl,
     lastFrameUrl,
     videoPrompt: scene.videoPrompt,
+    videoUrl: null,
+    providerPayload: {
+      provider: 'kie',
+      firstTaskId,
+      lastTaskId,
+      firstPrompt,
+      lastPrompt,
+      baseImages,
+    },
   };
 }
 
 async function persistSceneImages(storyboardId: string, results: SceneImageResult[]) {
   if (results.length === 0) {
-    return { scenesUpdated: 0 };
+    return { scenesUpdated: 0, updatedSceneIds: [] as string[] };
   }
 
   const scenes = await prisma.storyboardScene.findMany({
@@ -184,6 +213,7 @@ async function persistSceneImages(storyboardId: string, results: SceneImageResul
   const fallback = results[0];
   const useFallbackForAll = byNumber.size === 0;
   let scenesUpdated = 0;
+  const updatedSceneIds: string[] = [];
 
   for (const scene of scenes) {
     let match =
@@ -199,7 +229,7 @@ async function persistSceneImages(storyboardId: string, results: SceneImageResul
     if (!match) continue;
 
     const nextStatus =
-      scene.status === 'pending' || !scene.status ? 'frames_ready' : scene.status;
+      scene.status === 'pending' || !scene.status ? 'READY' : scene.status;
 
     const updateData: Record<string, any> = {};
     if (match.firstFrameUrl && match.firstFrameUrl !== scene.firstFrameUrl) {
@@ -211,8 +241,22 @@ async function persistSceneImages(storyboardId: string, results: SceneImageResul
     if (match.videoPrompt && match.videoPrompt !== scene.videoPrompt) {
       updateData.videoPrompt = match.videoPrompt;
     }
+    if (match.videoUrl && match.videoUrl !== scene.videoUrl) {
+      updateData.videoUrl = match.videoUrl;
+    }
     if (nextStatus !== scene.status) {
       updateData.status = nextStatus;
+    }
+    if (match.providerPayload) {
+      const raw = scene.rawJson;
+      const rawObject =
+        raw && typeof raw === 'object' && !Array.isArray(raw)
+          ? (raw as Record<string, any>)
+          : {};
+      updateData.rawJson = {
+        ...rawObject,
+        video_image_generation: match.providerPayload,
+      };
     }
 
     if (Object.keys(updateData).length === 0) continue;
@@ -222,9 +266,10 @@ async function persistSceneImages(storyboardId: string, results: SceneImageResul
       data: updateData,
     });
     scenesUpdated += 1;
+    updatedSceneIds.push(scene.id);
   }
 
-  return { scenesUpdated };
+  return { scenesUpdated, updatedSceneIds };
 }
 
 /**
@@ -252,7 +297,11 @@ export async function runVideoImageGenerationJob(args: {
   const results: SceneImageResult[] = [];
 
   for (const scene of storyboard.scenes) {
+    const hasPrompt = Boolean(scene.videoPrompt && scene.videoPrompt.trim().length > 0);
+    if (!hasPrompt) continue;
     const hasFrames = Boolean(scene.firstFrameUrl && scene.lastFrameUrl);
+    const needsStatus = scene.status === 'pending' || !scene.status;
+    if (hasFrames && !needsStatus) continue;
     if (hasFrames) {
       results.push({
         sceneId: scene.id,
@@ -260,6 +309,7 @@ export async function runVideoImageGenerationJob(args: {
         firstFrameUrl: scene.firstFrameUrl as string,
         lastFrameUrl: scene.lastFrameUrl as string,
         videoPrompt: scene.videoPrompt,
+        providerPayload: null,
       });
       continue;
     }
@@ -273,13 +323,14 @@ export async function runVideoImageGenerationJob(args: {
     }
   }
 
-  const { scenesUpdated } = await persistSceneImages(storyboardId, results);
+  const { scenesUpdated, updatedSceneIds } = await persistSceneImages(storyboardId, results);
   const firstResult = results[0] ?? null;
 
   return {
     storyboardId,
     sceneCount: storyboard.scenes.length,
     scenesUpdated,
+    updatedSceneIds,
     firstFrameUrl: firstResult?.firstFrameUrl ?? null,
     lastFrameUrl: firstResult?.lastFrameUrl ?? null,
   };
@@ -326,11 +377,12 @@ export async function startVideoImageGenerationJob(params: {
             ok: true,
             storyboardId: result.storyboardId,
             scenesUpdated: result.scenesUpdated,
+            updatedSceneIds: result.updatedSceneIds,
             firstFrameUrl: result.firstFrameUrl,
             lastFrameUrl: result.lastFrameUrl,
           },
         },
-        resultSummary: `Video frames saved: ${result.scenesUpdated}/${result.sceneCount} scenes`,
+        resultSummary: `Updated scenes: ${result.scenesUpdated}`,
       },
     });
 
