@@ -54,22 +54,43 @@ export async function runVideoPromptGeneration(args: {
     throw new Error('Storyboard not found');
   }
 
-  const targetScenes = storyboard.scenes.filter(
-    s =>
-      s.firstFrameUrl &&
-      s.lastFrameUrl &&
-      (!s.videoPrompt || s.videoPrompt.trim().length === 0),
+  let scenes = storyboard.scenes;
+  let processed = 0;
+
+  if (scenes.length === 0) {
+    const prompt = buildVideoPromptForScene({
+      sceneNumber: 1,
+      durationSec: 8,
+      raw: {},
+    });
+    const created = await prisma.storyboardScene.create({
+      data: {
+        storyboardId,
+        sceneNumber: 1,
+        durationSec: 8,
+        aspectRatio: '9:16',
+        sceneFull: '',
+        rawJson: {},
+        status: 'pending',
+        videoPrompt: prompt,
+      },
+    });
+    scenes = [created];
+    processed = 1;
+  }
+
+  const targetScenes = scenes.filter(
+    s => !s.videoPrompt || s.videoPrompt.trim().length === 0,
   );
 
   if (!targetScenes.length) {
     return {
+      ok: true,
       storyboardId,
-      sceneCount: storyboard.scenes.length,
-      processed: 0,
+      sceneCount: scenes.length,
+      processed,
     };
   }
-
-  let processed = 0;
 
   for (const scene of targetScenes) {
     const raw = (scene.rawJson ?? {}) as any;
@@ -81,21 +102,33 @@ export async function runVideoPromptGeneration(args: {
       raw,
     });
 
+    const hasFrames = Boolean(scene.firstFrameUrl && scene.lastFrameUrl);
+    const nextStatus = hasFrames
+      ? (scene.status === 'frames_ready' || scene.status === 'pending'
+          ? 'prompt_ready'
+          : scene.status)
+      : scene.status || 'pending';
+
+    const updateData: Record<string, any> = {
+      videoPrompt: prompt,
+      status: nextStatus,
+    };
+    if (scene.rawJson == null) {
+      updateData.rawJson = {};
+    }
+
     await prisma.storyboardScene.update({
       where: { id: scene.id },
-      data: {
-        videoPrompt: prompt,
-        // optional: update status to indicate prompts are ready
-        status: scene.status === 'frames_ready' ? 'prompt_ready' : scene.status,
-      },
+      data: updateData,
     });
 
     processed += 1;
   }
 
   return {
+    ok: true,
     storyboardId,
-    sceneCount: storyboard.scenes.length,
+    sceneCount: scenes.length,
     processed,
   };
 }
