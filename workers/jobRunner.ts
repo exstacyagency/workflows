@@ -251,41 +251,31 @@ async function runJob(job: { id: string; type: JobType; projectId: string; paylo
       }
 
       case JobType.VIDEO_PROMPT_GENERATION: {
-        const payloadStoryboardId = String(payload?.storyboardId ?? "").trim();
-        const scriptId = String(payload?.scriptId ?? "").trim();
-
-        let storyboardId = payloadStoryboardId;
-        let storyboardScriptId = scriptId;
+        const storyboardId = String(payload?.storyboardId ?? "").trim();
         if (!storyboardId) {
-          if (!scriptId) {
-            await markFailed(jobId, "Invalid payload: missing storyboardId or scriptId");
-            return;
-          }
-          const storyboard = await prisma.storyboard.findFirst({
-            where: { projectId: job.projectId, scriptId },
-            orderBy: { createdAt: "desc" },
-            select: { id: true, scriptId: true },
-          });
-          if (!storyboard?.id) {
-            await markFailed(jobId, `Storyboard not found for scriptId=${scriptId}`);
-            return;
-          }
-          storyboardId = storyboard.id;
-          storyboardScriptId = storyboard.scriptId ?? scriptId;
-        } else if (!storyboardScriptId) {
-          const storyboard = await prisma.storyboard.findUnique({
-            where: { id: storyboardId },
-            select: { scriptId: true },
-          });
-          storyboardScriptId = storyboard?.scriptId ?? "";
+          await markFailed(jobId, "Invalid payload: missing storyboardId");
+          return;
+        }
+
+        const storyboard = await prisma.storyboard.findUnique({
+          where: { id: storyboardId },
+          select: { id: true, scriptId: true },
+        });
+        if (!storyboard?.id) {
+          await markFailed(jobId, `Storyboard not found for id=${storyboardId}`);
+          return;
         }
 
         const result = await startVideoPromptGenerationJob({ storyboardId, jobId });
-        await markCompleted(jobId, { ok: true, ...result });
+        await markCompleted(
+          jobId,
+          result,
+          `Video prompts generated: ${result.processed}/${result.sceneCount} scenes`,
+        );
 
         const chainType = String((payload as any)?.chainNext?.type ?? "");
         const rootKey = String(job.idempotencyKey ?? (payload as any)?.idempotencyKey ?? "").trim();
-        if (chainType === "VIDEO_IMAGE_GENERATION" && rootKey && storyboardScriptId) {
+        if (chainType === "VIDEO_IMAGE_GENERATION" && rootKey && storyboard.scriptId) {
           const imageKey = `${rootKey}:images`;
           try {
             await prisma.job.create({
@@ -296,7 +286,7 @@ async function runJob(job: { id: string; type: JobType; projectId: string; paylo
                 idempotencyKey: imageKey,
                 payload: {
                   projectId: job.projectId,
-                  scriptId: storyboardScriptId,
+                  scriptId: storyboard.scriptId,
                   idempotencyKey: imageKey,
                   dependsOnJobId: jobId,
                 },
