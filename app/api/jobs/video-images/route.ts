@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
   let planId: 'FREE' | 'GROWTH' | 'SCALE' = 'FREE';
 
   try {
-    planId = await assertMinPlan(userId, 'SCALE');
+    planId = await assertMinPlan(userId, 'GROWTH');
   } catch (err: any) {
     if (err instanceof UpgradeRequiredError) {
       return NextResponse.json(
