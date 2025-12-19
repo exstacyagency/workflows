@@ -23,6 +23,25 @@ type KieJobResponse = {
   [key: string]: any;
 };
 
+type SceneImageResult = {
+  sceneId?: string;
+  sceneNumber?: number | null;
+  firstFrameUrl: string;
+  lastFrameUrl: string;
+  videoPrompt?: string | null;
+};
+
+type SceneLike = {
+  id: string;
+  sceneNumber: number;
+  sceneFull: string;
+  rawJson: unknown;
+  videoPrompt: string | null;
+  firstFrameUrl: string | null;
+  lastFrameUrl: string | null;
+  status: string;
+};
+
 async function createKieImageJob(prompt: string, imageInputs: string[]): Promise<string> {
   const body = {
     model: 'google/nano-banana-pro',
@@ -107,18 +126,7 @@ async function pollKieJob(taskId: string, maxTries = 20, delayMs = 30000): Promi
  *
  * If those are missing, falls back to using scene.sceneFull as prompt.
  */
-async function generateFramesForScene(sceneId: string) {
-  const scene = await prisma.storyboardScene.findUnique({
-    where: { id: sceneId },
-  });
-
-  if (!scene) return;
-
-  // If frames already exist, skip
-  if (scene.firstFrameUrl && scene.lastFrameUrl) {
-    return;
-  }
-
+async function generateFramesForScene(scene: SceneLike): Promise<SceneImageResult> {
   const raw = (scene.rawJson ?? {}) as any;
 
   const firstPrompt: string =
@@ -146,20 +154,83 @@ async function generateFramesForScene(sceneId: string) {
   const lastUrls = await pollKieJob(lastTaskId);
   const lastFrameUrl = lastUrls[0];
 
-  await prisma.storyboardScene.update({
-    where: { id: scene.id },
-    data: {
-      firstFrameUrl,
-      lastFrameUrl,
-      status: 'frames_ready',
-    },
+  return {
+    sceneId: scene.id,
+    sceneNumber: scene.sceneNumber,
+    firstFrameUrl,
+    lastFrameUrl,
+    videoPrompt: scene.videoPrompt,
+  };
+}
+
+async function persistSceneImages(storyboardId: string, results: SceneImageResult[]) {
+  if (results.length === 0) {
+    return { scenesUpdated: 0 };
+  }
+
+  const scenes = await prisma.storyboardScene.findMany({
+    where: { storyboardId },
   });
+
+  const byId = new Map<string, SceneImageResult>();
+  const byNumber = new Map<number, SceneImageResult>();
+  for (const result of results) {
+    if (result.sceneId) byId.set(result.sceneId, result);
+    if (result.sceneNumber !== null && result.sceneNumber !== undefined) {
+      byNumber.set(result.sceneNumber, result);
+    }
+  }
+
+  const fallback = results[0];
+  const useFallbackForAll = byNumber.size === 0;
+  let scenesUpdated = 0;
+
+  for (const scene of scenes) {
+    let match =
+      (scene.id ? byId.get(scene.id) : undefined) ??
+      (scene.sceneNumber !== null && scene.sceneNumber !== undefined
+        ? byNumber.get(scene.sceneNumber)
+        : undefined);
+
+    if (!match && useFallbackForAll) {
+      match = fallback;
+    }
+
+    if (!match) continue;
+
+    const nextStatus =
+      scene.status === 'pending' || !scene.status ? 'frames_ready' : scene.status;
+
+    const updateData: Record<string, any> = {};
+    if (match.firstFrameUrl && match.firstFrameUrl !== scene.firstFrameUrl) {
+      updateData.firstFrameUrl = match.firstFrameUrl;
+    }
+    if (match.lastFrameUrl && match.lastFrameUrl !== scene.lastFrameUrl) {
+      updateData.lastFrameUrl = match.lastFrameUrl;
+    }
+    if (match.videoPrompt && match.videoPrompt !== scene.videoPrompt) {
+      updateData.videoPrompt = match.videoPrompt;
+    }
+    if (nextStatus !== scene.status) {
+      updateData.status = nextStatus;
+    }
+
+    if (Object.keys(updateData).length === 0) continue;
+
+    await prisma.storyboardScene.update({
+      where: { id: scene.id },
+      data: updateData,
+    });
+    scenesUpdated += 1;
+  }
+
+  return { scenesUpdated };
 }
 
 /**
  * Orchestrator: generate images for all scenes in a storyboard that still need them.
  */
-export async function runVideoImageGeneration(args: {
+export async function runVideoImageGenerationJob(args: {
   storyboardId: string;
   jobId?: string;
 }) {
@@ -178,35 +249,47 @@ export async function runVideoImageGeneration(args: {
     throw new Error('Storyboard not found');
   }
 
-  const pendingScenes = storyboard.scenes.filter(
-    s => !s.firstFrameUrl || !s.lastFrameUrl || s.status === 'pending',
-  );
+  const results: SceneImageResult[] = [];
 
-  if (!pendingScenes.length) {
-    return {
-      storyboardId,
-      sceneCount: storyboard.scenes.length,
-      processed: 0,
-    };
-  }
+  for (const scene of storyboard.scenes) {
+    const hasFrames = Boolean(scene.firstFrameUrl && scene.lastFrameUrl);
+    if (hasFrames) {
+      results.push({
+        sceneId: scene.id,
+        sceneNumber: scene.sceneNumber,
+        firstFrameUrl: scene.firstFrameUrl as string,
+        lastFrameUrl: scene.lastFrameUrl as string,
+        videoPrompt: scene.videoPrompt,
+      });
+      continue;
+    }
 
-  let processed = 0;
-
-  for (const s of pendingScenes) {
     try {
-      await generateFramesForScene(s.id);
-      processed += 1;
+      const generated = await generateFramesForScene(scene as SceneLike);
+      results.push(generated);
     } catch (err) {
-      console.error(`Failed to generate frames for scene ${s.id}:`, err);
+      console.error(`Failed to generate frames for scene ${scene.id}:`, err);
       // continue to next scene
     }
   }
 
+  const { scenesUpdated } = await persistSceneImages(storyboardId, results);
+  const firstResult = results[0] ?? null;
+
   return {
     storyboardId,
     sceneCount: storyboard.scenes.length,
-    processed,
+    scenesUpdated,
+    firstFrameUrl: firstResult?.firstFrameUrl ?? null,
+    lastFrameUrl: firstResult?.lastFrameUrl ?? null,
   };
+}
+
+export async function runVideoImageGeneration(args: {
+  storyboardId: string;
+  jobId?: string;
+}) {
+  return runVideoImageGenerationJob(args);
 }
 
 /**
@@ -222,16 +305,32 @@ export async function startVideoImageGenerationJob(params: {
     data: { status: JobStatus.RUNNING },
   });
   try {
-    const result = await runVideoImageGeneration({
+    const result = await runVideoImageGenerationJob({
       storyboardId,
       jobId,
     });
+
+    const existing = await prisma.job.findUnique({
+      where: { id: jobId },
+      select: { payload: true },
+    });
+    const existingPayload = (existing?.payload ?? {}) as Record<string, any>;
 
     await prisma.job.update({
       where: { id: jobId },
       data: {
         status: JobStatus.COMPLETED,
-        resultSummary: `Video image generation complete: ${result.processed}/${result.sceneCount} scenes processed`,
+        payload: {
+          ...existingPayload,
+          result: {
+            ok: true,
+            storyboardId: result.storyboardId,
+            scenesUpdated: result.scenesUpdated,
+            firstFrameUrl: result.firstFrameUrl,
+            lastFrameUrl: result.lastFrameUrl,
+          },
+        },
+        resultSummary: `Video frames saved: ${result.scenesUpdated}/${result.sceneCount} scenes`,
       },
     });
 
