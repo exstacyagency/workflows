@@ -49,13 +49,29 @@ export async function POST(req: NextRequest) {
     const BodySchema = z
       .object({
         storyboardId: z.string().min(1).optional(),
+        projectId: z.string().min(1).optional(),
         scriptId: z.string().min(1).optional(),
       })
       .superRefine((data, ctx) => {
-        if (!data.storyboardId && !data.scriptId) {
+        const hasStoryboard = !!data.storyboardId;
+        const hasProjectScript = !!data.projectId && !!data.scriptId;
+        const hasPartialProjectScript =
+          (!!data.projectId && !data.scriptId) || (!data.projectId && !!data.scriptId);
+
+        if (hasStoryboard && (data.projectId || data.scriptId)) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            message: 'Provide storyboardId or scriptId',
+            message: 'Provide either storyboardId or projectId+scriptId',
+          });
+        } else if (hasPartialProjectScript) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Provide both projectId and scriptId',
+          });
+        } else if (!hasStoryboard && !hasProjectScript) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Provide storyboardId or projectId+scriptId',
           });
         }
       });
@@ -69,74 +85,77 @@ export async function POST(req: NextRequest) {
     }
 
     let storyboardId = parsed.data.storyboardId ?? null;
+    const bodyProjectId = parsed.data.projectId ?? null;
     const scriptId = parsed.data.scriptId ?? null;
-    let storyboard = null as any;
-    let authChecked = false;
 
     if (storyboardId) {
-      storyboard = await prisma.storyboard.findUnique({
+      const storyboard = await prisma.storyboard.findUnique({
         where: { id: storyboardId },
-        include: {
-          script: {
-            include: { project: true },
-          },
-        },
+        select: { id: true, projectId: true },
       });
-      if (!storyboard || !storyboard.script?.project) {
+      if (!storyboard) {
         return NextResponse.json(
           { error: 'Storyboard or project not found' },
           { status: 404 },
         );
       }
-
-      projectId = storyboard.script.project.id;
-    } else if (scriptId) {
+      projectId = storyboard.projectId;
+    } else if (bodyProjectId && scriptId) {
       const script = await prisma.script.findUnique({
         where: { id: scriptId },
-        include: { project: true },
+        select: { id: true, projectId: true },
       });
-      if (!script || !script.project) {
+      if (!script || script.projectId !== bodyProjectId) {
         return NextResponse.json(
           { error: 'Script or project not found' },
           { status: 404 },
         );
       }
 
-      projectId = script.project.id;
+      projectId = bodyProjectId;
 
       const auth = await requireProjectOwner(projectId);
       if (auth.error) {
         return NextResponse.json({ error: auth.error }, { status: auth.status });
       }
-      authChecked = true;
 
-      storyboard = await prisma.storyboard.findFirst({
-        where: { scriptId },
+      let storyboard = await prisma.storyboard.findFirst({
+        where: { scriptId, projectId },
         orderBy: { createdAt: 'desc' },
-        include: { script: { include: { project: true } } },
+        select: { id: true },
       });
 
       if (!storyboard) {
-        try {
-          storyboard = await prisma.storyboard.create({
-            data: { scriptId, rawJson: {}, status: 'READY' } as any,
-          });
-        } catch (e) {
-          return NextResponse.json(
-            {
-              error: 'Storyboard required',
-              detail: 'Create a storyboard first (storyboard-generation) or provide storyboardId.',
-            },
-            { status: 400 },
-          );
-        }
+        storyboard = await prisma.storyboard.create({
+          data: { projectId, scriptId },
+          select: { id: true },
+        });
       }
-      storyboardId = storyboard?.id ?? null;
+
+      storyboardId = storyboard.id;
+
+      const existingScene = await prisma.storyboardScene.findFirst({
+        where: { storyboardId },
+        select: { id: true },
+      });
+      if (!existingScene) {
+        await prisma.storyboardScene.create({
+          data: {
+            storyboardId,
+            sceneNumber: 1,
+            durationSec: 8,
+            aspectRatio: '9:16',
+            status: 'pending',
+            sceneFull: '',
+            rawJson: {},
+          },
+        });
+      }
     }
 
     if (!storyboardId) {
       return NextResponse.json(
-        { error: 'Storyboard required', detail: 'Create a storyboard first (storyboard-generation) or provide storyboardId.' },
+        { error: 'Invalid request body', details: 'Provide storyboardId or projectId+scriptId' },
         { status: 400 },
       );
     }
@@ -148,7 +167,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!authChecked) {
+    if (parsed.data.storyboardId) {
       const auth = await requireProjectOwner(projectId);
       if (auth.error) {
         return NextResponse.json({ error: auth.error }, { status: auth.status });
