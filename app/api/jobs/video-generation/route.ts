@@ -12,6 +12,7 @@ import { findIdempotentJob } from "../../../../lib/jobGuards";
 const BodySchema = z.object({
   projectId: z.string().min(1),
   scriptId: z.string().min(1),
+  storyboardId: z.string().min(1).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -47,17 +48,44 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: parsed.error.message }, { status: 400 });
     }
 
-    const { projectId, scriptId } = parsed.data;
+    const { projectId, scriptId, storyboardId } = parsed.data;
 
     const auth = await requireProjectOwner(projectId);
     if (auth.error) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
+    let storyboardIdUsed = storyboardId ?? null;
+    if (storyboardIdUsed) {
+      const storyboard = await prisma.storyboard.findUnique({
+        where: { id: storyboardIdUsed },
+        select: { id: true, projectId: true, scriptId: true },
+      });
+      if (
+        !storyboard ||
+        storyboard.projectId !== projectId ||
+        (storyboard.scriptId && storyboard.scriptId !== scriptId)
+      ) {
+        return NextResponse.json(
+          { error: "Storyboard or project not found" },
+          { status: 404 },
+        );
+      }
+    } else {
+      const createdStoryboard = await prisma.storyboard.create({
+        data: {
+          projectId,
+          scriptId,
+        },
+        select: { id: true },
+      });
+      storyboardIdUsed = createdStoryboard.id;
+    }
+
     const idempotencyKey = JSON.stringify([
       projectId,
       "VIDEO_GENERATION",
-      null,
+      storyboardIdUsed,
       scriptId,
     ]);
 
@@ -95,6 +123,7 @@ export async function POST(req: NextRequest) {
           payload: {
             projectId,
             scriptId,
+            storyboardId: storyboardIdUsed,
             idempotencyKey,
             chainNext: { type: "VIDEO_IMAGE_GENERATION" },
           },

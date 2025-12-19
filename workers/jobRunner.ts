@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { JobStatus, JobType } from "@prisma/client";
 import fs from "node:fs";
 import path from "node:path";
@@ -354,7 +355,7 @@ async function runJob(job: { id: string; type: JobType; projectId: string; paylo
         const storyboard = await prisma.storyboard.findFirst({
           where: { projectId: job.projectId, id: storyboardId },
           orderBy: { createdAt: "desc" },
-          select: { id: true },
+          select: { id: true, scenes: { select: { id: true } } },
         });
         if (!storyboard?.id) {
           const msg = `Storyboard not found for id=${storyboardId}`;
@@ -371,10 +372,11 @@ async function runJob(job: { id: string; type: JobType; projectId: string; paylo
               ok: true,
               storyboardId: result.storyboardId,
               scenesUpdated: result.scenesUpdated,
+              updatedSceneIds: result.updatedSceneIds,
               firstFrameUrl: result.firstFrameUrl,
               lastFrameUrl: result.lastFrameUrl,
             },
-            `Video frames saved: ${result.scenesUpdated}/${result.sceneCount} scenes`,
+            `Updated scenes: ${result.scenesUpdated}`,
           );
         } catch (e: any) {
           const msg = String(e?.message ?? e ?? "Unknown error");
