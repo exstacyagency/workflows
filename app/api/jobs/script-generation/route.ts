@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
 
     const isCI = process.env.CI === "true";
     const hasAnthropic = !!process.env.ANTHROPIC_API_KEY;
-    if (isCI && !hasAnthropic) {
+    if ((isCI || process.env.NODE_ENV !== "production") && !hasAnthropic) {
       const project = await prisma.project.findUnique({
         where: { id: projectId },
         select: { name: true },
@@ -323,6 +323,71 @@ export async function POST(req: NextRequest) {
       return startScriptGenerationJob(projectId, freshJob);
     });
     console.log("[script-generation] runWithState result", state);
+
+    if (!state.ok && process.env.NODE_ENV !== "production") {
+      const project = await prisma.project.findUnique({
+        where: { id: projectId },
+        select: { name: true },
+      });
+      const productName = project?.name ?? "Your product";
+      const reason = "LLM not configured or failed";
+      const hook = `Meet ${productName}: a faster way to create video ads.`;
+      const body =
+        "This script was generated without calling an LLM, so it contains deterministic placeholder copy.";
+      const cta = `Get started with ${productName} today.`;
+      const text = `${hook}\n\n${body}\n\n${cta}`;
+      const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
+
+      const scriptJson = {
+        title: "Dev placeholder script",
+        hook,
+        body,
+        cta,
+        text,
+        word_count: wordCount,
+        skipped: true,
+        reason,
+      };
+
+      const script = await prisma.script.create({
+        data: {
+          projectId,
+          jobId,
+          mergedVideoUrl: null,
+          upscaledVideoUrl: null,
+          status: "READY",
+          rawJson: scriptJson as any,
+          wordCount,
+        },
+      });
+
+      await prisma.job.update({
+        where: { id: jobId },
+        data: {
+          status: JobStatus.COMPLETED,
+          payload: {
+            ...parsed.data,
+            idempotencyKey,
+            skipped: true,
+            reason,
+            scriptIds: [script.id],
+          },
+          resultSummary: `Skipped: ${reason} (scriptId=${script.id})`,
+          error: null,
+        },
+      });
+
+      return NextResponse.json(
+        {
+          ok: true,
+          skipped: true,
+          reason,
+          jobId,
+          scripts: [{ id: script.id, text }],
+        },
+        { status: 200 },
+      );
+    }
 
     if (!devTest && createdNew && reservation && !state.ok) {
       await rollbackQuota(userId, reservation.periodKey, "researchQueries", 1);
