@@ -31,6 +31,7 @@ function periodKeyToUtcDate(periodKey) {
 
 async function main() {
   // Upsert by name (name is unique in your schema)
+  await prisma.$executeRaw`DELETE FROM "AuthThrottle"`;
   await prisma.plan.upsert({
     where: { name: "Growth" },
     update: {
