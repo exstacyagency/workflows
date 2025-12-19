@@ -4,6 +4,8 @@ import { runCustomerResearch } from "../services/customerResearchService.ts";
 import { runAdRawCollection } from "../lib/adRawCollectionService.ts";
 import { runPatternAnalysis } from "../lib/patternAnalysisService.ts";
 import { startScriptGenerationJob } from "../lib/scriptGenerationService.ts";
+import { startVideoPromptGenerationJob } from "../lib/videoPromptGenerationService.ts";
+import { runVideoImageGeneration } from "../lib/videoImageGenerationService.ts";
 import prisma from "../lib/prisma.ts";
 import { rollbackQuota } from "../lib/billing/usage.ts";
 
@@ -86,6 +88,20 @@ async function markFailed(jobId: string, errMsg: string) {
   });
 }
 
+async function appendResultSummary(jobId: string, msg: string) {
+  const m = String(msg ?? "").trim();
+  if (!m) return;
+
+  const existing = await prisma.job.findUnique({ where: { id: jobId }, select: { resultSummary: true } });
+  const current = String(existing?.resultSummary ?? "").trim();
+  if (!current) {
+    await prisma.job.update({ where: { id: jobId }, data: { resultSummary: m } });
+    return;
+  }
+  if (current.includes(m)) return;
+  await prisma.job.update({ where: { id: jobId }, data: { resultSummary: `${current} | ${m}` } });
+}
+
 async function handleProviderConfig(jobId: string, provider: string, requiredEnv: string[]) {
   const missing = envMissing(requiredEnv);
   if (missing.length === 0) return { ok: true as const };
@@ -118,15 +134,15 @@ async function claimNextJob() {
       FOR UPDATE SKIP LOCKED
       LIMIT 1
     )
-    RETURNING "id", "type", "projectId", "payload";
+    RETURNING "id", "type", "projectId", "payload", "idempotencyKey";
   `;
 
   const row = claimed[0];
   if (!row?.id) return null;
-  return row as { id: string; type: JobType; projectId: string; payload: unknown };
+  return row as { id: string; type: JobType; projectId: string; payload: unknown; idempotencyKey: string | null };
 }
 
-async function runJob(job: { id: string; type: JobType; projectId: string; payload: unknown }) {
+async function runJob(job: { id: string; type: JobType; projectId: string; payload: unknown; idempotencyKey: string | null }) {
   const jobId = job.id;
   const payload = asObject(job.payload);
 
@@ -231,6 +247,99 @@ async function runJob(job: { id: string; type: JobType; projectId: string; paylo
 
         const result = await startScriptGenerationJob(job.projectId, fresh);
         await markCompleted(jobId, { ok: true, ...result });
+        return;
+      }
+
+      case JobType.VIDEO_PROMPT_GENERATION: {
+        const payloadStoryboardId = String(payload?.storyboardId ?? "").trim();
+        const scriptId = String(payload?.scriptId ?? "").trim();
+
+        let storyboardId = payloadStoryboardId;
+        let storyboardScriptId = scriptId;
+        if (!storyboardId) {
+          if (!scriptId) {
+            await markFailed(jobId, "Invalid payload: missing storyboardId or scriptId");
+            return;
+          }
+          const storyboard = await prisma.storyboard.findFirst({
+            where: { projectId: job.projectId, scriptId },
+            orderBy: { createdAt: "desc" },
+            select: { id: true, scriptId: true },
+          });
+          if (!storyboard?.id) {
+            await markFailed(jobId, `Storyboard not found for scriptId=${scriptId}`);
+            return;
+          }
+          storyboardId = storyboard.id;
+          storyboardScriptId = storyboard.scriptId ?? scriptId;
+        } else if (!storyboardScriptId) {
+          const storyboard = await prisma.storyboard.findUnique({
+            where: { id: storyboardId },
+            select: { scriptId: true },
+          });
+          storyboardScriptId = storyboard?.scriptId ?? "";
+        }
+
+        const result = await startVideoPromptGenerationJob({ storyboardId, jobId });
+        await markCompleted(jobId, { ok: true, ...result });
+
+        const chainType = String((payload as any)?.chainNext?.type ?? "");
+        const rootKey = String(job.idempotencyKey ?? (payload as any)?.idempotencyKey ?? "").trim();
+        if (chainType === "VIDEO_IMAGE_GENERATION" && rootKey && storyboardScriptId) {
+          const imageKey = `${rootKey}:images`;
+          try {
+            await prisma.job.create({
+              data: {
+                projectId: job.projectId,
+                type: JobType.VIDEO_IMAGE_GENERATION,
+                status: JobStatus.PENDING,
+                idempotencyKey: imageKey,
+                payload: {
+                  projectId: job.projectId,
+                  scriptId: storyboardScriptId,
+                  idempotencyKey: imageKey,
+                  dependsOnJobId: jobId,
+                },
+              },
+            });
+          } catch (e: any) {
+            const code = String(e?.code ?? "");
+            const msg = String(e?.message ?? "");
+            const isUnique = code === "P2002" || msg.toLowerCase().includes("unique constraint");
+            if (!isUnique) throw e;
+          }
+          await appendResultSummary(jobId, "Queued video images job");
+        }
+
+        return;
+      }
+
+      case JobType.VIDEO_IMAGE_GENERATION: {
+        const cfg = await handleProviderConfig(jobId, "KIE", ["KIE_API_KEY"]);
+        if (!cfg.ok) return;
+
+        const scriptId = String(payload?.scriptId ?? "").trim();
+        if (!scriptId) {
+          await markFailed(jobId, "Invalid payload: missing scriptId");
+          return;
+        }
+
+        const storyboard = await prisma.storyboard.findFirst({
+          where: { projectId: job.projectId, scriptId },
+          orderBy: { createdAt: "desc" },
+          select: { id: true },
+        });
+        if (!storyboard?.id) {
+          await markFailed(jobId, `Storyboard not found for scriptId=${scriptId}`);
+          return;
+        }
+
+        const result = await runVideoImageGeneration({ storyboardId: storyboard.id, jobId });
+        await markCompleted(
+          jobId,
+          { ok: true, ...result },
+          `Video image generation complete: ${result.processed}/${result.sceneCount} scenes processed`,
+        );
         return;
       }
 
