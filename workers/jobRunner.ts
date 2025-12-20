@@ -371,7 +371,11 @@ async function runJob(job: { id: string; type: JobType; projectId: string; paylo
             {
               ok: true,
               storyboardId: result.storyboardId,
+              sceneCount: result.sceneCount,
               scenesUpdated: result.scenesUpdated,
+              updatedSceneIds: result.updatedSceneIds,
+              firstFrameUrls: result.firstFrameUrls,
+              lastFrameUrls: result.lastFrameUrls,
               firstFrameUrl: result.firstFrameUrl,
               lastFrameUrl: result.lastFrameUrl,
             },
@@ -404,12 +408,14 @@ async function runJob(job: { id: string; type: JobType; projectId: string; paylo
         }
 
         try {
-          const result = await runVideoGenerationJob({ storyboardId });
+          const result = await runVideoGenerationJob(job);
           const firstUrl = result.videoUrls[0] ?? "";
-          const summary = firstUrl
-            ? `Video generated: ${firstUrl}${result.videoUrls.length > 1 ? ` (+${result.videoUrls.length - 1} more)` : ""}`
-            : "Video generation completed";
-          await markCompleted(jobId, { ok: true, ...result }, summary);
+          const summary = result.skipped
+            ? `Video generation skipped: ${result.reason ?? "already_generated"}`
+            : firstUrl
+              ? `Video generated: ${firstUrl}${result.videoUrls.length > 1 ? ` (+${result.videoUrls.length - 1} more)` : ""}`
+              : "Video generation completed";
+          await markCompleted(jobId, result, summary);
         } catch (e: any) {
           const msg = String(e?.message ?? e ?? "Unknown error");
           await rollbackJobQuotaIfNeeded(jobId, job.projectId, payload);
