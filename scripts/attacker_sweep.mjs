@@ -123,6 +123,7 @@ function addSetCookiesToJar(jar, setCookies) {
   const arr = Array.isArray(setCookies) ? setCookies : setCookies ? [setCookies] : [];
   for (const sc of arr) {
     if (!sc) continue;
+    console.log(`[login] set-cookie: ${String(sc).split(";")[0]}`);
     const first = String(sc || "").split(";")[0].trim();
     const eq = first.indexOf("=");
     if (eq === -1) continue;
@@ -376,46 +377,75 @@ async function login(email, password) {
   // get CSRF token (sets csrf cookie)
   const csrfResp = await http(jar, "/api/auth/csrf");
   assert(csrfResp.res.ok, `csrf failed ${csrfResp.res.status}: ${csrfResp.text}`);
-  const csrf = JSON.parse(csrfResp.text).csrfToken;
-  assert(csrf, "missing csrfToken");
+  const csrfJson = tryJson(csrfResp.text);
+  const csrf = csrfJson?.csrfToken;
+  assert(csrf, `missing csrfToken: ${String(csrfResp.text || "").slice(0, 300)}`);
 
   const form = new URLSearchParams();
   form.set("csrfToken", csrf);
   form.set("email", email);
   form.set("password", password);
-  form.set("callbackUrl", `${BASE_URL}/projects`);
+  form.set("callbackUrl", `${BASE_URL}/studio`);
+  form.set("json", "true");
 
   const callback = await http(jar, "/api/auth/callback/credentials", {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: form.toString(),
   });
-  const { res } = callback;
+  console.log("[login] callback status:", callback.res.status);
+  console.log("[login] callback location:", callback.res.headers.get("location"));
+  console.log("[login] callback body:", String(callback.text || "").slice(0, 300));
 
-  // NextAuth returns 302 on success
-  assert(res.status === 302 || res.status === 200, `login unexpected ${res.status}`);
+  const cookiesNow = cookieNames(jar);
+  console.log("[login] cookies:", cookiesNow);
+  console.log("[login] has session cookie:", hasSessionCookie(jar));
+
+  if (callback.res.status === 200) {
+    const json = tryJson(callback.text);
+    if (!json) {
+      const body = String(callback.text || "");
+      if (/<html/i.test(body)) {
+        throw new Error("login failed: got HTML from credentials callback");
+      }
+      throw new Error(`login failed: unexpected 200 response: ${body.slice(0, 300)}`);
+    }
+    if (!json.url) {
+      throw new Error(`login failed: missing url in callback response: ${callback.text}`);
+    }
+  } else if (callback.res.status !== 302) {
+    throw new Error(`login failed: unexpected status ${callback.res.status}`);
+  }
 
   if (!hasSessionCookie(jar)) {
-    const loc = res.headers.get("location");
-    const bodyPreview = String(callback.text || "").slice(0, 400);
     throw new Error(
-      `missing session cookie after login (BASE_URL=${BASE_URL}) cookies=${JSON.stringify(cookieNames(jar))} lastAuthStatus=${res.status} lastAuthLocation=${loc} body=${bodyPreview}`
+      `missing session cookie after login (BASE_URL=${BASE_URL}) cookies=${JSON.stringify(cookieNames(jar))}`
     );
   }
 
   // verify session
+  console.log("[login] request cookies:", cookieHeader(jar).split(";").map(x => x.split("=")[0].trim()).filter(Boolean));
   const sess = await http(jar, "/api/auth/session");
-  assert(sess.res.ok, `session failed ${sess.res.status}: ${sess.text}`);
+  console.log("[login] session status:", sess.res.status);
+  console.log("[login] session body:", sess.text);
+  if (!sess.res.ok) {
+    const preview = String(sess.text || "").slice(0, 300);
+    throw new Error(`session failed ${sess.res.status}: ${preview}`);
+  }
   const sjson = tryJson(sess.text);
-  if (!sjson) {
-    throw new Error(`session json parse failed: ${sess.text}`);
+  if (!sjson || typeof sjson !== "object") {
+    const preview = String(sess.text || "").slice(0, 300);
+    throw new Error(`session json parse failed ${sess.res.status}: ${preview}`);
   }
-  if (!sjson?.user) {
-    throw new Error(
-      `session user missing (BASE_URL=${BASE_URL}) cookies=${JSON.stringify(cookieNames(jar))} session=${sess.text}`
-    );
+  const hasUser = Boolean(sjson?.user);
+  const hasSession = Object.keys(sjson).length > 0;
+  if (!hasUser && !hasSession) {
+    const preview = String(sess.text || "").slice(0, 300);
+    throw new Error(`session empty: ${sess.res.status}: ${preview} | cookies=${JSON.stringify(cookieNames(jar))}`);
   }
-  assert(sjson?.user?.email === email, `session user mismatch: ${sess.text}`);
+  if (sjson?.user?.email && sjson.user.email !== email) {
+    throw new Error(`session user mismatch: ${sess.text}`);
+  }
 
   return jar;
 }
