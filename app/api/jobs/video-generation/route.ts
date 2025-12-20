@@ -7,11 +7,11 @@ import { requireProjectOwner } from "../../../../lib/requireProjectOwner";
 import { assertMinPlan, UpgradeRequiredError } from "../../../../lib/billing/requirePlan";
 import { JobStatus, JobType } from "@prisma/client";
 import { getRequestId } from "../../../../lib/observability";
-import { findIdempotentJob } from "../../../../lib/jobGuards";
 
 const BodySchema = z.object({
   projectId: z.string().min(1),
   scriptId: z.string().min(1),
+  storyboardId: z.string().min(1),
 });
 
 export async function POST(req: NextRequest) {
@@ -47,33 +47,40 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: parsed.error.message }, { status: 400 });
     }
 
-    const { projectId, scriptId } = parsed.data;
+    const { projectId, scriptId, storyboardId } = parsed.data;
 
     const auth = await requireProjectOwner(projectId);
     if (auth.error) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
+    const script = await prisma.script.findUnique({
+      where: { id: scriptId },
+      select: { id: true, projectId: true },
+    });
+    if (!script || script.projectId !== projectId) {
+      return NextResponse.json({ error: "Script or project not found" }, { status: 404 });
+    }
+
+    const storyboard = await prisma.storyboard.findUnique({
+      where: { id: storyboardId },
+      select: { id: true, projectId: true },
+    });
+    if (!storyboard || storyboard.projectId !== projectId) {
+      return NextResponse.json({ error: "Storyboard or project not found" }, { status: 404 });
+    }
+
     const idempotencyKey = JSON.stringify([
       projectId,
       "VIDEO_GENERATION",
-      null,
+      storyboardId,
       scriptId,
     ]);
-
-    const inflight = await findIdempotentJob({
-      projectId,
-      type: JobType.VIDEO_PROMPT_GENERATION,
-      idempotencyKey,
-    });
-    if (inflight?.id) {
-      return NextResponse.json({ ok: true, jobId: inflight.id, reused: true }, { status: 200 });
-    }
 
     const existing = await prisma.job.findFirst({
       where: {
         projectId,
-        type: JobType.VIDEO_PROMPT_GENERATION,
+        type: JobType.VIDEO_GENERATION,
         idempotencyKey,
       },
       orderBy: { createdAt: "desc" },
@@ -89,14 +96,14 @@ export async function POST(req: NextRequest) {
       const job = await prisma.job.create({
         data: {
           projectId,
-          type: JobType.VIDEO_PROMPT_GENERATION,
+          type: JobType.VIDEO_GENERATION,
           status: JobStatus.PENDING,
           idempotencyKey,
           payload: {
             projectId,
+            storyboardId,
             scriptId,
             idempotencyKey,
-            chainNext: { type: "VIDEO_IMAGE_GENERATION" },
           },
         },
       });
@@ -110,7 +117,7 @@ export async function POST(req: NextRequest) {
       const raced = await prisma.job.findFirst({
         where: {
           projectId,
-          type: JobType.VIDEO_PROMPT_GENERATION,
+          type: JobType.VIDEO_GENERATION,
           idempotencyKey,
         },
         orderBy: { createdAt: "desc" },
@@ -130,7 +137,7 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json(
-      { ok: true, jobId, stage: "VIDEO_PROMPTS_ENQUEUED" },
+      { ok: true, jobId, stage: "VIDEO_PROMPTS_ENQUEUED", reused: false },
       { status: 200 },
     );
   } catch (err: any) {

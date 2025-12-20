@@ -46,18 +46,8 @@ export async function GET(
 
     return NextResponse.json({ job, queueStatus });
   } catch (err: any) {
-    const detail =
-      err instanceof Error
-        ? err.message
-        : (() => {
-            try {
-              return JSON.stringify(err);
-            } catch {
-              return String(err);
-            }
-          })();
     return NextResponse.json(
-      { error: 'Job status failed', detail },
+      { error: 'Job status failed', detail: String(err?.message ?? err) },
       { status: 500 }
     );
   }
