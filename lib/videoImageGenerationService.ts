@@ -194,82 +194,143 @@ async function generateFramesForScene(scene: SceneLike): Promise<SceneImageResul
 
 async function persistSceneImages(storyboardId: string, results: SceneImageResult[]) {
   if (results.length === 0) {
-    return { scenesUpdated: 0, updatedSceneIds: [] as string[] };
+    return {
+      scenesUpdated: 0,
+      updatedSceneIds: [] as string[],
+      firstFrameUrls: [] as string[],
+      lastFrameUrls: [] as string[],
+    };
   }
 
-  const scenes = await prisma.storyboardScene.findMany({
-    where: { storyboardId },
-  });
-
-  const byId = new Map<string, SceneImageResult>();
-  const byNumber = new Map<number, SceneImageResult>();
-  for (const result of results) {
-    if (result.sceneId) byId.set(result.sceneId, result);
-    if (result.sceneNumber !== null && result.sceneNumber !== undefined) {
-      byNumber.set(result.sceneNumber, result);
-    }
-  }
-
-  const fallback = results[0];
-  const useFallbackForAll = byNumber.size === 0;
-  let scenesUpdated = 0;
-  const updatedSceneIds: string[] = [];
-
-  for (const scene of scenes) {
-    let match =
-      (scene.id ? byId.get(scene.id) : undefined) ??
-      (scene.sceneNumber !== null && scene.sceneNumber !== undefined
-        ? byNumber.get(scene.sceneNumber)
-        : undefined);
-
-    if (!match && useFallbackForAll) {
-      match = fallback;
-    }
-
-    if (!match) continue;
-
-    const nextStatus =
-      scene.status === 'pending' || !scene.status ? 'READY' : scene.status;
-
-    const updateData: Record<string, any> = {};
-    if (match.firstFrameUrl && match.firstFrameUrl !== scene.firstFrameUrl) {
-      updateData.firstFrameUrl = match.firstFrameUrl;
-    }
-    if (match.lastFrameUrl && match.lastFrameUrl !== scene.lastFrameUrl) {
-      updateData.lastFrameUrl = match.lastFrameUrl;
-    }
-    if (match.videoPrompt && match.videoPrompt !== scene.videoPrompt) {
-      updateData.videoPrompt = match.videoPrompt;
-    }
-    if (match.videoUrl && match.videoUrl !== scene.videoUrl) {
-      updateData.videoUrl = match.videoUrl;
-    }
-    if (nextStatus !== scene.status) {
-      updateData.status = nextStatus;
-    }
-    if (match.providerPayload) {
-      const raw = scene.rawJson;
-      const rawObject =
-        raw && typeof raw === 'object' && !Array.isArray(raw)
-          ? (raw as Record<string, any>)
-          : {};
-      updateData.rawJson = {
-        ...rawObject,
-        video_image_generation: match.providerPayload,
-      };
-    }
-
-    if (Object.keys(updateData).length === 0) continue;
-
-    await prisma.storyboardScene.update({
-      where: { id: scene.id },
-      data: updateData,
+  return prisma.$transaction(async (tx) => {
+    const scenes = await tx.storyboardScene.findMany({
+      where: { storyboardId },
     });
-    scenesUpdated += 1;
-    updatedSceneIds.push(scene.id);
-  }
 
-  return { scenesUpdated, updatedSceneIds };
+    const byId = new Map<string, SceneImageResult>();
+    const byNumber = new Map<number, SceneImageResult>();
+    for (const result of results) {
+      if (result.sceneId) byId.set(result.sceneId, result);
+      if (result.sceneNumber !== null && result.sceneNumber !== undefined) {
+        byNumber.set(result.sceneNumber, result);
+      }
+    }
+
+    let scenesUpdated = 0;
+    const updatedSceneIds: string[] = [];
+    const firstFrameUrls: string[] = [];
+    const lastFrameUrls: string[] = [];
+
+    if (scenes.length === 0) {
+      const ordered = [...results].sort((a, b) => {
+        const aNum = a.sceneNumber ?? 0;
+        const bNum = b.sceneNumber ?? 0;
+        return aNum - bNum;
+      });
+      let nextSceneNumber = 1;
+
+      for (const result of ordered) {
+        const sceneNumber = result.sceneNumber ?? nextSceneNumber;
+        nextSceneNumber = sceneNumber + 1;
+        const resolvedFirst = result.firstFrameUrl ?? result.lastFrameUrl ?? null;
+        const resolvedLast = result.lastFrameUrl ?? result.firstFrameUrl ?? null;
+
+        const created = await tx.storyboardScene.create({
+          data: {
+            storyboardId,
+            sceneNumber,
+            durationSec: 8,
+            aspectRatio: '9:16',
+            sceneFull: '',
+            rawJson: result.providerPayload
+              ? { video_image_generation: result.providerPayload }
+              : {},
+            status: 'pending',
+            videoPrompt: result.videoPrompt ?? null,
+            firstFrameUrl: resolvedFirst ?? undefined,
+            lastFrameUrl: resolvedLast ?? undefined,
+          },
+          select: { id: true },
+        });
+
+        scenesUpdated += 1;
+        updatedSceneIds.push(created.id);
+        if (resolvedFirst) firstFrameUrls.push(resolvedFirst);
+        if (resolvedLast) lastFrameUrls.push(resolvedLast);
+      }
+
+      return { scenesUpdated, updatedSceneIds, firstFrameUrls, lastFrameUrls };
+    }
+
+    const fallback = results[0];
+    const useFallbackForAll = byNumber.size === 0;
+
+    for (const scene of scenes) {
+      let match =
+        (scene.id ? byId.get(scene.id) : undefined) ??
+        (scene.sceneNumber !== null && scene.sceneNumber !== undefined
+          ? byNumber.get(scene.sceneNumber)
+          : undefined);
+
+      if (!match && useFallbackForAll) {
+        match = fallback;
+      }
+
+      if (!match) continue;
+
+      const updateData: Record<string, any> = {};
+      const resolvedFirst =
+        match.firstFrameUrl ?? match.lastFrameUrl ?? scene.firstFrameUrl ?? null;
+      const resolvedLast =
+        match.lastFrameUrl ?? match.firstFrameUrl ?? scene.lastFrameUrl ?? null;
+      if (resolvedFirst && resolvedFirst !== scene.firstFrameUrl) {
+        updateData.firstFrameUrl = resolvedFirst;
+      }
+      if (resolvedLast && resolvedLast !== scene.lastFrameUrl) {
+        updateData.lastFrameUrl = resolvedLast;
+      }
+      if (
+        match.videoPrompt &&
+        (!scene.videoPrompt || scene.videoPrompt.trim().length === 0)
+      ) {
+        updateData.videoPrompt = match.videoPrompt;
+      }
+      if (match.videoUrl && match.videoUrl !== scene.videoUrl) {
+        updateData.videoUrl = match.videoUrl;
+      }
+      if (resolvedFirst || resolvedLast) {
+        const nextStatus =
+          scene.status === 'pending' || !scene.status ? 'READY' : scene.status;
+        if (nextStatus !== scene.status) {
+          updateData.status = nextStatus;
+        }
+      }
+      if (match.providerPayload) {
+        const raw = scene.rawJson;
+        const rawObject =
+          raw && typeof raw === 'object' && !Array.isArray(raw)
+            ? (raw as Record<string, any>)
+            : {};
+        updateData.rawJson = {
+          ...rawObject,
+          video_image_generation: match.providerPayload,
+        };
+      }
+
+      if (Object.keys(updateData).length === 0) continue;
+
+      await tx.storyboardScene.update({
+        where: { id: scene.id },
+        data: updateData,
+      });
+      scenesUpdated += 1;
+      updatedSceneIds.push(scene.id);
+      if (resolvedFirst) firstFrameUrls.push(resolvedFirst);
+      if (resolvedLast) lastFrameUrls.push(resolvedLast);
+    }
+
+    return { scenesUpdated, updatedSceneIds, firstFrameUrls, lastFrameUrls };
+  });
 }
 
 /**
@@ -323,7 +384,8 @@ export async function runVideoImageGenerationJob(args: {
     }
   }
 
-  const { scenesUpdated, updatedSceneIds } = await persistSceneImages(storyboardId, results);
+  const { scenesUpdated, updatedSceneIds, firstFrameUrls, lastFrameUrls } =
+    await persistSceneImages(storyboardId, results);
   const firstResult = results[0] ?? null;
 
   return {
@@ -331,8 +393,10 @@ export async function runVideoImageGenerationJob(args: {
     sceneCount: storyboard.scenes.length,
     scenesUpdated,
     updatedSceneIds,
-    firstFrameUrl: firstResult?.firstFrameUrl ?? null,
-    lastFrameUrl: firstResult?.lastFrameUrl ?? null,
+    firstFrameUrls,
+    lastFrameUrls,
+    firstFrameUrl: firstFrameUrls[0] ?? firstResult?.firstFrameUrl ?? null,
+    lastFrameUrl: lastFrameUrls[0] ?? firstResult?.lastFrameUrl ?? null,
   };
 }
 

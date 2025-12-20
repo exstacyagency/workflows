@@ -47,6 +47,33 @@ type SceneLike = {
   videoUrl: string | null;
 };
 
+type JobLike = {
+  id: string;
+  projectId: string;
+  payload: unknown;
+};
+
+type RunResult = {
+  ok: true;
+  storyboardId: string;
+  scriptId: string;
+  sceneCount: number;
+  scenesUpdated: number;
+  updatedSceneIds: string[];
+  videoUrls: string[];
+  taskIds: string[];
+  mergedVideoUrl?: string | null;
+  skipped?: boolean;
+  reason?: string;
+};
+
+function asObject(value: unknown) {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, any>;
+  }
+  return {};
+}
+
 function wait(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -287,11 +314,26 @@ async function persistSceneVideos(storyboardId: string, results: SceneVideoResul
   return { scenesUpdated, updatedSceneIds };
 }
 
-export async function runVideoGenerationJob(args: { storyboardId: string }) {
-  const { storyboardId } = args;
+export async function runVideoGenerationJob(job: JobLike): Promise<RunResult> {
+  const payload = asObject(job.payload);
+  const projectId = String(payload.projectId ?? '').trim();
+  const storyboardId = String(payload.storyboardId ?? '').trim();
+  const scriptId = String(payload.scriptId ?? '').trim();
 
-  const storyboard = await prisma.storyboard.findUnique({
-    where: { id: storyboardId },
+  const missing: string[] = [];
+  if (!projectId) missing.push('projectId');
+  if (!storyboardId) missing.push('storyboardId');
+  if (!scriptId) missing.push('scriptId');
+  if (missing.length > 0) {
+    throw new Error(`Invalid payload: missing ${missing.join(', ')}`);
+  }
+
+  if (projectId && job.projectId && projectId !== job.projectId) {
+    throw new Error('Invalid payload: projectId mismatch');
+  }
+
+  const storyboard = await prisma.storyboard.findFirst({
+    where: { id: storyboardId, projectId },
     include: { scenes: true },
   });
 
@@ -299,17 +341,45 @@ export async function runVideoGenerationJob(args: { storyboardId: string }) {
     throw new Error('Storyboard not found');
   }
 
+  if (!storyboard.scenes.length) {
+    throw new Error('Storyboard has no scenes');
+  }
+
+  const script = await prisma.script.findFirst({
+    where: { id: scriptId, projectId },
+    select: { id: true, mergedVideoUrl: true },
+  });
+  if (!script) {
+    throw new Error('Script not found');
+  }
+
   const scenes = storyboard.scenes.sort((a, b) => a.sceneNumber - b.sceneNumber);
+  const existingUrls = scenes
+    .map(scene => scene.videoUrl)
+    .filter((url): url is string => typeof url === 'string' && url.trim().length > 0);
   const targetScenes = scenes.filter(scene => !scene.videoUrl);
 
   if (targetScenes.length === 0) {
+    let mergedVideoUrl = script.mergedVideoUrl ?? null;
+    if (!mergedVideoUrl && scenes.length === 1 && existingUrls[0]) {
+      mergedVideoUrl = existingUrls[0];
+      await prisma.script.update({
+        where: { id: script.id },
+        data: { mergedVideoUrl },
+      });
+    }
     return {
+      ok: true,
       storyboardId,
+      scriptId,
       sceneCount: scenes.length,
       scenesUpdated: 0,
-      updatedSceneIds: [] as string[],
-      videoUrls: [] as string[],
-      providerTaskIds: [] as string[],
+      updatedSceneIds: [],
+      videoUrls: existingUrls,
+      taskIds: [],
+      mergedVideoUrl,
+      skipped: true,
+      reason: 'already_generated',
     };
   }
 
@@ -321,12 +391,27 @@ export async function runVideoGenerationJob(args: { storyboardId: string }) {
 
   const { scenesUpdated, updatedSceneIds } = await persistSceneVideos(storyboardId, results);
 
+  let mergedVideoUrl = script.mergedVideoUrl ?? null;
+  if (!mergedVideoUrl && scenes.length === 1) {
+    const singleUrl = results[0]?.videoUrl ?? existingUrls[0] ?? null;
+    if (singleUrl) {
+      mergedVideoUrl = singleUrl;
+      await prisma.script.update({
+        where: { id: script.id },
+        data: { mergedVideoUrl },
+      });
+    }
+  }
+
   return {
+    ok: true,
     storyboardId,
+    scriptId,
     sceneCount: scenes.length,
     scenesUpdated,
     updatedSceneIds,
-    videoUrls: results.map(result => result.videoUrl),
-    providerTaskIds: results.map(result => result.providerTaskId),
+    videoUrls: [...existingUrls, ...results.map(result => result.videoUrl)],
+    taskIds: results.map(result => result.providerTaskId),
+    mergedVideoUrl,
   };
 }

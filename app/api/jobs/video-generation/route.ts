@@ -82,6 +82,7 @@ export async function POST(req: NextRequest) {
         projectId,
         type: JobType.VIDEO_GENERATION,
         idempotencyKey,
+        status: { in: [JobStatus.PENDING, JobStatus.RUNNING] },
       },
       orderBy: { createdAt: "desc" },
       select: { id: true },
