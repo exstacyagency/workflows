@@ -8,6 +8,7 @@ import { runPatternAnalysis } from "../lib/patternAnalysisService.ts";
 import { startScriptGenerationJob } from "../lib/scriptGenerationService.ts";
 import { startVideoPromptGenerationJob } from "../lib/videoPromptGenerationService.ts";
 import { runVideoImageGenerationJob } from "../lib/videoImageGenerationService.ts";
+import { runVideoGenerationJob } from "../lib/videoGenerationService.ts";
 import prisma from "../lib/prisma.ts";
 import { rollbackQuota } from "../lib/billing/usage.ts";
 
@@ -381,6 +382,39 @@ async function runJob(job: { id: string; type: JobType; projectId: string; paylo
           await rollbackJobQuotaIfNeeded(jobId, job.projectId, payload);
           await markFailed(jobId, msg);
           await appendResultSummary(jobId, `Video images failed: ${msg}`);
+        }
+        return;
+      }
+
+      case JobType.VIDEO_GENERATION: {
+        const cfg = await handleProviderConfig(jobId, "KIE", ["KIE_API_KEY"]);
+        if (!cfg.ok) {
+          if (!cfg.skipped) {
+            await appendResultSummary(jobId, "Video generation failed: KIE not configured");
+          }
+          return;
+        }
+
+        const storyboardId = String(payload?.storyboardId ?? "").trim();
+        if (!storyboardId) {
+          const msg = "Invalid payload: missing storyboardId";
+          await markFailed(jobId, msg);
+          await appendResultSummary(jobId, `Video generation failed: ${msg}`);
+          return;
+        }
+
+        try {
+          const result = await runVideoGenerationJob({ storyboardId });
+          const firstUrl = result.videoUrls[0] ?? "";
+          const summary = firstUrl
+            ? `Video generated: ${firstUrl}${result.videoUrls.length > 1 ? ` (+${result.videoUrls.length - 1} more)` : ""}`
+            : "Video generation completed";
+          await markCompleted(jobId, { ok: true, ...result }, summary);
+        } catch (e: any) {
+          const msg = String(e?.message ?? e ?? "Unknown error");
+          await rollbackJobQuotaIfNeeded(jobId, job.projectId, payload);
+          await markFailed(jobId, msg);
+          await appendResultSummary(jobId, `Video generation failed: ${msg}`);
         }
         return;
       }
