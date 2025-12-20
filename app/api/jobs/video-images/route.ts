@@ -45,7 +45,8 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       );
     }
-    const { storyboardId } = parsed.data;
+    const { storyboardId, force } = parsed.data;
+    const forceRerun = force === true;
 
     const storyboard = await prisma.storyboard.findUnique({
       where: { id: storyboardId },
@@ -67,7 +68,6 @@ export async function POST(req: NextRequest) {
     }
 
     projectId = storyboard.script.project.id;
-    const sceneCount = storyboard._count?.scenes ?? 0;
     const auth = await requireProjectOwner(projectId);
     if (auth.error) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
@@ -91,21 +91,26 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const idempotencyKey = JSON.stringify([
+    const baseIdempotencyKey = JSON.stringify([
       projectId,
       JobType.VIDEO_IMAGE_GENERATION,
       storyboardId,
     ]);
-    const existing = await findIdempotentJob({
-      projectId,
-      type: JobType.VIDEO_IMAGE_GENERATION,
-      idempotencyKey,
-    });
-    if (existing) {
-      return NextResponse.json(
-        { jobId: existing.id, reused: true },
-        { status: 200 },
-      );
+    const idempotencyKey = forceRerun
+      ? `${baseIdempotencyKey}:force:${Date.now()}`
+      : baseIdempotencyKey;
+    if (!forceRerun) {
+      const existing = await findIdempotentJob({
+        projectId,
+        type: JobType.VIDEO_IMAGE_GENERATION,
+        idempotencyKey,
+      });
+      if (existing) {
+        return NextResponse.json(
+          { jobId: existing.id, reused: true },
+          { status: 200 },
+        );
+      }
     }
 
     try {
@@ -154,7 +159,7 @@ export async function POST(req: NextRequest) {
       });
       if (raceExisting?.id) {
         return NextResponse.json(
-          { jobId: raceExisting.id, reused: true },
+          { jobId: raceExisting.id, reused: forceRerun ? false : true },
           { status: 200 },
         );
       }
@@ -173,10 +178,7 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    return NextResponse.json(
-      { jobId, storyboardId, sceneCount },
-      { status: 200 },
-    );
+    return NextResponse.json({ jobId, reused: false }, { status: 200 });
   } catch (err: any) {
     console.error(err);
     if (reservationPeriodKey && !reservationRolledBack) {
