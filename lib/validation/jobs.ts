@@ -12,6 +12,7 @@ export const StoryboardJobSchema = z.object({
     .string()
     .min(1, 'storyboardId is required')
     .max(128, 'storyboardId too long'),
+  force: z.boolean().optional(),
 });
 
 export async function parseJson<T extends z.ZodTypeAny>(
