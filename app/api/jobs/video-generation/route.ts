@@ -64,10 +64,41 @@ export async function POST(req: NextRequest) {
 
     const storyboard = await prisma.storyboard.findUnique({
       where: { id: storyboardId },
-      select: { id: true, projectId: true },
+      select: {
+        id: true,
+        projectId: true,
+        scenes: { select: { id: true, firstFrameUrl: true, lastFrameUrl: true } },
+      },
     });
     if (!storyboard || storyboard.projectId !== projectId) {
       return NextResponse.json({ error: "Storyboard or project not found" }, { status: 404 });
+    }
+
+    if (!storyboard.scenes.length) {
+      return NextResponse.json(
+        { error: "Frames not ready", missing: [] },
+        { status: 409 },
+      );
+    }
+    const missing = storyboard.scenes
+      .map((scene) => {
+        const missingFields: string[] = [];
+        if (!scene.firstFrameUrl || String(scene.firstFrameUrl).trim().length === 0) {
+          missingFields.push("firstFrameUrl");
+        }
+        if (!scene.lastFrameUrl || String(scene.lastFrameUrl).trim().length === 0) {
+          missingFields.push("lastFrameUrl");
+        }
+        return missingFields.length > 0
+          ? { sceneId: scene.id, missing: missingFields }
+          : null;
+      })
+      .filter((entry): entry is { sceneId: string; missing: string[] } => !!entry);
+    if (missing.length > 0) {
+      return NextResponse.json(
+        { error: "Frames not ready", missing },
+        { status: 409 },
+      );
     }
 
     const idempotencyKey = JSON.stringify([

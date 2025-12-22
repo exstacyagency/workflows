@@ -6,7 +6,8 @@ import { StoryboardJobSchema, parseJson } from '../../../../lib/validation/jobs'
 import { checkRateLimit } from '../../../../lib/rateLimiter';
 import { logAudit } from '../../../../lib/logger';
 import { getSessionUserId } from '../../../../lib/getSessionUserId';
-import { enforceUserConcurrency, findIdempotentJob } from '../../../../lib/jobGuards';
+import { startVideoImageGenerationJob } from '../../../../lib/videoImageGenerationService';
+import { enforceUserConcurrency } from '../../../../lib/jobGuards';
 import { JobStatus, JobType } from '@prisma/client';
 import { assertMinPlan, UpgradeRequiredError } from '../../../../lib/billing/requirePlan';
 import { reserveQuota, rollbackQuota, QuotaExceededError } from '../../../../lib/billing/usage';
@@ -50,24 +51,17 @@ export async function POST(req: NextRequest) {
 
     const storyboard = await prisma.storyboard.findUnique({
       where: { id: storyboardId },
-      include: {
-        script: {
-          include: { project: true },
-        },
-        _count: {
-          select: { scenes: true },
-        },
-      },
+      select: { id: true, projectId: true },
     });
 
-    if (!storyboard || !storyboard.script?.project) {
+    if (!storyboard?.projectId) {
       return NextResponse.json(
         { error: 'Storyboard or project not found' },
         { status: 404 },
       );
     }
 
-    projectId = storyboard.script.project.id;
+    projectId = storyboard.projectId;
     const auth = await requireProjectOwner(projectId);
     if (auth.error) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
@@ -91,26 +85,26 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const baseIdempotencyKey = JSON.stringify([
+    const idempotencyKey = JSON.stringify([
       projectId,
       JobType.VIDEO_IMAGE_GENERATION,
       storyboardId,
+      forceRerun ? 'force' : 'normal',
     ]);
-    const idempotencyKey = forceRerun
-      ? `${baseIdempotencyKey}:force:${Date.now()}`
-      : baseIdempotencyKey;
-    if (!forceRerun) {
-      const existing = await findIdempotentJob({
+    const existing = await prisma.job.findFirst({
+      where: {
         projectId,
         type: JobType.VIDEO_IMAGE_GENERATION,
         idempotencyKey,
-      });
-      if (existing) {
-        return NextResponse.json(
-          { jobId: existing.id, reused: true },
-          { status: 200 },
-        );
-      }
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true },
+    });
+    if (existing) {
+      return NextResponse.json(
+        { jobId: existing.id, reused: true },
+        { status: 200 },
+      );
     }
 
     try {
@@ -133,7 +127,7 @@ export async function POST(req: NextRequest) {
           type: JobType.VIDEO_IMAGE_GENERATION,
           status: JobStatus.PENDING,
           idempotencyKey,
-          payload: { storyboardId, idempotencyKey },
+          payload: { storyboardId, idempotencyKey, force: forceRerun },
         },
       });
       jobId = job.id;
@@ -159,13 +153,19 @@ export async function POST(req: NextRequest) {
       });
       if (raceExisting?.id) {
         return NextResponse.json(
-          { jobId: raceExisting.id, reused: forceRerun ? false : true },
+          { jobId: raceExisting.id, reused: true },
           { status: 200 },
         );
       }
 
       throw err;
     }
+
+    const result = await startVideoImageGenerationJob({
+      storyboardId,
+      jobId,
+      force: forceRerun,
+    });
 
     await logAudit({
       userId,
@@ -178,12 +178,36 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    return NextResponse.json({ jobId, reused: false }, { status: 200 });
+    return NextResponse.json(
+      {
+        ok: true,
+        jobId,
+        reused: false,
+        sceneCount: result.sceneCount,
+        updatedSceneIds: result.updatedSceneIds,
+        firstFrameUrls: result.firstFrameUrls ?? [],
+        lastFrameUrls: result.lastFrameUrls ?? [],
+      },
+      { status: 200 },
+    );
   } catch (err: any) {
     console.error(err);
     if (reservationPeriodKey && !reservationRolledBack) {
       await rollbackQuota(userId, reservationPeriodKey, 'videoJobs', 1);
       reservationRolledBack = true;
+    }
+    if (jobId) {
+      try {
+        await prisma.job.update({
+          where: { id: jobId },
+          data: {
+            status: JobStatus.FAILED,
+            error: String(err?.message ?? err),
+          },
+        });
+      } catch {
+        // ignore update errors
+      }
     }
     await logAudit({
       userId,
@@ -196,8 +220,13 @@ export async function POST(req: NextRequest) {
         error: String(err?.message ?? err),
       },
     });
+    const message = String(err?.message ?? err ?? 'Video image generation failed');
+    const lower = message.toLowerCase();
+    const isKieMissing =
+      lower.includes('kie') &&
+      (lower.includes('not configured') || lower.includes('kie_api_key'));
     return NextResponse.json(
-      { error: err?.message ?? 'Video image generation failed' },
+      { error: isKieMissing ? 'KIE not configured' : message },
       { status: 500 },
     );
   }
