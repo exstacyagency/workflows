@@ -336,15 +336,8 @@ async function runJob(job: { id: string; type: JobType; projectId: string; paylo
       }
 
       case JobType.VIDEO_IMAGE_GENERATION: {
-        const cfg = await handleProviderConfig(jobId, "KIE", ["KIE_API_KEY"]);
-        if (!cfg.ok) {
-          if (!cfg.skipped) {
-            await appendResultSummary(jobId, "Video images failed: KIE not configured");
-          }
-          return;
-        }
-
         const storyboardId = String(payload?.storyboardId ?? "").trim();
+        const force = Boolean(payload?.force);
         if (!storyboardId) {
           const msg = "Invalid payload: missing storyboardId";
           await markFailed(jobId, msg);
@@ -365,7 +358,11 @@ async function runJob(job: { id: string; type: JobType; projectId: string; paylo
         }
 
         try {
-          const result = await runVideoImageGenerationJob({ storyboardId: storyboard.id, jobId });
+          const result = await runVideoImageGenerationJob({
+            storyboardId: storyboard.id,
+            jobId,
+            force,
+          });
           await markCompleted(
             jobId,
             {
