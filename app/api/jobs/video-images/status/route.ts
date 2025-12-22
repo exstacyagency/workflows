@@ -79,15 +79,18 @@ export async function POST(req: Request) {
         const sorted = [...polled.images].sort((a, b) => a.frameIndex - b.frameIndex);
         const firstUrl = sorted[0].url;
         const lastUrl = sorted.length > 1 ? sorted[sorted.length - 1].url : sorted[0].url;
-        await prisma.storyboardScene.updateMany({
-          where: { storyboardId },
-          data: {
-            firstFrameUrl: firstUrl,
-            lastFrameUrl: lastUrl,
-            rawJson: { ...(payload?.rawJson ?? {}), ...polled.raw, images: sorted } as any,
-            status: "completed" as any,
-          } as any,
-        });
+          const safePrev = (payload?.rawJson && typeof payload.rawJson === "object") ? payload.rawJson : {};
+          const safePolledRaw = (polled.raw && typeof polled.raw === "object") ? polled.raw : { value: polled.raw };
+
+          await prisma.storyboardScene.updateMany({
+            where: { storyboardId },
+            data: {
+              firstFrameUrl: firstUrl,
+              lastFrameUrl: lastUrl,
+              rawJson: { ...safePrev, polled: safePolledRaw, images: sorted } as any,
+              status: "completed" as any,
+            } as any,
+          });
       }
     } else {
       await prisma.job.update({
