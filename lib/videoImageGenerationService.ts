@@ -1,0 +1,101 @@
+import prisma from "./prisma";
+import { pollMultiFrameVideoImages } from "./videoImageOrchestrator";
+import type { ImageProviderId } from "./imageProviders/types";
+
+type RunArgs = {
+  jobId: string;
+  providerId?: ImageProviderId;
+};
+
+/**
+ * Worker entrypoint for VIDEO_IMAGE_GENERATION.
+ * Nano Banana is single-image per task, so the Job.payload.tasks[] is the source of truth.
+ * This function polls those tasks, updates Job, and persists StoryboardScene first/last URLs.
+ */
+export async function runVideoImageGenerationJob(args: RunArgs): Promise<void> {
+  const job = await prisma.job.findUnique({ where: { id: args.jobId } });
+  if (!job) throw new Error(`Job not found: ${args.jobId}`);
+  if (job.type !== "VIDEO_IMAGE_GENERATION") return;
+
+  const payload = job.payload as any;
+  const tasks = Array.isArray(payload?.tasks) ? payload.tasks : [];
+  if (!tasks.length) {
+    await prisma.job.update({
+      where: { id: job.id },
+      data: {
+        status: "FAILED" as any,
+        error: "Job payload has no tasks[]",
+        resultSummary: "Video image generation failed",
+      } as any,
+    });
+    return;
+  }
+
+  const providerId = (args.providerId ?? payload?.providerId) as ImageProviderId | undefined;
+  const polled = await pollMultiFrameVideoImages({ providerId, tasks });
+
+  const updatedPayload = {
+    ...payload,
+    providerId: polled.providerId,
+    tasks: polled.tasks,
+    result: { ok: true, status: polled.status, images: polled.images },
+  };
+
+  if (polled.status === "FAILED") {
+    await prisma.job.update({
+      where: { id: job.id },
+      data: {
+        status: "FAILED" as any,
+        error: polled.errorMessage ?? "One or more frames failed",
+        payload: updatedPayload as any,
+        resultSummary: "Video image generation failed",
+      } as any,
+    });
+    return;
+  }
+
+  if (polled.status === "SUCCEEDED") {
+    await prisma.job.update({
+      where: { id: job.id },
+      data: {
+        status: "COMPLETED" as any,
+        error: null,
+        payload: updatedPayload as any,
+        resultSummary: `Video frames saved: ${polled.images.length}`,
+      } as any,
+    });
+
+    const storyboardId = payload?.storyboardId;
+    if (storyboardId && polled.images.length > 0) {
+      const sorted = [...polled.images].sort((a, b) => a.frameIndex - b.frameIndex);
+      const firstUrl = sorted[0].url;
+      const lastUrl = sorted.length > 1 ? sorted[sorted.length - 1].url : sorted[0].url;
+
+      const safePrev = payload?.rawJson && typeof payload.rawJson === "object" ? payload.rawJson : {};
+      const safePolledRaw = polled.raw && typeof polled.raw === "object" ? polled.raw : { value: polled.raw };
+
+      await prisma.storyboardScene.updateMany({
+        where: { storyboardId },
+        data: {
+          firstFrameUrl: firstUrl,
+          lastFrameUrl: lastUrl,
+          rawJson: { ...safePrev, polled: safePolledRaw, images: sorted } as any,
+          status: "completed" as any,
+        } as any,
+      });
+    }
+    return;
+  }
+
+  // Still running
+  await prisma.job.update({
+    where: { id: job.id },
+    data: {
+      status: "RUNNING" as any,
+      error: null,
+      payload: updatedPayload as any,
+      resultSummary: `Video frames in progress: ${polled.images.length}/${polled.tasks.length}`,
+    } as any,
+  });
+}
+
