@@ -43,6 +43,7 @@ if (process.env.NODE_ENV !== "production") {
 
 const POLL_MS = Number(process.env.WORKER_POLL_MS ?? 2000);
 const RUN_ONCE = process.env.RUN_ONCE === "1";
+const WORKER_JOB_MAX_RUNTIME_MS = Number(process.env.WORKER_JOB_MAX_RUNTIME_MS ?? 20 * 60_000);
 
 type JsonObject = Record<string, any>;
 
@@ -52,6 +53,24 @@ function sleep(ms: number) {
 
 function nowMs() {
   return Date.now();
+}
+
+async function runWithMaxRuntime<T>(label: string, fn: () => Promise<T>): Promise<T> {
+  const timeoutMs = WORKER_JOB_MAX_RUNTIME_MS;
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      fn(),
+      new Promise<T>((_, reject) => {
+        timeout = setTimeout(
+          () => reject(new Error(`${label} exceeded max runtime ${timeoutMs}ms`)),
+          timeoutMs
+        );
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
 }
 
 function asObject(value: unknown): JsonObject {
@@ -336,15 +355,8 @@ async function runJob(job: { id: string; type: JobType; projectId: string; paylo
       }
 
       case JobType.VIDEO_IMAGE_GENERATION: {
-        const cfg = await handleProviderConfig(jobId, "KIE", ["KIE_API_KEY"]);
-        if (!cfg.ok) {
-          if (!cfg.skipped) {
-            await appendResultSummary(jobId, "Video images failed: KIE not configured");
-          }
-          return;
-        }
-
         const storyboardId = String(payload?.storyboardId ?? "").trim();
+        const force = Boolean(payload?.force);
         if (!storyboardId) {
           const msg = "Invalid payload: missing storyboardId";
           await markFailed(jobId, msg);
@@ -365,22 +377,10 @@ async function runJob(job: { id: string; type: JobType; projectId: string; paylo
         }
 
         try {
-          const result = await runVideoImageGenerationJob({ storyboardId: storyboard.id, jobId });
-          await markCompleted(
-            jobId,
-            {
-              ok: true,
-              storyboardId: result.storyboardId,
-              sceneCount: result.sceneCount,
-              scenesUpdated: result.scenesUpdated,
-              updatedSceneIds: result.updatedSceneIds,
-              firstFrameUrls: result.firstFrameUrls,
-              lastFrameUrls: result.lastFrameUrls,
-              firstFrameUrl: result.firstFrameUrl,
-              lastFrameUrl: result.lastFrameUrl,
-            },
-            `Video frames saved: ${result.scenesUpdated}/${result.sceneCount} scenes`,
-          );
+          await runWithMaxRuntime("VIDEO_IMAGE_GENERATION", async () => {
+            await runVideoImageGenerationJob({ jobId });
+          });
+          await markCompleted(jobId, { ok: true });
         } catch (e: any) {
           const msg = String(e?.message ?? e ?? "Unknown error");
           await rollbackJobQuotaIfNeeded(jobId, job.projectId, payload);

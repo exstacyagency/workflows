@@ -1,0 +1,512 @@
+{
+  "generatedAt": "2025-12-23T22:58:42.789Z",
+  "rows": [
+    {
+      "route": "/api/jobs/[id]",
+      "file": "app/api/jobs/[id]/route.ts",
+      "hasPlanGate": false,
+      "minPlan": null,
+      "hasReserveQuota": false,
+      "hasRollbackQuota": false,
+      "storesQuotaReservation": false,
+      "hasIdempotency": false,
+      "hasRateLimit": false,
+      "hasAuthCheck": false,
+      "hasOwnershipCheck": true,
+      "jobType": null,
+      "imports": [
+        "next/server",
+        "@/lib/prisma",
+        "@/lib/requireProjectOwner"
+      ],
+      "isSpendInitiator": false,
+      "billingComplete": false,
+      "notes": [
+        "non-spend route (excluded from billing completeness)",
+        "no idempotency",
+        "no rate limit",
+        "no explicit auth check (may rely on middleware)"
+      ]
+    },
+    {
+      "route": "/api/jobs/ad-performance",
+      "file": "app/api/jobs/ad-performance/route.ts",
+      "hasPlanGate": true,
+      "minPlan": "GROWTH",
+      "hasReserveQuota": true,
+      "hasRollbackQuota": true,
+      "storesQuotaReservation": false,
+      "hasIdempotency": true,
+      "hasRateLimit": true,
+      "hasAuthCheck": false,
+      "hasOwnershipCheck": true,
+      "jobType": "AD_PERFORMANCE",
+      "imports": [
+        "next/server",
+        "../../../../lib/adRawCollectionService",
+        "../../../../lib/prisma",
+        "../../../../lib/requireProjectOwner",
+        "../../../../lib/validation/jobs",
+        "zod",
+        "../../../../lib/rateLimiter",
+        "../../../../lib/logger",
+        "../../../../lib/getSessionUserId",
+        "../../../../lib/jobGuards",
+        "@prisma/client",
+        "../../../../lib/billing/requirePlan",
+        "../../../../lib/billing/usage"
+      ],
+      "isSpendInitiator": true,
+      "billingComplete": true,
+      "notes": [
+        "no explicit auth check (may rely on middleware)"
+      ]
+    },
+    {
+      "route": "/api/jobs/ad-transcripts",
+      "file": "app/api/jobs/ad-transcripts/route.ts",
+      "hasPlanGate": true,
+      "minPlan": "GROWTH",
+      "hasReserveQuota": true,
+      "hasRollbackQuota": true,
+      "storesQuotaReservation": false,
+      "hasIdempotency": true,
+      "hasRateLimit": true,
+      "hasAuthCheck": false,
+      "hasOwnershipCheck": true,
+      "jobType": "AD_TRANSCRIPTS",
+      "imports": [
+        "next/server",
+        "../../../../lib/adTranscriptCollectionService",
+        "../../../../lib/prisma",
+        "../../../../lib/requireProjectOwner",
+        "../../../../lib/validation/jobs",
+        "../../../../lib/rateLimiter",
+        "../../../../lib/logger",
+        "../../../../lib/getSessionUserId",
+        "../../../../lib/jobGuards",
+        "@prisma/client",
+        "../../../../lib/billing/requirePlan",
+        "../../../../lib/billing/usage"
+      ],
+      "isSpendInitiator": true,
+      "billingComplete": true,
+      "notes": [
+        "no explicit auth check (may rely on middleware)"
+      ]
+    },
+    {
+      "route": "/api/jobs/character-generation",
+      "file": "app/api/jobs/character-generation/route.ts",
+      "hasPlanGate": true,
+      "minPlan": "GROWTH",
+      "hasReserveQuota": true,
+      "hasRollbackQuota": true,
+      "storesQuotaReservation": false,
+      "hasIdempotency": true,
+      "hasRateLimit": true,
+      "hasAuthCheck": false,
+      "hasOwnershipCheck": true,
+      "jobType": "CHARACTER_GENERATION",
+      "imports": [
+        "next/server",
+        "../../../../lib/characterGenerationService",
+        "../../../../lib/prisma",
+        "../../../../lib/requireProjectOwner",
+        "../../../../lib/validation/jobs",
+        "zod",
+        "../../../../lib/rateLimiter",
+        "../../../../lib/logger",
+        "../../../../lib/getSessionUserId",
+        "../../../../lib/jobGuards",
+        "@prisma/client",
+        "../../../../lib/billing/requirePlan",
+        "../../../../lib/billing/usage"
+      ],
+      "isSpendInitiator": true,
+      "billingComplete": true,
+      "notes": [
+        "no explicit auth check (may rely on middleware)"
+      ]
+    },
+    {
+      "route": "/api/jobs/customer-analysis",
+      "file": "app/api/jobs/customer-analysis/route.ts",
+      "hasPlanGate": true,
+      "minPlan": "GROWTH",
+      "hasReserveQuota": true,
+      "hasRollbackQuota": true,
+      "storesQuotaReservation": false,
+      "hasIdempotency": true,
+      "hasRateLimit": true,
+      "hasAuthCheck": false,
+      "hasOwnershipCheck": true,
+      "jobType": "CUSTOMER_ANALYSIS",
+      "imports": [
+        "next/server",
+        "../../../../lib/prisma",
+        "@prisma/client",
+        "../../../../lib/customerAnalysisService",
+        "../../../../lib/requireProjectOwner",
+        "../../../../lib/validation/jobs",
+        "zod",
+        "../../../../lib/rateLimiter",
+        "../../../../lib/logger",
+        "../../../../lib/getSessionUserId",
+        "../../../../lib/jobGuards",
+        "../../../../lib/billing/requirePlan",
+        "../../../../lib/billing/usage"
+      ],
+      "isSpendInitiator": true,
+      "billingComplete": true,
+      "notes": [
+        "no explicit auth check (may rely on middleware)"
+      ]
+    },
+    {
+      "route": "/api/jobs/customer-research",
+      "file": "app/api/jobs/customer-research/route.ts",
+      "hasPlanGate": true,
+      "minPlan": "GROWTH",
+      "hasReserveQuota": true,
+      "hasRollbackQuota": true,
+      "storesQuotaReservation": true,
+      "hasIdempotency": true,
+      "hasRateLimit": true,
+      "hasAuthCheck": false,
+      "hasOwnershipCheck": true,
+      "jobType": "CUSTOMER_RESEARCH",
+      "imports": [
+        "next/server",
+        "../../../../lib/prisma",
+        "@prisma/client",
+        "../../../../lib/costEstimator",
+        "../../../../lib/rateLimiter",
+        "../../../../lib/requireProjectOwner",
+        "zod",
+        "../../../../lib/validation/jobs",
+        "../../../../lib/logger",
+        "../../../../lib/getSessionUserId",
+        "../../../../lib/jobGuards",
+        "../../../../lib/billing/requirePlan",
+        "../../../../lib/billing/usage"
+      ],
+      "isSpendInitiator": true,
+      "billingComplete": true,
+      "notes": [
+        "no explicit auth check (may rely on middleware)"
+      ]
+    },
+    {
+      "route": "/api/jobs/pattern-analysis",
+      "file": "app/api/jobs/pattern-analysis/route.ts",
+      "hasPlanGate": true,
+      "minPlan": "GROWTH",
+      "hasReserveQuota": true,
+      "hasRollbackQuota": true,
+      "storesQuotaReservation": true,
+      "hasIdempotency": true,
+      "hasRateLimit": true,
+      "hasAuthCheck": false,
+      "hasOwnershipCheck": true,
+      "jobType": "CUSTOMER_RESEARCH",
+      "imports": [
+        "next/server",
+        "../../../../lib/prisma",
+        "@prisma/client",
+        "../../../../lib/requireProjectOwner",
+        "../../../../lib/validation/jobs",
+        "../../../../lib/rateLimiter",
+        "../../../../lib/logger",
+        "../../../../lib/getSessionUserId",
+        "../../../../lib/jobGuards",
+        "../../../../lib/billing/requirePlan",
+        "../../../../lib/billing/usage"
+      ],
+      "isSpendInitiator": true,
+      "billingComplete": true,
+      "notes": [
+        "no explicit auth check (may rely on middleware)"
+      ]
+    },
+    {
+      "route": "/api/jobs/script-generation",
+      "file": "app/api/jobs/script-generation/route.ts",
+      "hasPlanGate": true,
+      "minPlan": "GROWTH",
+      "hasReserveQuota": true,
+      "hasRollbackQuota": true,
+      "storesQuotaReservation": false,
+      "hasIdempotency": true,
+      "hasRateLimit": true,
+      "hasAuthCheck": false,
+      "hasOwnershipCheck": true,
+      "jobType": "SCRIPT_GENERATION",
+      "imports": [
+        "next/server",
+        "../../../../lib/scriptGenerationService",
+        "../../../../lib/requireProjectOwner",
+        "../../../../lib/validation/jobs",
+        "../../../../lib/rateLimiter",
+        "../../../../lib/prisma",
+        "@prisma/client",
+        "../../../../lib/logger",
+        "../../../../lib/getSessionUserId",
+        "../../../../lib/jobGuards",
+        "../../../../lib/jobRuntime",
+        "../../../../lib/flags",
+        "../../../../lib/observability",
+        "../../../../lib/billing/requirePlan",
+        "../../../../lib/billing/usage"
+      ],
+      "isSpendInitiator": true,
+      "billingComplete": true,
+      "notes": [
+        "no explicit auth check (may rely on middleware)"
+      ]
+    },
+    {
+      "route": "/api/jobs/storyboard-generation",
+      "file": "app/api/jobs/storyboard-generation/route.ts",
+      "hasPlanGate": true,
+      "minPlan": "GROWTH",
+      "hasReserveQuota": false,
+      "hasRollbackQuota": false,
+      "storesQuotaReservation": false,
+      "hasIdempotency": true,
+      "hasRateLimit": true,
+      "hasAuthCheck": false,
+      "hasOwnershipCheck": true,
+      "jobType": null,
+      "imports": [
+        "next/server",
+        "zod",
+        "../../../../lib/prisma",
+        "../../../../lib/getSessionUserId",
+        "../../../../lib/requireProjectOwner",
+        "../../../../lib/billing/requirePlan",
+        "../../../../lib/rateLimiter"
+      ],
+      "isSpendInitiator": false,
+      "billingComplete": false,
+      "notes": [
+        "non-spend route (excluded from billing completeness)",
+        "plan-gated but no reserveQuota",
+        "no explicit auth check (may rely on middleware)"
+      ]
+    },
+    {
+      "route": "/api/jobs/video-generation",
+      "file": "app/api/jobs/video-generation/route.ts",
+      "hasPlanGate": true,
+      "minPlan": "GROWTH",
+      "hasReserveQuota": true,
+      "hasRollbackQuota": true,
+      "storesQuotaReservation": true,
+      "hasIdempotency": true,
+      "hasRateLimit": true,
+      "hasAuthCheck": false,
+      "hasOwnershipCheck": true,
+      "jobType": "VIDEO_GENERATION",
+      "imports": [
+        "next/server",
+        "zod",
+        "../../../../lib/prisma",
+        "../../../../lib/getSessionUserId",
+        "../../../../lib/requireProjectOwner",
+        "../../../../lib/billing/requirePlan",
+        "../../../../lib/billing/usage",
+        "@prisma/client",
+        "../../../../lib/observability",
+        "../../../../lib/rateLimiter"
+      ],
+      "isSpendInitiator": true,
+      "billingComplete": true,
+      "notes": [
+        "no explicit auth check (may rely on middleware)"
+      ]
+    },
+    {
+      "route": "/api/jobs/video-generation/status",
+      "file": "app/api/jobs/video-generation/status/route.ts",
+      "hasPlanGate": false,
+      "minPlan": null,
+      "hasReserveQuota": false,
+      "hasRollbackQuota": false,
+      "storesQuotaReservation": false,
+      "hasIdempotency": true,
+      "hasRateLimit": false,
+      "hasAuthCheck": false,
+      "hasOwnershipCheck": true,
+      "jobType": "VIDEO_PROMPT_GENERATION",
+      "imports": [
+        "next/server",
+        "../../../../../lib/prisma",
+        "../../../../../lib/getSessionUserId",
+        "@prisma/client"
+      ],
+      "isSpendInitiator": false,
+      "billingComplete": false,
+      "notes": [
+        "non-spend route (excluded from billing completeness)",
+        "no rate limit",
+        "no explicit auth check (may rely on middleware)"
+      ]
+    },
+    {
+      "route": "/api/jobs/video-images/start",
+      "file": "app/api/jobs/video-images/start/route.ts",
+      "hasPlanGate": true,
+      "minPlan": "GROWTH",
+      "hasReserveQuota": true,
+      "hasRollbackQuota": true,
+      "storesQuotaReservation": true,
+      "hasIdempotency": true,
+      "hasRateLimit": true,
+      "hasAuthCheck": false,
+      "hasOwnershipCheck": true,
+      "jobType": "VIDEO_IMAGE_GENERATION",
+      "imports": [
+        "next/server",
+        "@/lib/prisma",
+        "@/lib/videoImageOrchestrator",
+        "@/lib/getSessionUserId",
+        "@/lib/requireProjectOwner",
+        "@/lib/rateLimiter",
+        "@/lib/billing/requirePlan",
+        "@/lib/billing/usage"
+      ],
+      "isSpendInitiator": true,
+      "billingComplete": true,
+      "notes": [
+        "no explicit auth check (may rely on middleware)"
+      ]
+    },
+    {
+      "route": "/api/jobs/video-images/status",
+      "file": "app/api/jobs/video-images/status/route.ts",
+      "hasPlanGate": false,
+      "minPlan": null,
+      "hasReserveQuota": false,
+      "hasRollbackQuota": false,
+      "storesQuotaReservation": false,
+      "hasIdempotency": true,
+      "hasRateLimit": true,
+      "hasAuthCheck": false,
+      "hasOwnershipCheck": false,
+      "jobType": "VIDEO_IMAGE_GENERATION",
+      "imports": [
+        "next/server",
+        "@/lib/prisma",
+        "@/lib/videoImageOrchestrator",
+        "@/lib/getSessionUserId",
+        "@/lib/rateLimiter"
+      ],
+      "isSpendInitiator": false,
+      "billingComplete": false,
+      "notes": [
+        "non-spend route (excluded from billing completeness)",
+        "no explicit auth check (may rely on middleware)"
+      ]
+    },
+    {
+      "route": "/api/jobs/video-prompts",
+      "file": "app/api/jobs/video-prompts/route.ts",
+      "hasPlanGate": true,
+      "minPlan": "GROWTH",
+      "hasReserveQuota": true,
+      "hasRollbackQuota": true,
+      "storesQuotaReservation": false,
+      "hasIdempotency": true,
+      "hasRateLimit": true,
+      "hasAuthCheck": false,
+      "hasOwnershipCheck": true,
+      "jobType": "VIDEO_PROMPT_GENERATION",
+      "imports": [
+        "next/server",
+        "zod",
+        "../../../../lib/videoPromptGenerationService",
+        "../../../../lib/prisma",
+        "../../../../lib/requireProjectOwner",
+        "../../../../lib/rateLimiter",
+        "../../../../lib/logger",
+        "../../../../lib/getSessionUserId",
+        "../../../../lib/jobGuards",
+        "@prisma/client",
+        "../../../../lib/billing/requirePlan",
+        "../../../../lib/billing/usage"
+      ],
+      "isSpendInitiator": true,
+      "billingComplete": true,
+      "notes": [
+        "no explicit auth check (may rely on middleware)"
+      ]
+    },
+    {
+      "route": "/api/jobs/video-reviewer",
+      "file": "app/api/jobs/video-reviewer/route.ts",
+      "hasPlanGate": true,
+      "minPlan": "SCALE",
+      "hasReserveQuota": true,
+      "hasRollbackQuota": true,
+      "storesQuotaReservation": false,
+      "hasIdempotency": true,
+      "hasRateLimit": true,
+      "hasAuthCheck": false,
+      "hasOwnershipCheck": true,
+      "jobType": "VIDEO_REVIEW",
+      "imports": [
+        "next/server",
+        "../../../../lib/videoReviewerService",
+        "../../../../lib/requireProjectOwner",
+        "../../../../lib/prisma",
+        "../../../../lib/validation/jobs",
+        "../../../../lib/rateLimiter",
+        "../../../../lib/logger",
+        "../../../../lib/getSessionUserId",
+        "../../../../lib/jobGuards",
+        "@prisma/client",
+        "../../../../lib/billing/requirePlan",
+        "../../../../lib/billing/usage"
+      ],
+      "isSpendInitiator": true,
+      "billingComplete": true,
+      "notes": [
+        "no explicit auth check (may rely on middleware)"
+      ]
+    },
+    {
+      "route": "/api/jobs/video-upscaler",
+      "file": "app/api/jobs/video-upscaler/route.ts",
+      "hasPlanGate": true,
+      "minPlan": "SCALE",
+      "hasReserveQuota": true,
+      "hasRollbackQuota": true,
+      "storesQuotaReservation": false,
+      "hasIdempotency": true,
+      "hasRateLimit": true,
+      "hasAuthCheck": false,
+      "hasOwnershipCheck": true,
+      "jobType": "VIDEO_UPSCALER",
+      "imports": [
+        "next/server",
+        "../../../../lib/videoUpscalerService",
+        "../../../../lib/requireProjectOwner",
+        "../../../../lib/prisma",
+        "../../../../lib/validation/jobs",
+        "../../../../lib/rateLimiter",
+        "../../../../lib/logger",
+        "../../../../lib/getSessionUserId",
+        "../../../../lib/jobGuards",
+        "@prisma/client",
+        "../../../../lib/billing/requirePlan",
+        "../../../../lib/billing/usage"
+      ],
+      "isSpendInitiator": true,
+      "billingComplete": true,
+      "notes": [
+        "no explicit auth check (may rely on middleware)"
+      ]
+    }
+  ]
+}
