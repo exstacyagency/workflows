@@ -1,0 +1,185 @@
+import { NextResponse } from "next/server";
+import prisma from "../../../../../lib/prisma";
+import { getSessionUserId } from "../../../../../lib/getSessionUserId";
+import { requireProjectOwner } from "../../../../../lib/requireProjectOwner";
+import { JobType } from "@prisma/client";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+type PhaseStatus = "completed" | "pending" | "running" | "needs_attention";
+
+function phaseFromJobStatus(jobStatus?: string | null): PhaseStatus {
+  const s = String(jobStatus || "").toUpperCase();
+  if (s === "COMPLETED") return "completed";
+  if (s === "RUNNING") return "running";
+  if (s === "FAILED") return "needs_attention";
+  return "pending";
+}
+
+async function latestJob(projectId: string, types: JobType[]) {
+  if (!types.length) return null;
+  return prisma.job.findFirst({
+    where: { projectId, type: { in: types } },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, type: true, status: true, updatedAt: true, resultSummary: true, error: true },
+  });
+}
+
+export async function GET(req: Request, { params }: { params: { projectId: string } }) {
+  try {
+    const url = new URL(req.url);
+    const wantDebug = url.searchParams.get("debug") === "1";
+    const userId = await getSessionUserId();
+    if (!userId) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+
+    const projectId = String(params.projectId || "");
+    if (!projectId) return NextResponse.json({ ok: false, error: "Missing projectId" }, { status: 400 });
+
+    const auth = await requireProjectOwner(projectId);
+    if (auth.error) return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
+
+    const storyboards = await prisma.storyboard.findMany({
+      where: { projectId },
+      select: { id: true },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+    });
+    const storyboardIds = storyboards.map((s) => s.id);
+
+    const jobsForProject = await prisma.job.findMany({
+      where: { projectId },
+      select: { payload: true, type: true },
+      orderBy: { createdAt: "desc" },
+      take: 200,
+    });
+
+    const storyboardIdsFromJobs = jobsForProject
+      .map((j) => {
+        const p: any = j.payload ?? {};
+        return p.storyboardId || p.storyboardID || p.storyboard?.id || null;
+      })
+      .filter((v) => typeof v === "string" && v.length > 0);
+
+    // Also include any storyboardIds that already have scenes (direct truth)
+    const storyboardIdsFromScenes = (
+      await prisma.storyboardScene.findMany({
+        select: { storyboardId: true },
+        distinct: ["storyboardId"],
+        take: 500,
+      })
+    ).map((r) => r.storyboardId);
+
+    const allStoryboardIds = Array.from(
+      new Set([...storyboardIds, ...storyboardIdsFromJobs, ...storyboardIdsFromScenes])
+    );
+
+    const completedSceneCount =
+      allStoryboardIds.length > 0
+        ? await prisma.storyboardScene.count({
+            where: { storyboardId: { in: allStoryboardIds } as any, status: "completed" as any } as any,
+          })
+        : 0;
+
+    const anySceneCompleted = completedSceneCount > 0;
+
+    const phases = [
+      {
+        key: "research",
+        label: "Research",
+        job: await latestJob(projectId, jt("CUSTOMER_RESEARCH", "AD_TRANSCRIPTS", "AD_PERFORMANCE")),
+      },
+      {
+        key: "avatar_product_intel",
+        label: "Avatar & Product Intel",
+        job: await latestJob(projectId, jt("CUSTOMER_ANALYSIS", "PRODUCT_INTELLIGENCE")),
+      },
+      {
+        key: "pattern_brain",
+        label: "Pattern Brain",
+        job: await latestJob(projectId, jt("PATTERN_ANALYSIS")),
+      },
+      {
+        key: "script_characters",
+        label: "Script & Characters",
+        job: await latestJob(projectId, jt("SCRIPT_GENERATION", "CHARACTER_GENERATION")),
+      },
+      {
+        key: "storyboards_frames",
+        label: "Storyboards",
+        job: await latestJob(projectId, jt("STORYBOARD_GENERATION", "VIDEO_PROMPT_GENERATION")),
+      },
+      {
+        key: "scenes_review",
+        label: "Scenes & Review",
+        job: await latestJob(projectId, jt("VIDEO_IMAGE_GENERATION", "VIDEO_REVIEW")),
+      },
+      {
+        key: "upscale_export",
+        label: "Upscale & Export",
+        job: await latestJob(projectId, jt("VIDEO_UPSCALER", "VIDEO_GENERATION")),
+      },
+    ].map((p) => {
+      const base = phaseFromJobStatus(p.job?.status);
+      const status =
+        p.key === "scenes_review"
+          ? base === "needs_attention"
+            ? "needs_attention"
+            : anySceneCompleted
+              ? "completed"
+              : base
+          : base;
+
+      return {
+        key: p.key,
+        label: p.label,
+        status,
+        lastJob: p.job
+          ? {
+              id: p.job.id,
+              type: p.job.type,
+              status: p.job.status,
+              updatedAt: p.job.updatedAt.toISOString(),
+              resultSummary: p.job.resultSummary,
+              error: p.job.error,
+            }
+          : null,
+      };
+    });
+
+    return NextResponse.json(
+      {
+        ok: true,
+        projectId,
+        anySceneCompleted,
+        phases,
+        ...(wantDebug
+          ? {
+              debug: {
+                storyboardIdsCount: storyboardIds.length,
+                storyboardIdsFromJobsCount: storyboardIdsFromJobs.length,
+                storyboardIdsFromScenesCount: storyboardIdsFromScenes.length,
+                allStoryboardIdsCount: allStoryboardIds.length,
+                completedSceneCount,
+                sampleStoryboardIds: allStoryboardIds.slice(0, 10),
+              },
+            }
+          : {}),
+      },
+      { status: 200 }
+    );
+  } catch (e: any) {
+    const msg = String(e?.message || e || "Unknown error");
+    const isDev = process.env.NODE_ENV !== "production";
+    return NextResponse.json(
+      { ok: false, error: msg, ...(isDev ? { stack: String(e?.stack || "") } : {}) },
+      { status: 500 }
+    );
+  }
+}
+function jt(...keys: Array<keyof typeof JobType>): JobType[] {
+  // Some deployments may not have all enum members yet. Filter missing ones safely.
+  return keys
+    .map((k) => (JobType as any)[k] as JobType | undefined)
+    .filter((v): v is JobType => !!v);
+}
