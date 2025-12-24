@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 export type ScriptMedia = {
   id: string;
@@ -20,11 +20,21 @@ export function ScriptMediaPreview({ script }: Props) {
   const [warning, setWarning] = useState<string | null>(null);
   const [warningKey, setWarningKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [displayTime, setDisplayTime] = useState<string>("");
 
   const mediaKey = useMemo(
     () => script.upscaledVideoUrl ?? script.mergedVideoUrl ?? null,
     [script.upscaledVideoUrl, script.mergedVideoUrl]
   );
+
+  const updatedAt = script.createdAt;
+  useEffect(() => {
+    try {
+      setDisplayTime(new Date(updatedAt).toLocaleString());
+    } catch {
+      setDisplayTime("");
+    }
+  }, [updatedAt]);
 
   async function handleGetVideo() {
     if (!mediaKey || loading) return;
@@ -63,7 +73,7 @@ export function ScriptMediaPreview({ script }: Props) {
         <span className="font-semibold text-slate-200">
           Script #{script.id.slice(0, 6)}
         </span>
-        <span>{new Date(script.createdAt).toLocaleString()}</span>
+        <span suppressHydrationWarning>{displayTime}</span>
       </div>
       <p className="text-xs text-slate-400">
         Status: <span className="text-slate-200">{script.status ?? "pending"}</span>

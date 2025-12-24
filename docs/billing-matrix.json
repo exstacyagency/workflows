@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2025-12-23T22:58:42.789Z",
+  "generatedAt": "2025-12-24T05:57:31.143Z",
   "rows": [
     {
       "route": "/api/jobs/[id]",
@@ -335,7 +335,7 @@
       "hasRollbackQuota": false,
       "storesQuotaReservation": false,
       "hasIdempotency": true,
-      "hasRateLimit": false,
+      "hasRateLimit": true,
       "hasAuthCheck": false,
       "hasOwnershipCheck": true,
       "jobType": "VIDEO_PROMPT_GENERATION",
@@ -343,13 +343,14 @@
         "next/server",
         "../../../../../lib/prisma",
         "../../../../../lib/getSessionUserId",
-        "@prisma/client"
+        "@prisma/client",
+        "../../../../../lib/requireProjectOwner",
+        "../../../../../lib/rateLimiter"
       ],
       "isSpendInitiator": false,
       "billingComplete": false,
       "notes": [
         "non-spend route (excluded from billing completeness)",
-        "no rate limit",
         "no explicit auth check (may rely on middleware)"
       ]
     },
