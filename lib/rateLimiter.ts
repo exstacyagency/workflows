@@ -9,26 +9,50 @@ const LIMITS = {
 
 type RateLimitResult = { allowed: boolean; reason?: string };
 type RateLimitOptions = { limit?: number; windowMs?: number };
+type RequestRateLimitOptions = {
+  keyPrefix: string;
+  limit?: number;
+  windowSec?: number;
+  key?: string;
+};
 
-const inMemoryBuckets = new Map<string, { resetAt: number; count: number }>();
-
-function checkInMemoryRateLimit(identifier: string, opts: RateLimitOptions = {}): RateLimitResult {
-  const windowMs = opts.windowMs ?? 60 * 1000;
-  const limit = opts.limit ?? 60;
+async function internalCheckRateLimit(
+  key: string,
+  opts: { limit: number; windowMs: number },
+): Promise<RateLimitResult> {
+  const windowMs = Math.max(1000, opts.windowMs);
+  const limit = Math.max(1, opts.limit);
   const now = Date.now();
+  const windowStartMs = Math.floor(now / windowMs) * windowMs;
+  const windowStart = new Date(windowStartMs);
 
-  const bucket = inMemoryBuckets.get(identifier);
-  if (!bucket || now > bucket.resetAt) {
-    inMemoryBuckets.set(identifier, { resetAt: now + windowMs, count: 1 });
+  const existing = await prisma.rateLimitBucket.findUnique({
+    where: { key },
+    select: { windowStart: true },
+  });
+
+  if (!existing || existing.windowStart.getTime() !== windowStartMs) {
+    await prisma.rateLimitBucket.upsert({
+      where: { key },
+      create: { key, windowStart, count: 1 },
+      update: { windowStart, count: 1 },
+    });
     return { allowed: true };
   }
 
-  if (bucket.count >= limit) {
-    const seconds = Math.max(1, Math.round(windowMs / 1000));
-    return { allowed: false, reason: `Rate limit exceeded (max ${limit} per ${seconds}s)` };
+  const updated = await prisma.rateLimitBucket.update({
+    where: { key },
+    data: { count: { increment: 1 } },
+    select: { count: true },
+  });
+
+  if (updated.count > limit) {
+    return {
+      allowed: false,
+      reason: `Rate limit exceeded (${limit}/${Math.floor(windowMs / 1000)}s)`,
+    };
   }
 
-  bucket.count += 1;
   return { allowed: true };
 }
 
@@ -36,67 +60,81 @@ export async function checkRateLimit(
   identifier: string,
   opts: RateLimitOptions = {},
 ): Promise<RateLimitResult> {
-  if (identifier.startsWith('deadletter:')) {
-    return checkInMemoryRateLimit(identifier, opts);
-  }
-  const now = new Date();
-
-  if (identifier.startsWith('project:create:')) {
-    const [, , userId] = identifier.split(':');
-    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
-    const created = await prisma.project.count({
-      where: {
-        userId,
-        createdAt: { gte: oneHourAgo },
-      },
-    });
-
-    if (created >= LIMITS.projectsPerHour) {
-      return {
-        allowed: false,
-        reason: `${created} projects created in last hour (max: ${LIMITS.projectsPerHour})`,
-      };
-    }
-
+  const force = process.env.FORCE_RATE_LIMIT === '1';
+  const isProd = process.env.NODE_ENV === 'production';
+  if (!isProd && !force) {
     return { allowed: true };
   }
 
-  const projectId = identifier;
-  const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
-  const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  try {
+    const hasCustomOpts = opts.limit !== undefined || opts.windowMs !== undefined;
+    if (hasCustomOpts) {
+      return internalCheckRateLimit(identifier, {
+        limit: opts.limit ?? 60,
+        windowMs: opts.windowMs ?? 60 * 1000,
+      });
+    }
 
-  const [hourlyCount, dailyCount, runningCount] = await Promise.all([
-    prisma.job.count({
-      where: {
-        projectId,
-        createdAt: { gte: oneHourAgo },
-      },
-    }),
-    prisma.job.count({
-      where: {
-        projectId,
-        createdAt: { gte: oneDayAgo },
-      },
-    }),
-    prisma.job.count({
-      where: {
-        projectId,
-        status: { in: ['PENDING', 'RUNNING'] },
-      },
-    }),
-  ]);
+    if (identifier.startsWith('project:create:')) {
+      return internalCheckRateLimit(identifier, {
+        limit: LIMITS.projectsPerHour,
+        windowMs: 60 * 60 * 1000,
+      });
+    }
 
-  if (runningCount >= LIMITS.concurrentJobs) {
-    return { allowed: false, reason: `${runningCount} jobs already running (max: ${LIMITS.concurrentJobs})` };
+    if (!identifier.includes(':')) {
+      const runningCount = await prisma.job.count({
+        where: {
+          projectId: identifier,
+          status: { in: ['PENDING', 'RUNNING'] },
+        },
+      });
+
+      if (runningCount >= LIMITS.concurrentJobs) {
+        return {
+          allowed: false,
+          reason: `${runningCount} jobs already running (max: ${LIMITS.concurrentJobs})`,
+        };
+      }
+
+      const hourly = await internalCheckRateLimit(`${identifier}:hour`, {
+        limit: LIMITS.jobsPerHour,
+        windowMs: 60 * 60 * 1000,
+      });
+      if (!hourly.allowed) return hourly;
+
+      const daily = await internalCheckRateLimit(`${identifier}:day`, {
+        limit: LIMITS.jobsPerDay,
+        windowMs: 24 * 60 * 60 * 1000,
+      });
+      if (!daily.allowed) return daily;
+
+      return { allowed: true };
+    }
+
+    return internalCheckRateLimit(identifier, {
+      limit: LIMITS.jobsPerHour,
+      windowMs: 60 * 60 * 1000,
+    });
+  } catch (err: any) {
+    const msg = `Rate limiter unavailable: ${String(err?.message ?? err)}`;
+    if (isProd || force) {
+      return { allowed: false, reason: msg };
+    }
+    return { allowed: true, reason: msg };
   }
+}
 
-  if (hourlyCount >= LIMITS.jobsPerHour) {
-    return { allowed: false, reason: `${hourlyCount} jobs in last hour (max: ${LIMITS.jobsPerHour})` };
-  }
+export async function rateLimit(
+  req: Request,
+  opts: RequestRateLimitOptions,
+): Promise<RateLimitResult> {
+  const forwarded = req.headers.get('x-forwarded-for') ?? '';
+  const realIp = req.headers.get('x-real-ip') ?? '';
+  const ip = (forwarded || realIp).split(',')[0]?.trim() || 'unknown';
+  const key = opts.key ?? ip;
+  const windowMs = (opts.windowSec ?? 60) * 1000;
+  const limit = opts.limit ?? 60;
 
-  if (dailyCount >= LIMITS.jobsPerDay) {
-    return { allowed: false, reason: `${dailyCount} jobs in last 24h (max: ${LIMITS.jobsPerDay})` };
-  }
-
-  return { allowed: true };
+  return checkRateLimit(`${opts.keyPrefix}:${key}`, { limit, windowMs });
 }

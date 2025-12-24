@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "../../../../../lib/prisma";
 import { getSessionUserId } from "../../../../../lib/getSessionUserId";
 import { JobType } from "@prisma/client";
+import { requireProjectOwner } from "../../../../../lib/requireProjectOwner";
+import { checkRateLimit } from "../../../../../lib/rateLimiter";
 
 export async function GET(req: NextRequest) {
   const userId = await getSessionUserId();
@@ -14,6 +16,21 @@ export async function GET(req: NextRequest) {
   const scriptId = req.nextUrl.searchParams.get("scriptId")?.trim() ?? "";
   if (!projectId || !scriptId) {
     return NextResponse.json({ error: "projectId and scriptId are required" }, { status: 400 });
+  }
+
+  // Ownership check: prevents cross-tenant status reads
+  const auth = await requireProjectOwner(projectId);
+  if (auth.error) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
+  }
+
+  // Rate limit: prevents abuse/polling storms
+  const rate = await checkRateLimit(`video-generation:status:${userId}:${projectId}`, {
+    limit: 60,
+    windowMs: 60 * 1000,
+  });
+  if (!rate.allowed) {
+    return NextResponse.json({ error: rate.reason ?? "Rate limit exceeded" }, { status: 429 });
   }
 
   const rootKey = `video-generation:${projectId}:${scriptId}`;
@@ -42,4 +59,3 @@ export async function GET(req: NextRequest) {
     { status: 200 },
   );
 }
-

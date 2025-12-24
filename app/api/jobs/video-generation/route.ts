@@ -5,8 +5,10 @@ import prisma from "../../../../lib/prisma";
 import { getSessionUserId } from "../../../../lib/getSessionUserId";
 import { requireProjectOwner } from "../../../../lib/requireProjectOwner";
 import { assertMinPlan, UpgradeRequiredError } from "../../../../lib/billing/requirePlan";
+import { reserveQuota, rollbackQuota, QuotaExceededError } from "../../../../lib/billing/usage";
 import { JobStatus, JobType } from "@prisma/client";
 import { getRequestId } from "../../../../lib/observability";
+import { checkRateLimit } from "../../../../lib/rateLimiter";
 
 const BodySchema = z.object({
   projectId: z.string().min(1),
@@ -16,14 +18,21 @@ const BodySchema = z.object({
 
 export async function POST(req: NextRequest) {
   const requestId = getRequestId(req) ?? (globalThis.crypto?.randomUUID?.() ?? `req_${Date.now()}`);
+  let userId: string | null = null;
+  // Track rollback primitives explicitly (avoids TS narrowing issues)
+  let reservationPeriodKey: string | null = null;
+  let reservationAmount = 0;
+  let reservationUserId: string | null = null;
+  let planId: "FREE" | "GROWTH" | "SCALE" = "FREE";
+  let jobId: string | null = null;
   try {
-    const userId = await getSessionUserId();
+    userId = await getSessionUserId();
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     try {
-      await assertMinPlan(userId, "GROWTH");
+      planId = await assertMinPlan(userId, "GROWTH");
     } catch (err: any) {
       if (err instanceof UpgradeRequiredError) {
         return NextResponse.json(
@@ -52,6 +61,16 @@ export async function POST(req: NextRequest) {
     const auth = await requireProjectOwner(projectId);
     if (auth.error) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+
+    if (process.env.NODE_ENV === "production") {
+      const rateCheck = await checkRateLimit(projectId);
+      if (!rateCheck.allowed) {
+        return NextResponse.json(
+          { error: `Rate limit exceeded: ${rateCheck.reason}` },
+          { status: 429 },
+        );
+      }
     }
 
     const script = await prisma.script.findUnique({
@@ -123,7 +142,26 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, jobId: existing.id, reused: true }, { status: 200 });
     }
 
-    let jobId: string | null = null;
+    try {
+      {
+        const reserved: any = await reserveQuota(userId, planId, "videoJobs", 1);
+        reservationPeriodKey = String(reserved?.periodKey || "");
+        reservationAmount = Number(reserved?.amount ?? 1);
+        reservationUserId = userId;
+        if (!reservationPeriodKey) {
+          throw new Error("reserveQuota returned no periodKey");
+        }
+      }
+    } catch (err: any) {
+      if (err instanceof QuotaExceededError) {
+        return NextResponse.json(
+          { error: "Quota exceeded", metric: "videoJobs", limit: err.limit, used: err.used },
+          { status: 429 },
+        );
+      }
+      throw err;
+    }
+
     try {
       const job = await prisma.job.create({
         data: {
@@ -136,6 +174,11 @@ export async function POST(req: NextRequest) {
             storyboardId,
             scriptId,
             idempotencyKey,
+            quotaReservation: {
+              periodKey: reservationPeriodKey,
+              metric: "videoJobs",
+              amount: reservationAmount || 1,
+            },
           },
         },
       });
@@ -156,7 +199,27 @@ export async function POST(req: NextRequest) {
         select: { id: true },
       });
       if (raced?.id) {
+        if (reservationPeriodKey && reservationUserId && reservationAmount > 0) {
+          await rollbackQuota(
+            reservationUserId,
+            reservationPeriodKey,
+            "videoJobs",
+            reservationAmount,
+          );
+          reservationPeriodKey = null;
+          reservationAmount = 0;
+        }
         return NextResponse.json({ ok: true, jobId: raced.id, reused: true }, { status: 200 });
+      }
+      if (reservationPeriodKey && reservationUserId && reservationAmount > 0) {
+        await rollbackQuota(
+          reservationUserId,
+          reservationPeriodKey,
+          "videoJobs",
+          reservationAmount,
+        );
+        reservationPeriodKey = null;
+        reservationAmount = 0;
       }
       return NextResponse.json(
         {
@@ -174,6 +237,17 @@ export async function POST(req: NextRequest) {
     );
   } catch (err: any) {
     console.error(err);
+    // Best-effort rollback if we reserved quota and then failed later
+    try {
+      if (reservationPeriodKey && reservationUserId && reservationAmount > 0) {
+        await rollbackQuota(
+          reservationUserId,
+          reservationPeriodKey,
+          "videoJobs",
+          reservationAmount,
+        );
+      }
+    } catch {}
     return NextResponse.json(
       {
         error: "Video generation failed",

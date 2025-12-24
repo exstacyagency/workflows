@@ -2,10 +2,35 @@ import prisma from "./prisma";
 import { pollMultiFrameVideoImages } from "./videoImageOrchestrator";
 import type { ImageProviderId } from "./imageProviders/types";
 
+const KIE_HTTP_TIMEOUT_MS = Number(process.env.KIE_HTTP_TIMEOUT_MS ?? 20_000);
+const KIE_POLL_INTERVAL_MS = Number(process.env.KIE_POLL_INTERVAL_MS ?? 2_000);
+const JOB_MAX_RUNTIME_MS = Number(process.env.WORKER_JOB_MAX_RUNTIME_MS ?? 20 * 60_000);
+
 type RunArgs = {
   jobId: string;
   providerId?: ImageProviderId;
 };
+
+async function runWithTimeout<T>(
+  label: string,
+  timeoutMs: number,
+  fn: () => Promise<T>
+): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      fn(),
+      new Promise<T>((_, reject) => {
+        timeout = setTimeout(
+          () => reject(new Error(`${label} timed out after ${timeoutMs}ms`)),
+          timeoutMs
+        );
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
 
 /**
  * Worker entrypoint for VIDEO_IMAGE_GENERATION.
@@ -13,6 +38,7 @@ type RunArgs = {
  * This function polls those tasks, updates Job, and persists StoryboardScene first/last URLs.
  */
 export async function runVideoImageGenerationJob(args: RunArgs): Promise<void> {
+  const startedAt = Date.now();
   const job = await prisma.job.findUnique({ where: { id: args.jobId } });
   if (!job) throw new Error(`Job not found: ${args.jobId}`);
   if (job.type !== "VIDEO_IMAGE_GENERATION") return;
@@ -32,7 +58,11 @@ export async function runVideoImageGenerationJob(args: RunArgs): Promise<void> {
   }
 
   const providerId = (args.providerId ?? payload?.providerId) as ImageProviderId | undefined;
-  const polled = await pollMultiFrameVideoImages({ providerId, tasks });
+  const polled = await runWithTimeout(
+    "VIDEO_IMAGE_GENERATION poll",
+    KIE_HTTP_TIMEOUT_MS,
+    () => pollMultiFrameVideoImages({ providerId, tasks })
+  );
 
   const updatedPayload = {
     ...payload,
@@ -40,6 +70,10 @@ export async function runVideoImageGenerationJob(args: RunArgs): Promise<void> {
     tasks: polled.tasks,
     result: { ok: true, status: polled.status, images: polled.images },
   };
+
+  if (Date.now() - startedAt > JOB_MAX_RUNTIME_MS) {
+    throw new Error(`VIDEO_IMAGE_GENERATION exceeded max runtime ${JOB_MAX_RUNTIME_MS}ms`);
+  }
 
   if (polled.status === "FAILED") {
     await prisma.job.update({
@@ -93,9 +127,8 @@ export async function runVideoImageGenerationJob(args: RunArgs): Promise<void> {
     data: {
       status: "RUNNING" as any,
       error: null,
-      payload: updatedPayload as any,
+      payload: { ...updatedPayload, nextRunAt: Date.now() + KIE_POLL_INTERVAL_MS } as any,
       resultSummary: `Video frames in progress: ${polled.images.length}/${polled.tasks.length}`,
     } as any,
   });
 }
-

@@ -21,6 +21,16 @@ model User {
   usage            Usage[]
 }
 
+model RateLimitBucket {
+  /// Unique key like "video-generation:status:test_user:proj_test"
+  key         String   @id
+  windowStart DateTime
+  count       Int
+  updatedAt   DateTime @updatedAt
+
+  @@index([windowStart])
+}
+
 model Project {
   id                   String                @id @default(uuid())
   name                 String
