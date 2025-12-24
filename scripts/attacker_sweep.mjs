@@ -31,6 +31,19 @@ loadDotEnvFile(".env.local");
 const BASE_URL = process.env.BASE_URL || process.env.NEXTAUTH_URL || "http://localhost:3000";
 const IS_CI_OR_TEST = !!process.env.CI || process.env.NODE_ENV === "test";
 
+async function maybeClearLockout() {
+  // In CI, repeated runs can trip the login abuse guard. Clear it so the test can proceed.
+  if (process.env.CI !== "true") return;
+  try {
+    const url = `${BASE_URL}/api/dev/clear-lockout`;
+    const r = await fetch(url, { method: "POST" });
+    // ignore non-200 if endpoint is blocked; the login step will surface real failures.
+    console.log("[preflight] clear-lockout:", r.status);
+  } catch (e) {
+    console.log("[preflight] clear-lockout failed (ignored):", String(e?.message || e));
+  }
+}
+
 function assert(cond, msg) {
   if (!cond) throw new Error(msg);
 }
@@ -451,6 +464,7 @@ async function login(email, password) {
 }
 
 async function run() {
+  await maybeClearLockout();
   await ensureCiSeedRan();
 
   const A = { email: "test@local.dev", pass: "TestPassword123!", name: "Test User" };
