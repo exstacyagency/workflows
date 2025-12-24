@@ -1,12 +1,30 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { pollMultiFrameVideoImages } from "@/lib/videoImageOrchestrator";
+import { getSessionUserId } from "@/lib/getSessionUserId";
+import { checkRateLimit } from "@/lib/rateLimiter";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export async function POST(req: Request) {
   try {
+    const userId = await getSessionUserId();
+    if (!userId) {
+      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    }
+
+    const rate = await checkRateLimit(`deadletter:video-images:status:${userId}`, {
+      limit: 30,
+      windowMs: 60 * 1000,
+    });
+    if (!rate.allowed) {
+      return NextResponse.json(
+        { ok: false, error: rate.reason ?? "Rate limit exceeded" },
+        { status: 429 },
+      );
+    }
+
     const body = await req.json();
     const idempotencyKey = body?.idempotencyKey ? String(body.idempotencyKey) : null;
     const taskGroupId = body?.taskGroupId ? String(body.taskGroupId) : null;
@@ -17,6 +35,7 @@ export async function POST(req: Request) {
     const job = await prisma.job.findFirst({
       where: {
         type: "VIDEO_IMAGE_GENERATION",
+        project: { userId },
         ...(idempotencyKey ? { idempotencyKey } : {}),
         ...(taskGroupId ? { payload: { path: ["taskGroupId"], equals: taskGroupId } as any } : {}),
         ...(!idempotencyKey && !taskGroupId && storyboardId
@@ -79,18 +98,35 @@ export async function POST(req: Request) {
         const sorted = [...polled.images].sort((a, b) => a.frameIndex - b.frameIndex);
         const firstUrl = sorted[0].url;
         const lastUrl = sorted.length > 1 ? sorted[sorted.length - 1].url : sorted[0].url;
-          const safePrev = (payload?.rawJson && typeof payload.rawJson === "object") ? payload.rawJson : {};
-          const safePolledRaw = (polled.raw && typeof polled.raw === "object") ? polled.raw : { value: polled.raw };
+        const safePrev = (payload?.rawJson && typeof payload.rawJson === "object") ? payload.rawJson : {};
+        const safePolledRaw = (polled.raw && typeof polled.raw === "object") ? polled.raw : { value: polled.raw };
 
-          await prisma.storyboardScene.updateMany({
-            where: { storyboardId },
+        const updated = await prisma.storyboardScene.updateMany({
+          where: { storyboardId },
+          data: {
+            firstFrameUrl: firstUrl,
+            lastFrameUrl: lastUrl,
+            rawJson: { ...safePrev, polled: safePolledRaw, images: sorted } as any,
+            status: "completed" as any,
+          } as any,
+        });
+
+        // If no scene rows exist yet, create a minimal one (MVP behavior).
+        if (updated.count === 0) {
+          await prisma.storyboardScene.create({
             data: {
+              storyboardId,
+              sceneNumber: 1,
+              durationSec: 8,
+              aspectRatio: "9:16",
+              sceneFull: "true",
+              rawJson: { polled: safePolledRaw, images: sorted } as any,
+              status: "completed" as any,
               firstFrameUrl: firstUrl,
               lastFrameUrl: lastUrl,
-              rawJson: { ...safePrev, polled: safePolledRaw, images: sorted } as any,
-              status: "completed" as any,
             } as any,
           });
+        }
       }
     } else {
       await prisma.job.update({
@@ -114,8 +150,14 @@ export async function POST(req: Request) {
       raw: polled.raw,
     });
   } catch (e: any) {
+    const msg = String(e?.message || e || "Unknown error");
+    const isDev = process.env.NODE_ENV !== "production";
     return NextResponse.json(
-      { ok: false, error: e?.message || "Unknown error" },
+      {
+        ok: false,
+        error: msg,
+        ...(isDev ? { stack: String(e?.stack || "") } : {}),
+      },
       { status: 500 }
     );
   }

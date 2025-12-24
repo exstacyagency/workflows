@@ -4,10 +4,12 @@ import { z } from 'zod';
 import prisma from '../../../../lib/prisma';
 import { getSessionUserId } from '../../../../lib/getSessionUserId';
 import { requireProjectOwner } from '../../../../lib/requireProjectOwner';
+import { assertMinPlan } from '../../../../lib/billing/requirePlan';
+import { checkRateLimit } from '../../../../lib/rateLimiter';
 
 const BodySchema = z.object({
   projectId: z.string().min(1),
-  scriptId: z.string().min(1).optional(),
+  scriptId: z.string().optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -16,22 +18,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json(
-      { error: 'Invalid request body', details: 'Invalid JSON body' },
-      { status: 400 },
-    );
-  }
+  // Plan gate: ALL users are paid; require at least GROWTH
+  await assertMinPlan(userId, 'GROWTH');
 
+  const body = await req.json();
   const parsed = BodySchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json(
-      { error: 'Invalid request body', details: parsed.error.flatten() },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: parsed.error.message }, { status: 400 });
   }
 
   const { projectId, scriptId } = parsed.data;
@@ -41,59 +34,35 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
-  let scriptIdUsed: string | null = null;
-
-  if (scriptId) {
-    const script = await prisma.script.findFirst({
-      where: { id: scriptId, projectId },
-      select: { id: true, projectId: true },
-    });
-    if (!script) {
-      const byId = await prisma.script.findUnique({
-        where: { id: scriptId },
-        select: { id: true, projectId: true },
-      });
-      if (byId) {
-        return NextResponse.json(
-          {
-            error: 'Script does not belong to project',
-            scriptId,
-            scriptProjectId: byId.projectId,
-            requestedProjectId: projectId,
-          },
-          { status: 400 },
-        );
-      }
+  // Rate limit to prevent spam
+  if (process.env.NODE_ENV === 'production') {
+    const rateCheck = await checkRateLimit(projectId);
+    if (!rateCheck.allowed) {
       return NextResponse.json(
-        { error: 'Script not found', scriptId },
-        { status: 404 },
+        { error: `Rate limit exceeded: ${rateCheck.reason}` },
+        { status: 429 },
       );
     }
-    scriptIdUsed = script.id;
-  } else {
-    const latest = await prisma.script.findFirst({
-      where: { projectId },
-      orderBy: { createdAt: 'desc' },
-      select: { id: true },
-    });
-    if (!latest) {
-      return NextResponse.json(
-        {
-          error: 'No script exists for project. Run script-generation first.',
-          projectId,
-        },
-        { status: 400 },
-      );
-    }
-    scriptIdUsed = latest.id;
   }
 
+  // Idempotency: one storyboard per (projectId, scriptIdUsed)
+  const scriptIdUsed = scriptId ?? null;
+  const idempotencyKey = JSON.stringify([
+    projectId,
+    'STORYBOARD_GENERATION',
+    scriptIdUsed,
+  ]);
+
   const existing = await prisma.storyboard.findFirst({
-    where: { scriptId: scriptIdUsed },
+    where: {
+      projectId,
+      scriptId: scriptIdUsed,
+    },
     orderBy: { createdAt: 'desc' },
     select: { id: true },
   });
-  if (existing) {
+
+  if (existing?.id) {
     return NextResponse.json(
       { ok: true, storyboardId: existing.id, scriptIdUsed, reused: true },
       { status: 200 },
