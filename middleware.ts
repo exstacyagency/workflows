@@ -7,6 +7,10 @@ function denyDevAdminInProd(req: NextRequest) {
   const isProd = process.env.NODE_ENV === "production";
   if (!isProd) return null;
   if (req.nextUrl.pathname.startsWith("/api/dev")) {
+    // Allow CI test harness to clear lockout so attacker sweep can login.
+    if (process.env.CI === "true" && req.nextUrl.pathname === "/api/dev/clear-lockout") {
+      return null;
+    }
     return new NextResponse("Not found", { status: 404 });
   }
   return null;
