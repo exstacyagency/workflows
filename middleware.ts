@@ -2,6 +2,16 @@
 import { NextFetchEvent, NextRequest, NextResponse } from "next/server";
 import { withAuth } from "next-auth/middleware";
 
+function denyDevAdminInProd(req: NextRequest) {
+  // Defense-in-depth: never allow /api/dev in production even if a route forgets a guard.
+  const isProd = process.env.NODE_ENV === "production";
+  if (!isProd) return null;
+  if (req.nextUrl.pathname.startsWith("/api/dev")) {
+    return new NextResponse("Not found", { status: 404 });
+  }
+  return null;
+}
+
 function applySecurityHeaders(res: NextResponse) {
   res.headers.set("X-Frame-Options", "DENY");
   res.headers.set("X-Content-Type-Options", "nosniff");
@@ -43,6 +53,11 @@ export default async function combinedMiddleware(req: NextRequest, event: NextFe
   const isProd = process.env.NODE_ENV === "production";
   const pathname = req.nextUrl.pathname;
 
+  const devDeny = denyDevAdminInProd(req);
+  if (devDeny) {
+    return devDeny;
+  }
+
   if (isProd && pathname.startsWith("/api/debug")) {
     return new Response(null, { status: 404 });
   }
@@ -62,6 +77,7 @@ export default async function combinedMiddleware(req: NextRequest, event: NextFe
 
 export const config = {
   matcher: [
+    "/api/dev/:path*",
     "/projects/:path*",
     "/customer-profile/:path*",
     "/api/projects/:path*",

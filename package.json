@@ -5,6 +5,10 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "dev:cleanup-rate-limits": "tsx scripts/cleanup_rate_limits.ts",
+    "dev:set-password": "tsx scripts/set_password.ts",
+    "dev:create-script": "tsx scripts/create_script.ts",
+    "billing:matrix": "node scripts/generate_billing_matrix.mjs",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
