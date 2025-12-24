@@ -1,55 +1,12 @@
 import { prisma } from '@/lib/prisma';
-import { JobStatus, JobType } from '@prisma/client';
+import { JobStatus } from '@prisma/client';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { PipelineStatusDb } from '@/components/PipelineStatusDb';
 import { ScriptMediaPreview, type ScriptMedia } from '@/components/ScriptMediaPreview';
 
-const pipelinePhases: { label: string; description: string; types: JobType[] }[] = [
-  {
-    label: '1 · Research',
-    description: 'Capture Reddit + review insights',
-    types: [JobType.CUSTOMER_RESEARCH],
-  },
-  {
-    label: '2 · Avatar & Product Intel',
-    description: 'Run Phase 1B analysis',
-    types: [JobType.CUSTOMER_ANALYSIS],
-  },
-  {
-    label: '3 · Pattern Brain',
-    description: 'Ad pattern + performance',
-    types: [JobType.PATTERN_ANALYSIS, JobType.AD_PERFORMANCE],
-  },
-  {
-    label: '4 · Script & Characters',
-    description: 'Script + persona generation',
-    types: [JobType.SCRIPT_GENERATION, JobType.CHARACTER_GENERATION],
-  },
-  {
-    label: '5 · Storyboards',
-    description: 'Storyboard + scene planning',
-    types: [JobType.STORYBOARD_GENERATION],
-  },
-  {
-    label: '6 · Scenes & Review',
-    description: 'Images, prompts, and QC',
-    types: [JobType.VIDEO_IMAGE_GENERATION, JobType.VIDEO_PROMPT_GENERATION, JobType.VIDEO_REVIEW],
-  },
-  {
-    label: '7 · Upscale & Export',
-    description: 'Finalize high-res delivery',
-    types: [JobType.VIDEO_UPSCALER],
-  },
-];
-
-function derivePhaseStatus(types: JobType[], jobs: { type: JobType; status: JobStatus }[]) {
-  const relevant = jobs.filter(job => types.includes(job.type));
-  if (!relevant.length) return 'pending';
-  if (relevant.some(job => job.status === JobStatus.RUNNING)) return 'running';
-  if (relevant.some(job => job.status === JobStatus.FAILED)) return 'failed';
-  if (relevant.some(job => job.status === JobStatus.COMPLETED)) return 'completed';
-  return 'pending';
-}
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 function statusBadge(status: 'pending' | 'running' | 'failed' | 'completed') {
   const colorMap: Record<typeof status, string> = {
@@ -77,8 +34,9 @@ const dateFormatter = new Intl.DateTimeFormat('en-US', {
 type Params = { params: { projectId: string } };
 
 export default async function ProjectDashboardPage({ params }: Params) {
+  const projectId = params.projectId;
   const project = await prisma.project.findUnique({
-    where: { id: params.projectId },
+    where: { id: projectId },
     include: {
       _count: {
         select: {
@@ -244,32 +202,7 @@ export default async function ProjectDashboardPage({ params }: Params) {
         </div>
       </section>
 
-      <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-5 space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-slate-100">Pipeline Status</h2>
-          <span className="text-[11px] text-slate-500">Phases auto-update from job history</span>
-        </div>
-        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-          {pipelinePhases.map(phase => {
-            const status = derivePhaseStatus(phase.types, recentJobs);
-            const supportingJob = recentJobs.find(job => phase.types.includes(job.type));
-            return (
-              <div key={phase.label} className="rounded-lg border border-slate-800 bg-slate-950/60 px-4 py-3 space-y-1.5">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm font-medium text-slate-50">{phase.label}</p>
-                  {statusBadge(status)}
-                </div>
-                <p className="text-xs text-slate-400">{phase.description}</p>
-                {supportingJob && (
-                  <p className="text-[11px] text-slate-500">
-                    Last job: {supportingJob.type.replace(/_/g, ' ')} · {dateFormatter.format(supportingJob.updatedAt)}
-                  </p>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </section>
+      <PipelineStatusDb projectId={projectId} />
 
       <section className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-5 space-y-3">

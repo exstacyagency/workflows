@@ -20,7 +20,7 @@ Legend:
 | /api/jobs/script-generation | SCRIPT_GENERATION | GROWTH | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ✅ | ✅ | no explicit auth check (may rely on middleware) |
 | /api/jobs/storyboard-generation |  | GROWTH | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ | ✅ | ❌ | non-spend route (excluded from billing completeness); plan-gated but no reserveQuota; no explicit auth check (may rely on middleware) |
 | /api/jobs/video-generation | VIDEO_GENERATION | GROWTH | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | no explicit auth check (may rely on middleware) |
-| /api/jobs/video-generation/status | VIDEO_PROMPT_GENERATION |  | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | non-spend route (excluded from billing completeness); no rate limit; no explicit auth check (may rely on middleware) |
+| /api/jobs/video-generation/status | VIDEO_PROMPT_GENERATION |  | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ | ✅ | ❌ | non-spend route (excluded from billing completeness); no explicit auth check (may rely on middleware) |
 | /api/jobs/video-images/start | VIDEO_IMAGE_GENERATION | GROWTH | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | no explicit auth check (may rely on middleware) |
 | /api/jobs/video-images/status | VIDEO_IMAGE_GENERATION |  | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | non-spend route (excluded from billing completeness); no explicit auth check (may rely on middleware) |
 | /api/jobs/video-prompts | VIDEO_PROMPT_GENERATION | GROWTH | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ✅ | ✅ | no explicit auth check (may rely on middleware) |
