@@ -177,8 +177,9 @@ export async function GET(req: Request, { params }: { params: { projectId: strin
     );
   }
 }
-function jt(...keys: Array<keyof typeof JobType>): JobType[] {
-  // Some deployments may not have all enum members yet. Filter missing ones safely.
+function jt(...keys: string[]): JobType[] {
+  // Accept string keys to avoid CI/type errors when enum members differ between schemas.
+  // Filter at runtime using the actual generated Prisma enum.
   return keys
     .map((k) => (JobType as any)[k] as JobType | undefined)
     .filter((v): v is JobType => !!v);
