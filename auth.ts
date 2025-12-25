@@ -9,6 +9,7 @@ import {
   recordLoginFailureDb,
   recordLoginSuccessDb,
 } from "@/lib/authAbuseGuardDb";
+import { normalizeEmail } from "@/lib/normalizeEmail";
 
 export const authOptions: NextAuthOptions = {
   secret: process.env.NEXTAUTH_SECRET,
@@ -23,7 +24,8 @@ export const authOptions: NextAuthOptions = {
       async authorize(credentials, req) {
         if (!credentials?.email || !credentials?.password) return null;
 
-        const email = credentials.email;
+        const email = normalizeEmail(credentials.email);
+        if (!email) return null;
         const ip =
           (req as any)?.headers?.get?.("x-forwarded-for")?.split(",")?.[0]?.trim() ??
           (req as any)?.headers?.["x-forwarded-for"]?.split?.(",")?.[0]?.trim?.() ??
@@ -35,7 +37,7 @@ export const authOptions: NextAuthOptions = {
         }
 
         const user = await prisma.user.findUnique({
-          where: { email: credentials.email },
+          where: { email },
         });
         if (!user || !user.passwordHash) {
           await recordLoginFailureDb({ ip, email });
