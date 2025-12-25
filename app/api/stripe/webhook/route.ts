@@ -1,13 +1,12 @@
 import type Stripe from "stripe";
 import { NextRequest, NextResponse } from "next/server";
-import { Prisma, PrismaClient } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { getStripe } from "@/lib/stripe";
 import { planFromPriceId } from "@/lib/billing/plans";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const prisma = new PrismaClient();
 
 function asString(v: unknown): string | null {
   if (typeof v !== "string") return null;
@@ -162,11 +161,9 @@ async function recordBillingEvent(args: {
       },
     });
     return { inserted: true };
-  } catch (e) {
-    // idempotency: if we already processed this Stripe event, return OK
-    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
-      return { inserted: false };
-    }
+  } catch (e: any) {
+    // P2002 = unique constraint violation (idempotency)
+    if (e?.code === "P2002") return { inserted: false };
     throw e;
   }
 }
