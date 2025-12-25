@@ -1,12 +1,13 @@
 import type Stripe from "stripe";
-import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { Prisma, PrismaClient } from "@prisma/client";
 import { getStripe } from "@/lib/stripe";
 import { planFromPriceId } from "@/lib/billing/plans";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+const prisma = new PrismaClient();
 
 function asString(v: unknown): string | null {
   if (typeof v !== "string") return null;
@@ -141,6 +142,35 @@ async function handleSubscriptionEvent(
   });
 }
 
+async function recordBillingEvent(args: {
+  stripeEventId: string;
+  type: string;
+  stripeCustomerId?: string | null;
+  stripeSubscriptionId?: string | null;
+  userId?: string | null;
+  payload: unknown;
+}) {
+  try {
+    await prisma.billingEvent.create({
+      data: {
+        stripeEventId: args.stripeEventId,
+        type: args.type,
+        stripeCustomerId: args.stripeCustomerId ?? null,
+        stripeSubscriptionId: args.stripeSubscriptionId ?? null,
+        userId: args.userId ?? null,
+        payloadJson: args.payload as Prisma.InputJsonValue,
+      },
+    });
+    return { inserted: true };
+  } catch (e) {
+    // idempotency: if we already processed this Stripe event, return OK
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+      return { inserted: false };
+    }
+    throw e;
+  }
+}
+
 export async function POST(req: NextRequest) {
   const rawBody = await req.text();
   const sig = req.headers.get("stripe-signature");
@@ -176,50 +206,18 @@ export async function POST(req: NextRequest) {
     : typeof payloadObject?.subscription === "string"
       ? payloadObject.subscription
       : null;
-  const userId = asString(payloadObject?.metadata?.userId) || asString(payloadObject?.client_reference_id);
-  const billingEventId = randomUUID();
 
   try {
-    await prisma.$executeRaw`
-      CREATE TABLE IF NOT EXISTS "BillingEvent" (
-        "id" TEXT PRIMARY KEY,
-        "stripeEventId" TEXT NOT NULL UNIQUE,
-        "type" TEXT NOT NULL,
-        "stripeCustomerId" TEXT,
-        "stripeSubscriptionId" TEXT,
-        "userId" TEXT,
-        "payloadJson" JSONB NOT NULL,
-        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
-      );
-    `;
-
-    const inserted = await prisma.$queryRaw<{ one: number }[]>`
-      INSERT INTO "BillingEvent"(
-        "id",
-        "stripeEventId",
-        "type",
-        "stripeCustomerId",
-        "stripeSubscriptionId",
-        "userId",
-        "payloadJson"
-      ) VALUES (
-        ${billingEventId},
-        ${event.id},
-        ${event.type},
-        ${stripeCustomerId},
-        ${stripeSubscriptionId},
-        ${userId},
-        ${JSON.stringify(payload)}::jsonb
-      )
-      ON CONFLICT("stripeEventId") DO NOTHING
-      RETURNING 1 as one;
-    `;
-
-    if (!Array.isArray(inserted) || inserted.length === 0) {
-      return NextResponse.json({ ok: true }, { status: 200 });
-    }
+    await recordBillingEvent({
+      stripeEventId: event.id,
+      type: event.type,
+      stripeCustomerId,
+      stripeSubscriptionId,
+      userId: null,
+      payload: event,
+    });
   } catch (err) {
-    console.error("[stripe.webhook] failed to record BillingEvent via SQL", err, {
+    console.error("[stripe.webhook] failed to record BillingEvent", err, {
       stripeEventId: event.id,
       type: event.type,
     });

@@ -306,6 +306,17 @@ model Usage {
   @@unique([userId, period])
 }
 
+model BillingEvent {
+  id                   String   @id @default(cuid())
+  stripeEventId        String   @unique
+  type                 String
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  userId               String?
+  payloadJson          Json
+  createdAt            DateTime @default(now())
+}
+
 model AuthThrottle {
   id          String    @id @default(cuid())
   kind        String
