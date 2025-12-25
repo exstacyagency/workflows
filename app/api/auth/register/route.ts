@@ -8,6 +8,7 @@ import {
   recordAuthFailure,
   recordAuthSuccess,
 } from "@/lib/authAbuseGuard";
+import { normalizeEmail } from "@/lib/normalizeEmail";
 
 export async function POST(req: NextRequest) {
   let email: string | null = null;
@@ -19,7 +20,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
 
-    email = typeof body.email === "string" ? body.email.trim() : "";
+    email = normalizeEmail(body.email) ?? "";
     const password =
       typeof body.password === "string" ? body.password : "";
     const name =
