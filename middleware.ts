@@ -84,6 +84,7 @@ export const config = {
     "/api/dev/:path*",
     "/projects/:path*",
     "/customer-profile/:path*",
+    "/studio/:path*",
     "/api/projects/:path*",
     "/api/jobs/:path*",
     "/api/media/:path*",
