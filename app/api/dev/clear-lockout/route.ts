@@ -1,20 +1,21 @@
 import { cfg } from "@/lib/config";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSessionUser } from "@/lib/getSessionUser";
-
-function devAdminDisabled() {
-  return (
-    cfg.raw("NODE_ENV") === "production" ||
-    cfg.raw("DISABLE_DEV_ADMIN") === "true"
-  );
-}
 
 export async function POST(req: NextRequest) {
-  if (devAdminDisabled()) return new NextResponse(null, { status: 404 });
+  if (cfg.raw("NODE_ENV") === "production") {
+    return new NextResponse(null, { status: 404 });
+  }
+  if (cfg.raw("DISABLE_DEV_ADMIN") === "true" || cfg.raw("DISABLE_DEV_ADMIN") === "1") {
+    return NextResponse.json({ error: "Dev admin disabled" }, { status: 403 });
+  }
 
-  const user = await getSessionUser();
-  if (!user) {
+  const url = new URL(req.url);
+  const expected = (cfg.raw("DEBUG_ADMIN_TOKEN") ?? "").trim();
+  const got =
+    (req.headers.get("x-debug-admin-token") ?? "").trim() ||
+    (url.searchParams.get("token") ?? "").trim();
+  if (!expected || got !== expected) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -37,10 +38,10 @@ export async function POST(req: NextRequest) {
     // Body is optional.
   }
 
-  const email = (user as any)?.email as string | undefined;
+  const email = (url.searchParams.get("email") ?? "").trim();
   if (!all && (!email || typeof email !== "string" || email.trim().length === 0)) {
     return NextResponse.json(
-      { error: "Session email not found" },
+      { error: "Email is required" },
       { status: 400 }
     );
   }

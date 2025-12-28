@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUserId } from "@/lib/getSessionUserId";
 import { requireProjectOwner } from "@/lib/requireProjectOwner";
+import { isAdminRequest } from "@/lib/admin/isAdminRequest";
 
 export async function GET(
   req: NextRequest,
@@ -10,9 +11,15 @@ export async function GET(
   const userId = await getSessionUserId();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  // Dead-letter is operational/admin surface area. Project owners should not have access by default.
+  if (!isAdminRequest(req)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   const { projectId } = params;
-  const auth = await requireProjectOwner(projectId);
-  if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status });
+  // Optional: still require ownership even for admins by uncommenting:
+  // const auth = await requireProjectOwner(projectId);
+  // if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const jobs = await prisma.job.findMany({
     where: { projectId, status: "FAILED" },

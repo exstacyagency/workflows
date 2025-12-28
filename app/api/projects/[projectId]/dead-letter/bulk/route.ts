@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUserId } from "@/lib/getSessionUserId";
 import { requireProjectOwner } from "@/lib/requireProjectOwner";
+import { isAdminRequest } from "@/lib/admin/isAdminRequest";
 import { checkRateLimit } from "@/lib/rateLimiter";
 import { getRequestId, logError, logInfo } from "@/lib/observability";
 
@@ -16,6 +17,11 @@ export async function POST(
     const userId = await getSessionUserId();
     if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+    // Dead-letter bulk actions are operational/admin surface area.
+    if (!isAdminRequest(req)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const rate = await checkRateLimit(`deadletter:bulk:${userId}`, {
       limit: 3,
       windowMs: 60 * 1000,
@@ -25,8 +31,9 @@ export async function POST(
     }
 
     const { projectId } = params;
-    const auth = await requireProjectOwner(projectId);
-    if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status });
+    // Optional: enforce ownership even for admins (usually not needed for ops tools):
+    // const auth = await requireProjectOwner(projectId);
+    // if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
     const body = await req.json().catch(() => ({}));
     const action = body?.action as string | undefined;

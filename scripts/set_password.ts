@@ -1,6 +1,7 @@
 /* eslint-disable no-restricted-properties */
 import bcrypt from 'bcryptjs';
 import prisma from '../lib/prisma';
+import { normalizeEmail } from '../lib/normalizeEmail';
 
 function usage(): never {
   console.error('Usage: npm run dev:set-password -- <email> <newPassword>');
@@ -8,7 +9,7 @@ function usage(): never {
 }
 
 async function main() {
-  const email = process.argv[2];
+  const email = normalizeEmail(process.argv[2]);
   const newPassword = process.argv[3];
   if (!email || !newPassword) usage();
 
@@ -18,13 +19,20 @@ async function main() {
 
   const passwordHash = await bcrypt.hash(newPassword, 10);
 
-  const updated = await prisma.user.update({
+  const updated = await prisma.user.upsert({
     where: { email },
-    data: { passwordHash },
+    update: { passwordHash },
+    create: {
+      email,
+      passwordHash,
+      // If your schema requires additional fields, add safe defaults here.
+      // Example:
+      // name: email.split("@")[0],
+    },
     select: { id: true, email: true },
   });
 
-  console.log('Updated password:', updated);
+  console.log('Password updated for:', updated.email);
 }
 
 main()
