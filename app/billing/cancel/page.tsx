@@ -1,4 +1,11 @@
+import { notFound } from "next/navigation";
+import { isSelfHosted } from "@/lib/config/mode";
+
 export default function BillingCancelPage() {
+  if (isSelfHosted()) {
+    notFound();
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center p-6">
       <div className="max-w-lg w-full rounded-2xl border border-white/10 bg-black/30 p-6">
