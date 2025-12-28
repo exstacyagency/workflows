@@ -1,4 +1,5 @@
 import { cfg } from "@/lib/config";
+import { isSelfHosted } from "@/lib/config/mode";
 import type Stripe from "stripe";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -170,6 +171,10 @@ async function recordBillingEvent(args: {
 }
 
 export async function POST(req: NextRequest) {
+  if (isSelfHosted()) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   const rawBody = await req.text();
   const sig = req.headers.get("stripe-signature");
   const webhookSecret = cfg.raw("STRIPE_WEBHOOK_SECRET");
@@ -282,4 +287,11 @@ export async function POST(req: NextRequest) {
     console.error("Stripe webhook handler failed", err);
     return NextResponse.json({ error: "Webhook processing failed" }, { status: 500 });
   }
+}
+
+export async function GET() {
+  if (isSelfHosted()) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+  return NextResponse.json({ error: "Method not allowed" }, { status: 405 });
 }
