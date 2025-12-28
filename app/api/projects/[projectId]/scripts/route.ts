@@ -1,7 +1,8 @@
 // app/api/projects/[projectId]/scripts/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
-import { requireProjectOwner } from '@/lib/requireProjectOwner';
+import { prisma } from '@/lib/prisma';
+import { getSessionUserId } from '@/lib/getSessionUserId';
+import { requireProjectOwner404 } from '@/lib/auth/requireProjectOwner404';
 import { getSignedMediaUrl } from '@/lib/mediaStorage';
 
 type Params = {
@@ -9,19 +10,18 @@ type Params = {
 };
 
 export async function GET(_req: NextRequest, { params }: Params) {
-  const { projectId } = params;
-
-  const auth = await requireProjectOwner(projectId);
-  if (auth.error) {
-    return NextResponse.json(
-      { error: auth.error },
-      { status: auth.status },
-    );
+  const userId = await getSessionUserId();
+  if (!userId) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  const { projectId } = params;
   if (!projectId) {
     return NextResponse.json({ error: 'projectId is required' }, { status: 400 });
   }
+
+  const deny = await requireProjectOwner404(projectId);
+  if (deny) return deny;
 
   const scripts = await prisma.script.findMany({
     where: { projectId },

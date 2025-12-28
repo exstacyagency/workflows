@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUserId } from "@/lib/getSessionUserId";
-import { requireProjectOwner } from "@/lib/requireProjectOwner";
+import { requireProjectOwner404 } from "@/lib/auth/requireProjectOwner404";
 import { isAdminRequest } from "@/lib/admin/isAdminRequest";
 
 export async function GET(
@@ -17,9 +17,12 @@ export async function GET(
   }
 
   const { projectId } = params;
-  // Optional: still require ownership even for admins by uncommenting:
-  // const auth = await requireProjectOwner(projectId);
-  // if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status });
+  if (!projectId) {
+    return NextResponse.json({ error: "projectId is required" }, { status: 400 });
+  }
+
+  const deny = await requireProjectOwner404(projectId);
+  if (deny) return deny;
 
   const jobs = await prisma.job.findMany({
     where: { projectId, status: "FAILED" },

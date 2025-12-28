@@ -2,7 +2,7 @@ import { cfg } from "@/lib/config";
 import { NextResponse } from "next/server";
 import prisma from "../../../../../lib/prisma";
 import { getSessionUserId } from "../../../../../lib/getSessionUserId";
-import { requireProjectOwner } from "../../../../../lib/requireProjectOwner";
+import { requireProjectOwner404 } from "../../../../../lib/auth/requireProjectOwner404";
 import { JobType } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
@@ -39,8 +39,8 @@ export async function GET(req: Request, { params }: { params: { projectId: strin
     const projectId = String(params.projectId || "");
     if (!projectId) return NextResponse.json({ ok: false, error: "Missing projectId" }, { status: 400 });
 
-    const auth = await requireProjectOwner(projectId);
-    if (auth.error) return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
+    const deny = await requireProjectOwner404(projectId);
+    if (deny) return deny;
 
     const storyboards = await prisma.storyboard.findMany({
       where: { projectId },

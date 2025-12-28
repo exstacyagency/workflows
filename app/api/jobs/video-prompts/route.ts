@@ -4,7 +4,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { startVideoPromptGenerationJob } from '../../../../lib/videoPromptGenerationService';
 import { prisma } from '../../../../lib/prisma';
-import { requireProjectOwner } from '../../../../lib/requireProjectOwner';
 import { checkRateLimit } from '../../../../lib/rateLimiter';
 import { logAudit } from '../../../../lib/logger';
 import { getSessionUserId } from '../../../../lib/getSessionUserId';
@@ -12,6 +11,7 @@ import { enforceUserConcurrency, findIdempotentJob } from '../../../../lib/jobGu
 import { JobStatus, JobType } from '@prisma/client';
 import { assertMinPlan, UpgradeRequiredError } from '../../../../lib/billing/requirePlan';
 import { reserveQuota, rollbackQuota, QuotaExceededError } from '../../../../lib/billing/usage';
+import { requireProjectOwner404 } from '@/lib/auth/requireProjectOwner404';
 
 export async function POST(req: NextRequest) {
   const userId = await getSessionUserId();
@@ -25,19 +25,6 @@ export async function POST(req: NextRequest) {
   const ip =
     req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null;
   let planId: 'FREE' | 'GROWTH' | 'SCALE' = 'FREE';
-
-  try {
-    planId = await assertMinPlan(userId, 'GROWTH');
-  } catch (err: any) {
-    if (err instanceof UpgradeRequiredError) {
-      return NextResponse.json(
-        { error: 'Upgrade required', requiredPlan: err.requiredPlan },
-        { status: 402 },
-      );
-    }
-    console.error(err);
-    return NextResponse.json({ error: 'Billing check failed' }, { status: 500 });
-  }
 
   try {
     let body: unknown;
@@ -73,9 +60,21 @@ export async function POST(req: NextRequest) {
     }
     projectId = storyboard.projectId;
 
-    const auth = await requireProjectOwner(projectId);
-    if (auth.error) {
-      return NextResponse.json({ error: auth.error }, { status: auth.status });
+    const deny = await requireProjectOwner404(projectId);
+    if (deny) return deny;
+
+    // Plan check AFTER ownership to avoid leaking project existence via 402.
+    try {
+      planId = await assertMinPlan(userId, 'GROWTH');
+    } catch (err: any) {
+      if (err instanceof UpgradeRequiredError) {
+        return NextResponse.json(
+          { error: 'Upgrade required', requiredPlan: err.requiredPlan },
+          { status: 402 },
+        );
+      }
+      console.error(err);
+      return NextResponse.json({ error: 'Billing check failed' }, { status: 500 });
     }
 
     const concurrency = await enforceUserConcurrency(userId);
