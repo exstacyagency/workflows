@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUserId } from "@/lib/getSessionUserId";
-import { requireProjectOwner } from "@/lib/requireProjectOwner";
+import { requireProjectOwner404 } from "@/lib/auth/requireProjectOwner404";
 import { getCurrentPeriodKey, getOrCreateUsage } from "@/lib/billing/usage";
 
 type Params = {
@@ -19,6 +19,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "projectId is required" }, { status: 400 });
   }
 
+  const deny = await requireProjectOwner404(projectId);
+  if (deny) return deny;
+
   const project = await prisma.project.findUnique({
     where: { id: projectId },
     select: {
@@ -31,11 +34,6 @@ export async function GET(_req: NextRequest, { params }: Params) {
   });
   if (!project) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
-
-  const auth = await requireProjectOwner(projectId);
-  if (auth.error) {
-    return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
   const subscriptionRow = await prisma.subscription.findFirst({

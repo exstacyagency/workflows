@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUserId } from "@/lib/getSessionUserId";
-import { requireProjectOwner } from "@/lib/requireProjectOwner";
+import { requireProjectOwner404 } from "@/lib/auth/requireProjectOwner404";
 import { isAdminRequest } from "@/lib/admin/isAdminRequest";
 import { checkRateLimit } from "@/lib/rateLimiter";
 import { getRequestId, logError, logInfo } from "@/lib/observability";
@@ -22,6 +22,14 @@ export async function POST(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
+    const { projectId } = params;
+    if (!projectId) {
+      return NextResponse.json({ error: "projectId is required" }, { status: 400 });
+    }
+
+    const deny = await requireProjectOwner404(projectId);
+    if (deny) return deny;
+
     const rate = await checkRateLimit(`deadletter:bulk:${userId}`, {
       limit: 3,
       windowMs: 60 * 1000,
@@ -29,11 +37,6 @@ export async function POST(
     if (!rate.allowed) {
       return NextResponse.json({ error: rate.reason ?? "Rate limit exceeded" }, { status: 429 });
     }
-
-    const { projectId } = params;
-    // Optional: enforce ownership even for admins (usually not needed for ops tools):
-    // const auth = await requireProjectOwner(projectId);
-    // if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
     const body = await req.json().catch(() => ({}));
     const action = body?.action as string | undefined;
