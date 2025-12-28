@@ -1,6 +1,6 @@
 // auth.ts
 import { cfg } from "@/lib/config";
-import { compare } from "bcryptjs";
+import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import type { NextAuthOptions } from "next-auth";
 import { getServerSession } from "next-auth";
@@ -49,7 +49,7 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
-        const isValid = await compare(credentials.password, user.passwordHash);
+        const isValid = await bcrypt.compare(credentials.password, user.passwordHash);
         if (cfg.raw("AUTH_DEBUG") === "1") {
           console.log("[AUTH_DEBUG] bcrypt compare", isValid);
         }

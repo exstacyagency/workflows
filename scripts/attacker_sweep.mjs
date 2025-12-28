@@ -696,11 +696,11 @@ async function run() {
 
   // Attacker cannot list dead-letter jobs
   const dlB = await http(jarB, `/api/projects/${projectId}/dead-letter`);
-  if (dlB.res.status !== 403) {
+  if (dlB.res.status !== 403 && dlB.res.status !== 404) {
     if (isNotConfiguredResponse(dlB.res.status, dlB.text)) {
       skipStep("attacker dead-letter list", dlB.res.status, dlB.text);
     } else {
-      assert(false, `attacker dead-letter list should 403, got ${dlB.res.status}: ${dlB.text}`);
+      assert(false, `attacker dead-letter list should 403/404, got ${dlB.res.status}: ${dlB.text}`);
     }
   }
 
@@ -710,11 +710,11 @@ async function run() {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ action: "dismiss_all" }),
   });
-  if (bulkB.res.status !== 403) {
+  if (bulkB.res.status !== 403 && bulkB.res.status !== 404) {
     if (isNotConfiguredResponse(bulkB.res.status, bulkB.text)) {
       skipStep("attacker dead-letter bulk", bulkB.res.status, bulkB.text);
     } else {
-      assert(false, `attacker dead-letter bulk should 403, got ${bulkB.res.status}: ${bulkB.text}`);
+      assert(false, `attacker dead-letter bulk should 403/404, got ${bulkB.res.status}: ${bulkB.text}`);
     }
   }
 
@@ -774,11 +774,11 @@ async function run() {
       } else {
         assert(mediaA.res.status === 200, `owner media sign failed ${mediaA.res.status}: ${mediaA.text}`);
         const mediaB = await http(jarB, `/api/media?key=${encodeURIComponent(mediaKey)}`);
-        if (mediaB.res.status !== 403) {
+        if (mediaB.res.status !== 403 && mediaB.res.status !== 404) {
           if (isNotConfiguredResponse(mediaB.res.status, mediaB.text)) {
             skipStep("attacker media sign", mediaB.res.status, mediaB.text);
           } else {
-            assert(false, `attacker media sign should 403, got ${mediaB.res.status}: ${mediaB.text}`);
+            assert(false, `attacker media sign should 403/404, got ${mediaB.res.status}: ${mediaB.text}`);
           }
         }
       }
@@ -787,20 +787,20 @@ async function run() {
 
   // Attacker cannot read owner project routes
   const researchB = await http(jarB, `/api/projects/${projectId}/research`);
-  if (researchB.res.status !== 403) {
+  if (researchB.res.status !== 403 && researchB.res.status !== 404) {
     if (isNotConfiguredResponse(researchB.res.status, researchB.text)) {
       skipStep("attacker research", researchB.res.status, researchB.text);
     } else {
-      assert(false, `attacker research should 403, got ${researchB.res.status}: ${researchB.text}`);
+      assert(false, `attacker research should 403/404, got ${researchB.res.status}: ${researchB.text}`);
     }
   }
 
   const scriptsB = await http(jarB, `/api/projects/${projectId}/scripts`);
-  if (scriptsB.res.status !== 403) {
+  if (scriptsB.res.status !== 403 && scriptsB.res.status !== 404) {
     if (isNotConfiguredResponse(scriptsB.res.status, scriptsB.text)) {
       skipStep("attacker scripts", scriptsB.res.status, scriptsB.text);
     } else {
-      assert(false, `attacker scripts should 403, got ${scriptsB.res.status}: ${scriptsB.text}`);
+      assert(false, `attacker scripts should 403/404, got ${scriptsB.res.status}: ${scriptsB.text}`);
     }
   }
 
@@ -810,11 +810,11 @@ async function run() {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ projectId }),
   });
-  if (jobB.res.status !== 403) {
+  if (jobB.res.status !== 403 && jobB.res.status !== 404) {
     if (isNotConfiguredResponse(jobB.res.status, jobB.text)) {
       skipStep("attacker job trigger", jobB.res.status, jobB.text);
     } else {
-      assert(false, `attacker job trigger should 403, got ${jobB.res.status}: ${jobB.text}`);
+      assert(false, `attacker job trigger should 403/404, got ${jobB.res.status}: ${jobB.text}`);
     }
   }
 

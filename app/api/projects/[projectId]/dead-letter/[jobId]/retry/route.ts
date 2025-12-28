@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUserId } from "@/lib/getSessionUserId";
-import { requireProjectOwner } from "@/lib/requireProjectOwner";
+import { requireProjectOwner404 } from "@/lib/auth/requireProjectOwner404";
 import { checkRateLimit } from "@/lib/rateLimiter";
 
 export async function POST(
@@ -11,6 +11,14 @@ export async function POST(
   const userId = await getSessionUserId();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  const { projectId, jobId } = params;
+  if (!projectId || !jobId) {
+    return NextResponse.json({ error: "projectId and jobId are required" }, { status: 400 });
+  }
+
+  const deny = await requireProjectOwner404(projectId);
+  if (deny) return deny;
+
   const rate = await checkRateLimit(`deadletter:retry:${userId}`, {
     limit: 20,
     windowMs: 60 * 1000,
@@ -18,10 +26,6 @@ export async function POST(
   if (!rate.allowed) {
     return NextResponse.json({ error: rate.reason ?? "Rate limit exceeded" }, { status: 429 });
   }
-
-  const { projectId, jobId } = params;
-  const auth = await requireProjectOwner(projectId);
-  if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const job = await prisma.job.findFirst({
     where: { id: jobId, projectId },

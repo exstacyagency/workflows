@@ -4,7 +4,6 @@ import { prisma } from '../../../../lib/prisma';
 import { JobStatus, JobType } from '@prisma/client';
 import { estimateCustomerResearchCost, checkBudget } from '../../../../lib/costEstimator';
 import { checkRateLimit } from '../../../../lib/rateLimiter';
-import { requireProjectOwner } from '../../../../lib/requireProjectOwner';
 import { z } from 'zod';
 import { ProjectJobSchema, parseJson } from '../../../../lib/validation/jobs';
 import { logAudit } from '../../../../lib/logger';
@@ -12,6 +11,7 @@ import { getSessionUserId } from '../../../../lib/getSessionUserId';
 import { enforceUserConcurrency, findIdempotentJob } from '../../../../lib/jobGuards';
 import { assertMinPlan, UpgradeRequiredError } from '../../../../lib/billing/requirePlan';
 import { reserveQuota, rollbackQuota, QuotaExceededError } from '../../../../lib/billing/usage';
+import { requireProjectOwner404 } from '@/lib/auth/requireProjectOwner404';
 
 export const runtime = 'nodejs';
 
@@ -37,19 +37,6 @@ export async function POST(req: NextRequest) {
   let planId: 'FREE' | 'GROWTH' | 'SCALE' = 'FREE';
 
   try {
-    planId = await assertMinPlan(userId, 'GROWTH');
-  } catch (err: any) {
-    if (err instanceof UpgradeRequiredError) {
-      return NextResponse.json(
-        { error: 'Upgrade required', requiredPlan: err.requiredPlan },
-        { status: 402 },
-      );
-    }
-    console.error(err);
-    return NextResponse.json({ error: 'Billing check failed' }, { status: 500 });
-  }
-
-  try {
     const parsed = await parseJson(req, CustomerResearchSchema);
     if (!parsed.success) {
       return NextResponse.json(
@@ -67,9 +54,21 @@ export async function POST(req: NextRequest) {
     } = parsed.data;
     projectId = parsedProjectId;
 
-    const auth = await requireProjectOwner(projectId);
-    if (auth.error) {
-      return NextResponse.json({ error: auth.error }, { status: auth.status });
+    const deny = await requireProjectOwner404(projectId);
+    if (deny) return deny;
+
+    // Plan check AFTER ownership to avoid leaking project existence via 402.
+    try {
+      planId = await assertMinPlan(userId, 'GROWTH');
+    } catch (err: any) {
+      if (err instanceof UpgradeRequiredError) {
+        return NextResponse.json(
+          { error: 'Upgrade required', requiredPlan: err.requiredPlan },
+          { status: 402 },
+        );
+      }
+      console.error(err);
+      return NextResponse.json({ error: 'Billing check failed' }, { status: 500 });
     }
 
     if (!cfg.raw("APIFY_TOKEN") && !cfg.raw("APIFY_API_TOKEN")) {
