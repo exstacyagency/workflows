@@ -1,4 +1,5 @@
 // app/api/jobs/ad-transcripts/route.ts
+import { cfg } from "@/lib/config";
 import { NextRequest, NextResponse } from 'next/server';
 import { startAdTranscriptJob } from '../../../../lib/adTranscriptCollectionService';
 import { prisma } from '../../../../lib/prisma';
@@ -53,7 +54,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
-    if (!process.env.ASSEMBLYAI_API_KEY) {
+    if (!cfg.raw("ASSEMBLYAI_API_KEY")) {
       return NextResponse.json(
         { error: 'AssemblyAI is not configured' },
         { status: 500 },
@@ -90,7 +91,7 @@ export async function POST(req: NextRequest) {
       throw err;
     }
 
-    if (process.env.NODE_ENV === 'production') {
+    if (cfg.raw("NODE_ENV") === 'production') {
       const rateCheck = await checkRateLimit(projectId);
       if (!rateCheck.allowed) {
         return NextResponse.json(

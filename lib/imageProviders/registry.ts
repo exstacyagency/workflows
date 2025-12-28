@@ -1,3 +1,4 @@
+import { cfg } from "@/lib/config";
 import type { ImageProviderId, VideoImageProvider } from "./types";
 import { KieImageProvider } from "./kieImage";
 
@@ -13,7 +14,7 @@ const providers = {
 } satisfies Record<ImageProviderId, VideoImageProvider>;
 
 export function getProvider(id?: string | null): VideoImageProvider {
-  const envDefault = process.env.VIDEO_IMAGE_PROVIDER_ID as ImageProviderId | undefined;
+  const envDefault = cfg.raw("VIDEO_IMAGE_PROVIDER_ID") as ImageProviderId | undefined;
   const chosen = (id ?? envDefault ?? "kie:nano-banana-pro") as ImageProviderId;
 
   const p = providers[chosen];

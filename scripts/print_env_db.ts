@@ -1,3 +1,4 @@
+/* eslint-disable no-restricted-properties */
 import "dotenv/config";
 
 function redactDbUrl(u?: string) {

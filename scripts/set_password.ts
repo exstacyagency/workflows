@@ -1,3 +1,4 @@
+/* eslint-disable no-restricted-properties */
 import bcrypt from 'bcryptjs';
 import prisma from '../lib/prisma';
 

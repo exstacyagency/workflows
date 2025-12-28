@@ -1,10 +1,11 @@
+import { cfg } from "@/lib/config";
 import { prisma } from "@/lib/prisma";
 import { JobStatus, JobType } from "@prisma/client";
 
 const MAX_RUNNING_JOBS_PER_USER = Number(
-  process.env.MAX_RUNNING_JOBS_PER_USER ?? 3
+  cfg.raw("MAX_RUNNING_JOBS_PER_USER") ?? 3
 );
-const MAX_ATTEMPTS = Number(process.env.MAX_JOB_ATTEMPTS ?? 3);
+const MAX_ATTEMPTS = Number(cfg.raw("MAX_JOB_ATTEMPTS") ?? 3);
 
 const transitionMap: Record<JobStatus, JobStatus[]> = {
   [JobStatus.PENDING]: [JobStatus.RUNNING, JobStatus.FAILED],

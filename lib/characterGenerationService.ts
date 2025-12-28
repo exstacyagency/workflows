@@ -1,4 +1,5 @@
 // lib/characterGenerationService.ts
+import { cfg } from "@/lib/config";
 import prisma from '@/lib/prisma';
 import { JobStatus } from '@prisma/client';
 import { env, requireEnv } from './configGuard.ts';
@@ -122,7 +123,7 @@ Return ONLY JSON. No markdown fences.`;
  * Call Anthropic Claude with system + prompt.
  */
 async function callAnthropic(system: string, prompt: string): Promise<string> {
-  const model = process.env.ANTHROPIC_MODEL ?? 'claude-3-sonnet-20240229';
+  const model = cfg.raw("ANTHROPIC_MODEL") ?? 'claude-3-sonnet-20240229';
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',

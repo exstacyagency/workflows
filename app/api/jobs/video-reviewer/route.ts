@@ -1,4 +1,5 @@
 // app/api/jobs/video-reviewer/route.ts
+import { cfg } from "@/lib/config";
 import { NextRequest, NextResponse } from 'next/server';
 import { runVideoReviewer } from '../../../../lib/videoReviewerService';
 import { requireProjectOwner } from '../../../../lib/requireProjectOwner';
@@ -78,14 +79,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!process.env.FAL_API_KEY) {
+    if (!cfg.raw("FAL_API_KEY")) {
       return NextResponse.json(
         { error: 'FAL is not configured' },
         { status: 500 },
       );
     }
 
-    if (process.env.NODE_ENV === 'production') {
+    if (cfg.raw("NODE_ENV") === 'production') {
       const rateCheck = await checkRateLimit(projectId);
       if (!rateCheck.allowed) {
         return NextResponse.json(

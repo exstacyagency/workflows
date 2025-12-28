@@ -1,7 +1,6 @@
+import { cfg } from "@/lib/config";
+import { loadDotEnvFileIfPresent } from "@/lib/config/dotenv";
 import { JobStatus, JobType } from "@prisma/client";
-import fs from "node:fs";
-import path from "node:path";
-
 import { runCustomerResearch } from "../services/customerResearchService.ts";
 import { runAdRawCollection } from "../lib/adRawCollectionService.ts";
 import { runPatternAnalysis } from "../lib/patternAnalysisService.ts";
@@ -12,38 +11,14 @@ import { runVideoGenerationJob } from "../lib/videoGenerationService.ts";
 import prisma from "../lib/prisma.ts";
 import { rollbackQuota } from "../lib/billing/usage.ts";
 
-function loadDotEnvFile(filename: string) {
-  const filePath = path.join(process.cwd(), filename);
-  if (!fs.existsSync(filePath)) return;
-  const raw = fs.readFileSync(filePath, "utf8");
-  for (const line of raw.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    const eq = trimmed.indexOf("=");
-    if (eq === -1) continue;
-    let key = trimmed.slice(0, eq).trim();
-    let value = trimmed.slice(eq + 1).trim();
-    if (key.startsWith("export ")) key = key.slice("export ".length).trim();
-    if (!key) continue;
-    if (process.env[key] !== undefined) continue;
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
-      value = value.slice(1, -1);
-    }
-    process.env[key] = value;
-  }
+if (cfg.raw("NODE_ENV") !== "production") {
+  loadDotEnvFileIfPresent(".env.local");
+  loadDotEnvFileIfPresent(".env");
 }
 
-if (process.env.NODE_ENV !== "production") {
-  loadDotEnvFile(".env.local");
-  loadDotEnvFile(".env");
-}
-
-const POLL_MS = Number(process.env.WORKER_POLL_MS ?? 2000);
-const RUN_ONCE = process.env.RUN_ONCE === "1";
-const WORKER_JOB_MAX_RUNTIME_MS = Number(process.env.WORKER_JOB_MAX_RUNTIME_MS ?? 20 * 60_000);
+const POLL_MS = Number(cfg.raw("WORKER_POLL_MS") ?? 2000);
+const RUN_ONCE = cfg.raw("RUN_ONCE") === "1";
+const WORKER_JOB_MAX_RUNTIME_MS = Number(cfg.raw("WORKER_JOB_MAX_RUNTIME_MS") ?? 20 * 60_000);
 
 type JsonObject = Record<string, any>;
 
@@ -87,7 +62,10 @@ function serializeResult(value: any) {
 }
 
 function envMissing(keys: string[]) {
-  return keys.filter((k) => !process.env[k] || String(process.env[k]).trim() === "");
+  return keys.filter((k) => {
+    const v = cfg.raw(k);
+    return !v || v.trim() === "";
+  });
 }
 
 async function rollbackJobQuotaIfNeeded(jobId: string, projectId: string, payload: JsonObject) {
@@ -158,7 +136,7 @@ async function handleProviderConfig(jobId: string, provider: string, requiredEnv
   if (missing.length === 0) return { ok: true as const };
 
   const reason = `${provider} not configured`;
-  if (process.env.CI === "true") {
+  if (cfg.raw("CI") === "true") {
     await markCompleted(jobId, { ok: true, skipped: true, reason }, `Skipped: ${reason}`);
     return { ok: false as const, skipped: true as const };
   }
@@ -200,15 +178,12 @@ async function runJob(job: { id: string; type: JobType; projectId: string; paylo
   try {
     switch (job.type) {
       case JobType.CUSTOMER_RESEARCH: {
-        const hasApifyToken = !!process.env.APIFY_TOKEN || !!process.env.APIFY_API_TOKEN;
+        const apifyToken = cfg.raw("APIFY_TOKEN") ?? cfg.raw("APIFY_API_TOKEN");
+        const hasApifyToken = !!apifyToken;
         if (!hasApifyToken) {
           await rollbackJobQuotaIfNeeded(jobId, job.projectId, payload);
           await markCompleted(jobId, { ok: true, skipped: true, reason: "Apify not configured" });
           return;
-        }
-
-        if (!process.env.APIFY_TOKEN && process.env.APIFY_API_TOKEN) {
-          process.env.APIFY_TOKEN = process.env.APIFY_API_TOKEN;
         }
 
         const {
@@ -242,7 +217,7 @@ async function runJob(job: { id: string; type: JobType; projectId: string; paylo
       case JobType.AD_PERFORMANCE: {
         const cfgToken = await handleProviderConfig(jobId, "Apify", ["APIFY_API_TOKEN"]);
         if (!cfgToken.ok) return;
-        const datasetId = (process.env.APIFY_DATASET_ID ?? "").trim();
+        const datasetId = (cfg.raw("APIFY_DATASET_ID") ?? "").trim();
         if (!datasetId) {
           const cfgActor = await handleProviderConfig(jobId, "Apify", ["APIFY_ACTOR_ID"]);
           if (!cfgActor.ok) return;

@@ -1,3 +1,4 @@
+/* eslint-disable no-restricted-properties */
 import fs from "node:fs";
 import path from "node:path";
 

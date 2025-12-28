@@ -1,14 +1,15 @@
 // middleware.ts
+import { cfg } from "@/lib/config";
 import { NextFetchEvent, NextRequest, NextResponse } from "next/server";
 import { withAuth } from "next-auth/middleware";
 
 function denyDevAdminInProd(req: NextRequest) {
   // Defense-in-depth: never allow /api/dev in production even if a route forgets a guard.
-  const isProd = process.env.NODE_ENV === "production";
+  const isProd = cfg.raw("NODE_ENV") === "production";
   if (!isProd) return null;
   if (req.nextUrl.pathname.startsWith("/api/dev")) {
     // Allow CI test harness to clear lockout so attacker sweep can login.
-    if (process.env.CI === "true" && req.nextUrl.pathname === "/api/dev/clear-lockout") {
+    if (cfg.raw("CI") === "true" && req.nextUrl.pathname === "/api/dev/clear-lockout") {
       return null;
     }
     return new NextResponse("Not found", { status: 404 });
@@ -26,7 +27,7 @@ function applySecurityHeaders(res: NextResponse) {
     "camera=(), microphone=(), geolocation=()"
   );
 
-  const isProd = process.env.NODE_ENV === "production";
+  const isProd = cfg.raw("NODE_ENV") === "production";
   const csp = [
     "default-src 'self'",
     "img-src 'self' data: https:",
@@ -54,7 +55,7 @@ const authMiddleware = withAuth(
 );
 
 export default async function combinedMiddleware(req: NextRequest, event: NextFetchEvent) {
-  const isProd = process.env.NODE_ENV === "production";
+  const isProd = cfg.raw("NODE_ENV") === "production";
   const pathname = req.nextUrl.pathname;
 
   const devDeny = denyDevAdminInProd(req);

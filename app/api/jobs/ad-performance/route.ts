@@ -1,4 +1,5 @@
 // app/api/jobs/ad-performance/route.ts
+import { cfg } from "@/lib/config";
 import { NextRequest, NextResponse } from 'next/server';
 import { startAdRawCollectionJob } from '../../../../lib/adRawCollectionService';
 import { prisma } from '../../../../lib/prisma';
@@ -59,9 +60,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
-    const hasApifyToken = !!process.env.APIFY_API_TOKEN && process.env.APIFY_API_TOKEN.trim().length > 0;
-    const hasDatasetId = !!process.env.APIFY_DATASET_ID && process.env.APIFY_DATASET_ID.trim().length > 0;
-    const hasActorId = !!process.env.APIFY_ACTOR_ID && process.env.APIFY_ACTOR_ID.trim().length > 0;
+  const apifyToken = (cfg.raw("APIFY_API_TOKEN") ?? "").trim();
+  const apifyDatasetId = (cfg.raw("APIFY_DATASET_ID") ?? "").trim();
+  const apifyActorId = (cfg.raw("APIFY_ACTOR_ID") ?? "").trim();
+
+  const hasApifyToken = apifyToken.length > 0;
+  const hasDatasetId = apifyDatasetId.length > 0;
+  const hasActorId = apifyActorId.length > 0;
     if (!hasApifyToken || (!hasDatasetId && !hasActorId)) {
       return NextResponse.json(
         { error: 'Apify is not configured' },
@@ -108,7 +113,7 @@ export async function POST(req: NextRequest) {
       throw err;
     }
 
-    if (process.env.NODE_ENV === 'production') {
+    if (cfg.raw("NODE_ENV") === 'production') {
       const rateCheck = await checkRateLimit(projectId);
       if (!rateCheck.allowed) {
         return NextResponse.json(
