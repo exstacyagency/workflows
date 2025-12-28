@@ -40,12 +40,19 @@ export const authOptions: NextAuthOptions = {
         const user = await prisma.user.findUnique({
           where: { email },
         });
+
+        if (cfg.raw("AUTH_DEBUG") === "1") {
+          console.log("[AUTH_DEBUG] email", email, "user?", !!user, "hasHash?", !!user?.passwordHash);
+        }
         if (!user || !user.passwordHash) {
           await recordLoginFailureDb({ ip, email });
           return null;
         }
 
         const isValid = await compare(credentials.password, user.passwordHash);
+        if (cfg.raw("AUTH_DEBUG") === "1") {
+          console.log("[AUTH_DEBUG] bcrypt compare", isValid);
+        }
         if (!isValid) {
           await recordLoginFailureDb({ ip, email });
           return null;

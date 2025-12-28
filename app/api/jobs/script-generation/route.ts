@@ -30,19 +30,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     userIdForQuota = userId;
-    let planId: "FREE" | "GROWTH" | "SCALE" = "FREE";
-    try {
-      planId = await assertMinPlan(userId, "GROWTH");
-    } catch (err: any) {
-      if (err instanceof UpgradeRequiredError) {
-        return NextResponse.json(
-          { error: "Upgrade required", requiredPlan: err.requiredPlan },
-          { status: 402 },
-        );
-      }
-      console.error(err);
-      return NextResponse.json({ error: "Billing check failed" }, { status: 500 });
-    }
     const ip =
       req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null;
 
@@ -64,6 +51,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    let planId: "FREE" | "GROWTH" | "SCALE" = "FREE";
+    try {
+      planId = await assertMinPlan(userId, "GROWTH");
+    } catch (err: any) {
+      if (err instanceof UpgradeRequiredError) {
+        return NextResponse.json(
+          { error: "Upgrade required", requiredPlan: err.requiredPlan },
+          { status: 402 },
+        );
+      }
+      console.error(err);
+      return NextResponse.json({ error: "Billing check failed" }, { status: 500 });
+    }
+
     const devTest = flag("FF_DEV_TEST_MODE");
     const breakerTest = flag("FF_BREAKER_TEST");
     let idempotencyKey = `script-generation:${projectId}`;
@@ -72,8 +73,11 @@ export async function POST(req: NextRequest) {
     }
 
     const isCI = cfg.raw("CI") === "true";
+    const isSweep = cfg.raw("SECURITY_SWEEP") === "1";
     const hasAnthropic = !!cfg.raw("ANTHROPIC_API_KEY");
-    if (isCI && !hasAnthropic) {
+    // SECURITY_SWEEP forces deterministic placeholder scripts (no external LLM calls).
+    // CI still falls back when Anthropic isn't configured.
+    if (isSweep || (isCI && !hasAnthropic)) {
       const project = await prisma.project.findUnique({
         where: { id: projectId },
         select: { name: true },
@@ -84,7 +88,7 @@ export async function POST(req: NextRequest) {
         ...parsed.data,
         idempotencyKey,
         skipped: true,
-        reason: "LLM not configured",
+        reason: isSweep ? "SECURITY_SWEEP" : "LLM not configured",
       };
 
       let jobId: string | null = null;
@@ -96,7 +100,7 @@ export async function POST(req: NextRequest) {
             status: JobStatus.COMPLETED,
             idempotencyKey,
             payload: skipPayload,
-            resultSummary: "Skipped: LLM not configured",
+            resultSummary: isSweep ? "Skipped: SECURITY_SWEEP" : "Skipped: LLM not configured",
           },
         });
         jobId = job.id;
@@ -152,7 +156,7 @@ export async function POST(req: NextRequest) {
         text,
         word_count: wordCount,
         skipped: true,
-        reason: "LLM not configured",
+        reason: isSweep ? "SECURITY_SWEEP" : "LLM not configured",
       };
 
       const script = await prisma.script.create({
@@ -172,7 +176,9 @@ export async function POST(req: NextRequest) {
         data: {
           status: JobStatus.COMPLETED,
           payload: { ...skipPayload, scriptIds: [script.id] },
-          resultSummary: `Skipped: LLM not configured (scriptId=${script.id})`,
+          resultSummary: isSweep
+            ? `Skipped: SECURITY_SWEEP (scriptId=${script.id})`
+            : `Skipped: LLM not configured (scriptId=${script.id})`,
           error: null,
         },
       });
@@ -181,7 +187,7 @@ export async function POST(req: NextRequest) {
         {
           ok: true,
           skipped: true,
-          reason: "LLM not configured",
+          reason: isSweep ? "SECURITY_SWEEP" : "LLM not configured",
           jobId,
           scripts: [{ id: script.id, text }],
         },

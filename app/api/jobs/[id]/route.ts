@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import { requireProjectOwner } from '@/lib/requireProjectOwner';
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { getSessionUserId } from "@/lib/getSessionUserId";
+import { requireProjectOwner } from "@/lib/requireProjectOwner";
 
 export const runtime = 'nodejs';
 
@@ -8,47 +9,34 @@ export async function GET(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  try {
-    const jobId = params.id;
+  const userId = await getSessionUserId();
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const job = await prisma.job.findUnique({
-      where: { id: jobId },
-      include: { project: true },
-    });
+  const { id } = params;
+  const job = await prisma.job.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      projectId: true,
+      type: true,
+      status: true,
+      payload: true,
+      resultSummary: true,
+      error: true,
+      createdAt: true,
+      updatedAt: true,
+      estimatedCost: true,
+      actualCost: true,
+      costBreakdown: true,
+    },
+  });
+  if (!job) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-    if (!job) {
-      return NextResponse.json({ error: 'Not found' }, { status: 404 });
-    }
-
-    if (!job.project) {
-      return NextResponse.json({ error: 'Job project missing' }, { status: 404 });
-    }
-
-    const auth = await requireProjectOwner(job.project.id);
-    if (auth.error) {
-      return NextResponse.json({ error: auth.error }, { status: auth.status });
-    }
-
-    let queueStatus: any = null;
-    try {
-      const { getJobStatus, QueueName } = await import('@/lib/queue');
-
-      const queueMap: Record<string, any> = {
-        CUSTOMER_RESEARCH: QueueName.CUSTOMER_RESEARCH,
-        AD_PERFORMANCE: QueueName.AD_COLLECTION,
-      };
-
-      const queueName = queueMap[job.type];
-      queueStatus = queueName ? await getJobStatus(queueName, jobId) : null;
-    } catch {
-      queueStatus = null;
-    }
-
-    return NextResponse.json({ job, queueStatus });
-  } catch (err: any) {
-    return NextResponse.json(
-      { error: 'Job status failed', detail: String(err?.message ?? err) },
-      { status: 500 }
-    );
+  const auth = await requireProjectOwner(job.projectId);
+  if (auth.error) {
+    // Return 404 to avoid leaking existence across tenants/users
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
+
+  return NextResponse.json({ job }, { status: 200 });
 }

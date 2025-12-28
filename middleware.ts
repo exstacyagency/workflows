@@ -72,6 +72,14 @@ export default async function combinedMiddleware(req: NextRequest, event: NextFe
     (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`)
   ).toString();
 
+  // Allow security sweep / CI preflight to clear lockout via token.
+  // This route is still protected by DEBUG_ADMIN_TOKEN in the handler.
+  if (pathname === "/api/dev/clear-lockout") {
+    const res = applySecurityHeaders(NextResponse.next());
+    res.headers.set("x-request-id", requestId);
+    return res;
+  }
+
   // Run auth + security headers for all matched routes
   // withAuth will set NextResponse and we apply headers in the handler above.
   // This wrapper exists to keep a single default export.

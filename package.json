@@ -22,7 +22,7 @@
     "worker": "DOTENV_CONFIG_PATH=.env.local node -r dotenv/config ./node_modules/.bin/tsx ./workers/jobRunner.ts",
     "workers": "tsx workers.ts",
     "retry-worker": "ts-node -r tsconfig-paths/register workers/retryRunner.ts",
-    "security:sweep": "node scripts/attacker_sweep.mjs",
+    "security:sweep": "node -r dotenv/config scripts/attacker_sweep.mjs",
     "security:login-lockout": "node scripts/login_lockout_test.mjs",
     "seed:ci": "node scripts/seed_ci.mjs",
     "auth:cleanup": "node scripts/cleanup_auth_throttle.mjs",
