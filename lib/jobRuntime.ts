@@ -1,9 +1,10 @@
+import { cfg } from "@/lib/config";
 import { prisma } from "./prisma.ts";
 import { JobStatus } from "@prisma/client";
 
-const MAX_ATTEMPTS = Number(process.env.MAX_JOB_ATTEMPTS ?? 3);
-const BASE_MS = Number(process.env.JOB_RETRY_BASE_MS ?? 1000);
-const MAX_MS = Number(process.env.JOB_RETRY_MAX_MS ?? 60_000);
+const MAX_ATTEMPTS = Number(cfg.raw("MAX_JOB_ATTEMPTS") ?? 3);
+const BASE_MS = Number(cfg.raw("JOB_RETRY_BASE_MS") ?? 1000);
+const MAX_MS = Number(cfg.raw("JOB_RETRY_MAX_MS") ?? 60_000);
 
 type Payload = Record<string, any>;
 

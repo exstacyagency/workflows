@@ -1,3 +1,4 @@
+import { cfg } from "@/lib/config";
 import { prisma } from '@/lib/prisma';
 import { getSessionUserId } from '@/lib/getSessionUserId';
 import { NextRequest, NextResponse } from 'next/server';
@@ -22,7 +23,7 @@ export async function POST(request: NextRequest) {
     const { name, description } = parsed.data;
 
     const rateKey = `project:create:${userId}`;
-    if (process.env.NODE_ENV === 'production') {
+    if (cfg.raw("NODE_ENV") === 'production') {
       const rateCheck = await checkRateLimit(rateKey);
       if (!rateCheck.allowed) {
         return NextResponse.json(

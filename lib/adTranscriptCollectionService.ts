@@ -1,20 +1,21 @@
+import { cfg } from "@/lib/config";
 import { prisma } from './prisma.ts';
 import { AdPlatform, JobStatus } from '@prisma/client';
 import pLimit from 'p-limit';
 import { guardedExternalCall } from './externalCallGuard.ts';
 import { env, requireEnv } from './configGuard.ts';
 
-const APIFY_TIMEOUT_MS = Number(process.env.APIFY_TIMEOUT_MS ?? 30_000);
-const APIFY_BREAKER_FAILS = Number(process.env.APIFY_BREAKER_FAILS ?? 3);
-const APIFY_BREAKER_COOLDOWN_MS = Number(process.env.APIFY_BREAKER_COOLDOWN_MS ?? 60_000);
-const APIFY_RETRIES = Number(process.env.APIFY_RETRIES ?? 1);
+const APIFY_TIMEOUT_MS = Number(cfg.raw("APIFY_TIMEOUT_MS") ?? 30_000);
+const APIFY_BREAKER_FAILS = Number(cfg.raw("APIFY_BREAKER_FAILS") ?? 3);
+const APIFY_BREAKER_COOLDOWN_MS = Number(cfg.raw("APIFY_BREAKER_COOLDOWN_MS") ?? 60_000);
+const APIFY_RETRIES = Number(cfg.raw("APIFY_RETRIES") ?? 1);
 
-const ASSEMBLY_TIMEOUT_MS = Number(process.env.ASSEMBLY_TIMEOUT_MS ?? APIFY_TIMEOUT_MS);
-const ASSEMBLY_BREAKER_FAILS = Number(process.env.ASSEMBLY_BREAKER_FAILS ?? APIFY_BREAKER_FAILS);
+const ASSEMBLY_TIMEOUT_MS = Number(cfg.raw("ASSEMBLY_TIMEOUT_MS") ?? APIFY_TIMEOUT_MS);
+const ASSEMBLY_BREAKER_FAILS = Number(cfg.raw("ASSEMBLY_BREAKER_FAILS") ?? APIFY_BREAKER_FAILS);
 const ASSEMBLY_BREAKER_COOLDOWN_MS = Number(
-  process.env.ASSEMBLY_BREAKER_COOLDOWN_MS ?? APIFY_BREAKER_COOLDOWN_MS
+  cfg.raw("ASSEMBLY_BREAKER_COOLDOWN_MS") ?? APIFY_BREAKER_COOLDOWN_MS
 );
-const ASSEMBLY_RETRIES = Number(process.env.ASSEMBLY_RETRIES ?? APIFY_RETRIES);
+const ASSEMBLY_RETRIES = Number(cfg.raw("ASSEMBLY_RETRIES") ?? APIFY_RETRIES);
 
 const ASSEMBLY_BASE = 'https://api.assemblyai.com/v2';
 const TRIGGER_WORDS = ['you', 'your', 'yourself'];

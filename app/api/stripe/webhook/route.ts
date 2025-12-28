@@ -1,3 +1,4 @@
+import { cfg } from "@/lib/config";
 import type Stripe from "stripe";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -171,7 +172,7 @@ async function recordBillingEvent(args: {
 export async function POST(req: NextRequest) {
   const rawBody = await req.text();
   const sig = req.headers.get("stripe-signature");
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  const webhookSecret = cfg.raw("STRIPE_WEBHOOK_SECRET");
   if (!webhookSecret || !sig) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }

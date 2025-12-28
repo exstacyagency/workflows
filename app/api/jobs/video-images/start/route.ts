@@ -1,3 +1,4 @@
+import { cfg } from "@/lib/config";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { startMultiFrameVideoImages } from "@/lib/videoImageOrchestrator";
@@ -11,12 +12,12 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 function mustSpendConfirm(req: Request) {
-  const requireConfirm = (process.env.KIE_REQUIRE_SPEND_CONFIRMATION ?? "1") === "1";
+  const requireConfirm = (cfg.raw("KIE_REQUIRE_SPEND_CONFIRMATION") ?? "1") === "1";
   if (!requireConfirm) return;
 
   // In production you may choose to disable this via env.
-  const headerName = (process.env.KIE_SPEND_CONFIRM_HEADER ?? "x-kie-spend-confirm").toLowerCase();
-  const expected = process.env.KIE_SPEND_CONFIRM_VALUE ?? "1";
+  const headerName = (cfg.raw("KIE_SPEND_CONFIRM_HEADER") ?? "x-kie-spend-confirm").toLowerCase();
+  const expected = cfg.raw("KIE_SPEND_CONFIRM_VALUE") ?? "1";
   const got = req.headers.get(headerName);
   if (got !== expected) {
     throw new Error(
@@ -86,7 +87,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Storyboard or project not found" }, { status: 404 });
     }
 
-    if (process.env.NODE_ENV === "production") {
+    if (cfg.raw("NODE_ENV") === "production") {
       const rateCheck = await checkRateLimit(projectId);
       if (!rateCheck.allowed) {
         return NextResponse.json(

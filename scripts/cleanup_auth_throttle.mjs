@@ -1,3 +1,4 @@
+/* eslint-disable no-restricted-properties */
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();

@@ -1,3 +1,4 @@
+/* eslint-disable no-restricted-properties */
 import prisma from '../lib/prisma';
 
 function usage(): never {

@@ -1,3 +1,4 @@
+import { cfg } from "@/lib/config";
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '../../../../lib/prisma';
 import { JobType, JobStatus } from '@prisma/client';
@@ -122,7 +123,7 @@ export async function POST(req: NextRequest) {
       throw err;
     }
 
-    if (process.env.NODE_ENV === 'production') {
+    if (cfg.raw("NODE_ENV") === 'production') {
       const rateCheck = await checkRateLimit(projectId);
       if (!rateCheck.allowed) {
         return NextResponse.json(

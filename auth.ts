@@ -1,4 +1,5 @@
 // auth.ts
+import { cfg } from "@/lib/config";
 import { compare } from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import type { NextAuthOptions } from "next-auth";
@@ -12,7 +13,7 @@ import {
 import { normalizeEmail } from "@/lib/normalizeEmail";
 
 export const authOptions: NextAuthOptions = {
-  secret: process.env.NEXTAUTH_SECRET,
+  secret: cfg.raw("NEXTAUTH_SECRET"),
   session: { strategy: "jwt" },
   providers: [
     Credentials({

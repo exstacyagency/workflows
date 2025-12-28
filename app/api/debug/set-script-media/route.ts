@@ -1,9 +1,10 @@
+import { cfg } from "@/lib/config";
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/getSessionUser";
 import { prisma } from "@/lib/prisma";
 
 export async function POST(req: NextRequest) {
-  if (process.env.NODE_ENV === "production") {
+  if (cfg.raw("NODE_ENV") === "production") {
     return new Response(null, { status: 404 });
   }
 

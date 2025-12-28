@@ -1,4 +1,5 @@
 // app/api/jobs/script-generation/route.ts
+import { cfg } from "@/lib/config";
 import { NextRequest, NextResponse } from 'next/server';
 import { startScriptGenerationJob } from '../../../../lib/scriptGenerationService';
 import { requireProjectOwner } from '../../../../lib/requireProjectOwner';
@@ -70,8 +71,8 @@ export async function POST(req: NextRequest) {
       idempotencyKey = `${idempotencyKey}:${Date.now()}`;
     }
 
-    const isCI = process.env.CI === "true";
-    const hasAnthropic = !!process.env.ANTHROPIC_API_KEY;
+    const isCI = cfg.raw("CI") === "true";
+    const hasAnthropic = !!cfg.raw("ANTHROPIC_API_KEY");
     if (isCI && !hasAnthropic) {
       const project = await prisma.project.findUnique({
         where: { id: projectId },
@@ -199,7 +200,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (!devTest) {
-      if (!process.env.ANTHROPIC_API_KEY) {
+      if (!cfg.raw("ANTHROPIC_API_KEY")) {
         return NextResponse.json(
           { error: 'Anthropic is not configured' },
           { status: 500 },
@@ -207,7 +208,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    if (!devTest && process.env.NODE_ENV === 'production') {
+    if (!devTest && cfg.raw("NODE_ENV") === 'production') {
       const rateCheck = await checkRateLimit(projectId);
       if (!rateCheck.allowed) {
         return NextResponse.json(

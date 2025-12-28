@@ -1,3 +1,4 @@
+/* eslint-disable no-restricted-properties */
 import { spawn } from "node:child_process";
 
 const PORT = process.env.PORT || "3001";

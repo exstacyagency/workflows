@@ -1,4 +1,5 @@
 // lib/authAbuseGuard.ts
+import { cfg } from "@/lib/config";
 type Kind = "register" | "login";
 
 type Entry = {
@@ -9,9 +10,9 @@ type Entry = {
 
 const store = new Map<string, Entry>();
 
-const WINDOW_MS = Number(process.env.AUTH_WINDOW_MS ?? 10 * 60_000); // 10 min
-const MAX_ATTEMPTS = Number(process.env.AUTH_MAX_ATTEMPTS ?? 5);
-const LOCKOUT_MS = Number(process.env.AUTH_LOCKOUT_MS ?? 15 * 60_000); // 15 min
+const WINDOW_MS = Number(cfg.raw("AUTH_WINDOW_MS") ?? 10 * 60_000); // 10 min
+const MAX_ATTEMPTS = Number(cfg.raw("AUTH_MAX_ATTEMPTS") ?? 5);
+const LOCKOUT_MS = Number(cfg.raw("AUTH_LOCKOUT_MS") ?? 15 * 60_000); // 15 min
 
 function now() {
   return Date.now();

@@ -1,3 +1,4 @@
+import { cfg } from "@/lib/config";
 import { PrismaClient, JobType } from "@prisma/client";
 import { runWithState } from "../lib/jobRuntime.ts";
 import { startScriptGenerationJob } from "../lib/scriptGenerationService.ts";
@@ -6,12 +7,12 @@ import * as transcriptsSvc from "../lib/adTranscriptCollectionService.ts";
 
 const prisma = new PrismaClient();
 
-const POLL_MS = Number(process.env.RETRY_POLL_MS ?? 5000);
-const BATCH = Number(process.env.RETRY_BATCH ?? 5);
-const MAX_WORKER_CONCURRENCY = Number(process.env.MAX_WORKER_CONCURRENCY ?? 2);
-const MAX_RUNNING_JOBS_PER_USER = Number(process.env.MAX_RUNNING_JOBS_PER_USER ?? 3);
-const RUNNING_JOB_TIMEOUT_MS = Number(process.env.RUNNING_JOB_TIMEOUT_MS ?? 5 * 60_000);
-const RUNNING_TIMEOUT_MAX_BATCH = Number(process.env.RUNNING_TIMEOUT_MAX_BATCH ?? 25);
+const POLL_MS = Number(cfg.raw("RETRY_POLL_MS") ?? 5000);
+const BATCH = Number(cfg.raw("RETRY_BATCH") ?? 5);
+const MAX_WORKER_CONCURRENCY = Number(cfg.raw("MAX_WORKER_CONCURRENCY") ?? 2);
+const MAX_RUNNING_JOBS_PER_USER = Number(cfg.raw("MAX_RUNNING_JOBS_PER_USER") ?? 3);
+const RUNNING_JOB_TIMEOUT_MS = Number(cfg.raw("RUNNING_JOB_TIMEOUT_MS") ?? 5 * 60_000);
+const RUNNING_TIMEOUT_MAX_BATCH = Number(cfg.raw("RUNNING_TIMEOUT_MAX_BATCH") ?? 25);
 
 async function fetchDueJobIds(type: JobType, nowMs: number) {
   const rows = await prisma.$queryRaw<Array<{ id: string }>>`
