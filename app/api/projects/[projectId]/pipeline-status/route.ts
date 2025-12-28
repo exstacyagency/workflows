@@ -1,6 +1,6 @@
 import { cfg } from "@/lib/config";
 import { NextResponse } from "next/server";
-import prisma from "../../../../../lib/prisma";
+import { prisma } from "../../../../../lib/prisma";
 import { getSessionUserId } from "../../../../../lib/getSessionUserId";
 import { requireProjectOwner404 } from "../../../../../lib/auth/requireProjectOwner404";
 import { JobType } from "@prisma/client";
@@ -18,13 +18,18 @@ function phaseFromJobStatus(jobStatus?: string | null): PhaseStatus {
   return "pending";
 }
 
-async function latestJob(projectId: string, types: JobType[]) {
-  if (!types.length) return null;
-  return prisma.job.findFirst({
-    where: { projectId, type: { in: types } },
+async function latestJob(projectId: string, typeKeys: string[]) {
+  // Query without enum IN to avoid DB/client enum drift causing hard 500s.
+  // We'll filter in-memory instead.
+  const jobs = await prisma.job.findMany({
+    where: { projectId },
     orderBy: { createdAt: "desc" },
+    take: 200,
     select: { id: true, type: true, status: true, updatedAt: true, resultSummary: true, error: true },
   });
+
+  const allowed = new Set(typeKeys);
+  return jobs.find((j) => allowed.has(String(j.type)));
 }
 
 export async function GET(req: Request, { params }: { params: { projectId: string } }) {
@@ -64,23 +69,31 @@ export async function GET(req: Request, { params }: { params: { projectId: strin
       })
       .filter((v) => typeof v === "string" && v.length > 0);
 
-    // Also include any storyboardIds that already have scenes (direct truth)
-    const storyboardIdsFromScenes = (
-      await prisma.storyboardScene.findMany({
-        select: { storyboardId: true },
-        distinct: ["storyboardId"],
-        take: 500,
-      })
-    ).map((r) => r.storyboardId);
+    // Also include any storyboardIds that already have scenes (direct truth).
+    // Avoid Prisma `distinct` here (can be brittle across adapters); do it in JS.
+    const storyboardIdsFromScenesRaw = await prisma.storyboardScene.findMany({
+      select: { storyboardId: true },
+      where: { storyboardId: { in: storyboardIds.length ? storyboardIds : undefined } },
+      take: 500,
+    });
+    const storyboardIdsFromScenes = Array.from(
+      new Set(storyboardIdsFromScenesRaw.map((r) => r.storyboardId))
+    );
 
     const allStoryboardIds = Array.from(
       new Set([...storyboardIds, ...storyboardIdsFromJobs, ...storyboardIdsFromScenes])
     );
 
+    // Count "completed" scenes in a schema-safe way:
+    // - If status is an enum, its values are usually uppercase ("COMPLETED").
+    // - If status is freeform, we still handle it.
     const completedSceneCount =
       allStoryboardIds.length > 0
         ? await prisma.storyboardScene.count({
-            where: { storyboardId: { in: allStoryboardIds } as any, status: "completed" as any } as any,
+            where: {
+              storyboardId: { in: allStoryboardIds },
+              OR: [{ status: "COMPLETED" as any }, { status: "completed" as any }],
+            } as any,
           })
         : 0;
 
@@ -90,37 +103,37 @@ export async function GET(req: Request, { params }: { params: { projectId: strin
       {
         key: "research",
         label: "Research",
-        job: await latestJob(projectId, jt("CUSTOMER_RESEARCH", "AD_TRANSCRIPTS", "AD_PERFORMANCE")),
+        job: await latestJob(projectId, ["CUSTOMER_RESEARCH", "AD_TRANSCRIPTS", "AD_PERFORMANCE"]),
       },
       {
         key: "avatar_product_intel",
         label: "Avatar & Product Intel",
-        job: await latestJob(projectId, jt("CUSTOMER_ANALYSIS", "PRODUCT_INTELLIGENCE")),
+        job: await latestJob(projectId, ["CUSTOMER_ANALYSIS", "PRODUCT_INTELLIGENCE"]),
       },
       {
         key: "pattern_brain",
         label: "Pattern Brain",
-        job: await latestJob(projectId, jt("PATTERN_ANALYSIS")),
+        job: await latestJob(projectId, ["PATTERN_ANALYSIS"]),
       },
       {
         key: "script_characters",
         label: "Script & Characters",
-        job: await latestJob(projectId, jt("SCRIPT_GENERATION", "CHARACTER_GENERATION")),
+        job: await latestJob(projectId, ["SCRIPT_GENERATION", "CHARACTER_GENERATION"]),
       },
       {
         key: "storyboards_frames",
         label: "Storyboards",
-        job: await latestJob(projectId, jt("STORYBOARD_GENERATION", "VIDEO_PROMPT_GENERATION")),
+        job: await latestJob(projectId, ["STORYBOARD_GENERATION", "VIDEO_PROMPT_GENERATION"]),
       },
       {
         key: "scenes_review",
         label: "Scenes & Review",
-        job: await latestJob(projectId, jt("VIDEO_IMAGE_GENERATION", "VIDEO_REVIEW")),
+        job: await latestJob(projectId, ["VIDEO_IMAGE_GENERATION", "VIDEO_REVIEW"]),
       },
       {
         key: "upscale_export",
         label: "Upscale & Export",
-        job: await latestJob(projectId, jt("VIDEO_UPSCALER", "VIDEO_GENERATION")),
+        job: await latestJob(projectId, ["VIDEO_UPSCALER", "VIDEO_GENERATION"]),
       },
     ].map((p) => {
       const base = phaseFromJobStatus(p.job?.status);
@@ -180,10 +193,4 @@ export async function GET(req: Request, { params }: { params: { projectId: strin
     );
   }
 }
-function jt(...keys: string[]): JobType[] {
-  // Accept string keys to avoid CI/type errors when enum members differ between schemas.
-  // Filter at runtime using the actual generated Prisma enum.
-  return keys
-    .map((k) => (JobType as any)[k] as JobType | undefined)
-    .filter((v): v is JobType => !!v);
-}
+// jt() no longer needed
