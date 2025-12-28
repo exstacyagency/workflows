@@ -1,9 +1,14 @@
 import { NextResponse } from "next/server";
+import { isSelfHosted } from "@/lib/config/mode";
 import { prisma } from "@/lib/prisma";
 import { getSessionUserId } from "@/lib/getSessionUserId";
 import { getStripe } from "@/lib/stripe";
 
 export async function POST() {
+  if (isSelfHosted()) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   const userId = await getSessionUserId();
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
