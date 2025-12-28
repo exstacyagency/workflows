@@ -1,3 +1,4 @@
+import { cfg } from "@/lib/config";
 import Stripe from "stripe";
 
 let cachedStripe: Stripe | null = null;
@@ -5,12 +6,12 @@ let cachedStripe: Stripe | null = null;
 export function getStripe(): Stripe {
   if (cachedStripe) return cachedStripe;
 
-  const secretKey = process.env.STRIPE_SECRET_KEY;
+  const secretKey = cfg.raw("STRIPE_SECRET_KEY");
   if (!secretKey || secretKey.trim().length === 0) {
     throw new Error("Missing STRIPE_SECRET_KEY");
   }
 
-  const apiVersion = process.env.STRIPE_API_VERSION?.trim();
+  const apiVersion = cfg.raw("STRIPE_API_VERSION")?.trim();
   cachedStripe = new Stripe(
     secretKey,
     apiVersion ? { apiVersion: apiVersion as any } : {}

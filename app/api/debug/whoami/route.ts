@@ -1,8 +1,9 @@
+import { cfg } from "@/lib/config";
 import { NextRequest, NextResponse } from "next/server";
 import { flag, nodeEnv } from "@/lib/flags";
 
 export async function GET(_req: NextRequest) {
-  if (process.env.NODE_ENV === "production") {
+  if (cfg.raw("NODE_ENV") === "production") {
     return new Response(null, { status: 404 });
   }
 
@@ -14,8 +15,8 @@ export async function GET(_req: NextRequest) {
       breakerTest: flag("FF_BREAKER_TEST"),
       simulateLlmFail: flag("FF_SIMULATE_LLM_FAIL"),
       simulateLlmHang: flag("FF_SIMULATE_LLM_HANG"),
-      llmBreakerFails: process.env.LLM_BREAKER_FAILS ?? null,
-      llmTimeoutMs: process.env.LLM_TIMEOUT_MS ?? null,
+      llmBreakerFails: cfg.raw("LLM_BREAKER_FAILS") ?? null,
+      llmTimeoutMs: cfg.raw("LLM_TIMEOUT_MS") ?? null,
       pid: process.pid,
     },
     { status: 200 }

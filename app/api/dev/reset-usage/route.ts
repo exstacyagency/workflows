@@ -1,3 +1,4 @@
+import { cfg } from "@/lib/config";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/getSessionUser";
@@ -5,8 +6,8 @@ import { getCurrentPeriodKey, periodKeyToUtcDate } from "@/lib/billing/usage";
 
 function devAdminDisabled() {
   return (
-    process.env.NODE_ENV === "production" ||
-    process.env.DISABLE_DEV_ADMIN === "true"
+    cfg.raw("NODE_ENV") === "production" ||
+    cfg.raw("DISABLE_DEV_ADMIN") === "true"
   );
 }
 

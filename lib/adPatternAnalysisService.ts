@@ -1,23 +1,24 @@
+import { cfg } from "@/lib/config";
 import { prisma } from './prisma.ts';
 import { JobStatus, JobType } from '@prisma/client';
 import Anthropic from '@anthropic-ai/sdk';
 import { guardedExternalCall } from './externalCallGuard.ts';
 import { requireEnv } from './configGuard.ts';
 
-const APIFY_TIMEOUT_MS = Number(process.env.APIFY_TIMEOUT_MS ?? 30_000);
-const APIFY_BREAKER_FAILS = Number(process.env.APIFY_BREAKER_FAILS ?? 3);
-const APIFY_BREAKER_COOLDOWN_MS = Number(process.env.APIFY_BREAKER_COOLDOWN_MS ?? 60_000);
-const APIFY_RETRIES = Number(process.env.APIFY_RETRIES ?? 1);
+const APIFY_TIMEOUT_MS = Number(cfg.raw("APIFY_TIMEOUT_MS") ?? 30_000);
+const APIFY_BREAKER_FAILS = Number(cfg.raw("APIFY_BREAKER_FAILS") ?? 3);
+const APIFY_BREAKER_COOLDOWN_MS = Number(cfg.raw("APIFY_BREAKER_COOLDOWN_MS") ?? 60_000);
+const APIFY_RETRIES = Number(cfg.raw("APIFY_RETRIES") ?? 1);
 
-const ANTHROPIC_TIMEOUT_MS = Number(process.env.ANTHROPIC_TIMEOUT_MS ?? APIFY_TIMEOUT_MS);
-const ANTHROPIC_BREAKER_FAILS = Number(process.env.ANTHROPIC_BREAKER_FAILS ?? APIFY_BREAKER_FAILS);
+const ANTHROPIC_TIMEOUT_MS = Number(cfg.raw("ANTHROPIC_TIMEOUT_MS") ?? APIFY_TIMEOUT_MS);
+const ANTHROPIC_BREAKER_FAILS = Number(cfg.raw("ANTHROPIC_BREAKER_FAILS") ?? APIFY_BREAKER_FAILS);
 const ANTHROPIC_BREAKER_COOLDOWN_MS = Number(
-  process.env.ANTHROPIC_BREAKER_COOLDOWN_MS ?? APIFY_BREAKER_COOLDOWN_MS
+  cfg.raw("ANTHROPIC_BREAKER_COOLDOWN_MS") ?? APIFY_BREAKER_COOLDOWN_MS
 );
-const ANTHROPIC_RETRIES = Number(process.env.ANTHROPIC_RETRIES ?? APIFY_RETRIES);
+const ANTHROPIC_RETRIES = Number(cfg.raw("ANTHROPIC_RETRIES") ?? APIFY_RETRIES);
 
 const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
+  apiKey: cfg.raw("ANTHROPIC_API_KEY"),
 });
 
 function isAnthropicRetryable(err: any) {

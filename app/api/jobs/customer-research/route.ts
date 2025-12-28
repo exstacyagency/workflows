@@ -1,3 +1,4 @@
+import { cfg } from "@/lib/config";
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '../../../../lib/prisma';
 import { JobStatus, JobType } from '@prisma/client';
@@ -71,7 +72,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
-    if (!process.env.APIFY_TOKEN && !process.env.APIFY_API_TOKEN) {
+    if (!cfg.raw("APIFY_TOKEN") && !cfg.raw("APIFY_API_TOKEN")) {
       return NextResponse.json(
         { error: 'Apify is not configured' },
         { status: 500 },
@@ -86,7 +87,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (process.env.NODE_ENV === 'production') {
+    if (cfg.raw("NODE_ENV") === 'production') {
       const rateCheck = await checkRateLimit(projectId);
       if (!rateCheck.allowed) {
         return NextResponse.json(

@@ -1,4 +1,5 @@
 // auth.ts
+import { cfg } from "@/lib/config";
 import { compare } from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import type { NextAuthOptions } from "next-auth";
@@ -12,7 +13,7 @@ import {
 import { normalizeEmail } from "@/lib/normalizeEmail";
 
 export const authOptions: NextAuthOptions = {
-  secret: process.env.NEXTAUTH_SECRET,
+  secret: cfg.raw("NEXTAUTH_SECRET"),
   session: { strategy: "jwt" },
   providers: [
     Credentials({
@@ -39,12 +40,19 @@ export const authOptions: NextAuthOptions = {
         const user = await prisma.user.findUnique({
           where: { email },
         });
+
+        if (cfg.raw("AUTH_DEBUG") === "1") {
+          console.log("[AUTH_DEBUG] email", email, "user?", !!user, "hasHash?", !!user?.passwordHash);
+        }
         if (!user || !user.passwordHash) {
           await recordLoginFailureDb({ ip, email });
           return null;
         }
 
         const isValid = await compare(credentials.password, user.passwordHash);
+        if (cfg.raw("AUTH_DEBUG") === "1") {
+          console.log("[AUTH_DEBUG] bcrypt compare", isValid);
+        }
         if (!isValid) {
           await recordLoginFailureDb({ ip, email });
           return null;

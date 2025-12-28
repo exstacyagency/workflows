@@ -1,4 +1,5 @@
 // app/api/jobs/customer-analysis/route.ts
+import { cfg } from "@/lib/config";
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '../../../../lib/prisma';
 import { JobStatus, JobType } from '@prisma/client';
@@ -75,7 +76,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
-    if (!process.env.ANTHROPIC_API_KEY) {
+    if (!cfg.raw("ANTHROPIC_API_KEY")) {
       return NextResponse.json(
         { error: 'Anthropic is not configured' },
         { status: 500 },
@@ -117,7 +118,7 @@ export async function POST(req: NextRequest) {
       throw err;
     }
 
-    if (process.env.NODE_ENV === 'production') {
+    if (cfg.raw("NODE_ENV") === 'production') {
       const rateCheck = await checkRateLimit(projectId);
       if (!rateCheck.allowed) {
         return NextResponse.json(

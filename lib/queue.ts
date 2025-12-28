@@ -1,7 +1,8 @@
+import { cfg } from "@/lib/config";
 import Bull from 'bull';
 import Redis from 'ioredis';
 
-const REDIS_URL = (process.env.REDIS_URL ?? '').trim();
+const REDIS_URL = (cfg.raw("REDIS_URL") ?? '').trim();
 
 const redisBaseOptions = {
   maxRetriesPerRequest: null,

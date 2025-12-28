@@ -1,3 +1,13 @@
 {
-  "extends": ["next/core-web-vitals"]
+  "extends": ["next/core-web-vitals"],
+  "rules": {
+    "no-restricted-properties": [
+      "error",
+      {
+        "object": "process",
+        "property": "env",
+        "message": "Use cfg from lib/config instead of process.env"
+      }
+    ]
+  }
 }

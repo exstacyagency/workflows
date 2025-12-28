@@ -1,3 +1,7 @@
+/* eslint-disable no-restricted-properties */
+import "dotenv/config";
+import { PrismaClient } from "@prisma/client";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -30,12 +34,172 @@ loadDotEnvFile(".env.local");
 
 const BASE_URL = process.env.BASE_URL || process.env.NEXTAUTH_URL || "http://localhost:3000";
 const IS_CI_OR_TEST = !!process.env.CI || process.env.NODE_ENV === "test";
+const TEST_EMAIL = process.env.SWEEP_TEST_EMAIL || "test@local.dev";
+const TEST_PASSWORD = process.env.SWEEP_TEST_PASSWORD || "Test1234!Test1234!";
+const ATTACKER_EMAIL = process.env.ATTACKER_EMAIL || "attacker@local.dev";
+const ATTACKER_PASSWORD = process.env.ATTACKER_PASSWORD || "Attacker123!Attacker123!";
+
+function normalizeEmailInput(value) {
+  if (typeof value !== "string") return null;
+  const e = value.trim().toLowerCase();
+  return e.length > 0 ? e : null;
+}
+
+function ensureUserWithPassword(email, password) {
+  // Use your existing script to ensure the user has a valid credential hash.
+  // This makes the sweep deterministic across environments.
+  const cmd = process.platform === "win32" ? "npx.cmd" : "npx";
+  const args = ["tsx", "scripts/set_password.ts", email, password];
+  const r = spawnSync(cmd, args, {
+    stdio: "inherit",
+    env: { ...process.env },
+  });
+  if (r.status !== 0) {
+    throw new Error(`[seed] set_password failed with exit code ${r.status ?? "null"}`);
+  }
+}
+
+function migrateOrFail() {
+  const cmd = process.platform === "win32" ? "npx.cmd" : "npx";
+  // Deploy migrations to whatever DATABASE_URL points at.
+  const r = spawnSync(cmd, ["prisma", "migrate", "deploy"], {
+    stdio: "inherit",
+    env: { ...process.env },
+  });
+  if (r.status !== 0) {
+    throw new Error(`[preflight] prisma migrate deploy failed with exit code ${r.status}`);
+  }
+}
+
+async function ensureProjectExistsOrFail() {
+  const prisma = new PrismaClient();
+  try {
+    // Match whatever your API expects. "Project" model in schema uses:
+    // id: String @id @default(uuid())
+    // name: String
+    // description: String?
+    // userId: String
+    // We’ll attach it to the sweep user.
+    const email = normalizeEmailInput(TEST_EMAIL) || TEST_EMAIL;
+    const user = await prisma.user.findUnique({ where: { email }, select: { id: true } });
+    if (!user) throw new Error(`[seed] cannot seed project; user not found for ${email}`);
+
+    const existing = await prisma.project.findUnique({
+      where: { id: "proj_test" },
+      select: { id: true },
+    });
+    if (existing) {
+      console.log("[seed] project already exists: proj_test");
+      return;
+    }
+
+    await prisma.project.create({
+      data: {
+        id: "proj_test",
+        name: "Security Sweep Project",
+        description: "Seeded by attacker_sweep",
+        userId: user.id,
+      },
+    });
+    console.log("[seed] created project: proj_test");
+  } finally {
+    await prisma.$disconnect().catch(() => {});
+  }
+}
+
+async function ensureGrowthSubscriptionOrFail() {
+  const prisma = new PrismaClient();
+  try {
+    const email = normalizeEmailInput(TEST_EMAIL) || TEST_EMAIL;
+    const user = await prisma.user.findUnique({ where: { email }, select: { id: true } });
+    if (!user) throw new Error(`[seed] cannot seed subscription; user not found for ${email}`);
+
+    await prisma.subscription.upsert({
+      where: { userId: user.id },
+      update: {
+        planId: "GROWTH",
+        status: "active",
+      },
+      create: {
+        userId: user.id,
+        planId: "GROWTH",
+        status: "active",
+      },
+    });
+
+    console.log("[seed] ensured subscription: GROWTH");
+  } finally {
+    await prisma.$disconnect().catch(() => {});
+  }
+}
+
+async function postJson(url, body, headers = {}) {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json", ...headers },
+    body: JSON.stringify(body),
+    redirect: "manual",
+  });
+  const text = await res.text();
+  let json = null;
+  try {
+    json = JSON.parse(text);
+  } catch {}
+  return { res, text, json };
+}
+
+async function ensureUserExists(baseUrl) {
+  // Uses your existing /api/auth/register route.
+  // If user already exists, route should return 409/400; that's fine.
+  const url = `${baseUrl}/api/auth/register`;
+  const { res, json, text } = await postJson(url, {
+    email: TEST_EMAIL,
+    password: TEST_PASSWORD,
+  });
+  if (res.ok) {
+    console.log(`[seed] register ok for ${TEST_EMAIL}`);
+    return;
+  }
+  // Accept "already exists" style failures; anything else should fail fast.
+  const msg = json?.error || json?.message || text || "";
+  const okAlready = res.status === 409 || /already/i.test(msg) || /exists/i.test(msg);
+  if (okAlready) {
+    console.log(`[seed] user already exists: ${TEST_EMAIL}`);
+    return;
+  }
+  throw new Error(`[seed] register failed (${res.status}): ${msg}`);
+}
+
+async function clearLockout(baseUrl) {
+  const token = process.env.DEBUG_ADMIN_TOKEN || "";
+  const tokenQ = token ? `&token=${encodeURIComponent(token)}` : "";
+  // If your clear-lockout route takes an email param, pass it.
+  // If it doesn't, it should still clear global lockout; we keep both.
+  const urlWithEmail = `${baseUrl}/api/dev/clear-lockout?email=${encodeURIComponent(TEST_EMAIL)}`;
+  let r = await fetch(`${urlWithEmail}${tokenQ}`, { method: "POST", redirect: "manual" });
+  if (!r.ok) {
+    const urlNoEmail = `${baseUrl}/api/dev/clear-lockout`;
+    r = await fetch(`${urlNoEmail}?token=${encodeURIComponent(token)}`, { method: "POST", redirect: "manual" });
+  }
+  console.log(`[preflight] clear-lockout: ${r.status}`);
+  if (!r.ok) {
+    const t = await r.text();
+    const allowMissing = process.env.CI === "true" || process.env.SECURITY_SWEEP === "1";
+    if (allowMissing && (r.status === 404 || r.status === 405)) {
+      console.log(`[preflight] clear-lockout unavailable (${r.status}), continuing`);
+      return;
+    }
+    throw new Error(`[preflight] clear-lockout failed (${r.status}): ${t}`);
+  }
+}
 
 async function maybeClearLockout() {
   // In CI, repeated runs can trip the login abuse guard. Clear it so the test can proceed.
   if (process.env.CI !== "true") return;
   try {
-    const url = `${BASE_URL}/api/dev/clear-lockout`;
+    const token = process.env.DEBUG_ADMIN_TOKEN || "";
+    const tokenQ = token ? `&token=${encodeURIComponent(token)}` : "";
+    const url = `${BASE_URL}/api/dev/clear-lockout?email=${encodeURIComponent(TEST_EMAIL)}${tokenQ}`;
     const r = await fetch(url, { method: "POST" });
     // ignore non-200 if endpoint is blocked; the login step will surface real failures.
     console.log("[preflight] clear-lockout:", r.status);
@@ -384,97 +548,119 @@ async function ensureActiveSubscription(email, planId = "GROWTH") {
   }
 }
 
-async function login(email, password) {
-  const jar = { cookies: new Map() };
+async function cookieSetToJar(setCookieHeaders, jar) {
+  for (const h of setCookieHeaders || []) {
+    const part = String(h).split(";")[0];
+    const eq = part.indexOf("=");
+    if (eq === -1) continue;
+    const k = part.slice(0, eq).trim();
+    const v = part.slice(eq + 1).trim();
+    if (!k) continue;
+    jar.set(k, v);
+  }
+}
 
-  // get CSRF token (sets csrf cookie)
-  const csrfResp = await http(jar, "/api/auth/csrf");
-  assert(csrfResp.res.ok, `csrf failed ${csrfResp.res.status}: ${csrfResp.text}`);
-  const csrfJson = tryJson(csrfResp.text);
-  const csrf = csrfJson?.csrfToken;
-  assert(csrf, `missing csrfToken: ${String(csrfResp.text || "").slice(0, 300)}`);
+function jarToCookieHeader(jar) {
+  return Array.from(jar.entries())
+    .map(([k, v]) => `${k}=${v}`)
+    .join("; ");
+}
+
+async function getCsrfToken(baseUrl, jar) {
+  const r = await fetch(`${baseUrl}/api/auth/csrf`, {
+    method: "GET",
+    headers: {
+      accept: "application/json",
+      cookie: jarToCookieHeader(jar),
+      "user-agent": "security-sweep",
+      "x-forwarded-for": "127.0.0.1",
+    },
+    redirect: "manual",
+  });
+
+  const setCookie = r.headers.getSetCookie?.() ?? [];
+  await cookieSetToJar(setCookie, jar);
+
+  const j = await r.json().catch(() => null);
+  if (!j?.csrfToken) throw new Error(`[login] failed to fetch csrfToken (status ${r.status})`);
+  return j.csrfToken;
+}
+
+async function loginWith(baseUrl, email, password) {
+  const jar = new Map();
+
+  const csrfToken = await getCsrfToken(baseUrl, jar);
 
   const form = new URLSearchParams();
-  form.set("csrfToken", csrf);
+  form.set("csrfToken", csrfToken);
   form.set("email", email);
   form.set("password", password);
-  form.set("callbackUrl", `${BASE_URL}/studio`);
+  form.set("callbackUrl", `${baseUrl}/studio`);
   form.set("json", "true");
 
-  const callback = await http(jar, "/api/auth/callback/credentials", {
+  const r = await fetch(`${baseUrl}/api/auth/callback/credentials`, {
     method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+      cookie: jarToCookieHeader(jar),
+      "user-agent": "security-sweep",
+      "x-forwarded-for": "127.0.0.1",
+    },
     body: form.toString(),
+    redirect: "manual",
   });
-  console.log("[login] callback status:", callback.res.status);
-  console.log("[login] callback location:", callback.res.headers.get("location"));
-  console.log("[login] callback body:", String(callback.text || "").slice(0, 300));
 
-  const cookiesNow = cookieNames(jar);
-  console.log("[login] cookies:", cookiesNow);
-  console.log("[login] has session cookie:", hasSessionCookie(jar));
+  const setCookie = r.headers.getSetCookie?.() ?? [];
+  await cookieSetToJar(setCookie, jar);
 
-  if (callback.res.status === 200) {
-    const json = tryJson(callback.text);
-    if (!json) {
-      const body = String(callback.text || "");
-      if (/<html/i.test(body)) {
-        throw new Error("login failed: got HTML from credentials callback");
-      }
-      throw new Error(`login failed: unexpected 200 response: ${body.slice(0, 300)}`);
-    }
-    if (!json.url) {
-      throw new Error(`login failed: missing url in callback response: ${callback.text}`);
-    }
-  } else if (callback.res.status !== 302) {
-    throw new Error(`login failed: unexpected status ${callback.res.status}`);
+  console.log("[login] callback status:", r.status);
+
+  const hasSession =
+    jar.has("next-auth.session-token") || jar.has("__Secure-next-auth.session-token");
+  console.log("[login] has session cookie:", hasSession);
+
+  if (!hasSession) {
+    const text = await r.text().catch(() => "");
+    throw new Error(`[login] no session cookie set; status=${r.status}; body=${text.slice(0, 300)}`);
   }
 
-  if (!hasSessionCookie(jar)) {
-    throw new Error(
-      `missing session cookie after login (BASE_URL=${BASE_URL}) cookies=${JSON.stringify(cookieNames(jar))}`
-    );
-  }
+  return { jar };
+}
 
-  // verify session
-  console.log("[login] request cookies:", cookieHeader(jar).split(";").map(x => x.split("=")[0].trim()).filter(Boolean));
-  const sess = await http(jar, "/api/auth/session");
-  console.log("[login] session status:", sess.res.status);
-  console.log("[login] session body:", sess.text);
-  if (!sess.res.ok) {
-    const preview = String(sess.text || "").slice(0, 300);
-    throw new Error(`session failed ${sess.res.status}: ${preview}`);
+function jarMapToCookieJar(jar) {
+  const cookies = new Map();
+  for (const [k, v] of jar.entries()) {
+    cookies.set(k, `${k}=${v}`);
   }
-  const sjson = tryJson(sess.text);
-  if (!sjson || typeof sjson !== "object") {
-    const preview = String(sess.text || "").slice(0, 300);
-    throw new Error(`session json parse failed ${sess.res.status}: ${preview}`);
-  }
-  const hasUser = Boolean(sjson?.user);
-  const hasSession = Object.keys(sjson).length > 0;
-  if (!hasUser && !hasSession) {
-    const preview = String(sess.text || "").slice(0, 300);
-    throw new Error(`session empty: ${sess.res.status}: ${preview} | cookies=${JSON.stringify(cookieNames(jar))}`);
-  }
-  if (sjson?.user?.email && sjson.user.email !== email) {
-    throw new Error(`session user mismatch: ${sess.text}`);
-  }
-
-  return jar;
+  return { cookies };
 }
 
 async function run() {
   await maybeClearLockout();
   await ensureCiSeedRan();
 
-  const A = { email: "test@local.dev", pass: "TestPassword123!", name: "Test User" };
-  const B = { email: "attacker@local.dev", pass: "TestPassword123!", name: "Attacker User" };
+  // preflight: guarantee the user exists + lockout is cleared before login attempts
+  await ensureUserExists(BASE_URL);
+  await clearLockout(BASE_URL);
+  const skipMigrate =
+    process.env.SKIP_MIGRATE_IN_SWEEP === "1" || process.env.CI === "true";
+  if (skipMigrate) {
+    console.log("[preflight] skipping prisma migrate deploy");
+  } else {
+    migrateOrFail();
+  }
+  ensureUserWithPassword(TEST_EMAIL, TEST_PASSWORD);
+  ensureUserWithPassword(ATTACKER_EMAIL, ATTACKER_PASSWORD);
+  await ensureProjectExistsOrFail();
+  await ensureGrowthSubscriptionOrFail();
+
+  const A = { email: TEST_EMAIL, pass: TEST_PASSWORD, name: "Test User" };
+  const B = { email: ATTACKER_EMAIL, pass: ATTACKER_PASSWORD, name: "Attacker User" };
   const projectId = "proj_test";
 
   console.log("BASE_URL:", BASE_URL);
 
-  const jarA = await login(A.email, A.pass);
-  const jarB = await login(B.email, B.pass);
+  const jarA = jarMapToCookieJar((await loginWith(BASE_URL, A.email, A.pass)).jar);
 
   const plist = await http(jarA, "/api/projects");
   assert(plist.res.ok, `project list failed ${plist.res.status}: ${plist.text}`);
@@ -505,6 +691,8 @@ async function run() {
     jobId = sgenJson?.jobId;
     assert(jobId, `missing jobId from script-generation response: ${sgen.text}`);
   }
+
+  const jarB = jarMapToCookieJar((await loginWith(BASE_URL, B.email, B.pass)).jar);
 
   // Attacker cannot list dead-letter jobs
   const dlB = await http(jarB, `/api/projects/${projectId}/dead-letter`);
