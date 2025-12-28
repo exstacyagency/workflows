@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSessionUserId } from "@/lib/getSessionUserId";
-import { requireProjectOwner } from "@/lib/requireProjectOwner";
+import { requireJobAccess } from "@/lib/auth/requireJobAccess";
 
 export const runtime = 'nodejs';
 
@@ -9,12 +8,11 @@ export async function GET(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const userId = await getSessionUserId();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const access = await requireJobAccess(req, params.id);
+  if (access instanceof NextResponse) return access;
 
-  const { id } = params;
   const job = await prisma.job.findUnique({
-    where: { id },
+    where: { id: params.id },
     select: {
       id: true,
       projectId: true,
@@ -31,12 +29,5 @@ export async function GET(
     },
   });
   if (!job) return NextResponse.json({ error: "Not found" }, { status: 404 });
-
-  const auth = await requireProjectOwner(job.projectId);
-  if (auth.error) {
-    // Return 404 to avoid leaking existence across tenants/users
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
-
   return NextResponse.json({ job }, { status: 200 });
 }

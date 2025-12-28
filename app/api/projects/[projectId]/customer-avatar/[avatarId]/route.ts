@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
+import { prisma } from '@/lib/prisma';
 import { purgeCustomerProfileArchives } from '@/lib/customerAnalysisService';
-import { requireProjectOwner } from '@/lib/requireProjectOwner';
+import { getSessionUserId } from '@/lib/getSessionUserId';
+import { requireProjectOwner404 } from '@/lib/auth/requireProjectOwner404';
 import {
   CustomerAvatarActionSchema,
   parseJson,
@@ -12,19 +13,18 @@ type Params = {
 };
 
 export async function PATCH(req: NextRequest, { params }: Params) {
-  const { projectId, avatarId } = params;
-
-  const auth = await requireProjectOwner(projectId);
-  if (auth.error) {
-    return NextResponse.json(
-      { error: auth.error },
-      { status: auth.status },
-    );
+  const userId = await getSessionUserId();
+  if (!userId) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  const { projectId, avatarId } = params;
   if (!projectId || !avatarId) {
     return NextResponse.json({ error: 'projectId and avatarId are required' }, { status: 400 });
   }
+
+  const deny = await requireProjectOwner404(projectId);
+  if (deny) return deny;
 
   const parsed = await parseJson(req, CustomerAvatarActionSchema);
   if (!parsed.success) {
@@ -56,19 +56,18 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 }
 
 export async function DELETE(_req: NextRequest, { params }: Params) {
-  const { projectId, avatarId } = params;
-
-  const auth = await requireProjectOwner(projectId);
-  if (auth.error) {
-    return NextResponse.json(
-      { error: auth.error },
-      { status: auth.status },
-    );
+  const userId = await getSessionUserId();
+  if (!userId) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  const { projectId, avatarId } = params;
   if (!projectId || !avatarId) {
     return NextResponse.json({ error: 'projectId and avatarId are required' }, { status: 400 });
   }
+
+  const deny = await requireProjectOwner404(projectId);
+  if (deny) return deny;
 
   const avatar = await prisma.customerAvatar.findFirst({ where: { id: avatarId, projectId } });
   if (!avatar) {
