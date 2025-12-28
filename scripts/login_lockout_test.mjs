@@ -1,3 +1,4 @@
+/* eslint-disable no-restricted-properties */
 const BASE_URL = process.env.BASE_URL || "http://localhost:3000";
 
 function assert(cond, msg) {

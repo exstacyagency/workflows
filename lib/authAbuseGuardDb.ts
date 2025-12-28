@@ -1,3 +1,4 @@
+import { cfg } from "@/lib/config";
 import { prisma } from "./prisma";
 import {
   recordAuthFailure as memFail,
@@ -9,9 +10,9 @@ import {
 type Kind = "register" | "login";
 type Scope = "ip" | "email";
 
-const WINDOW_MS = Number(process.env.AUTH_WINDOW_MS ?? 10 * 60_000);
-const MAX_ATTEMPTS = Number(process.env.AUTH_MAX_ATTEMPTS ?? 5);
-const LOCKOUT_MS = Number(process.env.AUTH_LOCKOUT_MS ?? 15 * 60_000);
+const WINDOW_MS = Number(cfg.raw("AUTH_WINDOW_MS") ?? 10 * 60_000);
+const MAX_ATTEMPTS = Number(cfg.raw("AUTH_MAX_ATTEMPTS") ?? 5);
+const LOCKOUT_MS = Number(cfg.raw("AUTH_LOCKOUT_MS") ?? 15 * 60_000);
 
 function now() {
   return Date.now();

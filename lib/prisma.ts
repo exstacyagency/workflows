@@ -1,4 +1,5 @@
 // lib/prisma.ts
+import { cfg } from "@/lib/config";
 import { PrismaClient } from '@prisma/client';
 
 // This prevents Prisma from creating too many connections in dev
@@ -12,7 +13,7 @@ export const prisma =
     log: ['query', 'error', 'warn'],
   });
 
-if (process.env.NODE_ENV !== 'production') {
+if (cfg.raw("NODE_ENV") !== 'production') {
   globalForPrisma.prisma = prisma;
 }
 

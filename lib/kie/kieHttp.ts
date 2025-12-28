@@ -1,9 +1,10 @@
 import crypto from "crypto";
+import { cfg } from "@/lib/config";
 
 type HttpMethod = "GET" | "POST";
 
 function mustEnv(name: string): string {
-  const v = process.env[name];
+  const v = cfg.raw(name);
   if (!v) throw new Error(`Missing required env var: ${name}`);
   return v;
 }
@@ -46,7 +47,7 @@ export function kieConfigFromEnv(): KieHttpConfig {
   return {
     baseUrl: mustEnv("KIE_API_BASE_URL").replace(/\/+$/, ""),
     apiKey: mustEnv("KIE_API_KEY"),
-    timeoutMs: process.env.KIE_TIMEOUT_MS ? Number(process.env.KIE_TIMEOUT_MS) : 60_000,
+    timeoutMs: cfg.raw("KIE_TIMEOUT_MS") ? Number(cfg.raw("KIE_TIMEOUT_MS")) : 60_000,
   };
 }
 

@@ -1,4 +1,5 @@
 // app/api/jobs/video-prompts/route.ts
+import { cfg } from "@/lib/config";
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { startVideoPromptGenerationJob } from '../../../../lib/videoPromptGenerationService';
@@ -85,7 +86,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (process.env.NODE_ENV === 'production') {
+    if (cfg.raw("NODE_ENV") === 'production') {
       const rateCheck = await checkRateLimit(projectId);
       if (!rateCheck.allowed) {
         return NextResponse.json(

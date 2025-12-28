@@ -1,4 +1,5 @@
-const isProd = process.env.NODE_ENV === "production";
+import { cfg } from "@/lib/config";
+const isProd = cfg.raw("NODE_ENV") === "production";
 
 // Anything in this list is treated as OFF in production even if env var is set.
 const PROD_DISABLED_FLAGS = new Set([
@@ -16,16 +17,15 @@ const PROD_DISABLED_NUMBERS = new Set([
 
 export function flag(name: string): boolean {
   if (isProd && PROD_DISABLED_FLAGS.has(name)) return false;
-  return String(process.env[name] ?? "").toLowerCase() === "true";
+  return String(cfg.raw(name) ?? "").toLowerCase() === "true";
 }
 
 export function devNumber(name: string, fallback = 0): number {
   if (isProd && PROD_DISABLED_NUMBERS.has(name)) return 0;
-  const v = Number(process.env[name]);
+  const v = Number(cfg.raw(name));
   return Number.isFinite(v) ? v : fallback;
 }
 
 export function nodeEnv() {
-  return process.env.NODE_ENV ?? "development";
+  return cfg.raw("NODE_ENV") ?? "development";
 }
-

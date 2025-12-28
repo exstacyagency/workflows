@@ -1,3 +1,4 @@
+/* eslint-disable no-restricted-properties */
 // lib/config/validateEnv.ts
 export type EnvCheck = {
   name: string;
@@ -67,4 +68,3 @@ export function validateEnvOnce() {
     console.warn(msg);
   }
 }
-

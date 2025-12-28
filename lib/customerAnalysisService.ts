@@ -1,4 +1,5 @@
 // lib/customerAnalysisService.ts
+import { cfg } from "@/lib/config";
 import prisma from '@/lib/prisma';
 import { JobType, ResearchSource } from '@prisma/client';
 import { env, requireEnv } from './configGuard.ts';
@@ -28,10 +29,10 @@ type ProductIntelJSON = {
   [key: string]: any;
 };
 
-const CUSTOMER_ANALYSIS_MIN_ROWS = Number(process.env.CUSTOMER_ANALYSIS_MIN_ROWS ?? 15);
-const CUSTOMER_ANALYSIS_LLM_RETRIES = Number(process.env.CUSTOMER_ANALYSIS_LLM_RETRIES ?? 3);
-const CUSTOMER_ANALYSIS_LLM_BACKOFF_MS = Number(process.env.CUSTOMER_ANALYSIS_LLM_BACKOFF_MS ?? 1500);
-const CUSTOMER_ANALYSIS_RETENTION_DAYS = Number(process.env.CUSTOMER_ANALYSIS_RETENTION_DAYS ?? 90);
+const CUSTOMER_ANALYSIS_MIN_ROWS = Number(cfg.raw("CUSTOMER_ANALYSIS_MIN_ROWS") ?? 15);
+const CUSTOMER_ANALYSIS_LLM_RETRIES = Number(cfg.raw("CUSTOMER_ANALYSIS_LLM_RETRIES") ?? 3);
+const CUSTOMER_ANALYSIS_LLM_BACKOFF_MS = Number(cfg.raw("CUSTOMER_ANALYSIS_LLM_BACKOFF_MS") ?? 1500);
+const CUSTOMER_ANALYSIS_RETENTION_DAYS = Number(cfg.raw("CUSTOMER_ANALYSIS_RETENTION_DAYS") ?? 90);
 const RETENTION_MS = CUSTOMER_ANALYSIS_RETENTION_DAYS * 24 * 60 * 60 * 1000;
 
 function sleep(ms: number) {
@@ -254,7 +255,7 @@ Return valid JSON with this EXACT structure:
 async function callAnthropic(system: string, prompt: string): Promise<string> {
   requireEnv(['ANTHROPIC_API_KEY'], 'ANTHROPIC');
   const apiKey = env('ANTHROPIC_API_KEY')!;
-  const model = process.env.ANTHROPIC_MODEL ?? 'claude-3-opus-20240229';
+  const model = cfg.raw("ANTHROPIC_MODEL") ?? 'claude-3-opus-20240229';
 
   const body = JSON.stringify({
     model,
