@@ -642,7 +642,13 @@ async function run() {
   // preflight: guarantee the user exists + lockout is cleared before login attempts
   await ensureUserExists(BASE_URL);
   await clearLockout(BASE_URL);
-  migrateOrFail();
+  const skipMigrate =
+    process.env.SKIP_MIGRATE_IN_SWEEP === "1" || process.env.CI === "true";
+  if (skipMigrate) {
+    console.log("[preflight] skipping prisma migrate deploy");
+  } else {
+    migrateOrFail();
+  }
   ensureUserWithPassword(TEST_EMAIL, TEST_PASSWORD);
   ensureUserWithPassword(ATTACKER_EMAIL, ATTACKER_PASSWORD);
   await ensureProjectExistsOrFail();
