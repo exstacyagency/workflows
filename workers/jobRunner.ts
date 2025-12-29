@@ -93,7 +93,10 @@ async function rollbackJobQuotaIfNeeded(jobId: string, projectId: string, payloa
 }
 
 async function markCompleted(jobId: string, result: any, summary?: string) {
-  const existing = await prisma.job.findUnique({ where: { id: jobId }, select: { payload: true } });
+  const existing = await prisma.job.findUnique({
+    where: { id: jobId },
+    select: { payload: true, resultSummary: true },
+  });
   const payload = asObject(existing?.payload);
   const data: any = {
     status: JobStatus.COMPLETED,
@@ -104,15 +107,61 @@ async function markCompleted(jobId: string, result: any, summary?: string) {
   await prisma.job.update({ where: { id: jobId }, data });
 }
 
-async function markFailed(jobId: string, errMsg: string) {
-  const existing = await prisma.job.findUnique({ where: { id: jobId }, select: { payload: true } });
+async function markFailed(jobId: string, err: unknown) {
+  const existing = await prisma.job.findUnique({
+    where: { id: jobId },
+    select: { payload: true, resultSummary: true },
+  });
   const payload = asObject(existing?.payload);
+  let errMsg = String((err as any)?.message ?? err);
+  let transient = false;
+  let provider: string | null = null;
+  let rawSnippet: string | null = null;
+
+  const asAny: any = err as any;
+  const looksExternal =
+    asAny &&
+    (asAny.name === "ExternalServiceError" ||
+      (typeof asAny.provider === "string" && typeof asAny.retryable === "boolean"));
+
+  if (looksExternal) {
+    transient = Boolean(asAny.retryable);
+    provider = typeof asAny.provider === "string" ? asAny.provider : null;
+    rawSnippet =
+      typeof asAny.rawSnippet === "string"
+        ? asAny.rawSnippet
+        : typeof asAny.raw === "string"
+          ? asAny.raw
+          : typeof asAny.rawBody === "string"
+            ? asAny.rawBody
+            : typeof asAny.body === "string"
+              ? asAny.body
+              : null;
+    // Prefer safe message if present
+    errMsg = typeof asAny.message === "string" ? asAny.message : errMsg;
+  }
+
+  const nextPayload: any = {
+    ...payload,
+    transient,
+    provider,
+    lastError: errMsg,
+    error: errMsg,
+    result: { ok: false, error: errMsg },
+  };
+  if (rawSnippet) nextPayload.lastErrorRaw = rawSnippet;
+
   await prisma.job.update({
     where: { id: jobId },
     data: {
       status: JobStatus.FAILED,
       error: errMsg,
-      payload: { ...payload, error: errMsg, result: { ok: false, error: errMsg } },
+      resultSummary:
+        existing?.resultSummary ??
+        (transient
+          ? `Transient external failure${provider ? ` (${provider})` : ""}`
+          : `Job failed${provider ? ` (${provider})` : ""}`),
+      payload: nextPayload,
     },
   });
 }
@@ -359,7 +408,7 @@ async function runJob(job: { id: string; type: JobType; projectId: string; paylo
         } catch (e: any) {
           const msg = String(e?.message ?? e ?? "Unknown error");
           await rollbackJobQuotaIfNeeded(jobId, job.projectId, payload);
-          await markFailed(jobId, msg);
+          await markFailed(jobId, e);
           await appendResultSummary(jobId, `Video images failed: ${msg}`);
         }
         return;
@@ -394,7 +443,7 @@ async function runJob(job: { id: string; type: JobType; projectId: string; paylo
         } catch (e: any) {
           const msg = String(e?.message ?? e ?? "Unknown error");
           await rollbackJobQuotaIfNeeded(jobId, job.projectId, payload);
-          await markFailed(jobId, msg);
+          await markFailed(jobId, e);
           await appendResultSummary(jobId, `Video generation failed: ${msg}`);
         }
         return;
@@ -406,10 +455,9 @@ async function runJob(job: { id: string; type: JobType; projectId: string; paylo
       }
     }
   } catch (e: any) {
-    const msg = String(e?.message ?? e ?? "Unknown error");
     try {
       await rollbackJobQuotaIfNeeded(jobId, job.projectId, payload);
-      await markFailed(jobId, msg);
+      await markFailed(jobId, e);
     } catch (updateErr) {
       console.error("[jobRunner] failed to persist job failure", { jobId, updateErr });
     }

@@ -1,6 +1,18 @@
 import { cfg } from "@/lib/config";
+import { isSelfHosted } from "@/lib/config/mode";
 import Bull from 'bull';
 import Redis from 'ioredis';
+
+function getQueueBackend(): "db" | "redis" {
+  if (isSelfHosted()) return (cfg.raw("QUEUE_BACKEND") as any) === "redis" ? "redis" : "db";
+  return (cfg.raw("QUEUE_BACKEND") as any) === "redis" ? "redis" : "db";
+}
+
+function assertRedisConfigured() {
+  const url = (cfg.raw("REDIS_URL") ?? "").trim();
+  if (!url) throw new Error("QUEUE_BACKEND=redis requires REDIS_URL");
+  return url;
+}
 
 const REDIS_URL = (cfg.raw("REDIS_URL") ?? '').trim();
 
@@ -63,15 +75,18 @@ function createBullRedisClient(type: string, config: any) {
 }
 
 function assertRedisAvailable() {
-  if (!REDIS_URL) throw new Error('Redis not configured (REDIS_URL missing)');
+  if (getQueueBackend() !== "redis") {
+    throw new Error("QUEUE_BACKEND=db; redis queue unavailable");
+  }
+  const url = assertRedisConfigured();
   if (!redis) throw new Error('Redis not available (failed to initialize)');
+  return url;
 }
 
 export function getQueue(name: QueueName): Bull.Queue {
-  if (!REDIS_URL || !redis) return createNoopQueue(name);
-
+  const url = assertRedisAvailable();
   if (!queues.has(name)) {
-    queues.set(name, new Bull(name, REDIS_URL, { 
+    queues.set(name, new Bull(name, url, { 
       redis: { ...redisBaseOptions },
       createClient: createBullRedisClient,
       defaultJobOptions: {
