@@ -6,6 +6,7 @@ on:
 
 jobs:
   security-sweep:
+    name: security-sweep
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -44,7 +45,7 @@ jobs:
             "https://console.neon.tech/api/v2/projects/${NEON_PROJECT_ID}/branches" \
             -d "{\"branch\":{\"name\":\"${BRANCH_NAME}\"}}")
 
-          BRANCH_ID=$(echo "$BRANCH_JSON" | node -pe "JSON.parse(fs.readFileSync(0,'utf8')).branch.id")
+          BRANCH_ID=$(echo "$BRANCH_JSON" | node -pe "const fs = require('fs'); JSON.parse(fs.readFileSync(0,'utf8')).branch.id")
           echo "branch_id=${BRANCH_ID}" >> $GITHUB_OUTPUT
           echo "branch_name=${BRANCH_NAME}" >> $GITHUB_OUTPUT
           echo "db_name=${DB_NAME}" >> $GITHUB_OUTPUT
@@ -56,73 +57,38 @@ jobs:
             "https://console.neon.tech/api/v2/projects/${NEON_PROJECT_ID}/branches/${BRANCH_ID}/databases" \
             -d "{\"database\":{\"name\":\"${DB_NAME}\"}}" >/dev/null
 
-          echo "Fetching Neon endpoint host for branch ${BRANCH_ID} (polling)"
-          HOST=""
-          for i in $(seq 1 30); do
-            ENDPOINTS_JSON=$(curl -sS \
-              -H "Authorization: Bearer ${NEON_API_KEY}" \
-              "https://console.neon.tech/api/v2/projects/${NEON_PROJECT_ID}/branches/${BRANCH_ID}/endpoints")
-
-            HOST=$(echo "$ENDPOINTS_JSON" | node - <<'NODE'
-const fs = require("fs");
-const j = JSON.parse(fs.readFileSync(0,"utf8"));
-
-const eps = Array.isArray(j.endpoints) ? j.endpoints : [];
-const ep = eps[0] || null;
-
-// Try common fields Neon uses
-const candidates = [
-  ep && ep.host,
-  ep && ep.hostname,
-  ep && ep.proxy_host,
-  ep && ep.proxyHost,
-  ep && ep.connection_host,
-  ep && ep.connectionHost,
-].filter(v => typeof v === "string" && v.includes("."));
-
-// Final fallback: search the whole JSON for something ending in ".neon.tech"
-let host = candidates[0];
-if (!host) {
-  const text = JSON.stringify(j);
-  const m = text.match(/[a-z0-9-]+\.([a-z0-9-]+\.)?neon\.tech/);
-  if (m) host = m[0];
-}
-
-if (!host) {
-  console.error("ENDPOINTS_JSON:", JSON.stringify(j, null, 2));
-  process.exit(1);
-}
-
-process.stdout.write(host);
-NODE
-            )
-
-            echo "Neon endpoint host: ${HOST}"
-
-            if [ -n "$HOST" ]; then
-              echo "Endpoint host ready: $HOST"
-              break
-            fi
-
-            echo "No endpoint yet (attempt $i/30). Waiting 2s..."
-            sleep 2
-          done
-
-          if [ -z "$HOST" ]; then
-            echo "No endpoint host found after polling." >&2
-            echo "$ENDPOINTS_JSON" >&2
-            exit 1
-          fi
-
           ROLE='${{ secrets.NEON_ROLE }}'
-          if [ -z \"${ROLE}\" ]; then ROLE=\"neondb_owner\"; fi
-          if [ -z \"${NEON_DB_PASSWORD}\" ]; then echo \"Missing NEON_DB_PASSWORD secret\" >&2; exit 1; fi
+          if [ -z "${ROLE}" ]; then ROLE="neondb_owner"; fi
+          if [ -z "${NEON_DB_PASSWORD}" ]; then echo "Missing NEON_DB_PASSWORD secret" >&2; exit 1; fi
 
-          # Prisma DATABASE_URL with password
-          DATABASE_URL=postgresql://${ROLE}:${NEON_DB_PASSWORD}@${HOST}/${DB_NAME}?sslmode=require
+          echo "Fetching Neon connection URI"
+          # Use Neon connection URI API: returns a fully-formed postgres connection string.
+          # If your Neon API does not support this endpoint, it will 404 and we'll fail loudly.
+          URI_JSON=$(curl -sS -X POST \
+            -H "Authorization: Bearer ${NEON_API_KEY}" \
+            -H "Content-Type: application/json" \
+            "https://console.neon.tech/api/v2/projects/${NEON_PROJECT_ID}/connection_uri" \
+            -d "{\"branch_id\":\"${BRANCH_ID}\",\"database\":\"${DB_NAME}\",\"role\":\"${ROLE}\",\"password\":\"${NEON_DB_PASSWORD}\"}")
+
+          DATABASE_URL=$(echo "$URI_JSON" | node -pe "
+            const fs = require('fs');
+            const j = JSON.parse(fs.readFileSync(0,'utf8'));
+            const uri = j?.uri || j?.connection_uri || j?.connectionUri;
+            if (!uri || typeof uri !== 'string') { console.error(j); process.exit(1); }
+            process.stdout.write(uri);
+          ")
+
+          DATABASE_URL_PREFIX=$(echo "$DATABASE_URL" | node - <<'NODE'
+          const fs = require("fs");
+          const u = new URL(fs.readFileSync(0,"utf8").trim());
+          u.password = "***";
+          process.stdout.write(u.toString());
+          NODE
+          )
+
           echo "DATABASE_URL=${DATABASE_URL}" >> $GITHUB_ENV
-          echo "DATABASE_URL_PREFIX=postgresql://${ROLE}:***@${HOST}/${DB_NAME}" >> $GITHUB_ENV
-          echo "DATABASE_URL set for CI (host=${HOST}, db=${DB_NAME})"
+          echo "DATABASE_URL_PREFIX=${DATABASE_URL_PREFIX}" >> $GITHUB_ENV
+          echo "DATABASE_URL set for CI"
 
       - name: Prisma migrate deploy (CI DB)
         run: |
