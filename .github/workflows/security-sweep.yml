@@ -62,16 +62,19 @@ jobs:
           if [ -z "${NEON_DB_PASSWORD}" ]; then echo "Missing NEON_DB_PASSWORD secret" >&2; exit 1; fi
 
           echo "Fetching Neon connection URI"
-          URI_RESP=$(curl -sS -D - -o /tmp/neon_uri_body.txt -X POST \
+          URI_HEADERS=$(mktemp)
+          URI_BODY=$(mktemp)
+
+          curl -sS -D "$URI_HEADERS" -o "$URI_BODY" -X POST \
             -H "Authorization: Bearer ${NEON_API_KEY}" \
             -H "Content-Type: application/json" \
             "https://console.neon.tech/api/v2/projects/${NEON_PROJECT_ID}/connection_uri" \
-            -d "{\"branch_id\":\"${BRANCH_ID}\",\"database\":\"${DB_NAME}\",\"role\":\"${ROLE}\",\"password\":\"${NEON_DB_PASSWORD}\"}" || true)
+            -d "{\"branch_id\":\"${BRANCH_ID}\",\"database\":\"${DB_NAME}\",\"role\":\"${ROLE}\",\"password\":\"${NEON_DB_PASSWORD}\"}" || true
 
-          STATUS=$(echo "$URI_RESP" | head -n 1 | awk '{print $2}')
-          BODY=$(cat /tmp/neon_uri_body.txt || true)
+          STATUS=$(head -n 1 "$URI_HEADERS" | awk '{print $2}')
+          BODY=$(cat "$URI_BODY" || true)
 
-          if [ "$STATUS" = "200" ]; then
+          if [ "$STATUS" = "200" ] && [ -n "$BODY" ]; then
             DATABASE_URL=$(echo "$BODY" | node -pe "
               const j = JSON.parse(fs.readFileSync(0,'utf8'));
               const uri = j?.uri || j?.connection_uri || j?.connectionUri;
@@ -79,10 +82,10 @@ jobs:
               uri
             ")
           else
-            echo "connection_uri unsupported or failed (status=$STATUS). Falling back to endpoints..."
-            echo "$BODY" | head -c 400 || true
-
-            # Poll endpoints until host is available
+            echo "connection_uri failed (status=$STATUS). Body (first 300 chars):"
+            echo "$BODY" | head -c 300 || true
+            echo ""
+            echo "Falling back to endpoints polling..."
             HOST=""
             for i in $(seq 1 30); do
               ENDPOINTS_JSON=$(curl -sS \
