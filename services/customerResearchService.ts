@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { JobStatus, ResearchSource } from '@prisma/client';
 import { getBreaker } from '@/lib/circuitBreaker';
 import { ExternalServiceError } from "@/lib/externalServiceError";
-import { toSafeTextSnippet } from "@/lib/utils/sanitizeText";
+import { toB64Snippet, truncate } from "@/lib/utils/debugSnippet";
 
 export type RunCustomerResearchParams = {
   projectId: string;
@@ -65,7 +65,8 @@ async function fetchWithRetry(url: string, init: RequestInit | undefined, label:
           const body = await res.text().catch(() => '');
           if (label === "reddit-search") {
             const raw = typeof body === "string" ? body : String(body ?? "");
-            const cleanText = toSafeTextSnippet(raw, 280);
+            // Human-facing message: keep short and readable, don't attempt HTML sanitization.
+            const cleanText = truncate(String(raw).replace(/\s+/g, " ").trim(), 280);
             const safeMsg = `reddit-search failed: ${res.status}${cleanText ? ` (${cleanText})` : ""}`;
             const retryable = res.status === 429 || (res.status >= 500 && res.status <= 599);
 
@@ -74,7 +75,8 @@ async function fetchWithRetry(url: string, init: RequestInit | undefined, label:
               status: res.status,
               retryable,
               message: safeMsg,
-              rawSnippet: toSafeTextSnippet(raw, 500),
+              // Debug snippet: encoded so it cannot contain HTML/JS.
+              rawSnippet: toB64Snippet(raw, 800),
             });
           }
           throw new Error(`${label} failed (${res.status}): ${body}`);
