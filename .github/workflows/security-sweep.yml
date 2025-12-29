@@ -56,17 +56,34 @@ jobs:
             "https://console.neon.tech/api/v2/projects/${NEON_PROJECT_ID}/branches/${BRANCH_ID}/databases" \
             -d "{\"database\":{\"name\":\"${DB_NAME}\"}}" >/dev/null
 
-          echo "Fetching Neon endpoint host for branch ${BRANCH_ID}"
-          ENDPOINTS_JSON=$(curl -sS \
-            -H "Authorization: Bearer ${NEON_API_KEY}" \
-            "https://console.neon.tech/api/v2/projects/${NEON_PROJECT_ID}/branches/${BRANCH_ID}/endpoints")
+          echo "Fetching Neon endpoint host for branch ${BRANCH_ID} (polling)"
+          HOST=""
+          for i in $(seq 1 30); do
+            ENDPOINTS_JSON=$(curl -sS \
+              -H "Authorization: Bearer ${NEON_API_KEY}" \
+              "https://console.neon.tech/api/v2/projects/${NEON_PROJECT_ID}/branches/${BRANCH_ID}/endpoints")
 
-          HOST=$(echo "$ENDPOINTS_JSON" | node -pe "
-            const j = JSON.parse(fs.readFileSync(0,'utf8'));
-            const host = j?.endpoints?.[0]?.host || j?.endpoints?.[0]?.proxy_host;
-            if (!host) { throw new Error('No endpoint host found in endpoints response'); }
-            host
-          ")
+            HOST=$(echo "$ENDPOINTS_JSON" | node -pe "
+              const j = JSON.parse(fs.readFileSync(0,'utf8'));
+              const ep = (j?.endpoints && j.endpoints.length) ? j.endpoints[0] : null;
+              const host = ep?.host || ep?.proxy_host || '';
+              process.stdout.write(host);
+            ")
+
+            if [ -n "$HOST" ]; then
+              echo "Endpoint host ready: $HOST"
+              break
+            fi
+
+            echo "No endpoint yet (attempt $i/30). Waiting 2s..."
+            sleep 2
+          done
+
+          if [ -z "$HOST" ]; then
+            echo "No endpoint host found after polling." >&2
+            echo "$ENDPOINTS_JSON" >&2
+            exit 1
+          fi
 
           ROLE='${{ secrets.NEON_ROLE }}'
           if [ -z \"${ROLE}\" ]; then ROLE=\"neondb_owner\"; fi
