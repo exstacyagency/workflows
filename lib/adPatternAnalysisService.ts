@@ -1,6 +1,7 @@
 import { cfg } from "@/lib/config";
 import { prisma } from './prisma.ts';
 import { JobStatus, JobType } from '@prisma/client';
+import { enqueueJob } from "@/lib/queue/enqueue";
 import Anthropic from '@anthropic-ai/sdk';
 import { guardedExternalCall } from './externalCallGuard.ts';
 import { requireEnv } from './configGuard.ts';
@@ -176,34 +177,12 @@ Return JSON:
 export async function startPatternAnalysisJob(params: { projectId: string }) {
   const { projectId } = params;
 
-  let job = await prisma.job.findFirst({
-    where: {
-      projectId,
-      type: JobType.PATTERN_ANALYSIS,
-    },
+  const { jobId } = await enqueueJob({
+    projectId,
+    type: JobType.PATTERN_ANALYSIS,
+    payload: { projectId },
+    idempotencyKey: "pattern-analysis",
   });
 
-  if (!job) {
-    job = await prisma.job.create({
-      data: {
-        type: JobType.PATTERN_ANALYSIS,
-        status: JobStatus.PENDING,
-        projectId,
-        payload: { projectId },
-      },
-    });
-  } else {
-    job = await prisma.job.update({
-      where: { id: job.id },
-      data: {
-        status: JobStatus.PENDING,
-        error: null,
-      },
-    });
-  }
-
-  const { addJob, QueueName } = await import('./queue.ts');
-  await addJob(QueueName.PATTERN_ANALYSIS, job.id, { jobId: job.id, projectId });
-
-  return { jobId: job.id };
+  return { jobId };
 }
