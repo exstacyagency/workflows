@@ -90,12 +90,15 @@ jobs:
           if [ -z \"${NEON_DB_PASSWORD}\" ]; then echo \"Missing NEON_DB_PASSWORD secret\" >&2; exit 1; fi
 
           # Prisma DATABASE_URL with password
-          DATABASE_URL=\"postgresql://${ROLE}:${NEON_DB_PASSWORD}@${HOST}/${DB_NAME}?sslmode=require\"
+          DATABASE_URL=postgresql://${ROLE}:${NEON_DB_PASSWORD}@${HOST}/${DB_NAME}?sslmode=require
           echo "DATABASE_URL=${DATABASE_URL}" >> $GITHUB_ENV
+          echo "DATABASE_URL_PREFIX=postgresql://${ROLE}:***@${HOST}/${DB_NAME}" >> $GITHUB_ENV
           echo "DATABASE_URL set for CI (host=${HOST}, db=${DB_NAME})"
 
       - name: Prisma migrate deploy (CI DB)
-        run: npx prisma migrate deploy
+        run: |
+          echo "DATABASE_URL_PREFIX=${DATABASE_URL_PREFIX}"
+          npx prisma migrate deploy
 
       - name: Bootstrap dev data (CI)
         run: npm run bootstrap:dev
