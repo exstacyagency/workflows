@@ -37,7 +37,7 @@ const IS_CI_OR_TEST = !!process.env.CI || process.env.NODE_ENV === "test";
 const TEST_EMAIL = process.env.SWEEP_TEST_EMAIL || "test@local.dev";
 const TEST_PASSWORD = process.env.SWEEP_TEST_PASSWORD || "Test1234!Test1234!";
 const ATTACKER_EMAIL = process.env.ATTACKER_EMAIL || "attacker@local.dev";
-const ATTACKER_PASSWORD = process.env.ATTACKER_PASSWORD || "Attacker123!Attacker123!";
+const ATTACKER_PASSWORD = process.env.SWEEP_TEST_PASSWORD || TEST_PASSWORD;
 
 function normalizeEmailInput(value) {
   if (typeof value !== "string") return null;
@@ -68,6 +68,17 @@ function migrateOrFail() {
   });
   if (r.status !== 0) {
     throw new Error(`[preflight] prisma migrate deploy failed with exit code ${r.status}`);
+  }
+}
+
+function runBootstrapDev() {
+  const cmd = process.platform === "win32" ? "npx.cmd" : "npx";
+  const r = spawnSync(cmd, ["tsx", "scripts/bootstrap-dev.ts"], {
+    stdio: "inherit",
+    env: { ...process.env },
+  });
+  if (r.status !== 0) {
+    throw new Error(`[preflight] bootstrap-dev failed with exit code ${r.status ?? "null"}`);
   }
 }
 
@@ -548,51 +559,35 @@ async function ensureActiveSubscription(email, planId = "GROWTH") {
   }
 }
 
-async function cookieSetToJar(setCookieHeaders, jar) {
-  for (const h of setCookieHeaders || []) {
-    const part = String(h).split(";")[0];
-    const eq = part.indexOf("=");
-    if (eq === -1) continue;
-    const k = part.slice(0, eq).trim();
-    const v = part.slice(eq + 1).trim();
-    if (!k) continue;
-    jar.set(k, v);
-  }
-}
+async function loginWithCredentials(baseUrl, email, password) {
+  const jar = { cookies: new Map() };
 
-function jarToCookieHeader(jar) {
-  return Array.from(jar.entries())
-    .map(([k, v]) => `${k}=${v}`)
-    .join("; ");
-}
-
-async function getCsrfToken(baseUrl, jar) {
-  const r = await fetch(`${baseUrl}/api/auth/csrf`, {
+  // Fetch CSRF token (NextAuth)
+  const csrfRes = await fetch(`${baseUrl}/api/auth/csrf`, {
     method: "GET",
     headers: {
       accept: "application/json",
-      cookie: jarToCookieHeader(jar),
+      cookie: cookieHeader(jar),
       "user-agent": "security-sweep",
       "x-forwarded-for": "127.0.0.1",
     },
     redirect: "manual",
   });
-
-  const setCookie = r.headers.getSetCookie?.() ?? [];
-  await cookieSetToJar(setCookie, jar);
-
-  const j = await r.json().catch(() => null);
-  if (!j?.csrfToken) throw new Error(`[login] failed to fetch csrfToken (status ${r.status})`);
-  return j.csrfToken;
-}
-
-async function loginWith(baseUrl, email, password) {
-  const jar = new Map();
-
-  const csrfToken = await getCsrfToken(baseUrl, jar);
+  const csrfSetCookie =
+    typeof csrfRes.headers.getSetCookie === "function"
+      ? csrfRes.headers.getSetCookie()
+      : splitSetCookieHeader(csrfRes.headers.get("set-cookie"));
+  addSetCookiesToJar(jar, csrfSetCookie);
+  const csrfText = await csrfRes.text().catch(() => "");
+  const csrfJson = tryJson(csrfText);
+  if (!csrfJson?.csrfToken) {
+    throw new Error(
+      `[login] failed to fetch csrfToken (status ${csrfRes.status}): ${csrfText.slice(0, 200)}`
+    );
+  }
 
   const form = new URLSearchParams();
-  form.set("csrfToken", csrfToken);
+  form.set("csrfToken", csrfJson.csrfToken);
   form.set("email", email);
   form.set("password", password);
   form.set("callbackUrl", `${baseUrl}/studio`);
@@ -602,7 +597,7 @@ async function loginWith(baseUrl, email, password) {
     method: "POST",
     headers: {
       "content-type": "application/x-www-form-urlencoded",
-      cookie: jarToCookieHeader(jar),
+      cookie: cookieHeader(jar),
       "user-agent": "security-sweep",
       "x-forwarded-for": "127.0.0.1",
     },
@@ -610,38 +605,22 @@ async function loginWith(baseUrl, email, password) {
     redirect: "manual",
   });
 
-  const setCookie = r.headers.getSetCookie?.() ?? [];
-  await cookieSetToJar(setCookie, jar);
+  const setCookie =
+    typeof r.headers.getSetCookie === "function"
+      ? r.headers.getSetCookie()
+      : splitSetCookieHeader(r.headers.get("set-cookie"));
+  addSetCookiesToJar(jar, setCookie);
 
-  console.log("[login] callback status:", r.status);
-
-  const hasSession =
-    jar.has("next-auth.session-token") || jar.has("__Secure-next-auth.session-token");
-  console.log("[login] has session cookie:", hasSession);
-
-  if (!hasSession) {
-    const text = await r.text().catch(() => "");
-    throw new Error(`[login] no session cookie set; status=${r.status}; body=${text.slice(0, 300)}`);
+  if (!hasSessionCookie(jar)) {
+    const body = await r.text().catch(() => "");
+    throw new Error(`[login] no session cookie set; status=${r.status}; body=${body.slice(0, 200)}`);
   }
 
-  return { jar };
-}
-
-function jarMapToCookieJar(jar) {
-  const cookies = new Map();
-  for (const [k, v] of jar.entries()) {
-    cookies.set(k, `${k}=${v}`);
-  }
-  return { cookies };
+  return jar;
 }
 
 async function run() {
   await maybeClearLockout();
-  await ensureCiSeedRan();
-
-  // preflight: guarantee the user exists + lockout is cleared before login attempts
-  await ensureUserExists(BASE_URL);
-  await clearLockout(BASE_URL);
   const skipMigrate =
     process.env.SKIP_MIGRATE_IN_SWEEP === "1" || process.env.CI === "true";
   if (skipMigrate) {
@@ -649,9 +628,7 @@ async function run() {
   } else {
     migrateOrFail();
   }
-  ensureUserWithPassword(TEST_EMAIL, TEST_PASSWORD);
-  ensureUserWithPassword(ATTACKER_EMAIL, ATTACKER_PASSWORD);
-  await ensureProjectExistsOrFail();
+  runBootstrapDev();
   await ensureGrowthSubscriptionOrFail();
 
   const A = { email: TEST_EMAIL, pass: TEST_PASSWORD, name: "Test User" };
@@ -660,9 +637,9 @@ async function run() {
 
   console.log("BASE_URL:", BASE_URL);
 
-  const jarA = jarMapToCookieJar((await loginWith(BASE_URL, A.email, A.pass)).jar);
+  const ownerJar = await loginWithCredentials(BASE_URL, A.email, A.pass);
 
-  const plist = await http(jarA, "/api/projects");
+  const plist = await http(ownerJar, "/api/projects");
   assert(plist.res.ok, `project list failed ${plist.res.status}: ${plist.text}`);
   const projects = JSON.parse(plist.text);
   const project = (projects || []).find((x) => x.id === projectId);
@@ -670,7 +647,7 @@ async function run() {
   console.log("projectId:", projectId);
 
   // A triggers script-generation (creates/returns script)
-  const sgen = await http(jarA, "/api/jobs/script-generation", {
+  const sgen = await http(ownerJar, "/api/jobs/script-generation", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ projectId }),
@@ -692,10 +669,10 @@ async function run() {
     assert(jobId, `missing jobId from script-generation response: ${sgen.text}`);
   }
 
-  const jarB = jarMapToCookieJar((await loginWith(BASE_URL, B.email, B.pass)).jar);
+  const attackerJar = await loginWithCredentials(BASE_URL, B.email, B.pass);
 
   // Attacker cannot list dead-letter jobs
-  const dlB = await http(jarB, `/api/projects/${projectId}/dead-letter`);
+  const dlB = await http(attackerJar, `/api/projects/${projectId}/dead-letter`);
   if (dlB.res.status !== 403 && dlB.res.status !== 404) {
     if (isNotConfiguredResponse(dlB.res.status, dlB.text)) {
       skipStep("attacker dead-letter list", dlB.res.status, dlB.text);
@@ -705,7 +682,7 @@ async function run() {
   }
 
   // Attacker cannot bulk-modify dead-letter jobs
-  const bulkB = await http(jarB, `/api/projects/${projectId}/dead-letter/bulk`, {
+  const bulkB = await http(attackerJar, `/api/projects/${projectId}/dead-letter/bulk`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ action: "dismiss_all" }),
@@ -722,7 +699,7 @@ async function run() {
   if (!jobId) {
     skipStep("attacker job read", 0, "jobId missing (seed skipped)");
   } else {
-    const jobReadB = await http(jarB, `/api/jobs/${jobId}`);
+    const jobReadB = await http(attackerJar, `/api/jobs/${jobId}`);
     if (![403, 404].includes(jobReadB.res.status)) {
       if (isNotConfiguredResponse(jobReadB.res.status, jobReadB.text)) {
         skipStep("attacker job read", jobReadB.res.status, jobReadB.text);
@@ -733,7 +710,7 @@ async function run() {
   }
 
   // Get scripts and pick one
-  let scriptsResp = await http(jarA, `/api/projects/${projectId}/scripts`);
+  let scriptsResp = await http(ownerJar, `/api/projects/${projectId}/scripts`);
   if (!scriptsResp.res.ok && isNotConfiguredResponse(scriptsResp.res.status, scriptsResp.text)) {
     skipStep("scripts list", scriptsResp.res.status, scriptsResp.text);
   } else {
@@ -742,7 +719,7 @@ async function run() {
     if (IS_CI_OR_TEST && (!Array.isArray(scripts) || scripts.length === 0)) {
       console.log("⚠️ SKIPPED scripts list was empty; seeding fallback script in DB");
       await ensureSeededJobAndScript({ ownerEmail: A.email, projectId });
-      scriptsResp = await http(jarA, `/api/projects/${projectId}/scripts`);
+      scriptsResp = await http(ownerJar, `/api/projects/${projectId}/scripts`);
       if (!scriptsResp.res.ok && isNotConfiguredResponse(scriptsResp.res.status, scriptsResp.text)) {
         skipStep("scripts list (retry)", scriptsResp.res.status, scriptsResp.text);
         scripts = [];
@@ -758,7 +735,7 @@ async function run() {
 
       // Set a media key on the script (dev endpoint; DB fallback in production)
       const mediaKey = `users/${A.email}/projects/${projectId}/scripts/${scriptId}/merged.mp4`;
-      await setScriptMedia(jarA, {
+      await setScriptMedia(ownerJar, {
         scriptId,
         projectId,
         field: "mergedVideoUrl",
@@ -766,14 +743,14 @@ async function run() {
       });
 
       // Owner can sign media
-      const mediaA = await http(jarA, `/api/media?key=${encodeURIComponent(mediaKey)}`);
+      const mediaA = await http(ownerJar, `/api/media?key=${encodeURIComponent(mediaKey)}`);
       if (mediaA.res.status === 503) {
         console.log("media signing not configured in CI; skipping media tests");
       } else if (isNotConfiguredResponse(mediaA.res.status, mediaA.text)) {
         skipStep("media signing", mediaA.res.status, mediaA.text);
       } else {
         assert(mediaA.res.status === 200, `owner media sign failed ${mediaA.res.status}: ${mediaA.text}`);
-        const mediaB = await http(jarB, `/api/media?key=${encodeURIComponent(mediaKey)}`);
+        const mediaB = await http(attackerJar, `/api/media?key=${encodeURIComponent(mediaKey)}`);
         if (mediaB.res.status !== 403 && mediaB.res.status !== 404) {
           if (isNotConfiguredResponse(mediaB.res.status, mediaB.text)) {
             skipStep("attacker media sign", mediaB.res.status, mediaB.text);
@@ -786,7 +763,7 @@ async function run() {
   }
 
   // Attacker cannot read owner project routes
-  const researchB = await http(jarB, `/api/projects/${projectId}/research`);
+  const researchB = await http(attackerJar, `/api/projects/${projectId}/research`);
   if (researchB.res.status !== 403 && researchB.res.status !== 404) {
     if (isNotConfiguredResponse(researchB.res.status, researchB.text)) {
       skipStep("attacker research", researchB.res.status, researchB.text);
@@ -795,7 +772,7 @@ async function run() {
     }
   }
 
-  const scriptsB = await http(jarB, `/api/projects/${projectId}/scripts`);
+  const scriptsB = await http(attackerJar, `/api/projects/${projectId}/scripts`);
   if (scriptsB.res.status !== 403 && scriptsB.res.status !== 404) {
     if (isNotConfiguredResponse(scriptsB.res.status, scriptsB.text)) {
       skipStep("attacker scripts", scriptsB.res.status, scriptsB.text);
@@ -805,7 +782,7 @@ async function run() {
   }
 
   // Attacker cannot trigger jobs on owner project
-  const jobB = await http(jarB, "/api/jobs/script-generation", {
+  const jobB = await http(attackerJar, "/api/jobs/script-generation", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ projectId }),

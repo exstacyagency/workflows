@@ -1,4 +1,15 @@
 import { cfg } from "@/lib/config";
+import { z } from "zod";
+
+export type AppConfig = {
+  QUEUE_BACKEND: "db" | "redis";
+  REDIS_URL?: string;
+};
+
+export const EnvSchema = z.object({
+  QUEUE_BACKEND: z.enum(["db", "redis"]).default("db"),
+  REDIS_URL: z.string().optional(),
+});
 
 export type DeploymentMode = "saas" | "self_hosted";
 
