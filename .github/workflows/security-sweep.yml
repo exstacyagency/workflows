@@ -62,33 +62,72 @@ jobs:
           if [ -z "${NEON_DB_PASSWORD}" ]; then echo "Missing NEON_DB_PASSWORD secret" >&2; exit 1; fi
 
           echo "Fetching Neon connection URI"
-          # Use Neon connection URI API: returns a fully-formed postgres connection string.
-          # If your Neon API does not support this endpoint, it will 404 and we'll fail loudly.
-          URI_JSON=$(curl -sS -X POST \
+          URI_RESP=$(curl -sS -D - -o /tmp/neon_uri_body.txt -X POST \
             -H "Authorization: Bearer ${NEON_API_KEY}" \
             -H "Content-Type: application/json" \
             "https://console.neon.tech/api/v2/projects/${NEON_PROJECT_ID}/connection_uri" \
-            -d "{\"branch_id\":\"${BRANCH_ID}\",\"database\":\"${DB_NAME}\",\"role\":\"${ROLE}\",\"password\":\"${NEON_DB_PASSWORD}\"}")
+            -d "{\"branch_id\":\"${BRANCH_ID}\",\"database\":\"${DB_NAME}\",\"role\":\"${ROLE}\",\"password\":\"${NEON_DB_PASSWORD}\"}" || true)
 
-          DATABASE_URL=$(echo "$URI_JSON" | node -pe "
-            const fs = require('fs');
-            const j = JSON.parse(fs.readFileSync(0,'utf8'));
-            const uri = j?.uri || j?.connection_uri || j?.connectionUri;
-            if (!uri || typeof uri !== 'string') { console.error(j); process.exit(1); }
-            process.stdout.write(uri);
-          ")
+          STATUS=$(echo "$URI_RESP" | head -n 1 | awk '{print $2}')
+          BODY=$(cat /tmp/neon_uri_body.txt || true)
 
-          DATABASE_URL_PREFIX=$(echo "$DATABASE_URL" | node - <<'NODE'
-          const fs = require("fs");
-          const u = new URL(fs.readFileSync(0,"utf8").trim());
-          u.password = "***";
-          process.stdout.write(u.toString());
-          NODE
-          )
+          if [ "$STATUS" = "200" ]; then
+            DATABASE_URL=$(echo "$BODY" | node -pe "
+              const j = JSON.parse(fs.readFileSync(0,'utf8'));
+              const uri = j?.uri || j?.connection_uri || j?.connectionUri;
+              if (!uri || typeof uri !== 'string') { console.error(j); process.exit(1); }
+              uri
+            ")
+          else
+            echo "connection_uri unsupported or failed (status=$STATUS). Falling back to endpoints..."
+            echo "$BODY" | head -c 400 || true
+
+            # Poll endpoints until host is available
+            HOST=""
+            for i in $(seq 1 30); do
+              ENDPOINTS_JSON=$(curl -sS \
+                -H "Authorization: Bearer ${NEON_API_KEY}" \
+                "https://console.neon.tech/api/v2/projects/${NEON_PROJECT_ID}/branches/${BRANCH_ID}/endpoints")
+
+              HOST=$(echo "$ENDPOINTS_JSON" | node - <<'NODE'
+const fs = require("fs");
+const j = JSON.parse(fs.readFileSync(0,"utf8"));
+const eps = Array.isArray(j.endpoints) ? j.endpoints : [];
+const ep = eps[0] || null;
+const candidates = [
+  ep && ep.host,
+  ep && ep.hostname,
+  ep && ep.proxy_host,
+  ep && ep.proxyHost,
+].filter(v => typeof v === "string" && v.includes("."));
+let host = candidates[0];
+if (!host) {
+  const text = JSON.stringify(j);
+  const m = text.match(/[a-z0-9-]+\.([a-z0-9-]+\.)?neon\.tech/);
+  if (m) host = m[0];
+}
+process.stdout.write(host || "");
+NODE
+)
+              if [ -n "$HOST" ]; then
+                echo "Endpoint host ready: $HOST"
+                break
+              fi
+              echo "No endpoint yet (attempt $i/30). Waiting 2s..."
+              sleep 2
+            done
+
+            if [ -z "$HOST" ]; then
+              echo "Failed to get endpoint host. Endpoints response:" >&2
+              echo "$ENDPOINTS_JSON" >&2
+              exit 1
+            fi
+
+            DATABASE_URL="postgresql://${ROLE}:${NEON_DB_PASSWORD}@${HOST}/${DB_NAME}?sslmode=require"
+          fi
 
           echo "DATABASE_URL=${DATABASE_URL}" >> $GITHUB_ENV
-          echo "DATABASE_URL_PREFIX=${DATABASE_URL_PREFIX}" >> $GITHUB_ENV
-          echo "DATABASE_URL set for CI"
+          echo "DATABASE_URL_PREFIX=$(echo "$DATABASE_URL" | node -pe 'const u=new URL(fs.readFileSync(0,"utf8").trim()); u.password="***"; process.stdout.write(u.toString())')" >> $GITHUB_ENV
 
       - name: Prisma migrate deploy (CI DB)
         run: |
