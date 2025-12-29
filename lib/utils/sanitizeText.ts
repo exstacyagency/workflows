@@ -1,8 +1,21 @@
 export function stripHtml(input: string): string {
-  // very defensive; handles huge HTML blobs
-  return input
-    .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "")
-    .replace(/<style[\s\S]*?>[\s\S]*?<\/style>/gi, "")
+  // Defensive: strip script/style blocks iteratively, then strip tags.
+  // Iteration avoids edge cases where a first pass exposes additional tag fragments.
+  let current = String(input ?? "");
+  for (let i = 0; i < 5; i++) {
+    const prev = current;
+    current = current
+      // <script ...> ... </script ...>
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>/gi, "")
+      // <style ...> ... </style ...>
+      .replace(/<style\b[^>]*>[\s\S]*?<\/style\b[^>]*>/gi, "")
+      // If any raw "<script" or "<style" fragments remain, drop them too.
+      .replace(/<\s*script\b[^>]*>/gi, "")
+      .replace(/<\s*style\b[^>]*>/gi, "");
+    if (current === prev) break;
+  }
+
+  return current
     .replace(/<[^>]+>/g, " ")
     .replace(/\s+/g, " ")
     .trim();
