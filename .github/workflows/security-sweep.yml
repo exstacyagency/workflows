@@ -63,12 +63,41 @@ jobs:
               -H "Authorization: Bearer ${NEON_API_KEY}" \
               "https://console.neon.tech/api/v2/projects/${NEON_PROJECT_ID}/branches/${BRANCH_ID}/endpoints")
 
-            HOST=$(echo "$ENDPOINTS_JSON" | node -pe "
-              const j = JSON.parse(fs.readFileSync(0,'utf8'));
-              const ep = (j?.endpoints && j.endpoints.length) ? j.endpoints[0] : null;
-              const host = ep?.host || ep?.proxy_host || '';
-              process.stdout.write(host);
-            ")
+            HOST=$(echo "$ENDPOINTS_JSON" | node - <<'NODE'
+const fs = require("fs");
+const j = JSON.parse(fs.readFileSync(0,"utf8"));
+
+const eps = Array.isArray(j.endpoints) ? j.endpoints : [];
+const ep = eps[0] || null;
+
+// Try common fields Neon uses
+const candidates = [
+  ep && ep.host,
+  ep && ep.hostname,
+  ep && ep.proxy_host,
+  ep && ep.proxyHost,
+  ep && ep.connection_host,
+  ep && ep.connectionHost,
+].filter(v => typeof v === "string" && v.includes("."));
+
+// Final fallback: search the whole JSON for something ending in ".neon.tech"
+let host = candidates[0];
+if (!host) {
+  const text = JSON.stringify(j);
+  const m = text.match(/[a-z0-9-]+\.([a-z0-9-]+\.)?neon\.tech/);
+  if (m) host = m[0];
+}
+
+if (!host) {
+  console.error("ENDPOINTS_JSON:", JSON.stringify(j, null, 2));
+  process.exit(1);
+}
+
+process.stdout.write(host);
+NODE
+            )
+
+            echo "Neon endpoint host: ${HOST}"
 
             if [ -n "$HOST" ]; then
               echo "Endpoint host ready: $HOST"
