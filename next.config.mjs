@@ -1,6 +1,11 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // You can add config options here later as needed.
+  webpack(config, { isServer }) {
+    if (isServer) {
+      config.externals.push("bcryptjs");
+    }
+    return config;
+  },
 };
 
 export default nextConfig;
