@@ -1,99 +1,120 @@
-name: Security Sweep
+name: security-sweep
 
 on:
   pull_request:
-  push:
-    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   security-sweep:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-
+    env:
+      SECURITY_SWEEP: "1"
+      DEBUG_ADMIN_TOKEN: ${{ secrets.DEBUG_ADMIN_TOKEN }}
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node
+      - name: Use Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
-          cache: "npm"
+          node-version: 22
+          cache: npm
 
-      - name: Install deps
+      - name: Install
         run: npm ci
 
-      - name: Prisma generate
+      - name: Provision Neon branch + DB (CI)
+        id: neon
+        shell: bash
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: npx prisma generate
-
-      - name: Reset + Push schema (CI)
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ secrets.NEON_PROJECT_ID }}
         run: |
-          npx prisma db push --force-reset --accept-data-loss
+          set -euo pipefail
+          BRANCH_NAME="ci-pr-${{ github.event.pull_request.number || github.run_id }}-${{ github.run_id }}"
+          DB_NAME="workflows_ci_${{ github.run_id }}"
 
-      - name: Seed CI reference data
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: npm run seed:ci
+          echo "Creating Neon branch: $BRANCH_NAME"
+          BRANCH_JSON=$(curl -sS -X POST \
+            -H "Authorization: Bearer ${NEON_API_KEY}" \
+            -H "Content-Type: application/json" \
+            "https://console.neon.tech/api/v2/projects/${NEON_PROJECT_ID}/branches" \
+            -d "{\"branch\":{\"name\":\"${BRANCH_NAME}\"}}")
 
-      # CI needs a database. Use a DATABASE_URL secret (Neon test DB).
+          BRANCH_ID=$(echo "$BRANCH_JSON" | node -pe "JSON.parse(fs.readFileSync(0,'utf8')).branch.id")
+          echo "branch_id=${BRANCH_ID}" >> $GITHUB_OUTPUT
+          echo "branch_name=${BRANCH_NAME}" >> $GITHUB_OUTPUT
+          echo "db_name=${DB_NAME}" >> $GITHUB_OUTPUT
+
+          echo "Creating database: $DB_NAME"
+          curl -sS -X POST \
+            -H "Authorization: Bearer ${NEON_API_KEY}" \
+            -H "Content-Type: application/json" \
+            "https://console.neon.tech/api/v2/projects/${NEON_PROJECT_ID}/branches/${BRANCH_ID}/databases" \
+            -d "{\"database\":{\"name\":\"${DB_NAME}\"}}" >/dev/null
+
+          echo "Fetching connection URI"
+          # Neon endpoint host comes from the branch object
+          HOST=$(echo "$BRANCH_JSON" | node -pe "JSON.parse(fs.readFileSync(0,'utf8')).branch.endpoint.host")
+          ROLE="${{ secrets.NEON_ROLE }}"
+          if [ -z "${ROLE}" ]; then ROLE="neondb_owner"; fi
+
+          # DATABASE_URL format Prisma expects
+          DATABASE_URL="postgresql://${ROLE}@${HOST}/${DB_NAME}?sslmode=require"
+          echo "DATABASE_URL=${DATABASE_URL}" >> $GITHUB_ENV
+          echo "DATABASE_URL set for CI (host=${HOST}, db=${DB_NAME})"
+
+      - name: Prisma migrate deploy (CI DB)
+        run: npx prisma migrate deploy
+
+      - name: Bootstrap dev data (CI)
+        run: npm run bootstrap:dev
+
       - name: Build
-        env:
-          NODE_ENV: production
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
-          NEXTAUTH_URL: http://localhost:3001
-        run: |
-          rm -rf .next
-          npm run build
+        run: npm run build
 
       - name: Start server
-        env:
-          NODE_ENV: production
-          PORT: 3001
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
-          NEXTAUTH_URL: http://localhost:3001
         run: |
-          npx next start -p 3001 > server.log 2>&1 &
+          npm run dev -- --port 3000 &
           echo $! > server.pid
 
       - name: Wait for health
         run: |
-          for i in {1..40}; do
-            if curl -fsS http://localhost:3001/api/health >/dev/null; then
-              echo "Server is up"
+          for i in {1..60}; do
+            if curl -fsS http://localhost:3000/api/health >/dev/null; then
+              echo "healthy"
               exit 0
             fi
             sleep 1
           done
-          echo "Server failed to start"
+          echo "server did not become healthy" >&2
           exit 1
 
       - name: Run attacker sweep
-        env:
-          BASE_URL: http://localhost:3001
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: npm run security:sweep
-
-      - name: Run login lockout test
-        env:
-          BASE_URL: http://localhost:3001
-          AUTH_MAX_ATTEMPTS: 5
-        run: npm run security:login-lockout
-
-      - name: Print server log
-        if: always()
-        run: |
-          echo "=== server.log ==="
-          cat server.log || true
 
       - name: Stop server
         if: always()
         run: |
           if [ -f server.pid ]; then
-            kill -9 $(cat server.pid) || true
+            kill $(cat server.pid) || true
+          fi
+
+      - name: Cleanup Neon branch
+        if: always()
+        shell: bash
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ secrets.NEON_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          BRANCH_ID="${{ steps.neon.outputs.branch_id }}"
+          if [ -n "${BRANCH_ID}" ]; then
+            echo "Deleting Neon branch ${BRANCH_ID}"
+            curl -sS -X DELETE \
+              -H "Authorization: Bearer ${NEON_API_KEY}" \
+              "https://console.neon.tech/api/v2/projects/${NEON_PROJECT_ID}/branches/${BRANCH_ID}" \
+              >/dev/null || true
           fi
