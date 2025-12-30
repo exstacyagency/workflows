@@ -1,13 +1,14 @@
 name: security-sweep
 
 on:
-  pull_request:
+  pull_request_target:
   workflow_dispatch:
 
 jobs:
   security-sweep:
     name: security-sweep
     runs-on: ubuntu-latest
+    if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
     timeout-minutes: 20
     env:
       SECURITY_SWEEP: "1"
@@ -16,6 +17,8 @@ jobs:
       NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Use Node
         uses: actions/setup-node@v4
