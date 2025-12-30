@@ -21,7 +21,7 @@ function main() {
   const actual = buildRouteInventory().map((e) => `${e.method}\t${e.route}\t${e.file}`);
 
   const missing: string[] = [];
-  for (const line of expected) {
+  for (const line of Array.from(expected)) {
     if (!actual.includes(line)) missing.push(line);
   }
 
@@ -38,4 +38,3 @@ function main() {
 }
 
 main();
-
