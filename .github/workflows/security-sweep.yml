@@ -1,6 +1,7 @@
 name: security-sweep
 
 on:
+  pull_request:
   pull_request_target:
   workflow_dispatch:
 
