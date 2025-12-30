@@ -1,4 +1,4 @@
 
 > videgen@1.0.0 routes:manifest
-> node -r tsx/register scripts/route_inventory.ts
+> tsx scripts/route_inventory.ts
 
