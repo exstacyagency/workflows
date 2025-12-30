@@ -1,17 +1,17 @@
 name: security-sweep
 
 on:
-  pull_request:
-  pull_request_target:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
   security-sweep:
     name: security-sweep
     runs-on: ubuntu-latest
-    if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
     timeout-minutes: 20
     env:
+      IS_PR: ${{ github.event_name == 'pull_request' }}
       SECURITY_SWEEP: "1"
       DEBUG_ADMIN_TOKEN: ${{ secrets.DEBUG_ADMIN_TOKEN }}
       NEXTAUTH_URL: http://localhost:3000
@@ -30,9 +30,16 @@ jobs:
       - name: Install
         run: npm ci
 
+      - name: PR mode quick checks (no secrets)
+        if: ${{ env.IS_PR == 'true' }}
+        run: |
+          npm run lint
+          npm run build
+
       - name: Provision Neon branch + DB (CI)
         id: neon
         shell: bash
+        if: ${{ env.IS_PR != 'true' && github.event.pull_request.head.repo.full_name == github.repository }}
         env:
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
           NEON_PROJECT_ID: ${{ secrets.NEON_PROJECT_ID }}
@@ -137,22 +144,27 @@ NODE
           echo "DATABASE_URL_PREFIX=$(echo "$DATABASE_URL" | node -pe 'const u=new URL(fs.readFileSync(0,"utf8").trim()); u.password="***"; process.stdout.write(u.toString())')" >> $GITHUB_ENV
 
       - name: Prisma migrate deploy (CI DB)
+        if: ${{ env.IS_PR != 'true' && github.event.pull_request.head.repo.full_name == github.repository }}
         run: |
           echo "DATABASE_URL_PREFIX=${DATABASE_URL_PREFIX}"
           npx prisma migrate deploy
 
       - name: Bootstrap dev data (CI)
+        if: ${{ env.IS_PR != 'true' && github.event.pull_request.head.repo.full_name == github.repository }}
         run: npm run bootstrap:dev
 
       - name: Build
+        if: ${{ env.IS_PR != 'true' && github.event.pull_request.head.repo.full_name == github.repository }}
         run: npm run build
 
       - name: Start server
+        if: ${{ env.IS_PR != 'true' && github.event.pull_request.head.repo.full_name == github.repository }}
         run: |
           npm run dev -- --port 3000 &
           echo $! > server.pid
 
       - name: Wait for health
+        if: ${{ env.IS_PR != 'true' && github.event.pull_request.head.repo.full_name == github.repository }}
         run: |
           for i in {1..60}; do
             if curl -fsS http://localhost:3000/api/health >/dev/null; then
@@ -165,17 +177,18 @@ NODE
           exit 1
 
       - name: Run attacker sweep
+        if: ${{ env.IS_PR != 'true' && github.event.pull_request.head.repo.full_name == github.repository }}
         run: npm run security:sweep
 
       - name: Stop server
-        if: always()
+        if: ${{ always() && env.IS_PR != 'true' && github.event.pull_request.head.repo.full_name == github.repository }}
         run: |
           if [ -f server.pid ]; then
             kill $(cat server.pid) || true
           fi
 
       - name: Cleanup Neon branch
-        if: always()
+        if: ${{ always() && env.IS_PR != 'true' && github.event.pull_request.head.repo.full_name == github.repository }}
         shell: bash
         env:
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
