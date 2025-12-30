@@ -1,4 +1,4 @@
-
-> videgen@1.0.0 routes:manifest
-> tsx scripts/route_inventory.ts
+# Generated route inventory (frozen-ish)
+# Format: METHOD<TAB>ROUTE<TAB>FILE
+# Regenerate with: npm run routes:manifest > docs/ROUTES_MANIFEST.txt
 
