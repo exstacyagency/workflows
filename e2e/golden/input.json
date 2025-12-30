@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "projectId": "proj_test",
+  "users": [
+    { "email": "test@local.dev", "password": "Test1234!Test1234!" },
+    { "email": "attacker@local.dev", "password": "Test1234!Test1234!" }
+  ],
+  "customerResearch": {
+    "productName": "Test Product",
+    "productProblemSolved": "Pain point",
+    "productAmazonAsin": "B000TEST123",
+    "competitor1AmazonAsin": null,
+    "competitor2AmazonAsin": null
+  },
+  "scriptGeneration": {
+    "projectId": "proj_test"
+  }
+}

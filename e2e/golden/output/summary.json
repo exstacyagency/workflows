@@ -1,0 +1,49 @@
+{
+  "counts": {
+    "customerAvatars": 0,
+    "jobs": 2,
+    "productIntelligence": 0,
+    "researchRows": 1,
+    "scripts": 6,
+    "storyboardScenes": 0,
+    "storyboards": 0
+  },
+  "jobTypesPresent": [
+    "CUSTOMER_RESEARCH",
+    "SCRIPT_GENERATION"
+  ],
+  "latestByType": {
+    "CUSTOMER_RESEARCH": {
+      "error": null,
+      "lastError": null,
+      "lastErrorRaw": null,
+      "provider": null,
+      "reason": "SECURITY_SWEEP",
+      "resultSummary": "Skipped: SECURITY_SWEEP",
+      "skipped": true,
+      "status": "COMPLETED",
+      "transient": null
+    },
+    "SCRIPT_GENERATION": {
+      "error": null,
+      "lastError": null,
+      "lastErrorRaw": null,
+      "provider": null,
+      "reason": "SECURITY_SWEEP",
+      "resultSummary": "Skipped: SECURITY_SWEEP (scriptId=7dd7c94a-0b55-4054-906c-2d0b136774b3)",
+      "skipped": true,
+      "status": "COMPLETED",
+      "transient": null
+    }
+  },
+  "mode": "deterministic",
+  "project": {
+    "id": "proj_test",
+    "name": "Security Sweep Project"
+  },
+  "users": [
+    "attacker@local.dev",
+    "test@local.dev"
+  ],
+  "version": 1
+}
