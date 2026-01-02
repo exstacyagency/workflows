@@ -20,6 +20,9 @@ export async function POST(req: NextRequest) {
   const requestId = getRequestId(req);
   logInfo("api.request", { requestId, path: req.nextUrl?.pathname });
 
+  // Deterministic golden/sweep mode: skip billing/quota and any external LLM calls.
+  const securitySweep = cfg.raw("SECURITY_SWEEP") === "1";
+
   let reservation: { periodKey: string; metric: string; amount: number } | null =
     null;
   let userIdForQuota: string | null = null;
@@ -52,43 +55,34 @@ export async function POST(req: NextRequest) {
     }
 
     let planId: "FREE" | "GROWTH" | "SCALE" = "FREE";
-    try {
-      planId = await assertMinPlan(userId, "GROWTH");
-    } catch (err: any) {
-      if (err instanceof UpgradeRequiredError) {
-        return NextResponse.json(
-          { error: "Upgrade required", requiredPlan: err.requiredPlan },
-          { status: 402 },
-        );
+    if (!securitySweep) {
+      try {
+        planId = await assertMinPlan(userId, "GROWTH");
+      } catch (err: any) {
+        if (err instanceof UpgradeRequiredError) {
+          return NextResponse.json(
+            { error: "Upgrade required", requiredPlan: err.requiredPlan },
+            { status: 402 },
+          );
+        }
+        console.error(err);
+        return NextResponse.json({ error: "Billing check failed" }, { status: 500 });
       }
-      console.error(err);
-      return NextResponse.json({ error: "Billing check failed" }, { status: 500 });
     }
 
-    const devTest = flag("FF_DEV_TEST_MODE");
-    const breakerTest = flag("FF_BREAKER_TEST");
-    let idempotencyKey = `script-generation:${projectId}`;
-    if (breakerTest) {
-      idempotencyKey = `${idempotencyKey}:${Date.now()}`;
-    }
-
-    const isCI = cfg.raw("CI") === "true";
-    const isSweep = cfg.raw("SECURITY_SWEEP") === "1";
-    const hasAnthropic = !!cfg.raw("ANTHROPIC_API_KEY");
-    // SECURITY_SWEEP forces deterministic placeholder scripts (no external LLM calls).
-    // CI still falls back when Anthropic isn't configured.
-    if (isSweep || (isCI && !hasAnthropic)) {
-      const project = await prisma.project.findUnique({
-        where: { id: projectId },
-        select: { name: true },
-      });
-      const productName = project?.name ?? "Your product";
+    // SECURITY_SWEEP: deterministic placeholder script + completed job, no external calls.
+    if (securitySweep) {
+      const breakerTest = flag("FF_BREAKER_TEST");
+      let idempotencyKey = `script-generation:${projectId}`;
+      if (breakerTest) {
+        idempotencyKey = `${idempotencyKey}:${Date.now()}`;
+      }
 
       const skipPayload = {
         ...parsed.data,
         idempotencyKey,
         skipped: true,
-        reason: isSweep ? "SECURITY_SWEEP" : "LLM not configured",
+        reason: "SECURITY_SWEEP",
       };
 
       let jobId: string | null = null;
@@ -100,7 +94,125 @@ export async function POST(req: NextRequest) {
             status: JobStatus.COMPLETED,
             idempotencyKey,
             payload: skipPayload,
-            resultSummary: isSweep ? "Skipped: SECURITY_SWEEP" : "Skipped: LLM not configured",
+            resultSummary: "Skipped: SECURITY_SWEEP",
+            error: null,
+          },
+        });
+        jobId = job.id;
+      } catch (e: any) {
+        const message = String(e?.message ?? '');
+        const isUnique =
+          e?.code === 'P2002' ||
+          (e?.name === 'PrismaClientKnownRequestError' && e?.meta?.target) ||
+          message.includes('Unique constraint failed');
+
+        if (isUnique) {
+          const raced = await prisma.job.findFirst({
+            where: {
+              projectId,
+              type: JobType.SCRIPT_GENERATION,
+              idempotencyKey,
+            },
+            orderBy: { createdAt: 'desc' },
+          });
+
+          if (raced) {
+            jobId = raced.id;
+          } else {
+            return NextResponse.json(
+              { error: 'Failed to resolve job after unique constraint' },
+              { status: 500 },
+            );
+          }
+        } else {
+          throw e;
+        }
+      }
+
+      if (!jobId) {
+        return NextResponse.json(
+          { error: 'Job not found after creation' },
+          { status: 500 },
+        );
+      }
+
+      const hook = "SECURITY_SWEEP: deterministic hook.";
+      const body = "SECURITY_SWEEP: deterministic body.";
+      const cta = "SECURITY_SWEEP: deterministic CTA.";
+      const text = `${hook}\n\n${body}\n\n${cta}`;
+      const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
+
+      const scriptJson = {
+        title: "SECURITY_SWEEP placeholder script",
+        hook,
+        body,
+        cta,
+        text,
+        word_count: wordCount,
+        skipped: true,
+        reason: "SECURITY_SWEEP",
+      };
+
+      const script = await prisma.script.create({
+        data: {
+          projectId,
+          jobId,
+          mergedVideoUrl: null,
+          upscaledVideoUrl: null,
+          status: "READY",
+          rawJson: scriptJson as any,
+          wordCount,
+        },
+      });
+
+      await prisma.job.update({
+        where: { id: jobId },
+        data: {
+          payload: { ...skipPayload, scriptIds: [script.id] },
+          resultSummary: `Skipped: SECURITY_SWEEP (scriptId=${script.id})`,
+        },
+      });
+
+      return NextResponse.json(
+        { ok: true, skipped: true, reason: "SECURITY_SWEEP", jobId, scripts: [{ id: script.id, text }] },
+        { status: 200 },
+      );
+    }
+
+    const devTest = flag("FF_DEV_TEST_MODE");
+    const breakerTest = flag("FF_BREAKER_TEST");
+    let idempotencyKey = `script-generation:${projectId}`;
+    if (breakerTest) {
+      idempotencyKey = `${idempotencyKey}:${Date.now()}`;
+    }
+
+    const isCI = cfg.raw("CI") === "true";
+    const hasAnthropic = !!cfg.raw("ANTHROPIC_API_KEY");
+    // CI still falls back when Anthropic isn't configured.
+    if (isCI && !hasAnthropic) {
+      const project = await prisma.project.findUnique({
+        where: { id: projectId },
+        select: { name: true },
+      });
+      const productName = project?.name ?? "Your product";
+
+      const skipPayload = {
+        ...parsed.data,
+        idempotencyKey,
+        skipped: true,
+        reason: "LLM not configured",
+      };
+
+      let jobId: string | null = null;
+      try {
+        const job = await prisma.job.create({
+          data: {
+            projectId,
+            type: JobType.SCRIPT_GENERATION,
+            status: JobStatus.COMPLETED,
+            idempotencyKey,
+            payload: skipPayload,
+            resultSummary: "Skipped: LLM not configured",
           },
         });
         jobId = job.id;
@@ -156,7 +268,7 @@ export async function POST(req: NextRequest) {
         text,
         word_count: wordCount,
         skipped: true,
-        reason: isSweep ? "SECURITY_SWEEP" : "LLM not configured",
+        reason: "LLM not configured",
       };
 
       const script = await prisma.script.create({
@@ -176,9 +288,7 @@ export async function POST(req: NextRequest) {
         data: {
           status: JobStatus.COMPLETED,
           payload: { ...skipPayload, scriptIds: [script.id] },
-          resultSummary: isSweep
-            ? `Skipped: SECURITY_SWEEP (scriptId=${script.id})`
-            : `Skipped: LLM not configured (scriptId=${script.id})`,
+          resultSummary: `Skipped: LLM not configured (scriptId=${script.id})`,
           error: null,
         },
       });
@@ -187,7 +297,7 @@ export async function POST(req: NextRequest) {
         {
           ok: true,
           skipped: true,
-          reason: isSweep ? "SECURITY_SWEEP" : "LLM not configured",
+          reason: "LLM not configured",
           jobId,
           scripts: [{ id: script.id, text }],
         },

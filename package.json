@@ -7,7 +7,14 @@
   "scripts": {
     "e2e:deterministic": "bash scripts/e2e_deterministic.sh",
     "routes:manifest": "tsx scripts/route_inventory.ts",
-    "routes:check": "tsx scripts/route_manifest_check.ts",
+    "routes:check": "tsx scripts/routes_check.ts",
+    "freeze:check": "tsx scripts/freeze_check.ts",
+    "golden:run": "SECURITY_SWEEP=1 npm run e2e:deterministic && npm run golden:driver && npm run golden:snapshot && npm run golden:compare",
+    "golden:run:ci": "SECURITY_SWEEP=1 GOLDEN_OUT_DIR=/tmp/golden-output npm run e2e:deterministic && npm run golden:driver && npm run golden:snapshot && npm run golden:compare",
+    "golden:update-baseline": "GOLDEN_OUT_DIR=/tmp/golden-output npm run golden:snapshot && node scripts/golden_update_baseline.js",
+    "golden:driver": "tsx scripts/golden_driver.ts --input e2e/golden/input.json",
+    "golden:snapshot": "tsx scripts/golden_snapshot.ts --outDir ${GOLDEN_OUT_DIR:-/tmp/golden-output} --projectId proj_test",
+    "golden:compare": "tsx scripts/golden_compare.ts --out ${GOLDEN_OUT_DIR:-/tmp/golden-output}/summary.json --baseline e2e/golden/baseline/summary.json",
     "env:db": "tsx scripts/print_env_db.ts",
     "db:studio": "bash scripts/run_prisma_studio.sh",
     "dev:cleanup-rate-limits": "tsx scripts/cleanup_rate_limits.ts",
@@ -35,8 +42,8 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.2",
-    "@aws-sdk/client-s3": "^3.948.0",
-    "@aws-sdk/s3-request-presigner": "^3.948.0",
+    "@aws-sdk/client-s3": "^3.962.0",
+    "@aws-sdk/s3-request-presigner": "^3.962.0",
     "@prisma/client": "5.22.0",
     "bcryptjs": "^3.0.3",
     "bull": "^4.16.5",
@@ -49,7 +56,7 @@
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "stripe": "^20.0.0",
-    "zod": "^4.1.13"
+    "zod": "^4.3.4"
   },
   "devDependencies": {
     "@types/node": "20.14.10",
@@ -63,6 +70,6 @@
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
     "tsx": "^4.21.0",
-    "typescript": "5.6.3"
+    "typescript": "5.9.3"
   }
 }

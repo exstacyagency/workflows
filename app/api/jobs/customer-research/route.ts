@@ -28,6 +28,7 @@ export async function POST(req: NextRequest) {
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+  const securitySweep = cfg.raw("SECURITY_SWEEP") === "1";
   let projectId: string | null = null;
   let jobId: string | null = null;
   let reservation: { periodKey: string; metric: string; amount: number } | null =
@@ -58,32 +59,38 @@ export async function POST(req: NextRequest) {
     if (deny) return deny;
 
     // Plan check AFTER ownership to avoid leaking project existence via 402.
-    try {
-      planId = await assertMinPlan(userId, 'GROWTH');
-    } catch (err: any) {
-      if (err instanceof UpgradeRequiredError) {
+    if (!securitySweep) {
+      try {
+        planId = await assertMinPlan(userId, 'GROWTH');
+      } catch (err: any) {
+        if (err instanceof UpgradeRequiredError) {
+          return NextResponse.json(
+            { error: 'Upgrade required', requiredPlan: err.requiredPlan },
+            { status: 402 },
+          );
+        }
+        console.error(err);
+        return NextResponse.json({ error: 'Billing check failed' }, { status: 500 });
+      }
+    }
+
+    if (!securitySweep) {
+      if (!cfg.raw("APIFY_TOKEN") && !cfg.raw("APIFY_API_TOKEN")) {
         return NextResponse.json(
-          { error: 'Upgrade required', requiredPlan: err.requiredPlan },
-          { status: 402 },
+          { error: 'Apify is not configured' },
+          { status: 500 },
         );
       }
-      console.error(err);
-      return NextResponse.json({ error: 'Billing check failed' }, { status: 500 });
     }
 
-    if (!cfg.raw("APIFY_TOKEN") && !cfg.raw("APIFY_API_TOKEN")) {
-      return NextResponse.json(
-        { error: 'Apify is not configured' },
-        { status: 500 },
-      );
-    }
-
-    const concurrency = await enforceUserConcurrency(userId);
-    if (!concurrency.allowed) {
-      return NextResponse.json(
-        { error: concurrency.reason },
-        { status: 429 },
-      );
+    if (!securitySweep) {
+      const concurrency = await enforceUserConcurrency(userId);
+      if (!concurrency.allowed) {
+        return NextResponse.json(
+          { error: concurrency.reason },
+          { status: 429 },
+        );
+      }
     }
 
     if (cfg.raw("NODE_ENV") === 'production') {
@@ -96,21 +103,25 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const costEstimate = await estimateCustomerResearchCost({
-      productAmazonAsin,
-      competitor1AmazonAsin,
-      competitor2AmazonAsin,
-    });
+    const costEstimate = securitySweep
+      ? { totalCost: 0 }
+      : await estimateCustomerResearchCost({
+          productAmazonAsin,
+          competitor1AmazonAsin,
+          competitor2AmazonAsin,
+        });
 
-    const budgetOk = await checkBudget(projectId, costEstimate.totalCost);
-    if (!budgetOk) {
-      return NextResponse.json(
-        {
-          error: 'Budget exceeded',
-          estimate: costEstimate,
-        },
-        { status: 402 }
-      );
+    if (!securitySweep) {
+      const budgetOk = await checkBudget(projectId, costEstimate.totalCost);
+      if (!budgetOk) {
+        return NextResponse.json(
+          {
+            error: 'Budget exceeded',
+            estimate: costEstimate,
+          },
+          { status: 402 }
+        );
+      }
     }
 
     const idempotencyKey = JSON.stringify([
@@ -132,39 +143,65 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ jobId: existing.id, reused: true }, { status: 200 });
     }
 
-    try {
-      reservation = await reserveQuota(userId, planId, 'researchQueries', 1);
-    } catch (err: any) {
-      if (err instanceof QuotaExceededError) {
-        return NextResponse.json(
-          { error: 'Quota exceeded', metric: 'researchQueries', limit: err.limit, used: err.used },
-          { status: 429 },
-        );
+    if (!securitySweep) {
+      try {
+        reservation = await reserveQuota(userId, planId, 'researchQueries', 1);
+      } catch (err: any) {
+        if (err instanceof QuotaExceededError) {
+          return NextResponse.json(
+            { error: 'Quota exceeded', metric: 'researchQueries', limit: err.limit, used: err.used },
+            { status: 429 },
+          );
+        }
+        throw err;
       }
-      throw err;
     }
+
+    const initialPayload: any = {
+      projectId,
+      productName,
+      productProblemSolved,
+      productAmazonAsin,
+      competitor1AmazonAsin,
+      competitor2AmazonAsin,
+      estimatedCost: costEstimate.totalCost ?? 0,
+      idempotencyKey,
+      quotaReservation: reservation
+        ? { periodKey: reservation.periodKey, metric: 'researchQueries', amount: 1 }
+        : null,
+      skipped: securitySweep,
+      reason: securitySweep ? "SECURITY_SWEEP" : null,
+    };
 
     const job = await prisma.job.create({
       data: {
         projectId,
         type: JobType.CUSTOMER_RESEARCH,
-        status: JobStatus.PENDING,
-        payload: {
-          projectId,
-          productName,
-          productProblemSolved,
-          productAmazonAsin,
-          competitor1AmazonAsin,
-          competitor2AmazonAsin,
-          estimatedCost: costEstimate.totalCost,
-          idempotencyKey,
-          quotaReservation: reservation
-            ? { periodKey: reservation.periodKey, metric: 'researchQueries', amount: 1 }
-            : null,
-        },
+        status: securitySweep ? JobStatus.COMPLETED : JobStatus.PENDING,
+        payload: initialPayload,
+        resultSummary: securitySweep ? "Skipped: SECURITY_SWEEP" : null,
+        error: null,
       },
     });
     jobId = job.id;
+
+    if (securitySweep) {
+      await prisma.researchRow.createMany({
+        data: [
+          {
+            projectId,
+            jobId,
+            source: "REDDIT_PRODUCT",
+            indexLabel: "golden",
+            title: "SECURITY_SWEEP placeholder",
+            content: "Deterministic placeholder research content.",
+            verified: false,
+            importance: 0,
+            rating: 0,
+          } as any,
+        ],
+      });
+    }
 
     await logAudit({
       userId,
@@ -177,7 +214,10 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    return NextResponse.json({ jobId, started: false }, { status: 200 });
+    return NextResponse.json(
+      { jobId, started: !securitySweep, skipped: securitySweep, reason: securitySweep ? "SECURITY_SWEEP" : null },
+      { status: 200 },
+    );
   } catch (error: any) {
     if (reservation && !jobId) {
       await rollbackQuota(userId, reservation.periodKey, 'researchQueries', 1);
