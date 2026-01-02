@@ -21,7 +21,9 @@ function stableStringify(obj: any): string {
 
 async function main() {
   const outDir =
-    process.argv.includes("--outDir") ? process.argv[process.argv.indexOf("--outDir") + 1] : "e2e/golden/output";
+    process.argv.includes("--outDir")
+      ? process.argv[process.argv.indexOf("--outDir") + 1]
+      : process.env.GOLDEN_OUT_DIR || "e2e/golden/output";
   const projectId =
     process.argv.includes("--projectId") ? process.argv[process.argv.indexOf("--projectId") + 1] : "proj_test";
 
@@ -97,4 +99,3 @@ main()
   .finally(async () => {
     await prisma.$disconnect().catch(() => {});
   });
-
