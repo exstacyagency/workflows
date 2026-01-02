@@ -6,6 +6,10 @@ cd "$ROOT_DIR"
 
 echo "[e2e] deterministic start"
 
+BASE_URL="${BASE_URL:-http://localhost:3000}"
+HEALTH_PATH="${HEALTH_PATH:-/api/health}"
+HEALTH_URL="${HEALTH_URL:-${BASE_URL}${HEALTH_PATH}}"
+
 load_env_file() {
   local f="$1"
   if [ -f "$f" ]; then
@@ -63,20 +67,33 @@ SERVER_PID=$!
 
 echo "[e2e] wait for health"
 for i in $(seq 1 60); do
-  if curl -fsS http://localhost:3000/api/health >/dev/null; then
-    echo "[e2e] healthy"
+  # If the server is up but health path is wrong, we'll see 404 here.
+  # Print first line of response occasionally to make debugging obvious.
+  HTTP_CODE="$(curl -sS -o /tmp/e2e_health_body.txt -w '%{http_code}' "${HEALTH_URL}" || true)"
+  if [ "${HTTP_CODE}" = "200" ]; then
+    echo "[e2e] healthy (${HEALTH_URL})"
     break
   fi
-  sleep 1
-  if [ "$i" -eq 60 ]; then
-    echo "[e2e] server did not become healthy" >&2
-    echo "---- server log (tail) ----" >&2
-    tail -n 200 /tmp/e2e_server.log >&2 || true
-    echo "---- worker log (tail) ----" >&2
-    tail -n 200 /tmp/e2e_worker.log >&2 || true
-    exit 1
+  if [ "$i" = "1" ] || [ "$i" = "10" ] || [ "$i" = "30" ] || [ "$i" = "60" ]; then
+    echo "[e2e] health not ready yet (attempt ${i}/60, code=${HTTP_CODE}, url=${HEALTH_URL})"
+    head -c 200 /tmp/e2e_health_body.txt 2>/dev/null || true
+    echo ""
   fi
+  sleep 1
 done
+
+# Final check: fail if we never got a 200
+HTTP_CODE="$(curl -sS -o /tmp/e2e_health_body.txt -w '%{http_code}' "${HEALTH_URL}" || true)"
+if [ "${HTTP_CODE}" != "200" ]; then
+  echo "[e2e] server did not become healthy (code=${HTTP_CODE}, url=${HEALTH_URL})" >&2
+  echo "[e2e] last health body:" >&2
+  cat /tmp/e2e_health_body.txt >&2 || true
+  echo "" >&2
+  echo "[e2e] last server log tail:" >&2
+  tail -n 80 /tmp/e2e_server.log >&2 || true
+  kill "${SERVER_PID}" >/dev/null 2>&1 || true
+  exit 1
+fi
 
 echo "[e2e] run sweep"
 npm run security:sweep
