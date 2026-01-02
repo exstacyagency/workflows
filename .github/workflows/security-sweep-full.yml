@@ -1,0 +1,173 @@
+name: security-sweep-full
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  security-sweep-full:
+    name: security-sweep-full
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      SECURITY_SWEEP: "1"
+      DEBUG_ADMIN_TOKEN: ${{ secrets.DEBUG_ADMIN_TOKEN }}
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
+      APP_URL: http://localhost:3000
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Provision Neon branch + DB (CI)
+        id: neon
+        shell: bash
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ secrets.NEON_PROJECT_ID }}
+          NEON_DB_PASSWORD: ${{ secrets.NEON_DB_PASSWORD }}
+          NEON_ROLE: ${{ secrets.NEON_ROLE }}
+        run: |
+          set -euo pipefail
+          BRANCH_NAME="ci-main-${{ github.run_id }}"
+          DB_NAME="workflows_ci_${{ github.run_id }}"
+
+          echo "Creating Neon branch: $BRANCH_NAME"
+          BRANCH_JSON=$(curl -sS -X POST \
+            -H "Authorization: Bearer ${NEON_API_KEY}" \
+            -H "Content-Type: application/json" \
+            "https://console.neon.tech/api/v2/projects/${NEON_PROJECT_ID}/branches" \
+            -d "{\"branch\":{\"name\":\"${BRANCH_NAME}\"}}")
+
+          BRANCH_ID=$(echo "$BRANCH_JSON" | node -pe "const fs=require('fs'); JSON.parse(fs.readFileSync(0,'utf8')).branch.id")
+          echo "branch_id=${BRANCH_ID}" >> "$GITHUB_OUTPUT"
+
+          echo "Creating database: $DB_NAME"
+          curl -sS -X POST \
+            -H "Authorization: Bearer ${NEON_API_KEY}" \
+            -H "Content-Type: application/json" \
+            "https://console.neon.tech/api/v2/projects/${NEON_PROJECT_ID}/branches/${BRANCH_ID}/databases" \
+            -d "{\"database\":{\"name\":\"${DB_NAME}\"}}" >/dev/null
+
+          ROLE="${NEON_ROLE:-neondb_owner}"
+          if [ -z "${NEON_DB_PASSWORD}" ]; then echo "Missing NEON_DB_PASSWORD secret" >&2; exit 1; fi
+
+          echo "Fetching Neon connection URI"
+          URI_HEADERS=$(mktemp)
+          URI_BODY=$(mktemp)
+          curl -sS -D "$URI_HEADERS" -o "$URI_BODY" -X POST \
+            -H "Authorization: Bearer ${NEON_API_KEY}" \
+            -H "Content-Type: application/json" \
+            "https://console.neon.tech/api/v2/projects/${NEON_PROJECT_ID}/connection_uri" \
+            -d "{\"branch_id\":\"${BRANCH_ID}\",\"database\":\"${DB_NAME}\",\"role\":\"${ROLE}\",\"password\":\"${NEON_DB_PASSWORD}\"}" || true
+
+          STATUS=$(head -n 1 "$URI_HEADERS" | awk '{print $2}')
+          BODY=$(cat "$URI_BODY" || true)
+
+          if [ "$STATUS" = "200" ] && [ -n "$BODY" ]; then
+            DATABASE_URL=$(echo "$BODY" | node -pe "const fs=require('fs'); const j=JSON.parse(fs.readFileSync(0,'utf8')); const uri=j?.uri||j?.connection_uri||j?.connectionUri; if(!uri||typeof uri!=='string'){console.error(j); process.exit(1)}; uri")
+          else
+            echo "connection_uri failed (status=$STATUS). Body (first 300 chars):"
+            echo "$BODY" | head -c 300 || true
+            echo ""
+            echo "Falling back to endpoints polling..."
+            HOST=""
+            for i in $(seq 1 30); do
+              ENDPOINTS_JSON=$(curl -sS -H "Authorization: Bearer ${NEON_API_KEY}" \
+                "https://console.neon.tech/api/v2/projects/${NEON_PROJECT_ID}/branches/${BRANCH_ID}/endpoints")
+              HOST=$(echo "$ENDPOINTS_JSON" | node - <<'NODE'
+const fs=require("fs");
+const j=JSON.parse(fs.readFileSync(0,"utf8"));
+const eps=Array.isArray(j.endpoints)?j.endpoints:[];
+const ep=eps[0]||null;
+const candidates=[ep&&ep.host, ep&&ep.hostname, ep&&ep.proxy_host, ep&&ep.proxyHost].filter(v=>typeof v==="string"&&v.includes("."));
+let host=candidates[0];
+if(!host){
+  const text=JSON.stringify(j);
+  const m=text.match(/[a-z0-9-]+\.([a-z0-9-]+\.)?neon\.tech/);
+  if(m) host=m[0];
+}
+process.stdout.write(host||"");
+NODE
+)
+              if [ -n "$HOST" ]; then
+                echo "Endpoint host ready: $HOST"
+                break
+              fi
+              echo "No endpoint yet (attempt $i/30). Waiting 2s..."
+              sleep 2
+            done
+            if [ -z "$HOST" ]; then
+              echo "Failed to get endpoint host. Endpoints response:" >&2
+              echo "$ENDPOINTS_JSON" >&2
+              exit 1
+            fi
+            DATABASE_URL="postgresql://${ROLE}:${NEON_DB_PASSWORD}@${HOST}/${DB_NAME}?sslmode=require"
+          fi
+
+          echo "DATABASE_URL=${DATABASE_URL}" >> "$GITHUB_ENV"
+          echo "DATABASE_URL_PREFIX=$(echo "$DATABASE_URL" | node -pe 'const fs=require("fs"); const u=new URL(fs.readFileSync(0,"utf8").trim()); u.password="***"; process.stdout.write(u.toString())')" >> "$GITHUB_ENV"
+
+      - name: Prisma migrate deploy (CI DB)
+        run: |
+          echo "DATABASE_URL_PREFIX=${DATABASE_URL_PREFIX}"
+          npx prisma migrate deploy
+
+      - name: Bootstrap dev data (CI)
+        run: npm run bootstrap:dev
+
+      - name: Build
+        run: npm run build
+
+      - name: Start server
+        run: |
+          npm run dev -- --port 3000 &
+          echo $! > server.pid
+
+      - name: Wait for health
+        run: |
+          for i in {1..60}; do
+            if curl -fsS http://localhost:3000/api/health >/dev/null; then
+              echo "healthy"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "server did not become healthy" >&2
+          exit 1
+
+      - name: Run attacker sweep
+        run: npm run security:sweep
+
+      - name: Stop server
+        if: always()
+        run: |
+          if [ -f server.pid ]; then
+            kill $(cat server.pid) || true
+          fi
+
+      - name: Cleanup Neon branch
+        if: always()
+        shell: bash
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ secrets.NEON_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          BRANCH_ID="${{ steps.neon.outputs.branch_id }}"
+          if [ -n "${BRANCH_ID}" ]; then
+            echo "Deleting Neon branch ${BRANCH_ID}"
+            curl -sS -X DELETE \
+              -H "Authorization: Bearer ${NEON_API_KEY}" \
+              "https://console.neon.tech/api/v2/projects/${NEON_PROJECT_ID}/branches/${BRANCH_ID}" \
+              >/dev/null || true
+          fi
