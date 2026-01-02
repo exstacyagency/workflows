@@ -1,15 +1,16 @@
-name: security-sweep
+name: freeze-check
 
 on:
   pull_request:
 
 jobs:
-  security-sweep:
-    name: security-sweep
+  freeze-check:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Use Node
         uses: actions/setup-node@v4
@@ -20,9 +21,8 @@ jobs:
       - name: Install
         run: npm ci
 
-      # PR-safe: no secrets, no DB, just prove build integrity.
-      - name: Lint
-        run: npm run lint
+      - name: Freeze guard
+        run: npm run freeze:check
 
-      - name: Build
-        run: npm run build
+      - name: Routes manifest check
+        run: npm run routes:check
