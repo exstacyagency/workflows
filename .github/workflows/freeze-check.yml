@@ -1,0 +1,28 @@
+name: freeze-check
+
+on:
+  pull_request:
+
+jobs:
+  freeze-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Use Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Freeze guard
+        run: npm run freeze:check
+
+      - name: Routes manifest check
+        run: npm run routes:check
