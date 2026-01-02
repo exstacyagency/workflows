@@ -1,10 +1,10 @@
 {
   "counts": {
     "customerAvatars": 0,
-    "jobs": 2,
+    "jobs": 3,
     "productIntelligence": 0,
-    "researchRows": 1,
-    "scripts": 6,
+    "researchRows": 2,
+    "scripts": 8,
     "storyboardScenes": 0,
     "storyboards": 0
   },
@@ -30,7 +30,7 @@
       "lastErrorRaw": null,
       "provider": null,
       "reason": "SECURITY_SWEEP",
-      "resultSummary": "Skipped: SECURITY_SWEEP (scriptId=7dd7c94a-0b55-4054-906c-2d0b136774b3)",
+      "resultSummary": "Skipped: SECURITY_SWEEP (scriptId=ec93c106-560b-4d6f-a9ef-1a3cd43526eb)",
       "skipped": true,
       "status": "COMPLETED",
       "transient": null
