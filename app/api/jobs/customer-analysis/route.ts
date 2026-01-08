@@ -39,6 +39,7 @@ export async function POST(req: NextRequest) {
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+  const securitySweep = cfg.raw("SECURITY_SWEEP") === "1";
   let projectId: string | null = null;
   let jobId: string | null = null;
   let reservation: { periodKey: string; metric: string; amount: number } | null =
@@ -46,19 +47,6 @@ export async function POST(req: NextRequest) {
   const ip =
     req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null;
   let planId: 'FREE' | 'GROWTH' | 'SCALE' = 'FREE';
-
-  try {
-    planId = await assertMinPlan(userId, 'GROWTH');
-  } catch (err: any) {
-    if (err instanceof UpgradeRequiredError) {
-      return NextResponse.json(
-        { error: 'Upgrade required', requiredPlan: err.requiredPlan },
-        { status: 402 },
-      );
-    }
-    console.error(err);
-    return NextResponse.json({ error: 'Billing check failed' }, { status: 500 });
-  }
 
   try {
     const parsed = await parseJson(req, CustomerAnalysisSchema);
@@ -76,19 +64,28 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
-    if (!cfg.raw("ANTHROPIC_API_KEY")) {
-      return NextResponse.json(
-        { error: 'Anthropic is not configured' },
-        { status: 500 },
-      );
+    try {
+      planId = await assertMinPlan(userId, 'GROWTH');
+    } catch (err: any) {
+      if (err instanceof UpgradeRequiredError) {
+        return NextResponse.json(
+          { error: 'Upgrade required', requiredPlan: err.requiredPlan },
+          { status: 402 },
+        );
+      }
+      console.error(err);
+      return NextResponse.json({ error: 'Billing check failed' }, { status: 500 });
     }
 
-    const concurrency = await enforceUserConcurrency(userId);
-    if (!concurrency.allowed) {
-      return NextResponse.json(
-        { error: concurrency.reason },
-        { status: 429 },
-      );
+    // SECURITY_SWEEP should never be blocked by concurrency.
+    if (!securitySweep) {
+      const concurrency = await enforceUserConcurrency(userId);
+      if (!concurrency.allowed) {
+        return NextResponse.json(
+          { error: concurrency.reason },
+          { status: 429 },
+        );
+      }
     }
 
     const idempotencyKey = JSON.stringify([
@@ -116,6 +113,41 @@ export async function POST(req: NextRequest) {
         );
       }
       throw err;
+    }
+
+    if (securitySweep) {
+      const job = await prisma.job.create({
+        data: {
+          projectId,
+          type: JobType.CUSTOMER_ANALYSIS,
+          status: JobStatus.PENDING,
+          payload: parsed.data,
+          resultSummary: "Skipped: SECURITY_SWEEP",
+          error: null,
+        },
+        select: { id: true },
+      });
+      jobId = job.id;
+      await logAudit({
+        userId,
+        projectId,
+        jobId,
+        action: "job.create",
+        ip,
+        metadata: { type: "customer-analysis", skipped: true, reason: "SECURITY_SWEEP" },
+      });
+      return NextResponse.json(
+        { jobId, started: false, skipped: true, reason: "SECURITY_SWEEP" },
+        { status: 200 },
+      );
+    }
+
+    // External calls below (only when not securitySweep)...
+    if (!cfg.raw("ANTHROPIC_API_KEY")) {
+      return NextResponse.json(
+        { error: 'Anthropic is not configured' },
+        { status: 500 },
+      );
     }
 
     if (cfg.raw("NODE_ENV") === 'production') {

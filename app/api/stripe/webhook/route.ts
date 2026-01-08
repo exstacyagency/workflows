@@ -128,8 +128,33 @@ async function handleSubscriptionEvent(
   const currentPeriodEnd =
     currentPeriodEndSeconds > 0 ? new Date(currentPeriodEndSeconds * 1000) : null;
 
-  const planId: "FREE" | "GROWTH" | "SCALE" =
+  let planId: "FREE" | "GROWTH" | "SCALE" =
     opts?.deleted === true ? "FREE" : planFromPriceId(stripePriceId);
+
+  // Safety: if Stripe returns an unknown price id, do NOT auto-downgrade to FREE.
+  // This prevents accidental downgrades when you add annual prices or new price IDs.
+  const looksUnknownPrice =
+    opts?.deleted !== true && stripePriceId && planId === "FREE";
+  if (looksUnknownPrice) {
+    const existing = await prisma.subscription.findUnique({
+      where: { userId },
+      select: { planId: true, status: true },
+    });
+    const statusOk =
+      String(existing?.status ?? "").toLowerCase() === "active" ||
+      String(existing?.status ?? "").toLowerCase() === "trialing";
+    const existingPlan =
+      existing?.planId === "SCALE" ? "SCALE" : existing?.planId === "GROWTH" ? "GROWTH" : "FREE";
+    if (statusOk && existingPlan !== "FREE") {
+      console.warn("[stripe.webhook] unknown price id; preserving existing plan", {
+        userId,
+        stripeSubscriptionId,
+        stripePriceId,
+        existingPlan,
+      });
+      planId = existingPlan;
+    }
+  }
 
   await upsertUserSubscription({
     userId,
@@ -198,7 +223,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }
 
-  const payload = JSON.parse(rawBody);
+  let payload: any = null;
+  try {
+    payload = JSON.parse(rawBody);
+  } catch {
+    // Leave payload null; we still have the verified Stripe event.
+  }
   const payloadObject: any = (payload as any)?.data?.object;
   const stripeCustomerId =
     typeof payloadObject?.customer === "string" ? payloadObject.customer : null;

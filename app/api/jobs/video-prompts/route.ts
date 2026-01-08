@@ -18,6 +18,7 @@ export async function POST(req: NextRequest) {
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+  const securitySweep = cfg.raw("SECURITY_SWEEP") === "1";
   let projectId: string | null = null;
   let jobId: string | null = null;
   let reservation: { periodKey: string; metric: string; amount: number } | null =
@@ -77,12 +78,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Billing check failed' }, { status: 500 });
     }
 
-    const concurrency = await enforceUserConcurrency(userId);
-    if (!concurrency.allowed) {
-      return NextResponse.json(
-        { error: concurrency.reason },
-        { status: 429 },
-      );
+    // SECURITY_SWEEP should not be blocked by concurrency. Concurrency is for real vendor work.
+    if (!securitySweep) {
+      const concurrency = await enforceUserConcurrency(userId);
+      if (!concurrency.allowed) {
+        return NextResponse.json({ error: concurrency.reason }, { status: 429 });
+      }
     }
 
     if (cfg.raw("NODE_ENV") === 'production') {
@@ -106,6 +107,13 @@ export async function POST(req: NextRequest) {
       idempotencyKey,
     });
     if (existing) {
+      // Deterministic smoke semantics: reused jobs in SECURITY_SWEEP should still report skipped.
+      if (securitySweep) {
+        return NextResponse.json(
+          { jobId: existing.id, reused: true, started: false, skipped: true, reason: "SECURITY_SWEEP" },
+          { status: 200 }
+        );
+      }
       return NextResponse.json({ jobId: existing.id, reused: true }, { status: 200 });
     }
 
@@ -119,6 +127,36 @@ export async function POST(req: NextRequest) {
         );
       }
       throw err;
+    }
+
+    // SECURITY_SWEEP: after plan+quota, never call external/model services. Return deterministic placeholder.
+    if (securitySweep) {
+      const job = await prisma.job.create({
+        data: {
+          projectId,
+          type: JobType.VIDEO_PROMPT_GENERATION,
+          status: JobStatus.PENDING,
+          payload: { storyboardId, idempotencyKey },
+          resultSummary: "Skipped: SECURITY_SWEEP",
+          error: null,
+        },
+        select: { id: true },
+      });
+      jobId = job.id;
+
+      await logAudit({
+        userId,
+        projectId,
+        jobId,
+        action: 'job.create',
+        ip,
+        metadata: { type: 'video-prompts', skipped: true, reason: 'SECURITY_SWEEP' },
+      });
+
+      return NextResponse.json(
+        { jobId, started: false, skipped: true, reason: "SECURITY_SWEEP" },
+        { status: 200 }
+      );
     }
 
     const job = await prisma.job.create({

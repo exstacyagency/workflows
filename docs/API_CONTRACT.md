@@ -1,4 +1,8 @@
-# API Contract (Enterprise / Licensing)
+# API Contract (Frozen Surface)
+
+This document defines the frozen API surface expected to remain stable during the freeze period.
+
+If you need to change this contract, follow `docs/CONTRACT_BUMP.md` and set `FREEZE_OVERRIDE=1` for the PR.
 
 This is the public-facing contract for external integration. It is intentionally minimal here and derived from:
 
@@ -12,7 +16,7 @@ This is the public-facing contract for external integration. It is intentionally
 
 ### 2) Golden E2E Snapshot
 Golden run produces:
-- `e2e/golden/output/summary.json` (generated)
+- `/tmp/golden-output/summary.json` by default (set `GOLDEN_OUT_DIR` to override)
 - compared against:
 - `e2e/golden/baseline/summary.json` (baseline)
 

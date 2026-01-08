@@ -1,4 +1,27 @@
-# Platform Freeze Contract (Enterprise / Buyout Readiness)
+# Freeze Contract
+
+## Scope lock for buyout/licensing readiness
+
+**Rule:** No new product features, models, workflows, or pipeline phases may be added until all items in:
+
+- `docs/SECURITY_GAPS.md`
+
+are either:
+- checked off, or
+- explicitly waived with written rationale in that file.
+
+This freeze is intended to prevent scope drift and ensure diligence-critical work is completed before expanding surface area.
+
+This repo enforces a "frozen surface" suitable for licensing/buyout evaluation.
+
+## Enforced by CI
+- `freeze-check` workflow
+- `golden-e2e` workflow (deterministic snapshot compare)
+- `security-sweep` workflow (PR-safe)
+- Routes manifest checks
+
+## Contract bump process
+See `docs/CONTRACT_BUMP.md`.
 
 ## Purpose
 This document defines **what must not change** (or must only change with explicit, auditable override) so the platform can be licensed/bought out and safely modified by a third party without relying on the original author.
@@ -38,7 +61,7 @@ Rules:
 ### 2) Job System Contract
 Frozen behaviors:
 - Job state machine semantics:
-  - `PENDING` → `RUNNING` → (`COMPLETED` | `FAILED`)
+  - `PENDING` -> `RUNNING` -> (`COMPLETED` | `FAILED`)
 - Idempotency semantics for job triggers:
   - Repeated trigger calls must be safe.
 - Ownership semantics:

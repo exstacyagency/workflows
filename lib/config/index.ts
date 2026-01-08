@@ -12,3 +12,7 @@ export const cfg = {
   },
 };
 
+// Hard safety: SECURITY_SWEEP must never be enabled in production.
+if (process.env.NODE_ENV === "production" && process.env.SECURITY_SWEEP === "1") {
+  throw new Error("SECURITY_SWEEP must not be enabled in production");
+}
