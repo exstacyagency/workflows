@@ -54,9 +54,7 @@ export async function POST(req: NextRequest) {
 
   // Derive cookie name from actual NextAuth config if customized.
   // NextAuth stores cookies under authOptions.cookies.sessionToken.name when set.
-  const configuredCookieName =
-    // @ts-expect-error next-auth types don't expose deep cookie config nicely
-    authOptions?.cookies?.sessionToken?.name;
+  const configuredCookieName = (authOptions as any)?.cookies?.sessionToken?.name;
   const cookieName = configuredCookieName || "next-auth.session-token";
 
   const now = Math.floor(Date.now() / 1000);
