@@ -23,6 +23,7 @@ export async function POST(req: NextRequest) {
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+  const securitySweep = cfg.raw("SECURITY_SWEEP") === "1";
   let projectId: string | null = null;
   let jobId: string | null = null;
   let reservation: { periodKey: string; metric: string; amount: number } | null =
@@ -60,19 +61,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
-    if (!cfg.raw("ANTHROPIC_API_KEY")) {
+    if (!securitySweep && !cfg.raw("ANTHROPIC_API_KEY")) {
       return NextResponse.json(
         { error: 'Anthropic is not configured' },
         { status: 500 },
       );
     }
 
-    const concurrency = await enforceUserConcurrency(userId);
-    if (!concurrency.allowed) {
-      return NextResponse.json(
-        { error: concurrency.reason },
-        { status: 429 },
-      );
+    if (!securitySweep) {
+      const concurrency = await enforceUserConcurrency(userId);
+      if (!concurrency.allowed) {
+        return NextResponse.json(
+          { error: concurrency.reason },
+          { status: 429 },
+        );
+      }
     }
 
     const idempotencyKey = JSON.stringify([
@@ -86,6 +89,12 @@ export async function POST(req: NextRequest) {
       idempotencyKey,
     });
     if (existing) {
+      if (securitySweep) {
+        return NextResponse.json(
+          { jobId: existing.id, reused: true, started: false, skipped: true, reason: "SECURITY_SWEEP" },
+          { status: 200 },
+        );
+      }
       return NextResponse.json({ jobId: existing.id, reused: true }, { status: 200 });
     }
 
@@ -100,6 +109,41 @@ export async function POST(req: NextRequest) {
       }
       throw err;
     }
+
+    // Prereq check: CustomerAvatar required in normal mode; in sweep mode we bypass it
+    // BUT ONLY AFTER quota + job record exist, so quotas still enforce deterministically.
+    const customerAvatar = await prisma.customerAvatar.findFirst({
+      where: { projectId },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true },
+    });
+    if (!customerAvatar && !securitySweep) {
+      return NextResponse.json(
+        { error: 'Prerequisite missing: CustomerAvatar. Run Customer Analysis (Phase 1B) first.' },
+        { status: 409 },
+      );
+    }
+
+    // Create job record before any external/model work.
+    const job = await prisma.job.create({
+      data: {
+        projectId,
+        type: JobType.CHARACTER_GENERATION,
+        status: JobStatus.PENDING,
+        payload: { projectId, productName, idempotencyKey },
+        resultSummary: securitySweep ? "Skipped: SECURITY_SWEEP" : null,
+        error: null,
+      },
+      select: { id: true },
+    });
+    jobId = job.id;
+
+    if (securitySweep) {
+      return NextResponse.json(
+        { ok: true, jobId, started: false, skipped: true, reason: "SECURITY_SWEEP" },
+        { status: 200 },
+      );
+    }
     if (cfg.raw("NODE_ENV") === 'production') {
       const rateCheck = await checkRateLimit(projectId);
       if (!rateCheck.allowed) {
@@ -109,16 +153,6 @@ export async function POST(req: NextRequest) {
         );
       }
     }
-
-    const job = await prisma.job.create({
-      data: {
-        projectId,
-        type: JobType.CHARACTER_GENERATION,
-        status: JobStatus.PENDING,
-        payload: { projectId, productName, idempotencyKey },
-      },
-    });
-    jobId = job.id;
 
     const result = await startCharacterGenerationJob({
       projectId,
