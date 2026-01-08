@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
   }
 
   const token = req.headers.get("x-debug-admin-token") || "";
-  const expected = process.env.DEBUG_ADMIN_TOKEN || cfg.raw("DEBUG_ADMIN_TOKEN") || "";
+  const expected = cfg.raw("DEBUG_ADMIN_TOKEN") || "";
   if (!expected || token !== expected) return unauthorized();
 
   const body = await req.json().catch(() => ({}));
