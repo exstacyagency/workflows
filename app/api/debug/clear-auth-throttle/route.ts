@@ -9,7 +9,6 @@ function unauthorized() {
 }
 
 function getPrisma() {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const g = globalThis as any;
   if (!g.__debugPrisma) g.__debugPrisma = new PrismaClient();
   return g.__debugPrisma as PrismaClient;

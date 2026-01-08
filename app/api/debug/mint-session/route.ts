@@ -9,7 +9,6 @@ export const dynamic = "force-dynamic";
 let prisma: PrismaClient | null = null;
 function getPrisma() {
   // In dev, prevent creating tons of clients during hot reload.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const g = globalThis as any;
   if (!g.__debugPrisma) g.__debugPrisma = new PrismaClient();
   return g.__debugPrisma as PrismaClient;
