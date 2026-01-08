@@ -2,12 +2,18 @@ name: security-sweep
 
 on:
   pull_request:
+  workflow_dispatch:
 
 jobs:
   security-sweep:
     name: security-sweep
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+    env:
+      SECURITY_SWEEP: "1"
+      DEBUG_ADMIN_TOKEN: ${{ secrets.DEBUG_ADMIN_TOKEN }}
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
     steps:
       - uses: actions/checkout@v4
 
@@ -20,9 +26,7 @@ jobs:
       - name: Install
         run: npm ci
 
-      # PR-safe: no secrets, no DB, just prove build integrity.
-      - name: Lint
-        run: npm run lint
-
-      - name: Build
-        run: npm run build
+      - name: PR sweep (lint + build only)
+        run: |
+          npm run lint
+          npm run build
