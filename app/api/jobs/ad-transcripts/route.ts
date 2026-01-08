@@ -18,6 +18,7 @@ export async function POST(req: NextRequest) {
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+  const securitySweep = cfg.raw("SECURITY_SWEEP") === "1";
   let projectId: string | null = null;
   let jobId: string | null = null;
   let reservation: { periodKey: string; metric: string; amount: number } | null =
@@ -25,19 +26,6 @@ export async function POST(req: NextRequest) {
   const ip =
     req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null;
   let planId: 'FREE' | 'GROWTH' | 'SCALE' = 'FREE';
-
-  try {
-    planId = await assertMinPlan(userId, 'GROWTH');
-  } catch (err: any) {
-    if (err instanceof UpgradeRequiredError) {
-      return NextResponse.json(
-        { error: 'Upgrade required', requiredPlan: err.requiredPlan },
-        { status: 402 },
-      );
-    }
-    console.error(err);
-    return NextResponse.json({ error: 'Billing check failed' }, { status: 500 });
-  }
 
   try {
     const parsed = await parseJson(req, ProjectJobSchema);
@@ -54,19 +42,30 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
-    if (!cfg.raw("ASSEMBLYAI_API_KEY")) {
-      return NextResponse.json(
-        { error: 'AssemblyAI is not configured' },
-        { status: 500 },
-      );
+    // Plan check AFTER ownership to avoid leaking project existence via 402.
+    try {
+      planId = await assertMinPlan(userId, 'GROWTH');
+    } catch (err: any) {
+      if (err instanceof UpgradeRequiredError) {
+        return NextResponse.json(
+          { error: 'Upgrade required', requiredPlan: err.requiredPlan },
+          { status: 402 },
+        );
+      }
+      console.error(err);
+      return NextResponse.json({ error: 'Billing check failed' }, { status: 500 });
     }
 
-    const concurrency = await enforceUserConcurrency(userId);
-    if (!concurrency.allowed) {
-      return NextResponse.json(
-        { error: concurrency.reason },
-        { status: 429 },
-      );
+    // SECURITY_SWEEP should never be blocked by concurrency.
+    // Concurrency is meant to protect real vendor work, not deterministic placeholders.
+    if (!securitySweep) {
+      const concurrency = await enforceUserConcurrency(userId);
+      if (!concurrency.allowed) {
+        return NextResponse.json(
+          { error: concurrency.reason },
+          { status: 429 },
+        );
+      }
     }
 
     const idempotencyKey = JSON.stringify([projectId, JobType.AD_TRANSCRIPTS, 'transcript']);
@@ -79,6 +78,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ jobId: existing.id, reused: true }, { status: 200 });
     }
 
+    // Quota must ALWAYS apply. SECURITY_SWEEP must not be a billing bypass.
     try {
       reservation = await reserveQuota(userId, planId, 'researchQueries', 1);
     } catch (err: any) {
@@ -89,6 +89,42 @@ export async function POST(req: NextRequest) {
         );
       }
       throw err;
+    }
+
+    // SECURITY_SWEEP: never touch vendors. Return deterministic placeholder.
+    if (securitySweep) {
+      const job = await prisma.job.create({
+        data: {
+          projectId,
+          type: JobType.AD_TRANSCRIPTS,
+          status: JobStatus.PENDING,
+          payload: parsed.data,
+          resultSummary: "Skipped: SECURITY_SWEEP",
+          error: null,
+        },
+        select: { id: true },
+      });
+      jobId = job.id;
+      await logAudit({
+        userId,
+        projectId,
+        jobId,
+        action: "job.create",
+        ip,
+        metadata: { type: "ad-transcripts", skipped: true, reason: "SECURITY_SWEEP" },
+      });
+      return NextResponse.json(
+        { jobId, started: false, skipped: true, reason: "SECURITY_SWEEP" },
+        { status: 200 },
+      );
+    }
+
+    // Vendor checks MUST be after sweep short-circuit
+    if (!cfg.raw("ASSEMBLYAI_API_KEY")) {
+      return NextResponse.json(
+        { error: "ASSEMBLYAI: ASSEMBLYAI_API_KEY must be set in .env" },
+        { status: 500 },
+      );
     }
 
     if (cfg.raw("NODE_ENV") === 'production') {
