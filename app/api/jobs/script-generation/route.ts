@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
   const requestId = getRequestId(req);
   logInfo("api.request", { requestId, path: req.nextUrl?.pathname });
 
-  // Deterministic golden/sweep mode: skip billing/quota and any external LLM calls.
+  // Deterministic golden/sweep mode: skip external calls but still enforce billing/quota.
   const securitySweep = cfg.raw("SECURITY_SWEEP") === "1";
 
   let reservation: { periodKey: string; metric: string; amount: number } | null =
@@ -55,131 +55,70 @@ export async function POST(req: NextRequest) {
     }
 
     let planId: "FREE" | "GROWTH" | "SCALE" = "FREE";
-    if (!securitySweep) {
-      try {
-        planId = await assertMinPlan(userId, "GROWTH");
-      } catch (err: any) {
-        if (err instanceof UpgradeRequiredError) {
-          return NextResponse.json(
-            { error: "Upgrade required", requiredPlan: err.requiredPlan },
-            { status: 402 },
-          );
-        }
-        console.error(err);
-        return NextResponse.json({ error: "Billing check failed" }, { status: 500 });
+    try {
+      planId = await assertMinPlan(userId, "GROWTH");
+    } catch (err: any) {
+      if (err instanceof UpgradeRequiredError) {
+        return NextResponse.json(
+          { error: "Upgrade required", requiredPlan: err.requiredPlan },
+          { status: 402 },
+        );
+      }
+      console.error(err);
+      return NextResponse.json({ error: "Billing check failed" }, { status: 500 });
+    }
+
+    const devTest = flag("FF_DEV_TEST_MODE");
+    if (!securitySweep && !devTest) {
+      const concurrency = await enforceUserConcurrency(userId);
+      if (!concurrency.allowed) {
+        return NextResponse.json(
+          { error: concurrency.reason },
+          { status: 429 },
+        );
       }
     }
 
-    // SECURITY_SWEEP: deterministic placeholder script + completed job, no external calls.
+    // SECURITY_SWEEP: short-circuit BEFORE any external calls / model calls.
     if (securitySweep) {
-      const breakerTest = flag("FF_BREAKER_TEST");
-      let idempotencyKey = `script-generation:${projectId}`;
-      if (breakerTest) {
-        idempotencyKey = `${idempotencyKey}:${Date.now()}`;
-      }
-
-      const skipPayload = {
-        ...parsed.data,
-        idempotencyKey,
-        skipped: true,
-        reason: "SECURITY_SWEEP",
-      };
-
-      let jobId: string | null = null;
+      // Quota must ALWAYS apply. SECURITY_SWEEP must not be a billing bypass.
       try {
-        const job = await prisma.job.create({
-          data: {
-            projectId,
-            type: JobType.SCRIPT_GENERATION,
-            status: JobStatus.COMPLETED,
-            idempotencyKey,
-            payload: skipPayload,
-            resultSummary: "Skipped: SECURITY_SWEEP",
-            error: null,
-          },
-        });
-        jobId = job.id;
-      } catch (e: any) {
-        const message = String(e?.message ?? '');
-        const isUnique =
-          e?.code === 'P2002' ||
-          (e?.name === 'PrismaClientKnownRequestError' && e?.meta?.target) ||
-          message.includes('Unique constraint failed');
-
-        if (isUnique) {
-          const raced = await prisma.job.findFirst({
-            where: {
-              projectId,
-              type: JobType.SCRIPT_GENERATION,
-              idempotencyKey,
-            },
-            orderBy: { createdAt: 'desc' },
-          });
-
-          if (raced) {
-            jobId = raced.id;
-          } else {
-            return NextResponse.json(
-              { error: 'Failed to resolve job after unique constraint' },
-              { status: 500 },
-            );
-          }
-        } else {
-          throw e;
+        reservation = await reserveQuota(userId, planId, "researchQueries", 1);
+      } catch (err: any) {
+        if (err instanceof QuotaExceededError) {
+          return NextResponse.json(
+            { error: "Quota exceeded", metric: "researchQueries", limit: err.limit, used: err.used },
+            { status: 429 },
+          );
         }
+        throw err;
       }
-
-      if (!jobId) {
-        return NextResponse.json(
-          { error: 'Job not found after creation' },
-          { status: 500 },
-        );
-      }
-
-      const hook = "SECURITY_SWEEP: deterministic hook.";
-      const body = "SECURITY_SWEEP: deterministic body.";
-      const cta = "SECURITY_SWEEP: deterministic CTA.";
-      const text = `${hook}\n\n${body}\n\n${cta}`;
-      const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
-
-      const scriptJson = {
-        title: "SECURITY_SWEEP placeholder script",
-        hook,
-        body,
-        cta,
-        text,
-        word_count: wordCount,
-        skipped: true,
-        reason: "SECURITY_SWEEP",
-      };
-
-      const script = await prisma.script.create({
+      const job = await prisma.job.create({
         data: {
           projectId,
-          jobId,
-          mergedVideoUrl: null,
-          upscaledVideoUrl: null,
-          status: "READY",
-          rawJson: scriptJson as any,
-          wordCount,
+          type: JobType.SCRIPT_GENERATION,
+          status: JobStatus.PENDING,
+          payload: parsed.data,
+          resultSummary: "Skipped: SECURITY_SWEEP",
+          error: null,
         },
+        select: { id: true },
       });
-
-      await prisma.job.update({
-        where: { id: jobId },
-        data: {
-          payload: { ...skipPayload, scriptIds: [script.id] },
-          resultSummary: `Skipped: SECURITY_SWEEP (scriptId=${script.id})`,
-        },
+      const jobId = job.id;
+      await logAudit({
+        userId,
+        projectId,
+        jobId,
+        action: "job.create",
+        ip,
+        metadata: { type: "script-generation", skipped: true, reason: "SECURITY_SWEEP" },
       });
-
       return NextResponse.json(
-        { ok: true, skipped: true, reason: "SECURITY_SWEEP", jobId, scripts: [{ id: script.id, text }] },
+        { jobId, started: false, skipped: true, reason: "SECURITY_SWEEP" },
         { status: 200 },
       );
     }
 
-    const devTest = flag("FF_DEV_TEST_MODE");
     const breakerTest = flag("FF_BREAKER_TEST");
     let idempotencyKey = `script-generation:${projectId}`;
     if (breakerTest) {
@@ -306,16 +245,6 @@ export async function POST(req: NextRequest) {
     }
 
     if (!devTest) {
-      const concurrency = await enforceUserConcurrency(userId);
-      if (!concurrency.allowed) {
-        return NextResponse.json(
-          { error: concurrency.reason },
-          { status: 429 },
-        );
-      }
-    }
-
-    if (!devTest) {
       if (!cfg.raw("ANTHROPIC_API_KEY")) {
         return NextResponse.json(
           { error: 'Anthropic is not configured' },
@@ -352,20 +281,17 @@ export async function POST(req: NextRequest) {
     }
 
     if (!jobId) {
-      if (!devTest) {
-        try {
-          reservation = await reserveQuota(userId, planId, "researchQueries", 1);
-        } catch (err: any) {
-          if (err instanceof QuotaExceededError) {
-            return NextResponse.json(
-              { error: "Quota exceeded", metric: "researchQueries", limit: err.limit, used: err.used },
-              { status: 429 },
-            );
-          }
-          throw err;
+      try {
+        reservation = await reserveQuota(userId, planId, "researchQueries", 1);
+      } catch (err: any) {
+        if (err instanceof QuotaExceededError) {
+          return NextResponse.json(
+            { error: "Quota exceeded", metric: "researchQueries", limit: err.limit, used: err.used },
+            { status: 429 },
+          );
         }
+        throw err;
       }
-
       try {
         const job = await prisma.job.create({
           data: {
@@ -386,7 +312,7 @@ export async function POST(req: NextRequest) {
           message.includes('Unique constraint failed');
 
         if (isUnique) {
-          if (!devTest && reservation) {
+          if (reservation) {
             await rollbackQuota(userId, reservation.periodKey, "researchQueries", 1);
             reservation = null;
           }
@@ -441,7 +367,7 @@ export async function POST(req: NextRequest) {
     });
     console.log("[script-generation] runWithState result", state);
 
-    if (!devTest && createdNew && reservation && !state.ok) {
+    if (createdNew && reservation && !state.ok) {
       await rollbackQuota(userId, reservation.periodKey, "researchQueries", 1);
       reservation = null;
     }
