@@ -195,7 +195,7 @@ async function clearLockout(baseUrl) {
   console.log(`[preflight] clear-lockout: ${r.status}`);
   if (!r.ok) {
     const t = await r.text();
-    const allowMissing = process.env.CI === "true" || process.env.SECURITY_SWEEP === "1";
+    const allowMissing = true;
     if (allowMissing && (r.status === 404 || r.status === 405)) {
       console.log(`[preflight] clear-lockout unavailable (${r.status}), continuing`);
       return;

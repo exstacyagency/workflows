@@ -12,8 +12,12 @@ import {
 } from "@/lib/authAbuseGuardDb";
 import { normalizeEmail } from "@/lib/normalizeEmail";
 
+const isProd = process.env.NODE_ENV === "production";
+
 export const authOptions: NextAuthOptions = {
-  secret: cfg.raw("NEXTAUTH_SECRET"),
+  // Force a stable secret source. If this is missing, NextAuth behavior becomes flaky.
+  // In dev we will warn loudly; in prod we should fail fast.
+  secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || undefined,
   session: { strategy: "jwt" },
   providers: [
     Credentials({
@@ -32,9 +36,18 @@ export const authOptions: NextAuthOptions = {
           (req as any)?.headers?.["x-forwarded-for"]?.split?.(",")?.[0]?.trim?.() ??
           null;
 
-        const gate = await checkAuthAllowedDb({ kind: "login", ip, email });
-        if (!gate.allowed) {
-          throw new Error("Too many attempts. Try again later.");
+        // DEV FIX: disable lockout/throttle entirely in dev to stop "random" sign-in failures.
+        // Throttle/lockout is for production abuse control, not local iteration.
+        if (isProd) {
+          try {
+            const gate = await checkAuthAllowedDb({ kind: "login", ip, email });
+            if (!gate.allowed) {
+              return null;
+            }
+          } catch (e) {
+            // Collapse to a generic failure to avoid leaking throttle state.
+            return null;
+          }
         }
 
         const user = await prisma.user.findUnique({
@@ -45,7 +58,9 @@ export const authOptions: NextAuthOptions = {
           console.log("[AUTH_DEBUG] email", email, "user?", !!user, "hasHash?", !!user?.passwordHash);
         }
         if (!user || !user.passwordHash) {
-          await recordLoginFailureDb({ ip, email });
+          if (isProd) {
+            await recordLoginFailureDb({ ip, email });
+          }
           return null;
         }
 
@@ -54,11 +69,15 @@ export const authOptions: NextAuthOptions = {
           console.log("[AUTH_DEBUG] bcrypt compare", isValid);
         }
         if (!isValid) {
-          await recordLoginFailureDb({ ip, email });
+          if (isProd) {
+            await recordLoginFailureDb({ ip, email });
+          }
           return null;
         }
 
-        await recordLoginSuccessDb({ ip, email });
+        if (isProd) {
+          await recordLoginSuccessDb({ ip, email });
+        }
 
         return {
           id: user.id,
@@ -80,6 +99,15 @@ export const authOptions: NextAuthOptions = {
         (session.user as any).id = token.id as string;
       }
       return session;
+    },
+  },
+  events: {
+    async signIn() {
+      if (!isProd && !(process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET)) {
+        console.warn(
+          "[auth] Missing AUTH_SECRET/NEXTAUTH_SECRET in dev. Sessions/CSRF can be flaky. Set a stable secret in .env.local."
+        );
+      }
     },
   },
 };
