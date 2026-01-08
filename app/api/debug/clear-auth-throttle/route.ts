@@ -16,13 +16,13 @@ function getPrisma() {
 }
 
 export async function POST(req: NextRequest) {
-  if (process.env.NODE_ENV === "production") {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (cfg.raw("NODE_ENV") === "production") {
+    return NextResponse.json({ error: "Not available in production" }, { status: 404 });
   }
 
-  const token = req.headers.get("x-debug-admin-token") || "";
-  const expected = cfg.raw("DEBUG_ADMIN_TOKEN") || "";
-  if (!expected || token !== expected) return unauthorized();
+  const token = req.headers.get("x-debug-admin-token") ?? "";
+  const adminToken = cfg.raw("DEBUG_ADMIN_TOKEN") ?? "";
+  if (!adminToken || token !== adminToken) return unauthorized();
 
   const body = await req.json().catch(() => ({}));
   const email = String(body?.email || "").trim().toLowerCase();

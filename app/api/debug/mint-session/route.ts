@@ -21,13 +21,13 @@ function unauthorized() {
 
 export async function POST(req: NextRequest) {
   // Hard block in production regardless of env mistakes.
-  if (process.env.NODE_ENV === "production") {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (cfg.raw("NODE_ENV") === "production") {
+    return NextResponse.json({ error: "Not available in production" }, { status: 404 });
   }
 
-  const token = req.headers.get("x-debug-admin-token") || "";
-  const expected = cfg.raw("DEBUG_ADMIN_TOKEN") || "";
-  if (!expected || token !== expected) return unauthorized();
+  const token = req.headers.get("x-debug-admin-token") ?? "";
+  const adminToken = cfg.raw("DEBUG_ADMIN_TOKEN") ?? "";
+  if (!adminToken || token !== adminToken) return unauthorized();
 
   const body = await req.json().catch(() => ({}));
   const userId = String(body?.userId || "");
@@ -48,19 +48,9 @@ export async function POST(req: NextRequest) {
 
   // Use the exact secret NextAuth is configured with.
   // NextAuth commonly uses AUTH_SECRET/secret in authOptions, not NEXTAUTH_SECRET.
-  const secret =
-    // @ts-expect-error next-auth typing doesn't always expose it well
-    (authOptions?.secret as string | undefined) ||
-    process.env.AUTH_SECRET ||
-    cfg.raw("AUTH_SECRET") ||
-    process.env.NEXTAUTH_SECRET ||
-    cfg.raw("NEXTAUTH_SECRET") ||
-    "";
+  const secret = cfg.raw("NEXTAUTH_SECRET") || cfg.raw("AUTH_SECRET") || "";
   if (!secret || typeof secret !== "string") {
-    return NextResponse.json(
-      { error: "Auth secret not set (authOptions.secret/AUTH_SECRET/NEXTAUTH_SECRET)" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Missing auth secret" }, { status: 500 });
   }
 
   // Derive cookie name from actual NextAuth config if customized.
