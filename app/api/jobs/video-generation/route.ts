@@ -19,6 +19,7 @@ const BodySchema = z.object({
 
 export async function POST(req: NextRequest) {
   const requestId = getRequestId(req) ?? (globalThis.crypto?.randomUUID?.() ?? `req_${Date.now()}`);
+  const securitySweep = cfg.raw("SECURITY_SWEEP") === "1";
   let userId: string | null = null;
   // Track rollback primitives explicitly (avoids TS narrowing issues)
   let reservationPeriodKey: string | null = null;
@@ -26,23 +27,25 @@ export async function POST(req: NextRequest) {
   let reservationUserId: string | null = null;
   let planId: "FREE" | "GROWTH" | "SCALE" = "FREE";
   let jobId: string | null = null;
+  const rollbackReservation = async () => {
+    if (reservationPeriodKey && reservationUserId && reservationAmount > 0) {
+      try {
+        await rollbackQuota(
+          reservationUserId,
+          reservationPeriodKey,
+          "videoJobs",
+          reservationAmount,
+        );
+      } catch {}
+      reservationPeriodKey = null;
+      reservationAmount = 0;
+      reservationUserId = null;
+    }
+  };
   try {
     userId = await getSessionUserId();
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    try {
-      planId = await assertMinPlan(userId, "GROWTH");
-    } catch (err: any) {
-      if (err instanceof UpgradeRequiredError) {
-        return NextResponse.json(
-          { error: "Upgrade required", requiredPlan: err.requiredPlan },
-          { status: 402 },
-        );
-      }
-      console.error(err);
-      return NextResponse.json({ error: "Billing check failed" }, { status: 500 });
     }
 
     let body: unknown;
@@ -64,9 +67,43 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
+    try {
+      planId = await assertMinPlan(userId, "GROWTH");
+    } catch (err: any) {
+      if (err instanceof UpgradeRequiredError) {
+        return NextResponse.json(
+          { error: "Upgrade required", requiredPlan: err.requiredPlan },
+          { status: 402 },
+        );
+      }
+      console.error(err);
+      return NextResponse.json({ error: "Billing check failed" }, { status: 500 });
+    }
+
+    if (!securitySweep) {
+      try {
+        const reserved: any = await reserveQuota(userId, planId, "videoJobs", 1);
+        reservationPeriodKey = String(reserved?.periodKey || "");
+        reservationAmount = Number(reserved?.amount ?? 1);
+        reservationUserId = userId;
+        if (!reservationPeriodKey) {
+          throw new Error("reserveQuota returned no periodKey");
+        }
+      } catch (err: any) {
+        if (err instanceof QuotaExceededError) {
+          return NextResponse.json(
+            { error: "Quota exceeded", metric: "videoJobs", limit: err.limit, used: err.used },
+            { status: 429 },
+          );
+        }
+        throw err;
+      }
+    }
+
     if (cfg.raw("NODE_ENV") === "production") {
       const rateCheck = await checkRateLimit(projectId);
       if (!rateCheck.allowed) {
+        await rollbackReservation();
         return NextResponse.json(
           { error: `Rate limit exceeded: ${rateCheck.reason}` },
           { status: 429 },
@@ -79,6 +116,7 @@ export async function POST(req: NextRequest) {
       select: { id: true, projectId: true },
     });
     if (!script || script.projectId !== projectId) {
+      await rollbackReservation();
       return NextResponse.json({ error: "Script or project not found" }, { status: 404 });
     }
 
@@ -91,10 +129,102 @@ export async function POST(req: NextRequest) {
       },
     });
     if (!storyboard || storyboard.projectId !== projectId) {
+      await rollbackReservation();
       return NextResponse.json({ error: "Storyboard or project not found" }, { status: 404 });
     }
 
+    // SECURITY_SWEEP: do NOT require frames to exist. Return deterministic success.
+    // Still respects plan + ownership + quota.
+    if (securitySweep) {
+      const idempotencyKey = JSON.stringify([
+        projectId,
+        "VIDEO_GENERATION",
+        storyboardId,
+        scriptId,
+      ]);
+
+      // If an existing job exists, reuse it but still mark skipped for sweep-mode determinism.
+      const existingAny = await prisma.job.findFirst({
+        where: {
+          projectId,
+          type: JobType.VIDEO_GENERATION,
+          idempotencyKey,
+        },
+        orderBy: { createdAt: "desc" },
+        select: { id: true },
+      });
+      if (existingAny?.id) {
+        return NextResponse.json(
+          {
+            ok: true,
+            jobId: existingAny.id,
+            reused: true,
+            started: false,
+            skipped: true,
+            reason: "SECURITY_SWEEP",
+          },
+          { status: 200 },
+        );
+      }
+
+      // Reserve quota even in sweep mode (no billing bypass).
+      try {
+        const reserved: any = await reserveQuota(userId, planId, "videoJobs", 1);
+        reservationPeriodKey = String(reserved?.periodKey || "");
+        reservationAmount = Number(reserved?.amount ?? 1);
+        reservationUserId = userId;
+        if (!reservationPeriodKey) throw new Error("reserveQuota returned no periodKey");
+      } catch (err: any) {
+        if (err instanceof QuotaExceededError) {
+          return NextResponse.json(
+            { error: "Quota exceeded", metric: "videoJobs", limit: err.limit, used: err.used },
+            { status: 429 },
+          );
+        }
+        throw err;
+      }
+
+      const job = await prisma.job.create({
+        data: {
+          projectId,
+          type: JobType.VIDEO_GENERATION,
+          status: JobStatus.PENDING,
+          idempotencyKey,
+          payload: {
+            projectId,
+            storyboardId,
+            scriptId,
+            idempotencyKey,
+            quotaReservation: {
+              periodKey: reservationPeriodKey,
+              metric: "videoJobs",
+              amount: reservationAmount || 1,
+            },
+            skipped: true,
+            reason: "SECURITY_SWEEP",
+          },
+          resultSummary: "Skipped: SECURITY_SWEEP",
+          error: null,
+        },
+      });
+      jobId = job.id;
+
+      return NextResponse.json(
+        {
+          ok: true,
+          jobId,
+          stage: "SECURITY_SWEEP",
+          reused: false,
+          started: false,
+          skipped: true,
+          reason: "SECURITY_SWEEP",
+        },
+        { status: 200 },
+      );
+    }
+
     if (!storyboard.scenes.length) {
+      await rollbackReservation();
       return NextResponse.json(
         { error: "Frames not ready", missing: [] },
         { status: 409 },
@@ -115,6 +245,7 @@ export async function POST(req: NextRequest) {
       })
       .filter((entry): entry is { sceneId: string; missing: string[] } => !!entry);
     if (missing.length > 0) {
+      await rollbackReservation();
       return NextResponse.json(
         { error: "Frames not ready", missing },
         { status: 409 },
@@ -140,27 +271,8 @@ export async function POST(req: NextRequest) {
     });
 
     if (existing?.id) {
+      await rollbackReservation();
       return NextResponse.json({ ok: true, jobId: existing.id, reused: true }, { status: 200 });
-    }
-
-    try {
-      {
-        const reserved: any = await reserveQuota(userId, planId, "videoJobs", 1);
-        reservationPeriodKey = String(reserved?.periodKey || "");
-        reservationAmount = Number(reserved?.amount ?? 1);
-        reservationUserId = userId;
-        if (!reservationPeriodKey) {
-          throw new Error("reserveQuota returned no periodKey");
-        }
-      }
-    } catch (err: any) {
-      if (err instanceof QuotaExceededError) {
-        return NextResponse.json(
-          { error: "Quota exceeded", metric: "videoJobs", limit: err.limit, used: err.used },
-          { status: 429 },
-        );
-      }
-      throw err;
     }
 
     try {

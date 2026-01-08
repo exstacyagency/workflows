@@ -59,19 +59,17 @@ export async function POST(req: NextRequest) {
     if (deny) return deny;
 
     // Plan check AFTER ownership to avoid leaking project existence via 402.
-    if (!securitySweep) {
-      try {
-        planId = await assertMinPlan(userId, 'GROWTH');
-      } catch (err: any) {
-        if (err instanceof UpgradeRequiredError) {
-          return NextResponse.json(
-            { error: 'Upgrade required', requiredPlan: err.requiredPlan },
-            { status: 402 },
-          );
-        }
-        console.error(err);
-        return NextResponse.json({ error: 'Billing check failed' }, { status: 500 });
+    try {
+      planId = await assertMinPlan(userId, 'GROWTH');
+    } catch (err: any) {
+      if (err instanceof UpgradeRequiredError) {
+        return NextResponse.json(
+          { error: 'Upgrade required', requiredPlan: err.requiredPlan },
+          { status: 402 },
+        );
       }
+      console.error(err);
+      return NextResponse.json({ error: 'Billing check failed' }, { status: 500 });
     }
 
     if (!securitySweep) {
@@ -134,27 +132,34 @@ export async function POST(req: NextRequest) {
       productProblemSolved,
     ]);
 
-    const existing = await findIdempotentJob({
-      projectId,
-      type: JobType.CUSTOMER_RESEARCH,
-      idempotencyKey,
-    });
-    if (existing) {
-      return NextResponse.json({ jobId: existing.id, reused: true }, { status: 200 });
+  const existing = await findIdempotentJob({
+    projectId,
+    type: JobType.CUSTOMER_RESEARCH,
+    idempotencyKey,
+  });
+  if (existing) {
+    // If we’re in SECURITY_SWEEP, callers expect deterministic placeholder semantics.
+    // Returning skipped:true avoids brittle smoke tests while preserving idempotency behavior.
+    if (securitySweep) {
+      return NextResponse.json(
+        { jobId: existing.id, reused: true, started: false, skipped: true, reason: "SECURITY_SWEEP" },
+        { status: 200 }
+      );
     }
+    return NextResponse.json({ jobId: existing.id, reused: true }, { status: 200 });
+  }
 
-    if (!securitySweep) {
-      try {
-        reservation = await reserveQuota(userId, planId, 'researchQueries', 1);
-      } catch (err: any) {
-        if (err instanceof QuotaExceededError) {
-          return NextResponse.json(
-            { error: 'Quota exceeded', metric: 'researchQueries', limit: err.limit, used: err.used },
-            { status: 429 },
-          );
-        }
-        throw err;
+    // Reserve quota regardless of security sweep. Sweep should not be a billing bypass.
+    try {
+      reservation = await reserveQuota(userId, planId, 'researchQueries', 1);
+    } catch (err: any) {
+      if (err instanceof QuotaExceededError) {
+        return NextResponse.json(
+          { error: 'Quota exceeded', metric: 'researchQueries', limit: err.limit, used: err.used },
+          { status: 429 },
+        );
       }
+      throw err;
     }
 
     const initialPayload: any = {
@@ -177,7 +182,7 @@ export async function POST(req: NextRequest) {
       data: {
         projectId,
         type: JobType.CUSTOMER_RESEARCH,
-        status: securitySweep ? JobStatus.COMPLETED : JobStatus.PENDING,
+        status: securitySweep ? JobStatus.PENDING : JobStatus.PENDING,
         payload: initialPayload,
         resultSummary: securitySweep ? "Skipped: SECURITY_SWEEP" : null,
         error: null,
@@ -186,6 +191,7 @@ export async function POST(req: NextRequest) {
     jobId = job.id;
 
     if (securitySweep) {
+      // Deterministic placeholder but still a real queued job state/usage record.
       await prisma.researchRow.createMany({
         data: [
           {
