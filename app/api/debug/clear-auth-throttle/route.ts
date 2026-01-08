@@ -35,13 +35,9 @@ export async function POST(req: NextRequest) {
   // Clear any rows for this email. If your schema uses a different field name,
   // this will throw and you’ll need to tell me the actual columns.
   const result = await prisma.authThrottle.deleteMany({
-      where: {
-        OR: [
-          // common patterns
-          { identifier: email },
-          { key: email },
-        ],
-      },
+    where: {
+      identifier: email,
+    },
   });
 
   return NextResponse.json({ ok: true, deleted: result.count });
