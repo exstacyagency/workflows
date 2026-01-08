@@ -67,8 +67,7 @@ export async function POST(req: NextRequest) {
 
   // If authOptions defines custom jwt.encode, we MUST use it.
   // Otherwise NextAuth will reject the token and wipe the cookie.
-  // @ts-expect-error next-auth types are loose here
-  const customEncode = authOptions?.jwt?.encode;
+  const customEncode = (authOptions as any)?.jwt?.encode;
 
   const jwt =
     typeof customEncode === "function"
