@@ -7,77 +7,85 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+//////////////////////
+// CORE OWNERSHIP  //
+//////////////////////
+
 model User {
-  id               String        @id @default(cuid())
-  email            String        @unique
+  id               String   @id @default(cuid())
+  email            String   @unique
   name             String?
   passwordHash     String?
-  stripeCustomerId String?       @unique
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
-  auditLogs        AuditLog[]
+  stripeCustomerId String?  @unique
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
   projects         Project[]
+  auditLogs        AuditLog[]
   subscription     Subscription?
   usage            Usage[]
-}
 
-model RateLimitBucket {
-  /// Unique key like "video-generation:status:test_user:proj_test"
-  key         String   @id
-  windowStart DateTime
-  count       Int
-  updatedAt   DateTime @updatedAt
-
-  @@index([windowStart])
+  @@map("user")
 }
 
 model Project {
-  id                   String                @id @default(uuid())
-  name                 String
-  description          String?
-  createdAt            DateTime              @default(now())
-  updatedAt            DateTime              @updatedAt
-  userId               String
-  adAssets             AdAsset[]
-  adPatternReferences  AdPatternReference[]
-  adPatternResults     AdPatternResult[]
-  auditLogs            AuditLog[]
-  characters           Character[]
-  customerAvatars      CustomerAvatar[]
+  id          String   @id @default(uuid())
+  userId      String
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   jobs                 Job[]
-  productIntelligences ProductIntelligence[]
-  user                 User                  @relation(fields: [userId], references: [id])
-  researchRows         ResearchRow[]
   scripts              Script[]
   storyboards          Storyboard[]
+  characters           Character[]
+  researchRows         ResearchRow[]
+  adAssets             AdAsset[]
+  adPatternResults     AdPatternResult[]
+  adPatternReferences  AdPatternReference[]
+  customerAvatars      CustomerAvatar[]
+  productIntelligences ProductIntelligence[]
+  auditLogs            AuditLog[]
+
+  @@index([userId])
+  @@map("project")
 }
 
+//////////////////////
+// JOBS & LOGGING  //
+//////////////////////
+
 model Job {
-  id                   String                @id @default(uuid())
-  type                 JobType
-  status               JobStatus             @default(PENDING)
-  projectId            String
-  idempotencyKey       String?
-  payload              Json?
-  resultSummary        String?
-  error                String?
-  createdAt            DateTime              @default(now())
-  updatedAt            DateTime              @updatedAt
-  estimatedCost        Float?
-  actualCost           Float?
-  costBreakdown        Json?
-  adAssets             AdAsset[]
-  adPatternResults     AdPatternResult[]
-  auditLogs            AuditLog[]
-  characters           Character[]
-  customerAvatars      CustomerAvatar[]
-  project              Project               @relation(fields: [projectId], references: [id])
-  productIntelligences ProductIntelligence[]
-  researchRows         ResearchRow[]
-  scripts              Script[]
-  storyboards          Storyboard[]
+  id             String    @id @default(uuid())
+  projectId      String
+  type           JobType
+  status         JobStatus @default(PENDING)
+  idempotencyKey String?
+  payload        Json?
+  resultSummary  String?
+  error          String?
+  estimatedCost  Float?
+  actualCost     Float?
+  costBreakdown  Json?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  scripts          Script[]
+  storyboards      Storyboard[]
+  characters       Character[]
+  researchRows     ResearchRow[]
+  adAssets         AdAsset[]
+  adPatternResults AdPatternResult[]
+  auditLogs        AuditLog[]
 
   @@unique([projectId, type, idempotencyKey])
+  @@index([projectId])
+  @@map("job")
 }
 
 model AuditLog {
@@ -89,264 +97,222 @@ model AuditLog {
   metadata  Json?
   ip        String?
   createdAt DateTime @default(now())
-  job       Job?     @relation(fields: [jobId], references: [id])
-  project   Project? @relation(fields: [projectId], references: [id])
-  user      User?    @relation(fields: [userId], references: [id])
+
+  user    User?    @relation(fields: [userId], references: [id])
+  project Project? @relation(fields: [projectId], references: [id])
+  job     Job?     @relation(fields: [jobId], references: [id])
+
+  @@index([userId])
+  @@index([projectId])
+  @@index([jobId])
+  @@map("audit_log")
 }
+
+//////////////////////
+// DOMAIN TABLES   //
+//////////////////////
 
 model ResearchRow {
   id         String         @id @default(uuid())
   projectId  String
   jobId      String?
   source     ResearchSource
-  indexLabel String?
-  title      String?
   content    String
-  sentiment  Float?
-  importance Int?
-  rating     Float?
-  verified   Boolean?
-  sourceUrl  String?
   metadata   Json?
   createdAt  DateTime       @default(now())
-  job        Job?           @relation(fields: [jobId], references: [id])
-  project    Project        @relation(fields: [projectId], references: [id])
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  job     Job?    @relation(fields: [jobId], references: [id])
+
+  @@index([projectId])
+  @@map("research_row")
 }
 
-model AdAsset {
-  id         String     @id @default(uuid())
-  projectId  String
-  jobId      String?
-  platform   AdPlatform
-  url        String
-  metrics    Json?
-  transcript String?
-  ocr        Json?
-  createdAt  DateTime   @default(now())
-  job        Job?       @relation(fields: [jobId], references: [id])
-  project    Project    @relation(fields: [projectId], references: [id])
+model Script {
+  id        String   @id @default(uuid())
+  projectId String
+  jobId     String?
+  rawJson   Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  job     Job?    @relation(fields: [jobId], references: [id])
+
+  storyboards Storyboard[]
+
+  @@index([projectId])
+  @@map("script")
 }
 
-model AdPatternResult {
-  id                  String               @id @default(uuid())
-  projectId           String
-  jobId               String?
-  rawJson             Json
-  baselineRetention3s Float?
-  baselineCtr         Float?
-  totalConverters     Int?
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
-  patternReferences   AdPatternReference[]
-  job                 Job?                 @relation(fields: [jobId], references: [id])
-  project             Project              @relation(fields: [projectId], references: [id])
+model Storyboard {
+  id        String   @id @default(uuid())
+  projectId String
+  jobId     String?
+  scriptId  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  job     Job?    @relation(fields: [jobId], references: [id])
+  script  Script? @relation(fields: [scriptId], references: [id])
+
+  scenes StoryboardScene[]
+
+  @@index([projectId])
+  @@map("storyboard")
 }
 
-model AdPatternReference {
-  id                   String          @id @default(uuid())
-  projectId            String
-  resultId             String
-  patternName          String
-  category             String
-  timing               String
-  description          String
-  example              String
-  exampleTimestamp     Int?
-  visualNotes          String
-  occurrenceRate       Float?
-  sampleCount          Int?
-  performanceLift      String
-  productionComplexity String?
-  standaloneViable     Boolean?
-  canCoexist           Boolean?
-  createdAt            DateTime        @default(now())
-  project              Project         @relation(fields: [projectId], references: [id])
-  result               AdPatternResult @relation(fields: [resultId], references: [id])
+model StoryboardScene {
+  id           String   @id @default(uuid())
+  storyboardId String
+  sceneNumber  Int
+  rawJson      Json?
+  status       String   @default("pending")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  storyboard Storyboard @relation(fields: [storyboardId], references: [id], onDelete: Cascade)
+
+  @@index([storyboardId])
+  @@map("storyboard_scene")
 }
 
-model CustomerAvatar {
-  id          String    @id @default(uuid())
-  projectId   String
-  jobId       String?
-  rawJson     Json
-  age         Int?
-  gender      String?
-  income      Int?
-  jobTitle    String?
-  location    String?
-  ethnicity   String?
-  primaryPain String?
-  primaryGoal String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  archivedAt  DateTime?
-  job         Job?      @relation(fields: [jobId], references: [id])
-  project     Project   @relation(fields: [projectId], references: [id])
-}
-
-model ProductIntelligence {
-  id              String    @id @default(uuid())
-  projectId       String
-  jobId           String?
-  rawJson         Json
-  heroIngredient  String?
-  heroMechanism   String?
-  form            String?
-  initialTimeline String?
-  peakTimeline    String?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  archivedAt      DateTime?
-  job             Job?      @relation(fields: [jobId], references: [id])
-  project         Project   @relation(fields: [projectId], references: [id])
-}
+//////////////////////
+// ADDITIONAL DOMAIN //
+//////////////////////
 
 model Character {
   id        String   @id @default(uuid())
   projectId String
   jobId     String?
-  gender    String
-  age       Int?
-  ethnicity String?
-  face      String?
-  skin      String?
-  hair      String?
-  eyes      String?
-  build     String?
-  height    String?
-  rawJson   Json
+  name      String?
+  metadata  Json?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  job       Job?     @relation(fields: [jobId], references: [id])
-  project   Project  @relation(fields: [projectId], references: [id])
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  job     Job?    @relation(fields: [jobId], references: [id])
+
+  @@index([projectId])
+  @@map("character")
 }
 
-model Script {
-  id               String       @id @default(uuid())
-  projectId        String
-  jobId            String?
-  rawJson          Json
-  wordCount        Int?
-  mergedVideoUrl   String?
-  status           String?
-  upscaledVideoUrl String?
-  upscaleError     String?
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
-  job              Job?         @relation(fields: [jobId], references: [id])
-  project          Project      @relation(fields: [projectId], references: [id])
-  storyboards      Storyboard[]
-}
-
-model Storyboard {
-  id        String            @id @default(uuid())
+model AdAsset {
+  id        String     @id @default(uuid())
   projectId String
   jobId     String?
-  scriptId  String?
-  label     String?
-  createdAt DateTime          @default(now())
-  updatedAt DateTime          @updatedAt
-  job       Job?              @relation(fields: [jobId], references: [id])
-  project   Project           @relation(fields: [projectId], references: [id])
-  script    Script?           @relation(fields: [scriptId], references: [id])
-  scenes    StoryboardScene[]
+  platform  AdPlatform
+  rawJson   Json
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  job     Job?    @relation(fields: [jobId], references: [id])
+
+  @@index([projectId])
+  @@map("ad_asset")
 }
 
-model StoryboardScene {
-  id            String     @id @default(uuid())
-  storyboardId  String
-  sceneNumber   Int
-  durationSec   Int
-  aspectRatio   String
-  sceneFull     String
-  rawJson       Json?
-  status        String     @default("pending")
-  firstFrameUrl String?
-  lastFrameUrl  String?
-  videoPrompt   String?
-  videoUrl      String?
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
-  storyboard    Storyboard @relation(fields: [storyboardId], references: [id])
+model AdPatternResult {
+  id        String   @id @default(uuid())
+  projectId String
+  jobId     String?
+  summary   String?
+  rawJson   Json?
+  createdAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  job     Job?    @relation(fields: [jobId], references: [id])
+
+  @@index([projectId])
+  @@map("ad_pattern_result")
 }
 
-model Plan {
-  id                 String  @id @default(cuid())
-  name               String  @unique
-  description        String?
-  maxJobsPerDay      Int
-  maxVideoJobsPerDay Int
-  maxMonthlyUsage    Int
+model AdPatternReference {
+  id        String   @id @default(uuid())
+  projectId String
+  source    String
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@map("ad_pattern_reference")
 }
+
+model CustomerAvatar {
+  id        String   @id @default(uuid())
+  projectId String
+  name      String?
+  persona   Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@map("customer_avatar")
+}
+
+model ProductIntelligence {
+  id        String   @id @default(uuid())
+  projectId String
+  insights  Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@map("product_intelligence")
+}
+
+//////////////////////
+// BILLING / AUTH  //
+//////////////////////
 
 model Subscription {
-  id                   String    @id @default(cuid())
-  userId               String    @unique
-  planId               PlanId
-  status               String    @default("active")
-  stripeCustomerId     String?
-  stripeSubscriptionId String?
-  stripePriceId        String?
-  currentPeriodEnd     DateTime?
-  cancelAtPeriodEnd    Boolean   @default(false)
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
-  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id       String  @id @default(cuid())
+  userId   String  @unique
+  planId   PlanId
+  status   String  @default("active")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("subscription")
 }
 
 model Usage {
-  id            String   @id @default(cuid())
-  userId        String
-  period        DateTime
-  jobsUsed      Int      @default(0)
-  videoJobsUsed Int      @default(0)
-  tokensUsed    Int      @default(0)
-  user          User     @relation(fields: [userId], references: [id])
+  id       String   @id @default(cuid())
+  userId   String
+  period   DateTime
+  jobsUsed Int      @default(0)
+
+  user User @relation(fields: [userId], references: [id])
 
   @@unique([userId, period])
+  @@map("usage")
 }
 
-model BillingEvent {
-  id                   String   @id @default(cuid())
-  stripeEventId        String   @unique
-  type                 String
-  stripeCustomerId     String?
-  stripeSubscriptionId String?
-  userId               String?
-  payloadJson          Json
-  createdAt            DateTime @default(now())
-}
-
-model AuthThrottle {
-  id          String    @id @default(cuid())
-  kind        String
-  scope       String
-  identifier  String
-  count       Int       @default(0)
-  resetAt     DateTime
-  lockedUntil DateTime?
-  updatedAt   DateTime  @updatedAt
-  createdAt   DateTime  @default(now())
-
-  @@unique([kind, scope, identifier], name: "auth_throttle_key")
-  @@index([resetAt])
-  @@index([lockedUntil])
-}
+//////////////////////
+// ENUMS          //
+//////////////////////
 
 enum JobType {
   CUSTOMER_RESEARCH
-  AD_PERFORMANCE
-  AD_TRANSCRIPTS
-  PATTERN_ANALYSIS
   SCRIPT_GENERATION
   STORYBOARD_GENERATION
-  CUSTOMER_ANALYSIS
-  CHARACTER_GENERATION
-  VIDEO_IMAGE_GENERATION
-  VIDEO_PROMPT_GENERATION
   VIDEO_GENERATION
-  VIDEO_REVIEW
-  VIDEO_UPSCALER
+}
+
+enum ResearchSource {
+  REDDIT
+  AMAZON
+  G2
 }
 
 enum JobStatus {
@@ -360,14 +326,6 @@ enum PlanId {
   FREE
   GROWTH
   SCALE
-}
-
-enum ResearchSource {
-  REDDIT_PRODUCT
-  REDDIT_PROBLEM
-  AMAZON
-  G2
-  LOCAL_BUSINESS
 }
 
 enum AdPlatform {
