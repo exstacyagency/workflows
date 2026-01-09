@@ -21,8 +21,18 @@ jobs:
       - name: Install
         run: npm ci
 
+      - name: Contract bump guard (requires FREEZE_OVERRIDE=1)
+        env:
+          FREEZE_OVERRIDE: ${{ vars.FREEZE_OVERRIDE || '' }}
+        run: npm run contract:bump-check
+
       - name: Freeze guard
+        env:
+          FREEZE_OVERRIDE: ${{ vars.FREEZE_OVERRIDE || '' }}
         run: npm run freeze:check
+
+      - name: Freeze docs guard
+        run: npm run freeze:docs
 
       - name: Routes manifest check
         run: npm run routes:check

@@ -18,7 +18,6 @@ export async function POST(req: NextRequest) {
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-  const securitySweep = cfg.raw("SECURITY_SWEEP") === "1";
   let projectId: string | null = null;
   let jobId: string | null = null;
   let reservation: { periodKey: string; metric: string; amount: number } | null =
@@ -26,6 +25,19 @@ export async function POST(req: NextRequest) {
   const ip =
     req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null;
   let planId: 'FREE' | 'GROWTH' | 'SCALE' = 'FREE';
+
+  try {
+    planId = await assertMinPlan(userId, 'SCALE');
+  } catch (err: any) {
+    if (err instanceof UpgradeRequiredError) {
+      return NextResponse.json(
+        { error: 'Upgrade required', requiredPlan: err.requiredPlan },
+        { status: 402 },
+      );
+    }
+    console.error(err);
+    return NextResponse.json({ error: 'Billing check failed' }, { status: 500 });
+  }
 
   try {
     const parsed = await parseJson(req, StoryboardJobSchema);
@@ -39,47 +51,35 @@ export async function POST(req: NextRequest) {
 
     const storyboard = await prisma.storyboard.findUnique({
       where: { id: storyboardId },
-      select: { id: true, projectId: true },
+      include: {
+        script: {
+          include: { project: true },
+        },
+      },
     });
 
-    // Storyboard already has projectId; do not require storyboard.script.project.
-    if (!storyboard?.projectId) {
+    if (!storyboard || !storyboard.script?.project) {
       return NextResponse.json(
         { error: 'Storyboard or project not found' },
         { status: 404 },
       );
     }
 
-    projectId = storyboard.projectId;
+    projectId = storyboard.script.project.id;
     const auth = await requireProjectOwner(projectId);
     if (auth.error) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
-    // Plan gate AFTER ownership to avoid leaking project existence via 402.
-    try {
-      planId = await assertMinPlan(userId, 'SCALE');
-    } catch (err: any) {
-      if (err instanceof UpgradeRequiredError) {
-        return NextResponse.json(
-          { error: 'Upgrade required', requiredPlan: err.requiredPlan },
-          { status: 402 },
-        );
-      }
-      console.error(err);
-      return NextResponse.json({ error: 'Billing check failed' }, { status: 500 });
+    const concurrency = await enforceUserConcurrency(userId);
+    if (!concurrency.allowed) {
+      return NextResponse.json(
+        { error: concurrency.reason },
+        { status: 429 },
+      );
     }
 
-    // SECURITY_SWEEP should not be blocked by concurrency.
-    if (!securitySweep) {
-      const concurrency = await enforceUserConcurrency(userId);
-      if (!concurrency.allowed) {
-        return NextResponse.json({ error: concurrency.reason }, { status: 429 });
-      }
-    }
-
-    // SECURITY_SWEEP should not require vendor keys.
-    if (!securitySweep && !cfg.raw("FAL_API_KEY")) {
+    if (!cfg.raw("FAL_API_KEY")) {
       return NextResponse.json(
         { error: 'FAL is not configured' },
         { status: 500 },
@@ -107,12 +107,6 @@ export async function POST(req: NextRequest) {
       idempotencyKey,
     });
     if (existing) {
-      if (securitySweep) {
-        return NextResponse.json(
-          { jobId: existing.id, reused: true, started: false, skipped: true, reason: "SECURITY_SWEEP" },
-          { status: 200 },
-        );
-      }
       return NextResponse.json({ jobId: existing.id, reused: true }, { status: 200 });
     }
 
@@ -134,27 +128,9 @@ export async function POST(req: NextRequest) {
         type: JobType.VIDEO_REVIEW,
         status: JobStatus.PENDING,
         payload: { storyboardId, idempotencyKey },
-        resultSummary: securitySweep ? "Skipped: SECURITY_SWEEP" : null,
-        error: null,
       },
     });
     jobId = job.id;
-
-    // SECURITY_SWEEP: after plan+quota+job record, do not call vendor.
-    if (securitySweep) {
-      await logAudit({
-        userId,
-        projectId,
-        jobId,
-        action: 'job.create',
-        ip,
-        metadata: { type: 'video-reviewer', skipped: true, reason: 'SECURITY_SWEEP' },
-      });
-      return NextResponse.json(
-        { ok: true, jobId, started: false, skipped: true, reason: "SECURITY_SWEEP" },
-        { status: 200 },
-      );
-    }
 
     await prisma.job.update({
       where: { id: job.id },
