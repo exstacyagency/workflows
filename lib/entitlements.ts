@@ -37,10 +37,15 @@ export type Account = {
   usage: AccountUsage;
 };
 
+export type EntitlementLimits = {
+  maxActiveCampaigns?: number;
+  monthlySpendCap?: number;
+};
+
 export type EntitlementResult = {
   allowed: boolean;
   reason?: string;
-  limits?: Record<string, number>;
+  limits?: EntitlementLimits;
 };
 
 /**
@@ -51,7 +56,12 @@ export function checkEntitlement(input: {
   account: Account;
   action: EntitlementAction;
 }): EntitlementResult {
-  const { account, action } = input;
+  const { user, account, action } = input;
+
+  // Hard admin override (used for support, migrations, recovery)
+  if (user.role === "admin") {
+    return { allowed: true };
+  }
 
   // Enterprise tier is unrestricted by default
   if (account.tier === "enterprise") {
@@ -65,11 +75,10 @@ export function checkEntitlement(input: {
     case "pro":
       return checkProTier(account, action);
 
-    default:
-      return {
-        allowed: false,
-        reason: "Unknown account tier",
-      };
+    default: {
+      const _exhaustive: never = account.tier;
+      return deny("Unknown account tier");
+    }
   }
 }
 
@@ -84,12 +93,11 @@ function checkFreeTier(
   switch (action) {
     case "campaign:create":
       if (account.usage.activeCampaigns >= 1) {
-        return deny(
-          "Free tier allows only 1 active campaign",
-          { activeCampaigns: 1 }
-        );
+        return deny("Free tier allows only 1 active campaign", {
+          maxActiveCampaigns: 1,
+        });
       }
-      return allow({ activeCampaigns: 1 });
+      return allow({ maxActiveCampaigns: 1 });
 
     case "campaign:activate":
       return allow();
@@ -102,15 +110,16 @@ function checkFreeTier(
 
     case "spend:apply":
       if (account.usage.monthlySpend >= 50) {
-        return deny(
-          "Monthly spend limit reached for free tier",
-          { monthlySpend: 50 }
-        );
+        return deny("Monthly spend limit reached for free tier", {
+          monthlySpendCap: 50,
+        });
       }
-      return allow({ monthlySpend: 50 });
+      return allow({ monthlySpendCap: 50 });
 
-    default:
+    default: {
+      const _exhaustive: never = action;
       return deny("Action not permitted on free tier");
+    }
   }
 }
 
@@ -121,12 +130,11 @@ function checkProTier(
   switch (action) {
     case "campaign:create":
       if (account.usage.activeCampaigns >= 10) {
-        return deny(
-          "Pro tier allows up to 10 active campaigns",
-          { activeCampaigns: 10 }
-        );
+        return deny("Pro tier allows up to 10 active campaigns", {
+          maxActiveCampaigns: 10,
+        });
       }
-      return allow({ activeCampaigns: 10 });
+      return allow({ maxActiveCampaigns: 10 });
 
     case "campaign:activate":
       return allow();
@@ -139,15 +147,16 @@ function checkProTier(
 
     case "spend:apply":
       if (account.usage.monthlySpend >= 1000) {
-        return deny(
-          "Monthly spend limit reached for pro tier",
-          { monthlySpend: 1000 }
-        );
+        return deny("Monthly spend limit reached for pro tier", {
+          monthlySpendCap: 1000,
+        });
       }
-      return allow({ monthlySpend: 1000 });
+      return allow({ monthlySpendCap: 1000 });
 
-    default:
+    default: {
+      const _exhaustive: never = action;
       return deny("Action not permitted on pro tier");
+    }
   }
 }
 
@@ -155,16 +164,11 @@ function checkProTier(
 /*                               HELPERS                                      */
 /* -------------------------------------------------------------------------- */
 
-function allow(limits?: Record<string, number>): EntitlementResult {
-  return limits
-    ? { allowed: true, limits }
-    : { allowed: true };
+function allow(limits?: EntitlementLimits): EntitlementResult {
+  return limits ? { allowed: true, limits } : { allowed: true };
 }
 
-function deny(
-  reason: string,
-  limits?: Record<string, number>
-): EntitlementResult {
+function deny(reason: string, limits?: EntitlementLimits): EntitlementResult {
   return limits
     ? { allowed: false, reason, limits }
     : { allowed: false, reason };
