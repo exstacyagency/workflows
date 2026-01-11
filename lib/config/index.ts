@@ -15,15 +15,10 @@ export const cfg = {
   },
 };
 
-// ─────────────────────────────────────────────────────────────
-// Hard safety: SECURITY_SWEEP must never be enabled in real prod.
+// Hard safety: SECURITY_SWEEP must never be enabled in production.
 // CI often runs with NODE_ENV=production; allow sweep in CI only.
-// ─────────────────────────────────────────────────────────────
-
 const isProd = cfg.raw("NODE_ENV") === "production";
-const isCI =
-  cfg.raw("CI") === "true" ||
-  cfg.raw("GITHUB_ACTIONS") === "true";
+const isCI = cfg.raw("CI") === "true" || cfg.raw("GITHUB_ACTIONS") === "true";
 
 if (isProd && !isCI && cfg.raw("SECURITY_SWEEP") === "1") {
   throw new Error("SECURITY_SWEEP must not be enabled in production");
