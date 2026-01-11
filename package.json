@@ -31,7 +31,7 @@
     "dev:auth:reset": "node scripts/dev_auth_reset.mjs attacker@local.dev Attacker123",
     "dev": "next dev",
     "dev:with-env": "bash scripts/run_dev.sh",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "start": "next start",
     "lint": "echo \"lint skipped (temporary unblock)\"",
     "prisma:generate": "prisma generate",

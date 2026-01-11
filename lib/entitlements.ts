@@ -1,84 +1,42 @@
-import { prisma } from "./prisma";
-import { cfg } from "./config";
+import { prisma } from "@/lib/prisma";
+import { cfg } from "@/lib/config";
+import { AccountTier } from "@prisma/client";
 
-export type EntitlementAction =
-  | "campaign.create"
-  | "campaign.activate"
-  | "job.enqueue"
-  | "analytics.read";
+export type EntitlementAction = "campaign.create";
 
-export type EntitlementResult = {
-  allowed: boolean;
-  reason?: string;
-  limits?: Record<string, number>;
-};
-
-type EntitlementInput = {
-  user: { id: string };
-  account: { id: string; tier: string; spendCap: number };
+type AssertEntitledInput = {
+  userId: string;
+  account: { id: string; tier: AccountTier };
   action: EntitlementAction;
 };
 
-export async function checkEntitlement(
-  input: EntitlementInput,
-): Promise<EntitlementResult> {
-  const { account, action } = input;
+export async function assertEntitled(
+  opts: AssertEntitledInput,
+): Promise<void> {
+  const { account, action } = opts;
 
-  // 🔒 Global panic switch
   if (cfg.raw("PANIC_DISABLE_ALL") === "true") {
-    return {
-      allowed: false,
-      reason: "SYSTEM_DISABLED",
-    };
+    throw new Error("SYSTEM_DISABLED");
   }
 
-  // ===== FREE TIER =====
-  if (account.tier === "FREE") {
-    if (action === "campaign.create") {
-      const count = await prisma.campaign.count({
-        where: { accountId: account.id },
-      });
+  switch (account.tier) {
+    case AccountTier.FREE: {
+      if (action === "campaign.create") {
+        const count = await prisma.campaign.count({
+          where: {
+            accountId: account.id,
+          },
+        });
 
-      if (count >= 1) {
-        return {
-          allowed: false,
-          reason: "FREE_CAMPAIGN_LIMIT_REACHED",
-          limits: { maxCampaigns: 1 },
-        };
+        if (count >= 1) {
+          throw new Error("FREE tier accounts may only create one campaign");
+        }
       }
+
+      break;
     }
 
-    if (action === "job.enqueue") {
-      return {
-        allowed: false,
-        reason: "FREE_JOBS_DISABLED",
-      };
-    }
-
-    if (action === "analytics.read") {
-      return {
-        allowed: false,
-        reason: "UPGRADE_REQUIRED",
-      };
-    }
+    default:
+      break;
   }
-
-  // ===== PAID TIERS =====
-  if (action === "campaign.activate") {
-    const activeCount = await prisma.campaign.count({
-      where: {
-        accountId: account.id,
-      },
-    });
-
-    if (activeCount >= 5) {
-      return {
-        allowed: false,
-        reason: "ACTIVE_CAMPAIGN_LIMIT",
-        limits: { maxActiveCampaigns: 5 },
-      };
-    }
-  }
-
-  return { allowed: true };
 }

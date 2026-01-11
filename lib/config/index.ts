@@ -18,7 +18,8 @@ export const cfg = {
 // CI often runs with NODE_ENV=production; allow sweep in CI only.
 const isProd = cfg.raw("NODE_ENV") === "production";
 const isCI = cfg.raw("CI") === "true" || cfg.raw("GITHUB_ACTIONS") === "true";
+const isNextBuild = cfg.raw("NEXT_PHASE") === "phase-production-build";
 
-if (isProd && !isCI && cfg.raw("SECURITY_SWEEP") === "1") {
+if (!isNextBuild && isProd && !isCI && cfg.raw("SECURITY_SWEEP") === "1") {
   throw new Error("SECURITY_SWEEP must not be enabled in production");
 }
