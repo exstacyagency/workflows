@@ -33,7 +33,7 @@
     "dev:with-env": "bash scripts/run_dev.sh",
     "build": "prisma generate && next build",
     "start": "next start",
-    "lint": "echo \"lint skipped (temporary unblock)\"",
+    "lint": "next lint",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev --name init",
     "rls:enable": "npx prisma db execute --file scripts/enable_rls.sql",
