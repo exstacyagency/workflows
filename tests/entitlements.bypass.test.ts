@@ -24,6 +24,13 @@ describe("Entitlement gate – bypass prevention", () => {
       },
     });
     userId = user.id;
+
+    await prisma.campaign.create({
+      data: {
+        accountId,
+        name: "Seed campaign",
+      },
+    });
   });
 
   afterAll(async () => {
@@ -35,7 +42,7 @@ describe("Entitlement gate – bypass prevention", () => {
     await prisma.account.deleteMany({ where: { id: accountId } });
   });
 
-  it("denies campaign creation for FREE tier and performs no mutation", async () => {
+  it("denies campaign creation after hitting FREE tier cap and performs no mutation", async () => {
     const beforeCount = await prisma.campaign.count({
       where: { accountId },
     });

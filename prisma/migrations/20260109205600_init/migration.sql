@@ -32,12 +32,27 @@ BEGIN
       EXECUTE $$CREATE TYPE "ScriptStatus" AS ENUM ('seeded', 'PENDING', 'READY', 'upscaled', 'upscale_pending', 'upscale_failed')$$;
     END IF;
 
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'AccountTier') THEN
+      EXECUTE $$CREATE TYPE "AccountTier" AS ENUM ('FREE', 'GROWTH', 'SCALE')$$;
+    END IF;
+
+    EXECUTE $$CREATE TABLE "account" (
+      "id" TEXT NOT NULL,
+      "tier" "AccountTier" NOT NULL DEFAULT 'FREE',
+      "spend" INTEGER NOT NULL DEFAULT 0,
+      "spendCap" INTEGER NOT NULL DEFAULT 0,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" TIMESTAMP(3) NOT NULL,
+      CONSTRAINT "account_pkey" PRIMARY KEY ("id")
+    )$$;
+
     EXECUTE $$CREATE TABLE "user" (
       "id" TEXT NOT NULL,
       "email" TEXT NOT NULL,
       "name" TEXT,
       "passwordHash" TEXT,
       "stripeCustomerId" TEXT,
+      "accountId" TEXT,
       "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "updatedAt" TIMESTAMP(3) NOT NULL,
       CONSTRAINT "user_pkey" PRIMARY KEY ("id")
@@ -206,8 +221,29 @@ BEGIN
       CONSTRAINT "usage_pkey" PRIMARY KEY ("id")
     )$$;
 
+    EXECUTE $$CREATE TABLE "campaign" (
+      "id" TEXT NOT NULL,
+      "accountId" TEXT NOT NULL,
+      "name" TEXT NOT NULL,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" TIMESTAMP(3) NOT NULL,
+      CONSTRAINT "campaign_pkey" PRIMARY KEY ("id")
+    )$$;
+
+    EXECUTE $$CREATE TABLE "spend_event" (
+      "id" TEXT NOT NULL,
+      "accountId" TEXT NOT NULL,
+      "amount" INTEGER NOT NULL,
+      "sourceId" TEXT NOT NULL,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "spend_event_pkey" PRIMARY KEY ("id"),
+      CONSTRAINT "spend_event_sourceId_key" UNIQUE ("sourceId")
+    )$$;
+
     EXECUTE $$CREATE UNIQUE INDEX "user_email_key" ON "user"("email")$$;
     EXECUTE $$CREATE UNIQUE INDEX "user_stripeCustomerId_key" ON "user"("stripeCustomerId")$$;
+    EXECUTE $$CREATE INDEX "campaign_accountId_idx" ON "campaign"("accountId")$$;
+    EXECUTE $$CREATE INDEX "spend_event_accountId_idx" ON "spend_event"("accountId")$$;
     EXECUTE $$CREATE INDEX "project_userId_idx" ON "project"("userId")$$;
     EXECUTE $$CREATE INDEX "job_projectId_idx" ON "job"("projectId")$$;
     EXECUTE $$CREATE UNIQUE INDEX "job_projectId_type_idempotencyKey_key" ON "job"("projectId", "type", "idempotencyKey")$$;
@@ -226,6 +262,7 @@ BEGIN
     EXECUTE $$CREATE UNIQUE INDEX "subscription_userId_key" ON "subscription"("userId")$$;
     EXECUTE $$CREATE UNIQUE INDEX "usage_userId_period_key" ON "usage"("userId", "period")$$;
 
+    EXECUTE $$ALTER TABLE "user" ADD CONSTRAINT "user_accountId_fkey" FOREIGN KEY ("accountId") REFERENCES "account"("id") ON DELETE SET NULL ON UPDATE CASCADE$$;
     EXECUTE $$ALTER TABLE "project" ADD CONSTRAINT "project_userId_fkey" FOREIGN KEY ("userId") REFERENCES "user"("id") ON DELETE CASCADE ON UPDATE CASCADE$$;
     EXECUTE $$ALTER TABLE "job" ADD CONSTRAINT "job_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "project"("id") ON DELETE CASCADE ON UPDATE CASCADE$$;
     EXECUTE $$ALTER TABLE "audit_log" ADD CONSTRAINT "audit_log_userId_fkey" FOREIGN KEY ("userId") REFERENCES "user"("id") ON DELETE SET NULL ON UPDATE CASCADE$$;
@@ -250,5 +287,7 @@ BEGIN
     EXECUTE $$ALTER TABLE "product_intelligence" ADD CONSTRAINT "product_intelligence_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "project"("id") ON DELETE CASCADE ON UPDATE CASCADE$$;
     EXECUTE $$ALTER TABLE "subscription" ADD CONSTRAINT "subscription_userId_fkey" FOREIGN KEY ("userId") REFERENCES "user"("id") ON DELETE CASCADE ON UPDATE CASCADE$$;
     EXECUTE $$ALTER TABLE "usage" ADD CONSTRAINT "usage_userId_fkey" FOREIGN KEY ("userId") REFERENCES "user"("id") ON DELETE RESTRICT ON UPDATE CASCADE$$;
+    EXECUTE $$ALTER TABLE "campaign" ADD CONSTRAINT "campaign_accountId_fkey" FOREIGN KEY ("accountId") REFERENCES "account"("id") ON DELETE CASCADE ON UPDATE CASCADE$$;
+    EXECUTE $$ALTER TABLE "spend_event" ADD CONSTRAINT "spend_event_accountId_fkey" FOREIGN KEY ("accountId") REFERENCES "account"("id") ON DELETE CASCADE ON UPDATE CASCADE$$;
   END IF;
 END $init$;
