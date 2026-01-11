@@ -45,6 +45,10 @@ function main() {
       "c86fb1337d6d04901e3618caf5745f4ca85e79cea9330dc5b56e6bf5cad71afc",
     "prisma/migrations/20260109205600_init/migration.sql":
       "7ae59599957e086cd5c258125a7eb553383eb813dbb5edb126d45fe4a0a8df19",
+    "prisma/migrations/20260111103000_add_account_campaigns/migration.sql":
+      "2a9da42206129abe98f978c38a51ac142342c8c0a5a2ac9fdb73811b6072e0aa",
+    "prisma/migrations/20260111112000_add_spend_event/migration.sql":
+      "1c7a1b68635b6629e2ee4ef8fa1c4349f2c5a96f4b48533129e73cc99ce773b5",
   };
 
   const rules: Rule[] = [

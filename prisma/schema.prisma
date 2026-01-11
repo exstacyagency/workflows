@@ -19,6 +19,8 @@ model User {
   stripeCustomerId String?  @unique
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+  accountId        String?
+  account          Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
 
   projects         Project[]
   auditLogs        AuditLog[]
@@ -52,6 +54,51 @@ model Project {
 
   @@index([userId])
   @@map("project")
+}
+
+//////////////////////
+// ACCOUNTS & CRM   //
+//////////////////////
+
+model Account {
+  id        String      @id @default(cuid())
+  tier      AccountTier @default(FREE)
+  spend     Int         @default(0)
+  spendCap  Int         @default(0)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  users     User[]
+  campaigns Campaign[]
+  spendEvents SpendEvent[]
+
+  @@map("account")
+}
+
+model Campaign {
+  id        String   @id @default(cuid())
+  accountId String
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId])
+  @@map("campaign")
+}
+
+model SpendEvent {
+  id        String   @id @default(cuid())
+  accountId String
+  amount    Int
+  sourceId  String   @unique
+  createdAt DateTime @default(now())
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId])
+  @@map("spend_event")
 }
 
 //////////////////////
@@ -334,6 +381,12 @@ enum JobStatus {
 }
 
 enum PlanId {
+  FREE
+  GROWTH
+  SCALE
+}
+
+enum AccountTier {
   FREE
   GROWTH
   SCALE
