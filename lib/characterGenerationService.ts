@@ -165,16 +165,8 @@ async function saveCharactersFromResponse(args: {
       data: {
         projectId,
         jobId,
-        gender,
-        rawJson: spec as any,
-        age: typeof spec.age === 'number' ? spec.age : null,
-        ethnicity: spec.ethnicity ?? null,
-        face: spec.face ?? null,
-        skin: spec.skin ?? null,
-        hair: spec.hair ?? null,
-        eyes: spec.eyes ?? null,
-        build: spec.build ?? null,
-        height: spec.height ?? null,
+        name: gender,
+        metadata: spec as any,
       },
     });
   };
@@ -216,7 +208,7 @@ export async function runCharacterGeneration(args: {
 
   const promptInfo = buildCharacterPrompt({
     productName,
-    customerAvatarJson: avatar.rawJson,
+    customerAvatarJson: (avatar as any).persona ?? {},
   });
 
   const responseText = await callAnthropic(

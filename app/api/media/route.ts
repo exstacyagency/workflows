@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionUserId } from '@/lib/getSessionUserId';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import { getSignedMediaUrl } from '@/lib/mediaStorage';
 import { getRequestId, logError, logInfo } from "@/lib/observability";
 
@@ -20,25 +20,31 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid key' }, { status: 400 });
   }
 
-  const scriptMatch = await prisma.script.findFirst({
-    where: {
-      project: { userId },
-      OR: [{ mergedVideoUrl: key }, { upscaledVideoUrl: key }],
-    },
-    select: { id: true },
+  // Some URL fields are stored in JSON (`rawJson`) or as optional columns.
+  // Use runtime checks instead of complex typed WHERE clauses to avoid Prisma typing mismatches.
+  const db: any = prisma;
+
+  const scriptRow = await db.script.findFirst({
+    where: { project: { userId } },
+    select: { id: true, mergedVideoUrl: true, upscaledVideoUrl: true, rawJson: true },
   });
 
-  const storyboardSceneMatch = scriptMatch
-    ? null
-    : await prisma.storyboardScene.findFirst({
-        where: {
-          videoUrl: key,
-          storyboard: {
-            project: { userId },
-          },
-        },
-        select: { id: true },
-      });
+  const scriptMatch = scriptRow && (scriptRow.mergedVideoUrl === key || scriptRow.upscaledVideoUrl === key)
+    ? { id: scriptRow.id }
+    : null;
+
+  let storyboardSceneMatch = null;
+  if (!scriptMatch) {
+    const scenes = await db.storyboardScene.findMany({
+      where: { storyboard: { project: { userId } } },
+      select: { id: true, rawJson: true },
+    });
+    const found = scenes.find((s: any) => {
+      const raw = s.rawJson ?? {};
+      return raw.videoUrl === key || raw.video_url === key;
+    });
+    storyboardSceneMatch = found ? { id: found.id } : null;
+  }
 
   const ownsKey = Boolean(scriptMatch || storyboardSceneMatch);
 

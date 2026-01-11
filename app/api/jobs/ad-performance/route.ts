@@ -1,250 +1,59 @@
-// app/api/jobs/ad-performance/route.ts
-import { cfg } from "@/lib/config";
-import { NextRequest, NextResponse } from 'next/server';
-import { startAdRawCollectionJob } from '../../../../lib/adRawCollectionService';
-import { prisma } from '../../../../lib/prisma';
-import { requireProjectOwner } from '../../../../lib/requireProjectOwner';
-import { ProjectJobSchema, parseJson } from '../../../../lib/validation/jobs';
-import { z } from 'zod';
-import { checkRateLimit } from '../../../../lib/rateLimiter';
-import { logAudit } from '../../../../lib/logger';
-import { getSessionUserId } from '../../../../lib/getSessionUserId';
-import { enforceUserConcurrency, findIdempotentJob } from '../../../../lib/jobGuards';
-import { JobStatus, JobType } from '@prisma/client';
-import { assertMinPlan, UpgradeRequiredError } from '../../../../lib/billing/requirePlan';
-import { reserveQuota, rollbackQuota, QuotaExceededError } from '../../../../lib/billing/usage';
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { getSessionUserId } from "@/lib/getSessionUserId";
+import { isSelfHosted } from "@/lib/config/mode";
+import { JobType } from "@prisma/client";
 
-const AdPerformanceSchema = ProjectJobSchema.extend({
-  industryCode: z.string().min(1, 'industryCode is required'),
-});
+export async function POST(req: Request) {
+  if (isSelfHosted()) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
 
-export async function POST(req: NextRequest) {
   const userId = await getSessionUserId();
   if (!userId) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const securitySweep = cfg.raw("SECURITY_SWEEP") === "1";
-  let projectId: string | null = null;
-  let jobId: string | null = null;
-  let reservation: { periodKey: string; metric: string; amount: number } | null =
-    null;
-  const ip =
-    req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null;
-  let planId: 'FREE' | 'GROWTH' | 'SCALE' = 'FREE';
 
-  try {
-    const parsed = await parseJson(req, AdPerformanceSchema);
-    if (!parsed.success) {
-      return NextResponse.json(
-        { error: parsed.error, details: parsed.details },
-        { status: 400 },
-      );
-    }
-    const { projectId: parsedProjectId, industryCode } = parsed.data;
-    projectId = parsedProjectId;
+  const body = await req.json();
+  const { projectId, industryCode } = body as {
+    projectId?: string;
+    industryCode?: string;
+  };
 
-    const auth = await requireProjectOwner(projectId);
-    if (auth.error) {
-      return NextResponse.json({ error: auth.error }, { status: auth.status });
-    }
-
-    try {
-      planId = await assertMinPlan(userId, 'GROWTH');
-    } catch (err: any) {
-      if (err instanceof UpgradeRequiredError) {
-        return NextResponse.json(
-          { error: 'Upgrade required', requiredPlan: err.requiredPlan },
-          { status: 402 },
-        );
-      }
-      console.error(err);
-      return NextResponse.json({ error: 'Billing check failed' }, { status: 500 });
-    }
-
-    // SECURITY_SWEEP should never be blocked by concurrency.
-    if (!securitySweep) {
-      const concurrency = await enforceUserConcurrency(userId);
-      if (!concurrency.allowed) {
-        return NextResponse.json(
-          { error: concurrency.reason },
-          { status: 429 },
-        );
-      }
-    }
-
-    const idempotencyKey = JSON.stringify([
-      projectId,
-      JobType.AD_PERFORMANCE,
-      industryCode,
-    ]);
-    const existing = await findIdempotentJob({
-      projectId,
-      type: JobType.AD_PERFORMANCE,
-      idempotencyKey,
-    });
-    if (existing) {
-      return NextResponse.json({ jobId: existing.id, reused: true }, { status: 200 });
-    }
-
-    try {
-      reservation = await reserveQuota(userId, planId, 'researchQueries', 1);
-    } catch (err: any) {
-      if (err instanceof QuotaExceededError) {
-        return NextResponse.json(
-          {
-            error: 'Quota exceeded',
-            metric: 'researchQueries',
-            limit: err.limit,
-            used: err.used,
-          },
-          { status: 429 },
-        );
-      }
-      throw err;
-    }
-
-    if (securitySweep) {
-      const job = await prisma.job.create({
-        data: {
-          projectId,
-          type: JobType.AD_PERFORMANCE,
-          status: JobStatus.PENDING,
-          payload: parsed.data,
-          resultSummary: "Skipped: SECURITY_SWEEP",
-          error: null,
-        },
-        select: { id: true },
-      });
-      jobId = job.id;
-      await logAudit({
-        userId,
-        projectId,
-        jobId,
-        action: "job.create",
-        ip,
-        metadata: { type: "ad-performance", skipped: true, reason: "SECURITY_SWEEP" },
-      });
-      return NextResponse.json(
-        { jobId, started: false, skipped: true, reason: "SECURITY_SWEEP" },
-        { status: 200 },
-      );
-    }
-
-    // Apify / external work starts here (only when not securitySweep)
-    const apifyToken = (cfg.raw("APIFY_API_TOKEN") ?? "").trim();
-    const apifyDatasetId = (cfg.raw("APIFY_DATASET_ID") ?? "").trim();
-    const apifyActorId = (cfg.raw("APIFY_ACTOR_ID") ?? "").trim();
-
-    const hasApifyToken = apifyToken.length > 0;
-    const hasDatasetId = apifyDatasetId.length > 0;
-    const hasActorId = apifyActorId.length > 0;
-    if (!hasApifyToken || (!hasDatasetId && !hasActorId)) {
-      return NextResponse.json(
-        { error: 'Apify is not configured' },
-        { status: 500 },
-      );
-    }
-
-    if (cfg.raw("NODE_ENV") === 'production') {
-      const rateCheck = await checkRateLimit(projectId);
-      if (!rateCheck.allowed) {
-        return NextResponse.json(
-          { error: `Rate limit exceeded: ${rateCheck.reason}` },
-          { status: 429 },
-        );
-      }
-    }
-
-    const job = await prisma.job.create({
-      data: {
-        projectId,
-        type: JobType.AD_PERFORMANCE,
-        status: JobStatus.PENDING,
-        payload: { projectId, industryCode, idempotencyKey },
-      },
-    });
-    jobId = job.id;
-
-    let result: any;
-    try {
-      result = await startAdRawCollectionJob({
-        projectId,
-        industryCode,
-        jobId: job.id,
-      });
-    } catch (err: any) {
-      if (reservation) {
-        await rollbackQuota(userId, reservation.periodKey, 'researchQueries', 1);
-        reservation = null;
-      }
-      throw err;
-    }
-
-    try {
-      await logAudit({
-        userId,
-        projectId,
-        jobId,
-        action: 'job.create',
-        ip,
-        metadata: {
-          type: 'ad-performance',
-        },
-      });
-    } catch (err) {
-      console.error('logAudit failed', err);
-    }
-
-    return NextResponse.json(result, { status: 200 });
-  } catch (err: any) {
-    console.error(err);
-    if (jobId) {
-      const message = String(err?.message ?? err);
-      try {
-        const existing = await prisma.job.findUnique({
-          where: { id: jobId },
-          select: { payload: true },
-        });
-        const payload =
-          existing?.payload && typeof existing.payload === 'object'
-            ? existing.payload
-            : {};
-        await prisma.job.update({
-          where: { id: jobId },
-          data: {
-            status: JobStatus.FAILED,
-            payload: { ...(payload as any), error: message },
-          },
-        });
-      } catch (updateErr) {
-        console.error('Failed to mark job failed', updateErr);
-      }
-      return NextResponse.json(
-        { jobId, started: false, error: message },
-        { status: 200 },
-      );
-    }
-    if (reservation && !jobId) {
-      await rollbackQuota(userId, reservation.periodKey, 'researchQueries', 1);
-    }
-    try {
-      await logAudit({
-        userId,
-        projectId,
-        jobId,
-        action: 'job.error',
-        ip,
-        metadata: {
-          type: 'ad-performance',
-          error: String(err?.message ?? err),
-        },
-      });
-    } catch (auditErr) {
-      console.error('logAudit failed', auditErr);
-    }
+  if (!projectId || !industryCode) {
     return NextResponse.json(
-      { error: err?.message ?? 'Ad performance collection failed' },
-      { status: 500 },
+      { error: "Missing projectId or industryCode" },
+      { status: 400 }
     );
   }
+
+  const idempotencyKey = JSON.stringify([
+    projectId,
+    JobType.AD_PERFORMANCE,
+    industryCode,
+  ]);
+
+  const existing = await prisma.job.findFirst({
+    where: { idempotencyKey },
+    select: { id: true },
+  });
+
+  if (existing) {
+    return NextResponse.json({ jobId: existing.id }, { status: 200 });
+  }
+
+  const job = await prisma.job.create({
+    data: {
+      projectId,
+      type: JobType.AD_PERFORMANCE,
+      status: "PENDING",
+      idempotencyKey,
+      payload: {
+        industryCode,
+      },
+    },
+    select: { id: true },
+  });
+
+  return NextResponse.json({ jobId: job.id }, { status: 201 });
 }

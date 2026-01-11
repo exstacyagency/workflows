@@ -41,13 +41,23 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
 
   if (action === 'archive') {
-    await prisma.productIntelligence.update({ where: { id: intelId }, data: { archivedAt: new Date() } });
+    const insights = (intel.insights as any) ?? {};
+    insights.archivedAt = new Date().toISOString();
+    await prisma.productIntelligence.update({ where: { id: intelId }, data: { insights } as any });
   } else {
-    await prisma.productIntelligence.updateMany({
-      where: { projectId, archivedAt: null, NOT: { id: intelId } },
-      data: { archivedAt: new Date() },
-    });
-    await prisma.productIntelligence.update({ where: { id: intelId }, data: { archivedAt: null } });
+    const others = await prisma.productIntelligence.findMany({ where: { projectId } });
+    const now = new Date().toISOString();
+    await Promise.all(
+      others.map(async (o) => {
+        const p = (o.insights as any) ?? {};
+        if (o.id === intelId) {
+          delete p.archivedAt;
+        } else {
+          p.archivedAt = now;
+        }
+        return prisma.productIntelligence.update({ where: { id: o.id }, data: { insights: p } as any });
+      }),
+    );
   }
 
   await purgeCustomerProfileArchives(projectId);

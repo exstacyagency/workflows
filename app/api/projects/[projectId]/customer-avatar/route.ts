@@ -9,8 +9,8 @@ type Params = {
 };
 
 function serializeAvatar(record: any) {
-  const { rawJson, ...safe } = record;
-  return { ...safe, hasRaw: Boolean(rawJson) };
+  const { persona, ...safe } = record;
+  return { ...safe, hasPersona: Boolean(persona) };
 }
 
 export async function GET(req: NextRequest, { params }: Params) {
@@ -37,22 +37,14 @@ export async function GET(req: NextRequest, { params }: Params) {
   }
 
   const desiredId = req.nextUrl.searchParams.get('id');
-  let avatar = desiredId
-    ? await prisma.customerAvatar.findFirst({ where: { id: desiredId, projectId } })
-    : null;
-
-  if (!avatar) {
-    avatar = await prisma.customerAvatar.findFirst({
-      where: { projectId, archivedAt: null },
-      orderBy: { createdAt: 'desc' },
-    });
+  let avatar = null;
+  if (desiredId) {
+    avatar = await prisma.customerAvatar.findFirst({ where: { id: desiredId, projectId } });
   }
 
   if (!avatar) {
-    avatar = await prisma.customerAvatar.findFirst({
-      where: { projectId },
-      orderBy: { createdAt: 'desc' },
-    });
+    const all = await prisma.customerAvatar.findMany({ where: { projectId }, orderBy: { createdAt: 'desc' } });
+    avatar = all.find((a) => !(a.persona as any)?.archivedAt) ?? all[0] ?? null;
   }
 
   if (!avatar) {
@@ -64,7 +56,7 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   const download = req.nextUrl.searchParams.get('download');
   if (download === '1') {
-    const payload = avatar.rawJson ?? avatar;
+    const payload = avatar.persona ?? avatar;
     return new NextResponse(JSON.stringify(payload, null, 2), {
       status: 200,
       headers: {
