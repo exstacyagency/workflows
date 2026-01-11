@@ -182,7 +182,7 @@ export async function POST(req: NextRequest) {
       data: {
         projectId,
         type: JobType.CUSTOMER_RESEARCH,
-        status: securitySweep ? JobStatus.PENDING : JobStatus.PENDING,
+        status: securitySweep ? JobStatus.COMPLETED : JobStatus.PENDING,
         payload: initialPayload,
         resultSummary: securitySweep ? "Skipped: SECURITY_SWEEP" : null,
         error: null,
