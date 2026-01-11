@@ -1,0 +1,20 @@
+-- Rename PascalCase tables to lowercase names expected by Prisma schema
+ALTER TABLE "User" RENAME TO "user";
+ALTER TABLE "Project" RENAME TO "project";
+ALTER TABLE "Job" RENAME TO "job";
+ALTER TABLE "AuditLog" RENAME TO "audit_log";
+ALTER TABLE "ResearchRow" RENAME TO "research_row";
+ALTER TABLE "Script" RENAME TO "script";
+ALTER TABLE "Storyboard" RENAME TO "storyboard";
+ALTER TABLE "StoryboardScene" RENAME TO "storyboard_scene";
+ALTER TABLE "Character" RENAME TO "character";
+ALTER TABLE "AdAsset" RENAME TO "ad_asset";
+ALTER TABLE "AdPatternResult" RENAME TO "ad_pattern_result";
+ALTER TABLE "AdPatternReference" RENAME TO "ad_pattern_reference";
+ALTER TABLE "CustomerAvatar" RENAME TO "customer_avatar";
+ALTER TABLE "ProductIntelligence" RENAME TO "product_intelligence";
+ALTER TABLE "Subscription" RENAME TO "subscription";
+ALTER TABLE "Usage" RENAME TO "usage";
+ALTER TABLE "AuthThrottle" RENAME TO "auth_throttle";
+ALTER TABLE "BillingEvent" RENAME TO "billing_event";
+-- Note: _prisma_migrations table left unchanged

@@ -799,6 +799,7 @@ async function run() {
 }
 
 run().catch((e) => {
-  console.error("❌ attacker sweep failed:", e?.message ?? e);
+  console.error("❌ attacker sweep failed:", e);
+  if (e && e.stack) console.error(e.stack);
   process.exit(1);
 });
