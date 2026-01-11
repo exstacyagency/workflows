@@ -129,19 +129,21 @@ model ResearchRow {
 }
 
 model Script {
-  id        String   @id @default(uuid())
-  projectId String
-  jobId     String?
-  rawJson   Json
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                String   @id @default(cuid())
+  projectId         String
+  jobId             String?
+  mergedVideoUrl    String?
+  upscaledVideoUrl  String?
+  status            ScriptStatus
+  rawJson           Json
+  wordCount         Int?
+  upscaleError      String?
+  createdAt         DateTime @default(now())
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   job     Job?    @relation(fields: [jobId], references: [id])
-
   storyboards Storyboard[]
 
-  @@index([projectId])
   @@map("script")
 }
 
@@ -304,15 +306,24 @@ model Usage {
 
 enum JobType {
   CUSTOMER_RESEARCH
+  CUSTOMER_ANALYSIS
+  PATTERN_ANALYSIS
   SCRIPT_GENERATION
   STORYBOARD_GENERATION
+  VIDEO_PROMPT_GENERATION
+  VIDEO_IMAGE_GENERATION
   VIDEO_GENERATION
+  VIDEO_REVIEW
+  VIDEO_UPSCALER
+  AD_PERFORMANCE
 }
 
 enum ResearchSource {
-  REDDIT
+  REDDIT_PRODUCT
+  REDDIT_PROBLEM
   AMAZON
   G2
+  LOCAL_BUSINESS
 }
 
 enum JobStatus {
@@ -331,4 +342,14 @@ enum PlanId {
 enum AdPlatform {
   TIKTOK
   META
+}
+
+// Script lifecycle statuses. Values chosen to match status strings used across the codebase.
+enum ScriptStatus {
+  seeded
+  PENDING
+  READY
+  upscaled
+  upscale_pending
+  upscale_failed
 }

@@ -1,0 +1,3 @@
+
+# Debug-only routes (not production code)
+app/api/debug/**

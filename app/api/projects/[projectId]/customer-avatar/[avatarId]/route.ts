@@ -41,13 +41,23 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
 
   if (action === 'archive') {
-    await prisma.customerAvatar.update({ where: { id: avatarId }, data: { archivedAt: new Date() } });
+    const persona = (avatar.persona as any) ?? {};
+    persona.archivedAt = new Date().toISOString();
+    await prisma.customerAvatar.update({ where: { id: avatarId }, data: { persona } as any });
   } else {
-    await prisma.customerAvatar.updateMany({
-      where: { projectId, archivedAt: null, NOT: { id: avatarId } },
-      data: { archivedAt: new Date() },
-    });
-    await prisma.customerAvatar.update({ where: { id: avatarId }, data: { archivedAt: null } });
+    const others = await prisma.customerAvatar.findMany({ where: { projectId } });
+    const now = new Date().toISOString();
+    await Promise.all(
+      others.map(async (a) => {
+        const p = (a.persona as any) ?? {};
+        if (a.id === avatarId) {
+          delete p.archivedAt;
+        } else {
+          p.archivedAt = now;
+        }
+        return prisma.customerAvatar.update({ where: { id: a.id }, data: { persona: p } as any });
+      }),
+    );
   }
 
   await purgeCustomerProfileArchives(projectId);

@@ -1,40 +1,48 @@
 // app/api/jobs/script-generation/route.ts
 import { cfg } from "@/lib/config";
-import { NextRequest, NextResponse } from 'next/server';
-import { startScriptGenerationJob } from '../../../../lib/scriptGenerationService';
-import { requireProjectOwner } from '../../../../lib/requireProjectOwner';
-import { ProjectJobSchema, parseJson } from '../../../../lib/validation/jobs';
-import { checkRateLimit } from '../../../../lib/rateLimiter';
-import { prisma } from '../../../../lib/prisma';
-import { JobStatus, JobType } from '@prisma/client';
-import { logAudit } from '../../../../lib/logger';
-import { getSessionUserId } from '../../../../lib/getSessionUserId';
-import { enforceUserConcurrency } from '../../../../lib/jobGuards';
-import { runWithState } from '../../../../lib/jobRuntime';
+import { NextRequest, NextResponse } from "next/server";
+import { startScriptGenerationJob } from "../../../../lib/scriptGenerationService";
+import { requireProjectOwner } from "../../../../lib/requireProjectOwner";
+import { ProjectJobSchema, parseJson } from "../../../../lib/validation/jobs";
+import { checkRateLimit } from "../../../../lib/rateLimiter";
+import { prisma } from "../../../../lib/prisma";
+import { JobStatus, JobType, ScriptStatus } from "@prisma/client";
+import { logAudit } from "../../../../lib/logger";
+import { getSessionUserId } from "../../../../lib/getSessionUserId";
+import { enforceUserConcurrency } from "../../../../lib/jobGuards";
+import { runWithState } from "../../../../lib/jobRuntime";
 import { flag } from "../../../../lib/flags";
 import { getRequestId, logError, logInfo } from "../../../../lib/observability";
-import { assertMinPlan, UpgradeRequiredError } from "../../../../lib/billing/requirePlan";
-import { reserveQuota, rollbackQuota, QuotaExceededError } from "../../../../lib/billing/usage";
+import {
+  assertMinPlan,
+  UpgradeRequiredError,
+} from "../../../../lib/billing/requirePlan";
+import {
+  reserveQuota,
+  rollbackQuota,
+  QuotaExceededError,
+} from "../../../../lib/billing/usage";
 
 export async function POST(req: NextRequest) {
   const requestId = getRequestId(req);
   logInfo("api.request", { requestId, path: req.nextUrl?.pathname });
 
-  // Deterministic golden/sweep mode: skip external calls but still enforce billing/quota.
   const securitySweep = cfg.raw("SECURITY_SWEEP") === "1";
 
-  let reservation: { periodKey: string; metric: string; amount: number } | null =
-    null;
+  let reservation:
+    | { periodKey: string; metric: string; amount: number }
+    | null = null;
   let userIdForQuota: string | null = null;
 
   try {
     const userId = await getSessionUserId();
     if (!userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     userIdForQuota = userId;
+
     const ip =
-      req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null;
+      req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
 
     const parsed = await parseJson(req, ProjectJobSchema);
     if (!parsed.success) {
@@ -64,8 +72,10 @@ export async function POST(req: NextRequest) {
           { status: 402 },
         );
       }
-      console.error(err);
-      return NextResponse.json({ error: "Billing check failed" }, { status: 500 });
+      return NextResponse.json(
+        { error: "Billing check failed" },
+        { status: 500 },
+      );
     }
 
     const devTest = flag("FF_DEV_TEST_MODE");
@@ -79,181 +89,118 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // SECURITY_SWEEP: short-circuit BEFORE any external calls / model calls.
+    // SECURITY_SWEEP short-circuit
     if (securitySweep) {
-      // Quota must ALWAYS apply. SECURITY_SWEEP must not be a billing bypass.
       try {
         reservation = await reserveQuota(userId, planId, "researchQueries", 1);
       } catch (err: any) {
         if (err instanceof QuotaExceededError) {
           return NextResponse.json(
-            { error: "Quota exceeded", metric: "researchQueries", limit: err.limit, used: err.used },
+            {
+              error: "Quota exceeded",
+              metric: "researchQueries",
+              limit: err.limit,
+              used: err.used,
+            },
             { status: 429 },
           );
         }
         throw err;
       }
+
       const job = await prisma.job.create({
         data: {
           projectId,
           type: JobType.SCRIPT_GENERATION,
-          status: JobStatus.PENDING,
-          payload: parsed.data,
+          status: JobStatus.COMPLETED,
+          payload: { ...parsed.data, skipped: true, reason: "SECURITY_SWEEP" },
           resultSummary: "Skipped: SECURITY_SWEEP",
           error: null,
         },
         select: { id: true },
       });
-      const jobId = job.id;
+
       await logAudit({
         userId,
         projectId,
-        jobId,
+        jobId: job.id,
         action: "job.create",
         ip,
-        metadata: { type: "script-generation", skipped: true, reason: "SECURITY_SWEEP" },
+        metadata: {
+          type: "script-generation",
+          skipped: true,
+          reason: "SECURITY_SWEEP",
+        },
       });
+
       return NextResponse.json(
-        { jobId, started: false, skipped: true, reason: "SECURITY_SWEEP" },
+        { jobId: job.id, started: false, skipped: true, reason: "SECURITY_SWEEP" },
         { status: 200 },
       );
     }
 
     const breakerTest = flag("FF_BREAKER_TEST");
     let idempotencyKey = `script-generation:${projectId}`;
-    if (breakerTest) {
-      idempotencyKey = `${idempotencyKey}:${Date.now()}`;
-    }
+    if (breakerTest) idempotencyKey += `:${Date.now()}`;
 
     const isCI = cfg.raw("CI") === "true";
     const hasAnthropic = !!cfg.raw("ANTHROPIC_API_KEY");
-    // CI still falls back when Anthropic isn't configured.
+
+    // CI fallback (NO VIDEO FIELDS)
     if (isCI && !hasAnthropic) {
       const project = await prisma.project.findUnique({
         where: { id: projectId },
         select: { name: true },
       });
+
       const productName = project?.name ?? "Your product";
+      const text = `Meet ${productName}. This script was generated in CI mode.`;
+      const wordCount = text.split(/\s+/).length;
 
-      const skipPayload = {
-        ...parsed.data,
-        idempotencyKey,
-        skipped: true,
-        reason: "LLM not configured",
-      };
-
-      let jobId: string | null = null;
-      try {
-        const job = await prisma.job.create({
-          data: {
-            projectId,
-            type: JobType.SCRIPT_GENERATION,
-            status: JobStatus.COMPLETED,
-            idempotencyKey,
-            payload: skipPayload,
-            resultSummary: "Skipped: LLM not configured",
-          },
-        });
-        jobId = job.id;
-      } catch (e: any) {
-        const message = String(e?.message ?? '');
-        const isUnique =
-          e?.code === 'P2002' ||
-          (e?.name === 'PrismaClientKnownRequestError' && e?.meta?.target) ||
-          message.includes('Unique constraint failed');
-
-        if (isUnique) {
-          const raced = await prisma.job.findFirst({
-            where: {
-              projectId,
-              type: JobType.SCRIPT_GENERATION,
-              idempotencyKey,
-            },
-            orderBy: { createdAt: 'desc' },
-          });
-
-          if (raced) {
-            jobId = raced.id;
-          } else {
-            return NextResponse.json(
-              { error: 'Failed to resolve job after unique constraint' },
-              { status: 500 },
-            );
-          }
-        } else {
-          throw e;
-        }
-      }
-
-      if (!jobId) {
-        return NextResponse.json(
-          { error: 'Job not found after creation' },
-          { status: 500 },
-        );
-      }
-
-      const hook = `Meet ${productName}: a faster way to create video ads.`;
-      const body =
-        "This script was generated in CI mode without calling an LLM, so it contains deterministic placeholder copy.";
-      const cta = `Get started with ${productName} today.`;
-      const text = `${hook}\n\n${body}\n\n${cta}`;
-      const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
-
-      const scriptJson = {
-        title: "CI placeholder script",
-        hook,
-        body,
-        cta,
-        text,
-        word_count: wordCount,
-        skipped: true,
-        reason: "LLM not configured",
-      };
+      const job = await prisma.job.create({
+        data: {
+          projectId,
+          type: JobType.SCRIPT_GENERATION,
+          status: JobStatus.COMPLETED,
+          idempotencyKey,
+          payload: { ...parsed.data, skipped: true },
+          resultSummary: "Skipped: LLM not configured",
+        },
+      });
 
       const script = await prisma.script.create({
         data: {
           projectId,
-          jobId,
-          mergedVideoUrl: null,
-          upscaledVideoUrl: null,
-          status: "READY",
-          rawJson: scriptJson as any,
+          jobId: job.id,
+          status: ScriptStatus.seeded,
           wordCount,
+          rawJson: {
+            text,
+            skipped: true,
+            reason: "LLM not configured",
+          } as any,
         },
       });
 
-      await prisma.job.update({
-        where: { id: jobId },
-        data: {
-          status: JobStatus.COMPLETED,
-          payload: { ...skipPayload, scriptIds: [script.id] },
-          resultSummary: `Skipped: LLM not configured (scriptId=${script.id})`,
-          error: null,
-        },
-      });
-
-      return Response.json(
+      return NextResponse.json(
         {
           ok: true,
           skipped: true,
-          reason: "LLM not configured",
-          jobId,
+          jobId: job.id,
           scripts: [{ id: script.id, text }],
         },
         { status: 200 },
       );
     }
 
-    if (!devTest) {
-      if (!cfg.raw("ANTHROPIC_API_KEY")) {
-        return NextResponse.json(
-          { error: 'Anthropic is not configured' },
-          { status: 500 },
-        );
-      }
+    if (!devTest && !cfg.raw("ANTHROPIC_API_KEY")) {
+      return NextResponse.json(
+        { error: "Anthropic is not configured" },
+        { status: 500 },
+      );
     }
 
-    if (!devTest && cfg.raw("NODE_ENV") === 'production') {
+    if (!devTest && cfg.raw("NODE_ENV") === "production") {
       const rateCheck = await checkRateLimit(projectId);
       if (!rateCheck.allowed) {
         return NextResponse.json(
@@ -263,129 +210,52 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    let jobId: string | null = null;
-    let createdNew = false;
+    reservation = await reserveQuota(userId, planId, "researchQueries", 1);
 
-    const existingJob = await prisma.job.findFirst({
-      where: {
+    const job = await prisma.job.create({
+      data: {
         projectId,
         type: JobType.SCRIPT_GENERATION,
+        status: JobStatus.RUNNING,
         idempotencyKey,
-        status: { in: [JobStatus.PENDING, JobStatus.RUNNING] },
+        payload: parsed.data,
       },
-      orderBy: { createdAt: 'desc' },
     });
-
-    if (existingJob) {
-      jobId = existingJob.id;
-    }
-
-    if (!jobId) {
-      try {
-        reservation = await reserveQuota(userId, planId, "researchQueries", 1);
-      } catch (err: any) {
-        if (err instanceof QuotaExceededError) {
-          return NextResponse.json(
-            { error: "Quota exceeded", metric: "researchQueries", limit: err.limit, used: err.used },
-            { status: 429 },
-          );
-        }
-        throw err;
-      }
-      try {
-        const job = await prisma.job.create({
-          data: {
-            projectId,
-            type: JobType.SCRIPT_GENERATION,
-            status: JobStatus.RUNNING,
-            idempotencyKey,
-            payload: { ...parsed.data, idempotencyKey },
-          },
-        });
-        jobId = job.id;
-        createdNew = true;
-      } catch (e: any) {
-        const message = String(e?.message ?? '');
-        const isUnique =
-          e?.code === 'P2002' ||
-          (e?.name === 'PrismaClientKnownRequestError' && e?.meta?.target) ||
-          message.includes('Unique constraint failed');
-
-        if (isUnique) {
-          if (reservation) {
-            await rollbackQuota(userId, reservation.periodKey, "researchQueries", 1);
-            reservation = null;
-          }
-          const raced = await prisma.job.findFirst({
-            where: {
-              projectId,
-              type: JobType.SCRIPT_GENERATION,
-              idempotencyKey,
-            },
-            orderBy: { createdAt: 'desc' },
-          });
-
-          if (raced) {
-            jobId = raced.id;
-          } else {
-            return NextResponse.json(
-              { error: 'Failed to resolve job after unique constraint' },
-              { status: 500 },
-            );
-          }
-        } else {
-          throw e;
-        }
-      }
-    }
-
-    if (!jobId) {
-      return NextResponse.json(
-        { error: 'Job not found after creation' },
-        { status: 500 },
-      );
-    }
 
     await logAudit({
       userId,
       projectId,
-      jobId,
-      action: 'job.create',
+      jobId: job.id,
+      action: "job.create",
       ip,
-      metadata: {
-        type: 'script-generation',
-      },
+      metadata: { type: "script-generation" },
     });
 
-    console.log("[script-generation] entering runWithState", { jobId, projectId });
-    const state = await runWithState(jobId, async () => {
-      const freshJob = await prisma.job.findUnique({ where: { id: jobId } });
-      if (!freshJob) {
-        throw new Error('Job not found');
-      }
-      return startScriptGenerationJob(projectId, freshJob);
-    });
-    console.log("[script-generation] runWithState result", state);
+    const state = await runWithState(job.id, () =>
+      startScriptGenerationJob(projectId, job),
+    );
 
-    if (createdNew && reservation && !state.ok) {
+    if (!state.ok && reservation) {
       await rollbackQuota(userId, reservation.periodKey, "researchQueries", 1);
-      reservation = null;
     }
 
     return NextResponse.json(
-      { jobId, ...state },
+      { jobId: job.id, ...state },
       { status: state.ok ? 200 : 500 },
     );
   } catch (err: any) {
     if (reservation && userIdForQuota) {
-      await rollbackQuota(userIdForQuota, reservation.periodKey, "researchQueries", 1);
+      await rollbackQuota(
+        userIdForQuota,
+        reservation.periodKey,
+        "researchQueries",
+        1,
+      );
     }
-    logError("api.error", err, { requestId, path: req.nextUrl?.pathname });
-    console.error('script-generation POST failed', err);
+
+    logError("api.error", err, { requestId });
     return NextResponse.json(
-      {
-        error: err instanceof Error ? err.message : String(err),
-      },
+      { error: err instanceof Error ? err.message : String(err) },
       { status: 500 },
     );
   }

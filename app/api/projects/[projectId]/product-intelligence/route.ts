@@ -9,8 +9,8 @@ type Params = {
 };
 
 function serializeIntel(record: any) {
-  const { rawJson, ...safe } = record;
-  return { ...safe, hasRaw: Boolean(rawJson) };
+  const { insights, ...safe } = record;
+  return { ...safe, hasInsights: Boolean(insights) };
 }
 
 export async function GET(req: NextRequest, { params }: Params) {
@@ -37,22 +37,14 @@ export async function GET(req: NextRequest, { params }: Params) {
   }
 
   const desiredId = req.nextUrl.searchParams.get('id');
-  let intel = desiredId
-    ? await prisma.productIntelligence.findFirst({ where: { id: desiredId, projectId } })
-    : null;
-
-  if (!intel) {
-    intel = await prisma.productIntelligence.findFirst({
-      where: { projectId, archivedAt: null },
-      orderBy: { createdAt: 'desc' },
-    });
+  let intel = null;
+  if (desiredId) {
+    intel = await prisma.productIntelligence.findFirst({ where: { id: desiredId, projectId } });
   }
 
   if (!intel) {
-    intel = await prisma.productIntelligence.findFirst({
-      where: { projectId },
-      orderBy: { createdAt: 'desc' },
-    });
+    const all = await prisma.productIntelligence.findMany({ where: { projectId }, orderBy: { createdAt: 'desc' } });
+    intel = all.find((a) => !(a.insights as any)?.archivedAt) ?? all[0] ?? null;
   }
 
   if (!intel) {
@@ -64,7 +56,7 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   const download = req.nextUrl.searchParams.get('download');
   if (download === '1') {
-    const payload = intel.rawJson ?? intel;
+    const payload = intel.insights ?? intel;
     return new NextResponse(JSON.stringify(payload, null, 2), {
       status: 200,
       headers: {

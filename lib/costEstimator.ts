@@ -59,13 +59,11 @@ export async function estimateCustomerResearchCost(params: {
 }
 
 export async function estimateAdTranscriptCost(projectId: string): Promise<CostEstimate> {
-  const assetCount = await prisma.adAsset.count({
-    where: {
-      projectId,
-      platform: 'TIKTOK',
-      OR: [{ transcript: null }, { transcript: '' }],
-    },
+  const assets = await prisma.adAsset.findMany({
+    where: { projectId, platform: 'TIKTOK' },
+    select: { id: true, rawJson: true },
   });
+  const assetCount = assets.filter(a => !((a.rawJson as any)?.transcript ?? '').toString().trim()).length;
 
   const avgDuration = 30;
   const assemblyAICost = assetCount * avgDuration * COSTS.assemblyai_transcript;
@@ -85,9 +83,8 @@ export async function estimateAdTranscriptCost(projectId: string): Promise<CostE
 }
 
 export async function estimatePatternAnalysisCost(projectId: string): Promise<CostEstimate> {
-  const assetCount = await prisma.adAsset.count({
-    where: { projectId, transcript: { not: null } },
-  });
+  const assets = await prisma.adAsset.findMany({ where: { projectId }, select: { id: true, rawJson: true } });
+  const assetCount = assets.filter(a => ((a.rawJson as any)?.transcript ?? '').toString().trim().length > 0).length;
 
   const avgTokensPerAd = 500;
   const totalInputTokens = assetCount * avgTokensPerAd;
