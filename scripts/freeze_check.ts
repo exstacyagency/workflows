@@ -43,7 +43,8 @@ function main() {
   const allowedMigrationOverrides: Record<string, string> = {
     "prisma/migrations/20260102160000_add_rls_policies/migration.sql":
       "c86fb1337d6d04901e3618caf5745f4ca85e79cea9330dc5b56e6bf5cad71afc",
-    "prisma/migrations/20260109205600_init/migration.sql": ALLOW_MISSING,
+    "prisma/migrations/20260109205600_init/migration.sql":
+      "7ae59599957e086cd5c258125a7eb553383eb813dbb5edb126d45fe4a0a8df19",
   };
 
   const rules: Rule[] = [
