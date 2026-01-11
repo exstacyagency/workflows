@@ -29,8 +29,8 @@ export async function POST(req: Request) {
 
   // ⚠️ Only allow known safe fields to be updated
   const ALLOWED_FIELDS = new Set([
-    "videoUrl",
-    "imageUrl",
+    "mergedVideoUrl",
+    "upscaledVideoUrl",
   ]);
 
   if (!ALLOWED_FIELDS.has(field)) {
