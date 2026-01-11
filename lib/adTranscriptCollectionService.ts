@@ -172,12 +172,14 @@ function computeTranscriptMeta(
 async function enrichAssetWithTranscript(assetId: string) {
   const asset = await prisma.adAsset.findUnique({
     where: { id: assetId },
+    select: { id: true, rawJson: true },
   });
 
   if (!asset) return;
-  if (asset.transcript && asset.transcript.trim().length > 0) return;
+  const existingTranscript = (asset.rawJson as any)?.transcript;
+  if (existingTranscript && String(existingTranscript).trim().length > 0) return;
 
-  const audioUrl = asset.url;
+  const audioUrl = (asset.rawJson as any)?.url || (asset.rawJson as any)?.audioUrl;
   if (!audioUrl) return;
 
   const transcriptId = await startTranscriptForAsset(audioUrl);
@@ -193,24 +195,26 @@ async function enrichAssetWithTranscript(assetId: string) {
   if (text.length < 10) return;
   if (isMusicLyrics(text)) return;
 
-  const duration =
-    typeof asset.metrics === 'object' && asset.metrics
-      ? (asset.metrics as any).duration ?? null
-      : null;
+  const duration = (asset.rawJson as any)?.metrics?.duration ?? null;
 
   const meta = computeTranscriptMeta(text, words, duration as number | null);
 
-  let mergedMetrics: any = asset.metrics || {};
+  let mergedMetrics: any = (asset.rawJson as any)?.metrics || {};
   mergedMetrics = {
     ...mergedMetrics,
     transcript_meta: meta,
   };
 
+  const newRawJson = {
+    ...(asset.rawJson as any),
+    transcript: text,
+    metrics: mergedMetrics,
+  };
+
   await prisma.adAsset.update({
     where: { id: asset.id },
     data: {
-      transcript: text,
-      metrics: mergedMetrics,
+      rawJson: newRawJson as any,
     },
   });
 }
@@ -228,20 +232,24 @@ export async function runAdTranscriptCollection(args: {
     where: {
       projectId,
       platform: AdPlatform.TIKTOK,
-      OR: [{ transcript: null }, { transcript: '' }],
     },
-    select: { id: true },
+    select: { id: true, rawJson: true },
   });
 
-  if (!assets.length) {
+  const assetsToProcess = assets.filter(a => {
+    const t = (a.rawJson as any)?.transcript;
+    return !t || String(t).trim() === '';
+  });
+
+  if (!assetsToProcess.length) {
     return { totalAssets: 0, processed: 0 };
   }
 
   let processed = 0;
-  const total = assets.length;
+  const total = assetsToProcess.length;
   const errors: Array<{ assetId: string; error: any }> = [];
 
-  const promises = assets.map((asset) =>
+  const promises = assetsToProcess.map((asset) =>
     limit(async () => {
       try {
         await enrichAssetWithTranscript(asset.id);

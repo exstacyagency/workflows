@@ -214,20 +214,21 @@ async function pollKieVideoJob(
 }
 
 async function generateVideoForScene(scene: SceneLike): Promise<SceneVideoResult> {
-  const prompt = String(scene.videoPrompt ?? '').trim();
+  const raw = (scene as any).rawJson ?? {};
+  const prompt = String((scene as any).videoPrompt ?? raw.videoPrompt ?? '').trim();
   if (!prompt) {
-    throw new Error(`Scene ${scene.id} missing videoPrompt`);
+    throw new Error(`Scene ${(scene as any).id} missing videoPrompt`);
   }
 
-  const firstFrame = String(scene.firstFrameUrl ?? '').trim();
-  const lastFrame = String(scene.lastFrameUrl ?? '').trim();
+  const firstFrame = String((scene as any).firstFrameUrl ?? raw.firstFrameUrl ?? raw.first_frame_url ?? '').trim();
+  const lastFrame = String((scene as any).lastFrameUrl ?? raw.lastFrameUrl ?? raw.last_frame_url ?? '').trim();
   if (!firstFrame || !lastFrame) {
-    throw new Error(`Scene ${scene.id} missing firstFrameUrl or lastFrameUrl`);
+    throw new Error(`Scene ${(scene as any).id} missing firstFrameUrl or lastFrameUrl`);
   }
 
-  const durationSec = Number(scene.durationSec ?? DEFAULT_DURATION_SEC) || DEFAULT_DURATION_SEC;
+  const durationSec = Number((scene as any).durationSec ?? raw.durationSec ?? raw.duration ?? DEFAULT_DURATION_SEC) || DEFAULT_DURATION_SEC;
   const fps = Number(DEFAULT_FPS) || 24;
-  const aspectRatio = String(scene.aspectRatio ?? '9:16');
+  const aspectRatio = String((scene as any).aspectRatio ?? raw.aspectRatio ?? '9:16');
   const imageInputs = [firstFrame, lastFrame];
 
   const taskId = await createKieVideoJob({
@@ -285,20 +286,20 @@ async function persistSceneVideos(storyboardId: string, results: SceneVideoResul
     if (!match) continue;
 
     const updateData: Record<string, any> = {};
-    if (match.videoUrl && match.videoUrl !== scene.videoUrl) {
-      updateData.videoUrl = match.videoUrl;
+    const raw = (scene as any).rawJson;
+    const rawObject = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, any>) : {};
+    // Always merge videoUrl into rawJson rather than set a non-existent top-level column
+    if (match.videoUrl && match.videoUrl !== (scene as any).videoUrl && match.videoUrl !== rawObject.videoUrl && match.videoUrl !== rawObject.video_url) {
+      rawObject.videoUrl = match.videoUrl;
+      rawObject.video_url = match.videoUrl;
     }
 
     if (match.providerPayload) {
-      const raw = scene.rawJson;
-      const rawObject =
-        raw && typeof raw === 'object' && !Array.isArray(raw)
-          ? (raw as Record<string, any>)
-          : {};
-      updateData.rawJson = {
-        ...rawObject,
-        video_generation: match.providerPayload,
-      };
+      rawObject.video_generation = match.providerPayload;
+    }
+
+    if (Object.keys(rawObject).length) {
+      updateData.rawJson = rawObject;
     }
 
     if (Object.keys(updateData).length === 0) continue;
@@ -355,9 +356,9 @@ export async function runVideoGenerationJob(job: JobLike): Promise<RunResult> {
 
   const scenes = storyboard.scenes.sort((a, b) => a.sceneNumber - b.sceneNumber);
   const existingUrls = scenes
-    .map(scene => scene.videoUrl)
+    .map(scene => (scene as any).videoUrl ?? (scene.rawJson as any)?.videoUrl ?? (scene.rawJson as any)?.video_url)
     .filter((url): url is string => typeof url === 'string' && url.trim().length > 0);
-  const targetScenes = scenes.filter(scene => !scene.videoUrl);
+  const targetScenes = scenes.filter(scene => !((scene as any).videoUrl ?? (scene.rawJson as any)?.videoUrl ?? (scene.rawJson as any)?.video_url));
 
   if (targetScenes.length === 0) {
     let mergedVideoUrl = script.mergedVideoUrl ?? null;
@@ -385,7 +386,7 @@ export async function runVideoGenerationJob(job: JobLike): Promise<RunResult> {
 
   const results: SceneVideoResult[] = [];
   for (const scene of targetScenes) {
-    const result = await generateVideoForScene(scene as SceneLike);
+    const result = await generateVideoForScene(scene as unknown as SceneLike);
     results.push(result);
   }
 

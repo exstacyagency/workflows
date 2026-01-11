@@ -207,31 +207,34 @@ export async function runPatternAnalysis(args: {
   if (ads.length === 0) {
     const assets = await prisma.adAsset.findMany({
       where: { projectId, jobId: adPerformanceJobId },
-      select: { id: true, url: true, platform: true, metrics: true, transcript: true, createdAt: true },
+      select: { id: true, rawJson: true, platform: true, createdAt: true },
       orderBy: { createdAt: 'desc' },
       take: 200,
     });
 
-    ads = assets.map((a) => ({
-      source: 'apify',
-      adId: String(a.id),
-      platform: String(a.platform ?? '') || null,
-      pageName: null,
-      brand: null,
-      createdAt: a.createdAt ? a.createdAt.toISOString() : null,
-      text: asString(a.transcript) ?? null,
-      mediaUrl: asString(a.url) ?? null,
-      landingUrl: null,
-      metrics: (a.metrics && typeof a.metrics === 'object' ? (a.metrics as any) : null) as any,
-      raw: {
-        id: a.id,
-        url: a.url,
-        platform: a.platform,
-        metrics: a.metrics,
-        transcript: a.transcript,
-        createdAt: a.createdAt?.toISOString?.() ?? String(a.createdAt ?? ''),
-      },
-    }));
+    ads = assets.map((a) => {
+      const raw = (a.rawJson as any) || {};
+      return ({
+        source: 'apify',
+        adId: String(a.id),
+        platform: String(a.platform ?? '') || null,
+        pageName: null,
+        brand: null,
+        createdAt: a.createdAt ? a.createdAt.toISOString() : null,
+        text: asString(raw?.transcript) ?? null,
+        mediaUrl: asString(raw?.url) ?? null,
+        landingUrl: null,
+        metrics: raw?.metrics && typeof raw.metrics === 'object' ? raw.metrics : null,
+        raw: {
+          id: a.id,
+          url: raw?.url,
+          platform: a.platform,
+          metrics: raw?.metrics,
+          transcript: raw?.transcript,
+          createdAt: a.createdAt?.toISOString?.() ?? String(a.createdAt ?? ''),
+        },
+      } as NormalizedAd);
+    });
   }
 
   const hookCounts = new Map<string, { value: string; count: number; examples: string[] }>();

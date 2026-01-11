@@ -18,8 +18,6 @@ export async function GET() {
     select: {
       planId: true,
       status: true,
-      currentPeriodEnd: true,
-      cancelAtPeriodEnd: true,
     },
   });
 
@@ -28,8 +26,6 @@ export async function GET() {
       {
         planId: "FREE",
         status: null,
-        currentPeriodEnd: null,
-        cancelAtPeriodEnd: null,
       },
       { status: 200 }
     );
@@ -39,10 +35,6 @@ export async function GET() {
     {
       planId: subscription.planId as "FREE" | "GROWTH" | "SCALE",
       status: subscription.status ?? null,
-      currentPeriodEnd: subscription.currentPeriodEnd
-        ? subscription.currentPeriodEnd.toISOString()
-        : null,
-      cancelAtPeriodEnd: subscription.cancelAtPeriodEnd ?? null,
     },
     { status: 200 }
   );

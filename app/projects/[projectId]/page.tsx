@@ -77,6 +77,8 @@ export default async function ProjectDashboardPage({ params }: Params) {
   const recentResearch = project.researchRows;
   const latestAvatar = project.customerAvatars[0] ?? null;
   const latestProductIntel = project.productIntelligences[0] ?? null;
+  const latestAvatarPersona = (latestAvatar?.persona ?? {}) as any;
+  const latestProductInsights = (latestProductIntel?.insights ?? {}) as any;
   const recentScripts: ScriptMedia[] = project.scripts.map(script => ({
     id: script.id,
     status: script.status,
@@ -150,22 +152,22 @@ export default async function ProjectDashboardPage({ params }: Params) {
           ) : (
             <div className="space-y-1.5 text-sm">
               <p>
-                <span className="text-slate-400">Age</span>: {latestAvatar.age ?? '—'}
+                <span className="text-slate-400">Age</span>: {latestAvatarPersona.age ?? '—'}
               </p>
               <p>
-                <span className="text-slate-400">Gender</span>: {latestAvatar.gender ?? '—'}
+                <span className="text-slate-400">Gender</span>: {latestAvatarPersona.gender ?? '—'}
               </p>
               <p>
-                <span className="text-slate-400">Job</span>: {latestAvatar.jobTitle ?? '—'}
+                <span className="text-slate-400">Job</span>: {latestAvatarPersona.jobTitle ?? '—'}
               </p>
               <p>
-                <span className="text-slate-400">Location</span>: {latestAvatar.location ?? '—'}
+                <span className="text-slate-400">Location</span>: {latestAvatarPersona.location ?? '—'}
               </p>
               <p>
-                <span className="text-slate-400">Primary Pain</span>: {latestAvatar.primaryPain ?? '—'}
+                <span className="text-slate-400">Primary Pain</span>: {latestAvatarPersona.primaryPain ?? '—'}
               </p>
               <p>
-                <span className="text-slate-400">Primary Goal</span>: {latestAvatar.primaryGoal ?? '—'}
+                <span className="text-slate-400">Primary Goal</span>: {latestAvatarPersona.primaryGoal ?? '—'}
               </p>
             </div>
           )}
@@ -183,19 +185,19 @@ export default async function ProjectDashboardPage({ params }: Params) {
           ) : (
             <div className="space-y-1.5 text-sm">
               <p>
-                <span className="text-slate-400">Hero Ingredient</span>: {latestProductIntel.heroIngredient ?? '—'}
+                <span className="text-slate-400">Hero Ingredient</span>: {latestProductInsights.heroIngredient ?? '—'}
               </p>
               <p>
-                <span className="text-slate-400">Mechanism</span>: {latestProductIntel.heroMechanism ?? '—'}
+                <span className="text-slate-400">Mechanism</span>: {latestProductInsights.heroMechanism ?? '—'}
               </p>
               <p>
-                <span className="text-slate-400">Form</span>: {latestProductIntel.form ?? '—'}
+                <span className="text-slate-400">Form</span>: {latestProductInsights.form ?? '—'}
               </p>
               <p>
-                <span className="text-slate-400">Initial Timeline</span>: {latestProductIntel.initialTimeline ?? '—'}
+                <span className="text-slate-400">Initial Timeline</span>: {latestProductInsights.initialTimeline ?? '—'}
               </p>
               <p>
-                <span className="text-slate-400">Peak Timeline</span>: {latestProductIntel.peakTimeline ?? '—'}
+                <span className="text-slate-400">Peak Timeline</span>: {latestProductInsights.peakTimeline ?? '—'}
               </p>
             </div>
           )}

@@ -70,14 +70,14 @@ function groupResearchRows(
   const competitor2: string[] = [];
 
   for (const row of rows) {
-    switch (row.source) {
-      case ResearchSource.REDDIT_PRODUCT:
+    switch (String(row.source)) {
+      case 'REDDIT_PRODUCT':
         redditProduct.push(row.content);
         break;
-      case ResearchSource.REDDIT_PROBLEM:
+      case 'REDDIT_PROBLEM':
         redditProblem.push(row.content);
         break;
-      case ResearchSource.AMAZON: {
+      case 'AMAZON': {
         const meta = (row.metadata ?? {}) as any;
         const amazonKind = typeof meta?.amazonKind === 'string' ? meta.amazonKind : null;
 
@@ -343,17 +343,25 @@ function ensureObject<T>(value: unknown, label: string): T {
 }
 
 async function archiveExistingAvatars(projectId: string) {
-  await prisma.customerAvatar.updateMany({
-    where: { projectId, archivedAt: null },
-    data: { archivedAt: new Date() },
-  });
+  const avatars = await prisma.customerAvatar.findMany({ where: { projectId }, select: { id: true, persona: true } });
+  const now = new Date();
+  for (const a of avatars) {
+    const persona = (a.persona as any) || {};
+    if (!persona?.archivedAt) {
+      await prisma.customerAvatar.update({ where: { id: a.id }, data: { persona: { ...persona, archivedAt: now } as any } });
+    }
+  }
 }
 
 async function archiveExistingProductIntel(projectId: string) {
-  await prisma.productIntelligence.updateMany({
-    where: { projectId, archivedAt: null },
-    data: { archivedAt: new Date() },
-  });
+  const items = await prisma.productIntelligence.findMany({ where: { projectId }, select: { id: true, insights: true } });
+  const now = new Date();
+  for (const it of items) {
+    const insights = (it.insights as any) || {};
+    if (!insights?.archivedAt) {
+      await prisma.productIntelligence.update({ where: { id: it.id }, data: { insights: { ...insights, archivedAt: now } as any } });
+    }
+  }
 }
 
 async function purgeExpiredSnapshots(projectId: string) {
@@ -361,22 +369,23 @@ async function purgeExpiredSnapshots(projectId: string) {
     return;
   }
   const cutoff = new Date(Date.now() - RETENTION_MS);
-  await prisma.customerAvatar.deleteMany({
-    where: {
-      projectId,
-      archivedAt: {
-        lt: cutoff,
-      },
-    },
-  });
-  await prisma.productIntelligence.deleteMany({
-    where: {
-      projectId,
-      archivedAt: {
-        lt: cutoff,
-      },
-    },
-  });
+  const avatars = await prisma.customerAvatar.findMany({ where: { projectId }, select: { id: true, persona: true } });
+  const toDeleteAvatarIds = avatars.filter(a => {
+    const archived = (a.persona as any)?.archivedAt;
+    return archived ? new Date(archived) < cutoff : false;
+  }).map(a => a.id);
+  if (toDeleteAvatarIds.length) {
+    await prisma.customerAvatar.deleteMany({ where: { id: { in: toDeleteAvatarIds } } });
+  }
+
+  const products = await prisma.productIntelligence.findMany({ where: { projectId }, select: { id: true, insights: true } });
+  const toDeleteProductIds = products.filter(p => {
+    const archived = (p.insights as any)?.archivedAt;
+    return archived ? new Date(archived) < cutoff : false;
+  }).map(p => p.id);
+  if (toDeleteProductIds.length) {
+    await prisma.productIntelligence.deleteMany({ where: { id: { in: toDeleteProductIds } } });
+  }
 }
 
 /**
@@ -397,15 +406,21 @@ export async function runCustomerAnalysis(args: {
     throw new Error('Product name and solved problem are required. Provide them or run Phase 1A to capture offering details.');
   }
 
-  const researchRows = await prisma.researchRow.findMany({
+  const researchRowsRaw = await prisma.researchRow.findMany({
     where: { projectId },
     select: {
       source: true,
       content: true,
-      rating: true,
       metadata: true,
     },
   });
+
+  const researchRows = researchRowsRaw.map(r => ({
+    source: r.source as any,
+    content: r.content ?? '',
+    rating: (r.metadata as any)?.rating ?? null,
+    metadata: r.metadata,
+  }));
 
   if (researchRows.length < CUSTOMER_ANALYSIS_MIN_ROWS) {
     throw new Error(
@@ -432,16 +447,7 @@ export async function runCustomerAnalysis(args: {
   const avatarRecord = await prisma.customerAvatar.create({
     data: {
       projectId,
-      jobId,
-      rawJson: avatarJson as any,
-      age: typeof avatarSnapshot.age === 'number' ? avatarSnapshot.age : null,
-      gender: typeof avatarSnapshot.gender === 'string' ? avatarSnapshot.gender : null,
-      income: typeof avatarSnapshot.income === 'number' ? avatarSnapshot.income : null,
-      jobTitle: typeof avatarSnapshot.job === 'string' ? avatarSnapshot.job : null,
-      location: typeof avatarSnapshot.location === 'string' ? avatarSnapshot.location : null,
-      ethnicity: typeof avatarSnapshot.ethnicity === 'string' ? avatarSnapshot.ethnicity : null,
-      primaryPain: typeof topPains[0]?.pain === 'string' ? topPains[0]?.pain : null,
-      primaryGoal: typeof goalsNow[0] === 'string' ? goalsNow[0] : null,
+      persona: avatarJson as any,
     },
   });
 
@@ -456,33 +462,29 @@ export async function runCustomerAnalysis(args: {
   const productRecord = await prisma.productIntelligence.create({
     data: {
       projectId,
-      jobId,
-      rawJson: productJson as any,
-      heroIngredient: heroIngredient ?? null,
-      heroMechanism: heroMechanism ?? null,
-      form: form ?? null,
-      initialTimeline: initialStage?.duration ?? null,
-      peakTimeline: peakStage?.duration ?? null,
+      insights: productJson as any,
     },
   });
 
   await purgeExpiredSnapshots(projectId);
 
+  const personaObj = (avatarRecord.persona as any) || {};
   const avatarSummary = {
-    age: avatarRecord.age,
-    gender: avatarRecord.gender,
-    jobTitle: avatarRecord.jobTitle,
-    location: avatarRecord.location,
-    primaryPain: avatarRecord.primaryPain,
-    primaryGoal: avatarRecord.primaryGoal,
+    age: personaObj?.avatar_snapshot?.age ?? null,
+    gender: personaObj?.avatar_snapshot?.gender ?? null,
+    jobTitle: personaObj?.avatar_snapshot?.job ?? null,
+    location: personaObj?.avatar_snapshot?.location ?? null,
+    primaryPain: (personaObj?.top_pains?.[0]?.pain) ?? null,
+    primaryGoal: (personaObj?.goals?.now?.[0]) ?? null,
   };
 
+  const insightsObj = (productRecord.insights as any) || {};
   const productSummary = {
-    heroIngredient: productRecord.heroIngredient,
-    heroMechanism: productRecord.heroMechanism,
-    form: productRecord.form,
-    initialTimeline: productRecord.initialTimeline,
-    peakTimeline: productRecord.peakTimeline,
+    heroIngredient: insightsObj?.ingredients?.[0]?.name ?? null,
+    heroMechanism: insightsObj?.mechanism?.[0]?.process ?? null,
+    form: insightsObj?.formulation?.[0]?.form ?? null,
+    initialTimeline: insightsObj?.timeline?.find((t: any) => String(t.stage ?? '').toLowerCase().includes('initial'))?.duration ?? null,
+    peakTimeline: insightsObj?.timeline?.find((t: any) => String(t.stage ?? '').toLowerCase().includes('peak'))?.duration ?? null,
   };
 
   return {

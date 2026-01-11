@@ -1,41 +1,56 @@
-import { cfg } from "@/lib/config";
-import { NextRequest, NextResponse } from "next/server";
-import { getSessionUser } from "@/lib/getSessionUser";
+import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { isSelfHosted } from "@/lib/config/mode";
+import { getSessionUserId } from "@/lib/getSessionUserId";
 
-export async function POST(req: NextRequest) {
-  if (cfg.raw("NODE_ENV") === "production") {
-    return new Response(null, { status: 404 });
+export async function POST(req: Request) {
+  if (isSelfHosted()) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const user = await getSessionUser();
-  const userId = (user as any)?.id as string | undefined;
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const body = await req.json().catch(() => null);
-  const scriptId = typeof body?.scriptId === "string" ? body.scriptId : "";
-  const field = typeof body?.field === "string" ? body.field : "";
-  const key = typeof body?.key === "string" ? body.key : "";
-
-  if (!scriptId || !key || !["mergedVideoUrl", "upscaledVideoUrl"].includes(field)) {
-    return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
+  const userId = await getSessionUserId();
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const script = await prisma.script.findUnique({
-    where: { id: scriptId },
-    include: { project: true },
-  });
+  const body = await req.json();
+  const { scriptId, field, key } = body as {
+    scriptId?: string;
+    field?: string;
+    key?: string;
+  };
 
-  if (!script) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  if (script.project.userId !== userId) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!scriptId || !field || !key) {
+    return NextResponse.json(
+      { error: "Missing scriptId, field, or key" },
+      { status: 400 }
+    );
+  }
+
+  // ⚠️ Only allow known safe fields to be updated
+  const ALLOWED_FIELDS = new Set([
+    "videoUrl",
+    "imageUrl",
+  ]);
+
+  if (!ALLOWED_FIELDS.has(field)) {
+    return NextResponse.json(
+      { error: `Field '${field}' is not allowed` },
+      { status: 400 }
+    );
   }
 
   const updated = await prisma.script.update({
     where: { id: scriptId },
-    data: { [field]: key } as any,
-    select: { id: true, mergedVideoUrl: true, upscaledVideoUrl: true, projectId: true },
+    data: { [field]: key },
+    select: {
+      id: true,
+      projectId: true,
+    },
   });
 
-  return NextResponse.json({ ok: true, script: updated }, { status: 200 });
+  return NextResponse.json(
+    { ok: true, script: updated },
+    { status: 200 }
+  );
 }

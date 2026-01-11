@@ -39,13 +39,14 @@ export async function GET(_req: NextRequest, { params }: Params) {
     );
   }
 
+  const data = (result.rawJson as any) ?? {};
   return NextResponse.json(
     {
       id: result.id,
       projectId: result.projectId,
-      baselineRetention3s: result.baselineRetention3s,
-      baselineCtr: result.baselineCtr,
-      totalConverters: result.totalConverters,
+      baselineRetention3s: data.baselineRetention3s,
+      baselineCtr: data.baselineCtr,
+      totalConverters: data.totalConverters,
       rawJson: result.rawJson,
       createdAt: result.createdAt,
     },

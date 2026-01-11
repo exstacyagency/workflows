@@ -259,7 +259,7 @@ function dedupeRows(rows: ResearchRowInput[]) {
   for (const row of rows) {
     const normalizedContent = row.content.replace(/\s+/g, ' ').trim();
     if (!normalizedContent) continue;
-    const dedupeKey = `${row.source}:${normalizedContent.toLowerCase()}:${row.sourceUrl ?? ''}`;
+    const dedupeKey = `${row.source}:${normalizedContent.toLowerCase()}:${(row as any).metadata?.sourceUrl ?? ''}`;
     if (seen.has(dedupeKey)) continue;
     seen.add(dedupeKey);
     normalizedRows.push({ ...row, content: normalizedContent });
@@ -310,70 +310,57 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
       ...filteredProductComments.map((item, idx) => ({
         projectId,
         jobId,
-        source: ResearchSource.REDDIT_PRODUCT,
-        indexLabel: `${idx + 1}`,
+        source: 'REDDIT_PRODUCT' as any,
         content: item.body || item.selftext || '',
         metadata: {
           author: item.author,
           subreddit: item.subreddit,
           score: item.score,
-          url: item.url || item.permalink
+          indexLabel: `${idx + 1}`,
+          sourceUrl: item.url || item.permalink,
         },
-        sourceUrl: item.url || item.permalink
       })),
       ...filteredProblemComments.flatMap((item, idx) =>
         item.comments.map((comment, cidx) => ({
           projectId,
           jobId,
-          source: ResearchSource.REDDIT_PROBLEM,
-          indexLabel: `${idx + 1}.${cidx + 1}`,
+          source: 'REDDIT_PROBLEM' as any,
           content: comment.body || '',
           metadata: {
             postTitle: item.post?.title,
-            score: comment.score
+            score: comment.score,
+            indexLabel: `${idx + 1}.${cidx + 1}`,
+            sourceUrl: comment.permalink || item.post?.permalink,
           },
-          sourceUrl: comment.permalink || item.post?.permalink
         }))
       ),
       ...processed5Star.map((r, idx) => ({
         projectId,
         jobId,
         source: ResearchSource.AMAZON,
-        indexLabel: `${idx + 1}`,
         content: r.text,
-        rating: r.rating,
-        verified: r.verified,
-        metadata: { date: r.date, wordCount: r.wordCount, amazonKind: 'product_5_star' }
+        metadata: { date: r.date, wordCount: r.wordCount, amazonKind: 'product_5_star', rating: r.rating, verified: r.verified, indexLabel: `${idx + 1}` }
       })),
       ...processed4Star.map((r, idx) => ({
         projectId,
         jobId,
         source: ResearchSource.AMAZON,
-        indexLabel: `${idx + 1}`,
         content: r.text,
-        rating: r.rating,
-        verified: r.verified,
-        metadata: { date: r.date, wordCount: r.wordCount, amazonKind: 'product_4_star' }
+        metadata: { date: r.date, wordCount: r.wordCount, amazonKind: 'product_4_star', rating: r.rating, verified: r.verified, indexLabel: `${idx + 1}` }
       })),
       ...processedCompetitor1.map((r, idx) => ({
         projectId,
         jobId,
         source: ResearchSource.AMAZON,
-        indexLabel: `${idx + 1}`,
         content: r.text,
-        rating: r.rating,
-        verified: r.verified,
-        metadata: { date: r.date, wordCount: r.wordCount, amazonKind: 'competitor_1' }
+        metadata: { date: r.date, wordCount: r.wordCount, amazonKind: 'competitor_1', rating: r.rating, verified: r.verified, indexLabel: `${idx + 1}` }
       })),
       ...processedCompetitor2.map((r, idx) => ({
         projectId,
         jobId,
         source: ResearchSource.AMAZON,
-        indexLabel: `${idx + 1}`,
         content: r.text,
-        rating: r.rating,
-        verified: r.verified,
-        metadata: { date: r.date, wordCount: r.wordCount, amazonKind: 'competitor_2' }
+        metadata: { date: r.date, wordCount: r.wordCount, amazonKind: 'competitor_2', rating: r.rating, verified: r.verified, indexLabel: `${idx + 1}` }
       }))
     ];
 

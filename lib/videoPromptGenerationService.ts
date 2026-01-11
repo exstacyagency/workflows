@@ -67,12 +67,8 @@ export async function runVideoPromptGeneration(args: {
       data: {
         storyboardId,
         sceneNumber: 1,
-        durationSec: 8,
-        aspectRatio: '9:16',
-        sceneFull: '',
-        rawJson: {},
+        rawJson: { durationSec: 8, aspectRatio: '9:16', sceneFull: '', videoPrompt: prompt } as any,
         status: 'pending',
-        videoPrompt: prompt,
       },
     });
     scenes = [created];
@@ -80,7 +76,10 @@ export async function runVideoPromptGeneration(args: {
   }
 
   const targetScenes = scenes.filter(
-    s => !s.videoPrompt || s.videoPrompt.trim().length === 0,
+    s => {
+      const vp = (s as any).videoPrompt ?? (s.rawJson as any)?.videoPrompt ?? '';
+      return !vp || String(vp).trim().length === 0;
+    },
   );
 
   if (!targetScenes.length) {
@@ -94,26 +93,31 @@ export async function runVideoPromptGeneration(args: {
 
   for (const scene of targetScenes) {
     const raw = (scene.rawJson ?? {}) as any;
+    const sceneNumber = (scene as any).sceneNumber ?? raw.sceneNumber ?? 1;
+    const durationSec = (scene as any).durationSec ?? raw.durationSec ?? 8;
+    const firstFrameUrl = (scene as any).firstFrameUrl ?? raw.firstFrameUrl ?? raw.first_frame_url ?? null;
+    const lastFrameUrl = (scene as any).lastFrameUrl ?? raw.lastFrameUrl ?? raw.last_frame_url ?? null;
+
     const prompt = buildVideoPromptForScene({
-      sceneNumber: scene.sceneNumber,
-      durationSec: scene.durationSec,
-      firstFrameUrl: scene.firstFrameUrl,
-      lastFrameUrl: scene.lastFrameUrl,
+      sceneNumber,
+      durationSec,
+      firstFrameUrl,
+      lastFrameUrl,
       raw,
     });
 
-    const hasFrames = Boolean(scene.firstFrameUrl && scene.lastFrameUrl);
+    const hasFrames = Boolean(firstFrameUrl && lastFrameUrl);
     const nextStatus = hasFrames
-      ? (scene.status === 'frames_ready' || scene.status === 'pending'
+      ? ((scene as any).status === 'frames_ready' || (scene as any).status === 'pending'
           ? 'prompt_ready'
-          : scene.status)
-      : scene.status || 'pending';
+          : (scene as any).status)
+      : (scene as any).status || 'pending';
 
     const updateData: Record<string, any> = {
       videoPrompt: prompt,
       status: nextStatus,
     };
-    if (scene.rawJson == null) {
+    if ((scene as any).rawJson == null) {
       updateData.rawJson = {};
     }
 
