@@ -112,8 +112,8 @@ export async function POST(req: NextRequest) {
         data: {
           projectId,
           type: JobType.SCRIPT_GENERATION,
-          status: JobStatus.PENDING,
-          payload: parsed.data,
+          status: JobStatus.COMPLETED,
+          payload: { ...parsed.data, skipped: true, reason: "SECURITY_SWEEP" },
           resultSummary: "Skipped: SECURITY_SWEEP",
           error: null,
         },
@@ -134,7 +134,7 @@ export async function POST(req: NextRequest) {
       });
 
       return NextResponse.json(
-        { jobId: job.id, started: false, skipped: true },
+        { jobId: job.id, started: false, skipped: true, reason: "SECURITY_SWEEP" },
         { status: 200 },
       );
     }

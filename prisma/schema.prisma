@@ -319,9 +319,11 @@ enum JobType {
 }
 
 enum ResearchSource {
-  REDDIT
+  REDDIT_PRODUCT
+  REDDIT_PROBLEM
   AMAZON
   G2
+  LOCAL_BUSINESS
 }
 
 enum JobStatus {

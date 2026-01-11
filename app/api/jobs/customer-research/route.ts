@@ -1,7 +1,7 @@
 import { cfg } from "@/lib/config";
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '../../../../lib/prisma';
-import { JobStatus, JobType } from '@prisma/client';
+import { JobStatus, JobType, ResearchSource } from '@prisma/client';
 import { estimateCustomerResearchCost, checkBudget } from '../../../../lib/costEstimator';
 import { checkRateLimit } from '../../../../lib/rateLimiter';
 import { z } from 'zod';
@@ -197,14 +197,16 @@ export async function POST(req: NextRequest) {
           {
             projectId,
             jobId,
-            source: "REDDIT",
-            indexLabel: "golden",
-            title: "SECURITY_SWEEP placeholder",
+            source: ResearchSource.REDDIT_PRODUCT,
             content: "Deterministic placeholder research content.",
-            verified: false,
-            importance: 0,
-            rating: 0,
-          } as any,
+            metadata: {
+              indexLabel: "golden",
+              title: "SECURITY_SWEEP placeholder",
+              verified: false,
+              importance: 0,
+              rating: 0,
+            },
+          },
         ],
       });
     }
@@ -227,6 +229,14 @@ export async function POST(req: NextRequest) {
   } catch (error: any) {
     if (reservation && !jobId) {
       await rollbackQuota(userId, reservation.periodKey, 'researchQueries', 1);
+    }
+    // If we created a job but then failed during setup, mark it failed so callers don't poll forever.
+    if (jobId) {
+      try {
+        await prisma.job.update({ where: { id: jobId }, data: { status: JobStatus.FAILED, error: String(error?.message ?? error) } });
+      } catch (e) {
+        console.error('Failed to mark job as failed after setup error', e);
+      }
     }
     await logAudit({
       userId,
