@@ -14,7 +14,6 @@ export const cfg = {
     }
   },
 };
-
 // Hard safety: SECURITY_SWEEP must never be enabled in production.
 // CI often runs with NODE_ENV=production; allow sweep in CI only.
 const isProd = cfg.raw("NODE_ENV") === "production";
