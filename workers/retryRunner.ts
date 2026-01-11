@@ -111,7 +111,7 @@ async function processOnce() {
   const nowMs = Date.now();
   const scriptIds = await fetchDueJobIds(JobType.SCRIPT_GENERATION, nowMs);
   const patternIds = await fetchDueJobIds(JobType.PATTERN_ANALYSIS, nowMs);
-  const transcriptIds = await fetchDueJobIds(JobType.AD_TRANSCRIPTS, nowMs);
+  const transcriptIds = await fetchDueJobIds('AD_TRANSCRIPTS' as any, nowMs);
 
   const ids = [...scriptIds, ...patternIds, ...transcriptIds];
   if (ids.length === 0) return;
@@ -153,7 +153,7 @@ async function processOnce() {
         return callServiceFn(fn, job);
       }
 
-      if (job.type === JobType.AD_TRANSCRIPTS) {
+      if (job.type === ('AD_TRANSCRIPTS' as any)) {
         const fn =
           resolveFn(transcriptsSvc, [
             "startAdTranscriptCollectionJob",

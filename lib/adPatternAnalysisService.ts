@@ -57,15 +57,17 @@ export async function runPatternAnalysis(args: { projectId: string; jobId: strin
     requireEnv(['ANTHROPIC_API_KEY'], 'ANTHROPIC');
 
     const assets = await prisma.adAsset.findMany({
-      where: { projectId, transcript: { not: null } },
+      where: { projectId },
+      select: { id: true, rawJson: true },
       take: 50,
     });
 
-    if (assets.length === 0) {
+    const transcribed = assets.filter(a => ((a.rawJson as any)?.transcript ?? '').toString().trim().length > 0);
+    if (transcribed.length === 0) {
       throw new Error('No transcribed ads found');
     }
 
-    const prompt = buildPatternPrompt(assets);
+    const prompt = buildPatternPrompt(transcribed.map(a => ({ id: a.id, rawJson: a.rawJson })));
 
     const message = await guardedExternalCall({
       breakerKey: 'anthropic:pattern-analysis',
@@ -92,9 +94,7 @@ export async function runPatternAnalysis(args: { projectId: string; jobId: strin
           projectId,
           jobId,
           rawJson: parsed,
-          baselineRetention3s: parsed.baseline?.retention_3s,
-          baselineCtr: parsed.baseline?.ctr,
-          totalConverters: parsed.patterns?.length || 0,
+          summary: JSON.stringify(parsed?.summary ?? parsed?.baseline ?? {}),
         },
       });
 
@@ -102,20 +102,8 @@ export async function runPatternAnalysis(args: { projectId: string; jobId: strin
         await tx.adPatternReference.createMany({
           data: parsed.patterns.map((p: any) => ({
             projectId,
-            resultId: result.id,
-            patternName: p.pattern_name,
-            category: p.category,
-            timing: p.timing,
-            description: p.description,
-            example: p.example,
-            exampleTimestamp: p.example_timestamp,
-            visualNotes: p.visual_notes,
-            occurrenceRate: p.occurrence_rate,
-            sampleCount: p.sample_count,
-            performanceLift: p.performance_lift,
-            productionComplexity: p.production_complexity,
-            standaloneViable: p.standalone_viable,
-            canCoexist: p.can_coexist,
+            source: p.pattern_name ?? p.category ?? 'pattern',
+            metadata: p as any,
           })),
         });
       }
@@ -140,12 +128,15 @@ export async function runPatternAnalysis(args: { projectId: string; jobId: strin
 }
 
 function buildPatternPrompt(assets: any[]): string {
-  const adData = assets.map((a, i) => ({
-    id: i + 1,
-    transcript: a.transcript?.substring(0, 500),
-    retention_3s: (a.metrics as any)?.retention_3s,
-    duration: (a.metrics as any)?.duration,
-  }));
+  const adData = assets.map((a, i) => {
+    const raw = (a.rawJson as any) || {};
+    return ({
+      id: i + 1,
+      transcript: String(raw?.transcript ?? '').substring(0, 500),
+      retention_3s: raw?.metrics?.retention_3s,
+      duration: raw?.metrics?.duration,
+    });
+  });
 
   return `Analyze these TikTok ads and extract conversion patterns:
 

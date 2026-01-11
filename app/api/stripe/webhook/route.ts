@@ -2,7 +2,7 @@ import { cfg } from "@/lib/config";
 import { isSelfHosted } from "@/lib/config/mode";
 import type Stripe from "stripe";
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import prisma from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { getStripe } from "@/lib/stripe";
 import { planFromPriceId } from "@/lib/billing/plans";
@@ -64,7 +64,8 @@ async function upsertUserSubscription(params: {
   currentPeriodEnd: Date | null;
   cancelAtPeriodEnd: boolean;
 }) {
-  await prisma.subscription.upsert({
+  const db: any = prisma;
+  await db.subscription.upsert({
     where: { userId: params.userId },
     create: {
       userId: params.userId,
@@ -136,7 +137,8 @@ async function handleSubscriptionEvent(
   const looksUnknownPrice =
     opts?.deleted !== true && stripePriceId && planId === "FREE";
   if (looksUnknownPrice) {
-    const existing = await prisma.subscription.findUnique({
+    const db: any = prisma;
+    const existing = await db.subscription.findUnique({
       where: { userId },
       select: { planId: true, status: true },
     });
@@ -177,7 +179,8 @@ async function recordBillingEvent(args: {
   payload: unknown;
 }) {
   try {
-    await prisma.billingEvent.create({
+    const db: any = prisma;
+    await db.billingEvent.create({
       data: {
         stripeEventId: args.stripeEventId,
         type: args.type,

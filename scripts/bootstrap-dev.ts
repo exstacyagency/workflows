@@ -53,8 +53,10 @@ async function main() {
   console.log(`✔ project ${PROJECT.id}`);
 
   // --- wipe auth throttles (dev only) ---
-  await prisma.authThrottle.deleteMany({});
-  console.log("✔ authThrottle reset");
+  if ((prisma as any).authThrottle) {
+    await (prisma as any).authThrottle.deleteMany({});
+    console.log("✔ authThrottle reset");
+  }
 
   console.log("Bootstrap complete.");
 }

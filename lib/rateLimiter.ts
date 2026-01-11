@@ -27,13 +27,13 @@ async function internalCheckRateLimit(
   const windowStartMs = Math.floor(now / windowMs) * windowMs;
   const windowStart = new Date(windowStartMs);
 
-  const existing = await prisma.rateLimitBucket.findUnique({
+  const existing = await (prisma as any).rateLimitBucket.findUnique({
     where: { key },
     select: { windowStart: true },
   });
 
   if (!existing || existing.windowStart.getTime() !== windowStartMs) {
-    await prisma.rateLimitBucket.upsert({
+    await (prisma as any).rateLimitBucket.upsert({
       where: { key },
       create: { key, windowStart, count: 1 },
       update: { windowStart, count: 1 },
@@ -41,7 +41,7 @@ async function internalCheckRateLimit(
     return { allowed: true };
   }
 
-  const updated = await prisma.rateLimitBucket.update({
+  const updated = await (prisma as any).rateLimitBucket.update({
     where: { key },
     data: { count: { increment: 1 } },
     select: { count: true },

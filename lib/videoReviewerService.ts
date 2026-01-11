@@ -58,7 +58,9 @@ async function mergeStoryboardIfComplete(storyboardId: string) {
 
   if (scenes.length === 0) return null;
 
-  const acceptedScenes = scenes.filter(s => s.status === 'accepted' && s.videoUrl);
+  const acceptedScenes = scenes.filter(
+    s => s.status === 'accepted' && ((s as any).videoUrl ?? (s.rawJson as any)?.videoUrl ?? (s.rawJson as any)?.video_url),
+  );
   if (acceptedScenes.length !== scenes.length) {
     // Not all scenes accepted with videoUrl yet
     return null;
@@ -74,7 +76,9 @@ async function mergeStoryboardIfComplete(storyboardId: string) {
     return storyboard.script.mergedVideoUrl;
   }
 
-  const videoUrls = acceptedScenes.map(s => s.videoUrl as string);
+  const videoUrls = acceptedScenes.map(s =>
+    (s as any).videoUrl ?? (s.rawJson as any)?.videoUrl ?? (s.rawJson as any)?.video_url,
+  );
 
   const mergeRes = await fetch(FAL_MERGE_URL, {
     method: 'POST',

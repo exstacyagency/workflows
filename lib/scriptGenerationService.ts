@@ -1,7 +1,7 @@
 // lib/scriptGenerationService.ts
 import { cfg } from "@/lib/config";
 import prisma from './prisma.ts';
-import { JobStatus, JobType } from '@prisma/client';
+import { JobStatus, JobType, ScriptStatus } from '@prisma/client';
 import type { Job } from '@prisma/client';
 import { guardedExternalCall } from './externalCallGuard.ts';
 import { env, requireEnv } from './configGuard.ts';
@@ -409,8 +409,8 @@ export async function runScriptGeneration(args: { projectId: string; jobId?: str
 
   const { system, prompt } = buildScriptPrompt({
     productName: project.name,
-    avatar: avatar?.rawJson ?? {},
-    productIntel: productIntel?.rawJson ?? {},
+    avatar: (avatar?.persona as any) ?? {},
+    productIntel: (productIntel?.insights as any) ?? {},
     patterns,
     antiPatterns,
     stackingRules,
@@ -422,7 +422,7 @@ export async function runScriptGeneration(args: { projectId: string; jobId?: str
       jobId,
       mergedVideoUrl: null,
       upscaledVideoUrl: null,
-      status: 'PENDING',
+      status: ScriptStatus.PENDING,
       rawJson: {},
       wordCount: 0,
     },
@@ -446,7 +446,7 @@ export async function runScriptGeneration(args: { projectId: string; jobId?: str
         typeof scriptJson.word_count === 'number'
           ? scriptJson.word_count
           : null,
-      status: 'READY',
+      status: ScriptStatus.READY,
     },
   });
 

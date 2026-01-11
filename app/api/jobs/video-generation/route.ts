@@ -125,7 +125,7 @@ export async function POST(req: NextRequest) {
       select: {
         id: true,
         projectId: true,
-        scenes: { select: { id: true, firstFrameUrl: true, lastFrameUrl: true } },
+        scenes: { select: { id: true, rawJson: true } },
       },
     });
     if (!storyboard || storyboard.projectId !== projectId) {
@@ -233,10 +233,13 @@ export async function POST(req: NextRequest) {
     const missing = storyboard.scenes
       .map((scene) => {
         const missingFields: string[] = [];
-        if (!scene.firstFrameUrl || String(scene.firstFrameUrl).trim().length === 0) {
+        const rawData = scene.rawJson as any;
+        const firstFrameUrl = rawData?.firstFrameUrl;
+        const lastFrameUrl = rawData?.lastFrameUrl;
+        if (!firstFrameUrl || String(firstFrameUrl).trim().length === 0) {
           missingFields.push("firstFrameUrl");
         }
-        if (!scene.lastFrameUrl || String(scene.lastFrameUrl).trim().length === 0) {
+        if (!lastFrameUrl || String(lastFrameUrl).trim().length === 0) {
           missingFields.push("lastFrameUrl");
         }
         return missingFields.length > 0

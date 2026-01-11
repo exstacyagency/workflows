@@ -140,7 +140,7 @@ class RedditScraper {
 
     return {
       productRows: productComments.map((item, idx) => ({
-        source: ResearchSource.REDDIT_PRODUCT,
+        source: 'REDDIT_PRODUCT' as any,
         indexLabel: `${idx + 1}`,
         content: item.body || item.selftext || '',
         metadata: {
@@ -153,7 +153,7 @@ class RedditScraper {
       })),
       problemRows: problemComments.flatMap((item, idx) =>
         item.comments.map((comment, cidx) => ({
-          source: ResearchSource.REDDIT_PROBLEM,
+          source: 'REDDIT_PROBLEM' as any,
           indexLabel: `${idx + 1}.${cidx + 1}`,
           content: comment.body || '',
           metadata: {
@@ -303,12 +303,11 @@ class YelpScraper {
     return reviews
       .filter((r) => r.text || r.reviewText)
       .map((r, idx) => ({
-        source: ResearchSource.LOCAL_BUSINESS,
-        indexLabel: `yelp-${idx + 1}`,
+        source: 'LOCAL_BUSINESS' as any,
         content: (r.text || r.reviewText || '').trim(),
+        metadata: { date: r.date, author: r.author, platform: 'yelp', indexLabel: `yelp-${idx + 1}` },
         rating: r.rating,
         verified: r.verified,
-        metadata: { date: r.date, author: r.author, platform: 'yelp' }
       }));
   }
 }
@@ -333,12 +332,11 @@ class GoogleBusinessScraper {
     return reviews
       .filter((r) => r.text || r.reviewText)
       .map((r, idx) => ({
-        source: ResearchSource.LOCAL_BUSINESS,
-        indexLabel: `google-${idx + 1}`,
+        source: 'LOCAL_BUSINESS' as any,
         content: (r.text || r.reviewText || '').trim(),
+        metadata: { date: r.date, author: r.author, platform: 'google', indexLabel: `google-${idx + 1}` },
         rating: r.rating,
         verified: r.verified,
-        metadata: { date: r.date, author: r.author, platform: 'google' }
       }));
   }
 }
@@ -378,7 +376,7 @@ function dedupeRows(rows: ResearchRowInput[]) {
   for (const row of rows) {
     const normalizedContent = row.content?.replace(/\s+/g, ' ').trim();
     if (!normalizedContent) continue;
-    const key = `${row.projectId}:${row.source}:${normalizedContent.toLowerCase()}:${row.sourceUrl ?? ''}`;
+    const key = `${row.projectId}:${row.source}:${normalizedContent.toLowerCase()}:${(row as any).metadata?.sourceUrl ?? ''}`;
     if (seen.has(key)) continue;
     seen.add(key);
     normalized.push({ ...row, content: normalizedContent });

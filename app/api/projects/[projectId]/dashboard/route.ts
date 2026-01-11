@@ -42,16 +42,14 @@ export async function GET(_req: NextRequest, { params }: Params) {
     select: {
       planId: true,
       status: true,
-      currentPeriodEnd: true,
-      cancelAtPeriodEnd: true,
     },
   });
 
   const subscription = {
     planId: (subscriptionRow?.planId as "FREE" | "GROWTH" | "SCALE" | null) ?? null,
     status: subscriptionRow?.status ?? null,
-    currentPeriodEnd: subscriptionRow?.currentPeriodEnd ?? null,
-    cancelAtPeriodEnd: subscriptionRow?.cancelAtPeriodEnd ?? null,
+    currentPeriodEnd: null,
+    cancelAtPeriodEnd: null,
   };
 
   const periodKey = getCurrentPeriodKey();
