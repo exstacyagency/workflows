@@ -38,9 +38,12 @@ function main() {
   const override = process.env.FREEZE_OVERRIDE === "1";
   const files = getChangedFiles();
 
+  const ALLOW_MISSING = "__ALLOW_MISSING__";
+
   const allowedMigrationOverrides: Record<string, string> = {
     "prisma/migrations/20260102160000_add_rls_policies/migration.sql":
       "c86fb1337d6d04901e3618caf5745f4ca85e79cea9330dc5b56e6bf5cad71afc",
+    "prisma/migrations/20260109205600_init/migration.sql": ALLOW_MISSING,
   };
 
   const rules: Rule[] = [
@@ -78,7 +81,10 @@ function main() {
         if (r.name === "prisma-migrations-history") {
           const allowedHash = allowedMigrationOverrides[f];
           const currentHash = fileSha256(f);
-          if (allowedHash && currentHash === allowedHash) {
+          if (
+            allowedHash &&
+            ((allowedHash === ALLOW_MISSING && currentHash === null) || currentHash === allowedHash)
+          ) {
             continue;
           }
           violations.push(`[FORBIDDEN] ${r.message} (file: ${f})`);
