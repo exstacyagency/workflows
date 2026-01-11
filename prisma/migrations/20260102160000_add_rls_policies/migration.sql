@@ -83,10 +83,17 @@ BEGIN
     RETURN;
   END IF;
 
-  sql := format(
-    'CREATE POLICY %I ON %s FOR %s USING (%s) WITH CHECK (%s);',
-    pol_name, tbl::text, pol_cmd, pol_using, pol_check
-  );
+  IF pol_cmd = 'INSERT' OR pol_cmd = 'UPDATE' THEN
+    sql := format(
+      'CREATE POLICY %I ON %s FOR %s USING (%s) WITH CHECK (%s);',
+      pol_name, tbl::text, pol_cmd, pol_using, pol_check
+    );
+  ELSE
+    sql := format(
+      'CREATE POLICY %I ON %s FOR %s USING (%s);',
+      pol_name, tbl::text, pol_cmd, pol_using
+    );
+  END IF;
   EXECUTE sql;
 END;
 $$;

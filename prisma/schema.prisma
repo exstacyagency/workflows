@@ -143,6 +143,8 @@ model Script {
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   job     Job?    @relation(fields: [jobId], references: [id])
   storyboards Storyboard[]
+
+  @@map("script")
 }
 
 model Storyboard {
