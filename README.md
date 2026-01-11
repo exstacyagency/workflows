@@ -215,3 +215,42 @@ Each phase of the production pipeline is modular and can be extended independent
 
 ci smoke 2026-01-02T20:10:01Z
 ci smoke 2026-01-02T20:59:58Z
+
+## Entitlement Gate – Verification Instructions
+
+### Mandatory Test Execution
+
+Linting and builds are insufficient to validate entitlement enforcement. Always run the entitlement bypass test suite.
+
+#### Run the entitlement bypass test
+
+```bash
+npm test
+# or
+npx jest tests/entitlements.bypass.test.ts
+```
+
+#### Expected success output
+
+```
+PASS tests/entitlements.bypass.test.ts
+Test Suites: 1 passed, 1 total
+Tests:       1 passed, 1 total
+```
+
+#### One-time validation (do NOT commit)
+
+1. Temporarily modify the entitlement gate to always return `{ allowed: true }`.
+2. Re-run `npx jest tests/entitlements.bypass.test.ts` and confirm it fails.
+3. Immediately revert the change.
+
+#### CI requirement
+
+- CI must execute Jest for entitlement coverage. A green build without tests is invalid.
+
+#### Definition of done
+
+- Entitlement test runs locally.
+- Tampered gate fails the test.
+- Correct logic passes the test.
+- CI runs the Jest suite.

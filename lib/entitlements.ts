@@ -1,28 +1,42 @@
-export type EntitlementAction =
-  | 'campaign:create'
-  | 'campaign:activate'
-  | 'job:enqueue'
-  | 'analytics:read';
+import { prisma } from "@/lib/prisma";
+import { cfg } from "@/lib/config";
+import { AccountTier } from "@prisma/client";
 
-export type EntitlementContext = {
-  user: { id: string; role?: string };
-  account: { id: string; tier: 'free' | 'paid' | 'admin' };
+export type EntitlementAction = "campaign.create";
+
+type AssertEntitledInput = {
+  userId: string;
+  account: { id: string; tier: AccountTier };
   action: EntitlementAction;
 };
 
-export function checkEntitlements(ctx: EntitlementContext) {
-  if (ctx.account.tier === 'admin') {
-    return { allowed: true };
+export async function assertEntitled(
+  opts: AssertEntitledInput,
+): Promise<void> {
+  const { account, action } = opts;
+
+  if (cfg.raw("PANIC_DISABLE_ALL") === "true") {
+    throw new Error("SYSTEM_DISABLED");
   }
 
-  if (ctx.account.tier === 'free') {
-    if (ctx.action === 'campaign:create') {
-      return {
-        allowed: false,
-        reason: 'Free tier cannot create campaigns',
-      };
+  switch (account.tier) {
+    case AccountTier.FREE: {
+      if (action === "campaign.create") {
+        const count = await prisma.campaign.count({
+          where: {
+            accountId: account.id,
+          },
+        });
+
+        if (count >= 1) {
+          throw new Error("FREE tier accounts may only create one campaign");
+        }
+      }
+
+      break;
     }
-  }
 
-  return { allowed: true };
+    default:
+      break;
+  }
 }
