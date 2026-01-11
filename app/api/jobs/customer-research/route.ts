@@ -197,7 +197,7 @@ export async function POST(req: NextRequest) {
           {
             projectId,
             jobId,
-            source: "REDDIT_PRODUCT",
+            source: "REDDIT",
             indexLabel: "golden",
             title: "SECURITY_SWEEP placeholder",
             content: "Deterministic placeholder research content.",
