@@ -79,6 +79,7 @@ model Campaign {
   id        String   @id @default(cuid())
   accountId String
   name      String
+  state     CampaignState @default(DRAFT)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -395,6 +396,13 @@ enum AccountTier {
 enum AdPlatform {
   TIKTOK
   META
+}
+
+enum CampaignState {
+  DRAFT
+  ACTIVE
+  PAUSED
+  ARCHIVED
 }
 
 // Script lifecycle statuses. Values chosen to match status strings used across the codebase.
