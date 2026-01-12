@@ -1,0 +1,30 @@
+BEGIN;
+
+-- Convert enum to text
+ALTER TABLE "job"
+ALTER COLUMN "type" TYPE TEXT
+USING "type"::text;
+
+-- Recreate enum without removed values
+DROP TYPE IF EXISTS "JobType" CASCADE;
+
+CREATE TYPE "JobType" AS ENUM (
+  'CUSTOMER_RESEARCH',
+  'CUSTOMER_ANALYSIS',
+  'PATTERN_ANALYSIS',
+  'SCRIPT_GENERATION',
+  'STORYBOARD_GENERATION',
+  'VIDEO_PROMPT_GENERATION',
+  'VIDEO_IMAGE_GENERATION',
+  'VIDEO_GENERATION',
+  'VIDEO_REVIEW',
+  'VIDEO_UPSCALER',
+  'AD_PERFORMANCE'
+);
+
+-- Convert back to enum
+ALTER TABLE "job"
+ALTER COLUMN "type" TYPE "JobType"
+USING "type"::"JobType";
+
+COMMIT;
