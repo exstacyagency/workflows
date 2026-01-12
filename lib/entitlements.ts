@@ -1,7 +1,11 @@
 import { prisma } from "@/lib/prisma";
 import { cfg } from "@/lib/config";
 
-export type EntitlementAction = "campaign.create" | "spend.charge";
+export type EntitlementAction =
+  | "campaign.create"
+  | "campaign.activate"
+  | "spend.charge"
+  | `job.${string}`;
 
 type EntitlementContext = {
   amount?: number;

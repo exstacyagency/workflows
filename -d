@@ -1,0 +1,9 @@
+HTTP/1.1 307 Temporary Redirect
+location: /api/auth/signin?callbackUrl=%2Fapi%2Fjobs
+x-request-id: e6708aa6-1a24-4c35-9f91-7b748036ef55
+Date: Mon, 12 Jan 2026 20:58:47 GMT
+Connection: keep-alive
+Keep-Alive: timeout=5
+Transfer-Encoding: chunked
+
+/api/auth/signin?callbackUrl=%2Fapi%2Fjobs
