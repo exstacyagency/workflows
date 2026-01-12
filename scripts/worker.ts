@@ -46,7 +46,7 @@ async function runJob(jobId: string) {
     await prisma.job.update({
       where: { id: jobId },
       data: {
-        status: JobStatus.SUCCEEDED,
+        status: JobStatus.COMPLETED,
         resultSummary: "Job completed successfully",
       },
     });
