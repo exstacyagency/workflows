@@ -42,16 +42,6 @@ export async function POST(req: Request) {
   }
 
   /** -------------------------------------------------
-   * HARD BLOCK: FREE tier cannot create campaigns
-   * ------------------------------------------------- */
-  if (account.tier === "FREE") {
-    return NextResponse.json(
-      { error: "Campaign creation not allowed on FREE tier" },
-      { status: 403 }
-    );
-  }
-
-  /** -------------------------------------------------
    * Secondary entitlement gate (future-proofing)
    * ------------------------------------------------- */
   try {
