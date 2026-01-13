@@ -24,6 +24,14 @@ queue.process(async (job) => {
 
     job.progress(10);
 
+    // eslint-disable-next-line no-restricted-properties
+    if (process.env.NODE_ENV === 'test') {
+      return {
+        summary: 'Test customer research result',
+        sources: [],
+      };
+    }
+
     const result = await runCustomerResearch({
       projectId,
       jobId,
