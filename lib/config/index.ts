@@ -13,6 +13,7 @@ export const cfg = {
         return process.env[name];
     }
   },
+  JOB_IDEMPOTENCY_ENABLED: process.env.JOB_IDEMPOTENCY_ENABLED === "true",
 };
 // Hard safety: SECURITY_SWEEP must never be enabled in production.
 // CI often runs with NODE_ENV=production; allow sweep in CI only.
