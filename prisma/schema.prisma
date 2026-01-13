@@ -111,7 +111,7 @@ model Job {
   projectId      String
   type           JobType
   status         JobStatus @default(PENDING)
-  idempotencyKey String?
+  idempotencyKey String?  @unique
   payload        Json?
   resultSummary  String?
   error          String?
@@ -131,7 +131,6 @@ model Job {
   adPatternResults AdPatternResult[]
   auditLogs        AuditLog[]
 
-  @@unique([projectId, type, idempotencyKey])
   @@index([projectId])
   @@map("job")
 }

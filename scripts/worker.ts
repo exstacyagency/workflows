@@ -5,35 +5,33 @@ const prisma = new PrismaClient();
 const POLL_INTERVAL_MS = 3000;
 
 async function pickAndRunJob() {
-  return prisma.$transaction(async (tx) => {
-    // 1. Find one pending job
-    const job = await tx.job.findFirst({
-      where: { status: JobStatus.PENDING },
-      orderBy: { createdAt: "asc" },
-    });
-
-    if (!job) {
-      return null;
-    }
-
-    // 2. Atomically claim it
-    const updated = await tx.job.updateMany({
-      where: {
-        id: job.id,
-        status: JobStatus.PENDING,
-      },
-      data: {
-        status: JobStatus.RUNNING,
-      },
-    });
-
-    // Someone else took it
-    if (updated.count !== 1) {
-      return null;
-    }
-
-    return job;
+  // 1. Find one pending job (no lock)
+  const job = await prisma.job.findFirst({
+    where: { status: JobStatus.PENDING },
+    orderBy: { createdAt: "asc" },
   });
+
+  if (!job) {
+    return null;
+  }
+
+  // 2. Atomically claim it
+  const claimed = await prisma.job.updateMany({
+    where: {
+      id: job.id,
+      status: JobStatus.PENDING,
+    },
+    data: {
+      status: JobStatus.RUNNING,
+    },
+  });
+
+  if (claimed.count !== 1) {
+    console.log(`⚠️  Job ${job.id} already claimed by another worker`);
+    return null;
+  }
+
+  return job;
 }
 
 async function runJob(jobId: string) {
