@@ -3,11 +3,6 @@ import { isSelfHosted } from "@/lib/config/mode";
 import Bull from 'bull';
 import Redis from 'ioredis';
 
-function getQueueBackend(): "db" | "redis" {
-  if (isSelfHosted()) return (cfg.raw("QUEUE_BACKEND") as any) === "redis" ? "redis" : "db";
-  return (cfg.raw("QUEUE_BACKEND") as any) === "redis" ? "redis" : "db";
-}
-
 function assertRedisConfigured() {
   const url = (cfg.raw("REDIS_URL") ?? "").trim();
   if (!url) throw new Error("QUEUE_BACKEND=redis requires REDIS_URL");
@@ -75,18 +70,15 @@ function createBullRedisClient(type: string, config: any) {
 }
 
 function assertRedisAvailable() {
-  if (getQueueBackend() !== "redis") {
-    throw new Error("QUEUE_BACKEND=db; redis queue unavailable");
-  }
   const url = assertRedisConfigured();
   if (!redis) throw new Error('Redis not available (failed to initialize)');
   return url;
 }
 
-export function getQueue(name: QueueName): Bull.Queue {
+function getRedisQueue(name: QueueName): Bull.Queue {
   const url = assertRedisAvailable();
   if (!queues.has(name)) {
-    queues.set(name, new Bull(name, url, { 
+    queues.set(name, new Bull(name, url, {
       redis: { ...redisBaseOptions },
       createClient: createBullRedisClient,
       defaultJobOptions: {
@@ -103,13 +95,32 @@ export function getQueue(name: QueueName): Bull.Queue {
   return queues.get(name)!;
 }
 
+function getDbQueue(name: QueueName): Bull.Queue {
+  return createNoopQueue(name);
+}
+
+export function getQueue(name: QueueName): Bull.Queue {
+  // eslint-disable-next-line no-restricted-properties
+  const backend = process.env.QUEUE_BACKEND ?? 'redis';
+
+  if (backend === 'redis') {
+    assertRedisAvailable();
+    return getRedisQueue(name);
+  }
+
+  if (backend === 'db') {
+    return getDbQueue(name);
+  }
+
+  throw new Error(`Unknown QUEUE_BACKEND: ${backend}`);
+}
+
 export async function addJob<T>(
   queueName: QueueName,
   jobId: string,
   data: T,
   opts?: Bull.JobOptions
 ) {
-  assertRedisAvailable();
   const queue = getQueue(queueName);
   return queue.add(data, {
     jobId,
@@ -118,7 +129,6 @@ export async function addJob<T>(
 }
 
 export async function getJobStatus(queueName: QueueName, jobId: string) {
-  assertRedisAvailable();
   const queue = getQueue(queueName);
   const job = await queue.getJob(jobId);
   
