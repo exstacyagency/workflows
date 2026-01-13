@@ -16,7 +16,12 @@ if (cfg.raw("NODE_ENV") !== "production") {
   loadDotEnvFileIfPresent(".env");
 }
 
-const POLL_MS = Number(cfg.raw("WORKER_POLL_MS") ?? 2000);
+const IS_TEST = cfg.raw("NODE_ENV") === "test";
+
+const DEFAULT_POLL_INTERVAL_MS = Number(cfg.raw("WORKER_POLL_MS") ?? 1000);
+const TEST_POLL_INTERVAL_MS = Number(cfg.raw("WORKER_TEST_POLL_MS") ?? 50);
+
+const POLL_MS = IS_TEST ? TEST_POLL_INTERVAL_MS : DEFAULT_POLL_INTERVAL_MS;
 const RUN_ONCE = cfg.raw("RUN_ONCE") === "1";
 const WORKER_JOB_MAX_RUNTIME_MS = Number(cfg.raw("WORKER_JOB_MAX_RUNTIME_MS") ?? 20 * 60_000);
 
