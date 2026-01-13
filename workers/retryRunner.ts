@@ -7,7 +7,18 @@ import * as transcriptsSvc from "../lib/adTranscriptCollectionService.ts";
 
 const prisma = new PrismaClient();
 
-const POLL_MS = Number(cfg.raw("RETRY_POLL_MS") ?? 5000);
+const IS_TEST = cfg.raw("NODE_ENV") === "test";
+
+const DEFAULT_POLL_MS = Number(cfg.raw("RETRY_POLL_MS") ?? 5000);
+const TEST_POLL_MS = Number(cfg.raw("RETRY_TEST_POLL_MS") ?? 50);
+
+const DEFAULT_MAX_RETRIES = Number(cfg.raw("RETRY_MAX_RETRIES") ?? 5);
+const DEFAULT_RETRY_DELAY_MS = Number(cfg.raw("RETRY_DELAY_MS") ?? 30_000);
+
+const MAX_RETRIES = IS_TEST ? 1 : DEFAULT_MAX_RETRIES;
+const RETRY_DELAY_MS = IS_TEST ? 0 : DEFAULT_RETRY_DELAY_MS;
+
+const POLL_MS = IS_TEST ? TEST_POLL_MS : DEFAULT_POLL_MS;
 const BATCH = Number(cfg.raw("RETRY_BATCH") ?? 5);
 const MAX_WORKER_CONCURRENCY = Number(cfg.raw("MAX_WORKER_CONCURRENCY") ?? 2);
 const MAX_RUNNING_JOBS_PER_USER = Number(cfg.raw("MAX_RUNNING_JOBS_PER_USER") ?? 3);
@@ -131,6 +142,18 @@ async function processOnce() {
     if (running >= MAX_RUNNING_JOBS_PER_USER) {
       console.log(`[retryRunner] skip job=${jobId} reason=per-user-cap user=${userId}`);
       continue;
+    }
+
+    const jobForAttempts = await prisma.job.findUnique({ where: { id: jobId }, select: { payload: true } });
+    const attempts = Number(((jobForAttempts?.payload as any)?.attempts ?? 0));
+
+    if (attempts >= MAX_RETRIES) {
+      console.log(`[retryRunner] skip job=${jobId} reason=max-retries attempts=${attempts}`);
+      continue;
+    }
+
+    if (RETRY_DELAY_MS > 0) {
+      await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
     }
 
     const state = await runWithState(jobId, async () => {
