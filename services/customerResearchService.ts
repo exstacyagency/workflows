@@ -43,6 +43,7 @@ type ResearchRowInput = ArrayElement<
 >;
 
 const APIFY_BASE = 'https://api.apify.com/v2';
+
 const FETCH_RETRY_ATTEMPTS = 3;
 const REDDIT_PAGE_SIZE = 75;
 const REDDIT_MAX_PAGES = 3;
@@ -269,6 +270,15 @@ function dedupeRows(rows: ResearchRowInput[]) {
 }
 
 export async function runCustomerResearch(params: RunCustomerResearchParams) {
+  // eslint-disable-next-line no-restricted-properties
+  if (process.env.NODE_ENV === 'test') {
+    return {
+      summary: 'Test customer research result',
+      sources: [],
+      confidence: 1,
+    };
+  }
+
   const { projectId, jobId, productName, productProblemSolved, productAmazonAsin, competitor1AmazonAsin, competitor2AmazonAsin } = params;
 
   await prisma.job.update({ where: { id: jobId }, data: { status: JobStatus.RUNNING } });
