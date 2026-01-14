@@ -40,8 +40,11 @@ export default async function combinedMiddleware(
 
   const isProd = cfg.raw("NODE_ENV") === "production";
 
-  // Existing debug rules
-  if (!isProd && pathname.startsWith("/api/debug/")) {
+  // Public infra endpoints (must bypass auth)
+  if (
+    pathname === "/api/health" ||
+    (!isProd && pathname.startsWith("/api/debug/"))
+  ) {
     return applySecurityHeaders(NextResponse.next());
   }
 
@@ -61,6 +64,12 @@ export default async function combinedMiddleware(
 
 export const config = {
   matcher: [
-    "/((?!api/e2e/reset|_next|favicon.ico).*)"
-  ]
+    "/projects/:path*",
+    "/customer-profile/:path*",
+    "/studio/:path*",
+    "/api/projects/:path*",
+    "/api/media/:path*",
+    "/api/debug/:path*",
+    // NOTE: /api/health intentionally excluded
+  ],
 };

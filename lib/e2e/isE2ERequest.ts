@@ -1,6 +1,15 @@
-export function isE2ERequest(req: Request): boolean {
-  if (process.env.NODE_ENV === "test") return true;
+import { cfg } from "@/lib/config";
+import { headers } from "next/headers";
 
-  const key = req.headers.get("x-e2e-reset-key");
-  return key === process.env.E2E_RESET_KEY;
+export function isE2ERequest(): boolean {
+  // Never allow in prod
+  if (cfg.raw("NODE_ENV") === "production") {
+    return false;
+  }
+
+  const expected = cfg.raw("E2E_RESET_KEY");
+  if (!expected) return false;
+
+  const h = headers();
+  return h.get("x-e2e-reset-key") === expected;
 }
