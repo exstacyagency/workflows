@@ -8,14 +8,12 @@ function applySecurityHeaders(res: NextResponse) {
   res.headers.set("X-Content-Type-Options", "nosniff");
   res.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   res.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
-
   return res;
 }
 
 const authMiddleware = withAuth(
   function middleware() {
-    const res = NextResponse.next();
-    return applySecurityHeaders(res);
+    return applySecurityHeaders(NextResponse.next());
   },
   {
     callbacks: {
@@ -24,27 +22,43 @@ const authMiddleware = withAuth(
   }
 );
 
-export default async function combinedMiddleware(req: NextRequest, event: NextFetchEvent) {
-  const isProd = cfg.raw("NODE_ENV") === "production";
+export default async function combinedMiddleware(
+  req: NextRequest,
+  event: NextFetchEvent
+) {
   const pathname = req.nextUrl.pathname;
 
-  // Test-only debug routes must bypass NextAuth middleware; otherwise withAuth redirects before handler executes.
-  if (!isProd && pathname.startsWith("/api/debug/")) {
-    const res = applySecurityHeaders(NextResponse.next());
-    return res;
+  // 🔥 HARD BYPASS FOR E2E RESET
+  if (pathname === "/api/e2e/reset") {
+    return NextResponse.next();
+  }
+
+  // HARD bypass — must be first
+  if (pathname.startsWith("/api/_e2e/")) {
+    return NextResponse.next();
+  }
+
+  const isProd = cfg.raw("NODE_ENV") === "production";
+
+  // Public infra endpoints (must bypass auth)
+  if (
+    pathname === "/api/health" ||
+    (!isProd && pathname.startsWith("/api/debug/"))
+  ) {
+    return applySecurityHeaders(NextResponse.next());
   }
 
   if (isProd && pathname.startsWith("/api/debug")) {
     return new Response(null, { status: 404 });
   }
 
-  const requestId = (
-    req.headers.get("x-request-id") ||
-    (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`)
-  ).toString();
+  const requestId =
+    req.headers.get("x-request-id") ??
+    globalThis.crypto?.randomUUID?.() ??
+    `${Date.now()}-${Math.random()}`;
 
-  const res = (await authMiddleware(req as any, event)) as any;
-  res.headers.set("x-request-id", requestId);
+  const res = (await authMiddleware(req as any, event)) as NextResponse;
+  res.headers.set("x-request-id", requestId.toString());
   return res;
 }
 
@@ -56,5 +70,6 @@ export const config = {
     "/api/projects/:path*",
     "/api/media/:path*",
     "/api/debug/:path*",
+    // NOTE: /api/health intentionally excluded
   ],
 };
