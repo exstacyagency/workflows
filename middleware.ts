@@ -1,13 +1,14 @@
-// middleware.ts
-import { cfg } from "@/lib/config";
-import { NextFetchEvent, NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, NextFetchEvent } from "next/server";
 import { withAuth } from "next-auth/middleware";
 
 function applySecurityHeaders(res: NextResponse) {
   res.headers.set("X-Frame-Options", "DENY");
   res.headers.set("X-Content-Type-Options", "nosniff");
   res.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
-  res.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  res.headers.set(
+    "Permissions-Policy",
+    "camera=(), microphone=(), geolocation=()"
+  );
   return res;
 }
 
@@ -22,44 +23,41 @@ const authMiddleware = withAuth(
   }
 );
 
-export default async function combinedMiddleware(
+export default async function middleware(
   req: NextRequest,
   event: NextFetchEvent
 ) {
   const pathname = req.nextUrl.pathname;
 
-  // 🔥 HARD BYPASS FOR E2E RESET
-  if (pathname === "/api/e2e/reset") {
-    return NextResponse.next();
-  }
-
-  // HARD bypass — must be first
-  if (pathname.startsWith("/api/_e2e/")) {
-    return NextResponse.next();
-  }
-
-  const isProd = cfg.raw("NODE_ENV") === "production";
-
-  // Public infra endpoints (must bypass auth)
+  // HARD BYPASSES — must stay first
   if (
     pathname === "/api/health" ||
-    (!isProd && pathname.startsWith("/api/debug/"))
+    pathname === "/api/e2e/reset" ||
+    pathname.startsWith("/api/_e2e/")
   ) {
-    return applySecurityHeaders(NextResponse.next());
+    return NextResponse.next();
   }
 
-  if (isProd && pathname.startsWith("/api/debug")) {
+  // Debug routes
+  if (
+    pathname.startsWith("/api/debug/") &&
+    process.env.NODE_ENV !== "production"
+  ) {
+    return NextResponse.next();
+  }
+
+  if (
+    pathname.startsWith("/api/debug/") &&
+    process.env.NODE_ENV === "production"
+  ) {
     return new Response(null, { status: 404 });
   }
 
-  const requestId =
-    req.headers.get("x-request-id") ??
-    globalThis.crypto?.randomUUID?.() ??
-    `${Date.now()}-${Math.random()}`;
-
-  const res = (await authMiddleware(req as any, event)) as NextResponse;
-  res.headers.set("x-request-id", requestId.toString());
-  return res;
+  // ✅ THIS IS THE KEY LINE
+  return (await authMiddleware(
+    req as any,
+    event
+  )) as NextResponse;
 }
 
 export const config = {
@@ -67,9 +65,6 @@ export const config = {
     "/projects/:path*",
     "/customer-profile/:path*",
     "/studio/:path*",
-    "/api/projects/:path*",
-    "/api/media/:path*",
-    "/api/debug/:path*",
-    // NOTE: /api/health intentionally excluded
+    "/api/:path*",
   ],
 };
