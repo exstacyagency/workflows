@@ -2,26 +2,33 @@ name: CI
 
 on:
   pull_request:
+    branches:
+      - main
   push:
+    branches:
+      - main
 
 jobs:
-  build:
+  prod-guardrails:
+    name: Verify production guardrails
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Use Node
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: 22
-          cache: npm
+          node-version: 20
 
       - name: Install dependencies
         run: npm ci
 
-      # Hard stop if prod safety rules are violated
-      - name: Prod guardrails
-        run: npm run prod:guardrails
+      - name: Build (production)
+        run: NODE_ENV=production npm run build
 
-      - name: Build
-        run: npm run build
+      - name: Start server
+        run: |
+          PORT=3001 NODE_ENV=production npm run start &
+          sleep 5
+
+      - name: Verify prod guardrails
+        run: npm run verify:prod-guardrails
