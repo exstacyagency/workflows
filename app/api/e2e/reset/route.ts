@@ -4,6 +4,10 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
+  if (process.env.NODE_ENV === "production") {
+    return new NextResponse(null, { status: 404 });
+  }
+
   // Absolute, side-effect-free env detection
   const env =
     (globalThis as any)?.process?.env?.NODE_ENV ??
