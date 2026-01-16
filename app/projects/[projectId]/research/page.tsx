@@ -40,7 +40,11 @@ const IDENTIFIER_OPTIONS: IdentifierOption[] = [
 export default function CustomerResearchPage() {
   const params = useParams();
   const router = useRouter();
-  const projectId = params.projectId as string;
+  if (!params || !params.projectId) {
+    throw new Error("Missing projectId param");
+  }
+
+  const projectId = params.projectId;
 
   // Form state
   const [offeringName, setOfferingName] = useState('');

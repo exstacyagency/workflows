@@ -16,7 +16,7 @@ const mainNav: NavItem[] = [
 function SidebarLink({ href, label }: NavItem) {
   const pathname = usePathname();
   const active =
-    pathname === href || (href !== "/" && pathname.startsWith(href));
+    !!pathname && (pathname === href || (href !== "/" && pathname.startsWith(href)));
 
   return (
     <Link
