@@ -32,8 +32,23 @@ export default async function middleware(
   // HARD BYPASSES — must stay first
   if (
     pathname === "/api/health" ||
-    pathname === "/api/e2e/reset" ||
     pathname.startsWith("/api/_e2e/")
+  ) {
+    return NextResponse.next();
+  }
+
+  // ❌ E2E reset must never be reachable in production
+  if (
+    pathname === "/api/e2e/reset" &&
+    process.env.NODE_ENV === "production"
+  ) {
+    return new Response(null, { status: 404 });
+  }
+
+  // Allow E2E reset only outside production
+  if (
+    pathname === "/api/e2e/reset" &&
+    process.env.NODE_ENV !== "production"
   ) {
     return NextResponse.next();
   }
