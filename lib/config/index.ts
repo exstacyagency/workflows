@@ -13,6 +13,7 @@ export const cfg = {
         return process.env[name];
     }
   },
+  env: process.env.NODE_ENV ?? "development",
   JOB_IDEMPOTENCY_ENABLED: process.env.JOB_IDEMPOTENCY_ENABLED === "true",
 };
 // Hard safety: SECURITY_SWEEP must never be enabled in production.
