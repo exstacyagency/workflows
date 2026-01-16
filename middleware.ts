@@ -1,10 +1,35 @@
-// middleware.ts
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, NextFetchEvent } from "next/server";
+import { withAuth } from "next-auth/middleware";
 
-export default async function middleware(req: NextRequest) {
-  const { pathname } = req.nextUrl;
+function applySecurityHeaders(res: NextResponse) {
+  res.headers.set("X-Frame-Options", "DENY");
+  res.headers.set("X-Content-Type-Options", "nosniff");
+  res.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.headers.set(
+    "Permissions-Policy",
+    "camera=(), microphone=(), geolocation=()"
+  );
+  return res;
+}
 
-  // Safety net (should not be hit once matcher is fixed)
+const authMiddleware = withAuth(
+  function middleware() {
+    return applySecurityHeaders(NextResponse.next());
+  },
+  {
+    callbacks: {
+      authorized: ({ token }) => !!token,
+    },
+  }
+);
+
+export default async function middleware(
+  req: NextRequest,
+  event: NextFetchEvent
+) {
+  const pathname = req.nextUrl.pathname;
+
+  // HARD BYPASSES — must stay first
   if (
     pathname === "/api/health" ||
     pathname === "/api/e2e/reset" ||
@@ -13,15 +38,26 @@ export default async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  const { withAuth } = await import("next-auth/middleware");
+  // Debug routes
+  if (
+    pathname.startsWith("/api/debug/") &&
+    process.env.NODE_ENV !== "production"
+  ) {
+    return NextResponse.next();
+  }
 
-  const authMiddleware = withAuth({
-    callbacks: {
-      authorized: ({ token }) => !!token,
-    },
-  });
+  if (
+    pathname.startsWith("/api/debug/") &&
+    process.env.NODE_ENV === "production"
+  ) {
+    return new Response(null, { status: 404 });
+  }
 
-  return authMiddleware(req as any) as Promise<NextResponse>;
+  // ✅ THIS IS THE KEY LINE
+  return (await authMiddleware(
+    req as any,
+    event
+  )) as NextResponse;
 }
 
 export const config = {
@@ -29,6 +65,6 @@ export const config = {
     "/projects/:path*",
     "/customer-profile/:path*",
     "/studio/:path*",
-    // 🚫 NO /api MATCHER
+    "/api/:path*",
   ],
 };
