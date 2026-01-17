@@ -69,6 +69,20 @@ export default async function middleware(
     return new Response(null, { status: 404 });
   }
 
+  if (
+    pathname.startsWith("/api/_dev/debug/") &&
+    env !== "production"
+  ) {
+    return NextResponse.next();
+  }
+
+  if (
+    pathname.startsWith("/api/_dev/debug/") &&
+    env === "production"
+  ) {
+    return new Response(null, { status: 404 });
+  }
+
   // ✅ THIS IS THE KEY LINE
   return (await authMiddleware(
     req as any,
