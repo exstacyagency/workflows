@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { cfg } from "@/lib/config";
+import { prisma } from "@/lib/prisma";
 
 /**
  * HARD RULES
@@ -8,33 +9,21 @@ import { cfg } from "@/lib/config";
  * - Must be explicit and dumb
  */
 
-export async function POST(request: Request) {
-  // Absolute kill switch — prod must look like it does not exist
-  if (cfg.env === "production") {
-    return new NextResponse("Not Found", { status: 404 });
+export async function POST() {
+  // Hard kill in production
+  if (cfg.isProd) {
+    return new NextResponse(null, { status: 404 });
   }
 
-  // Secondary hard guard (defense in depth)
-  if (cfg.raw("NODE_ENV") === "production") {
-    return NextResponse.json({ error: "Not allowed" }, { status: 403 });
+  // Explicitly require e2e / golden context
+  if (!cfg.securitySweep && !cfg.isGolden) {
+    return new NextResponse(null, { status: 404 });
   }
 
-  // Shared-secret guard (local / CI only)
-  const expected = cfg.raw("E2E_RESET_KEY");
-  if (expected) {
-    const key = request.headers.get("x-e2e-reset-key");
-    if (key !== expected) {
-      return NextResponse.json({ error: "Not allowed" }, { status: 403 });
-    }
-  }
-
-  // === RESET LOGIC ===
-  // Intentionally minimal and explicit
-  // Example:
-  // await prisma.$transaction([
-  //   prisma.job.deleteMany(),
-  //   prisma.project.deleteMany(),
-  // ]);
+  await prisma.$transaction([
+    prisma.job.deleteMany(),
+    prisma.project.deleteMany(),
+  ]);
 
   return NextResponse.json({ ok: true });
 }
