@@ -9,6 +9,18 @@ const nextConfig = {
     }
     return config;
   },
+  async rewrites() {
+    if (process.env.NODE_ENV === "production") {
+      return [];
+    }
+
+    return [
+      {
+        source: "/api/e2e/reset",
+        destination: "/api/_dev/e2e/reset",
+      },
+    ];
+  },
 };
 
 export default nextConfig;
