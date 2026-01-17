@@ -1,16 +1,11 @@
 name: CI
 
 on:
-  pull_request:
-    branches:
-      - main
   push:
-    branches:
-      - main
+  pull_request:
 
 jobs:
-  prod-guardrails:
-    name: Verify production guardrails
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
