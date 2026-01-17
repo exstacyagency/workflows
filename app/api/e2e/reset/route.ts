@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { cfg } from "@/lib/config";
+import { prisma } from "@/lib/prisma";
 
 /**
  * HARD RULES
@@ -8,20 +10,20 @@ import { NextResponse } from "next/server";
  */
 
 export async function POST() {
-  if (process.env.NODE_ENV === "production") {
-    return new NextResponse("Not Found", { status: 404 });
+  // Hard kill in production
+  if (cfg.isProd) {
+    return new NextResponse(null, { status: 404 });
   }
 
-  // existing dev / e2e logic below
-  // DO NOT add prod-only imports here
+  // Explicitly require e2e / golden context
+  if (!cfg.securitySweep && !cfg.isGolden) {
+    return new NextResponse(null, { status: 404 });
+  }
 
-  // === RESET LOGIC ===
-  // Intentionally minimal and explicit
-  // Example:
-  // await prisma.$transaction([
-  //   prisma.job.deleteMany(),
-  //   prisma.project.deleteMany(),
-  // ]);
+  await prisma.$transaction([
+    prisma.job.deleteMany(),
+    prisma.project.deleteMany(),
+  ]);
 
   return NextResponse.json({ ok: true });
 }

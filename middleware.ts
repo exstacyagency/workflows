@@ -29,8 +29,9 @@ export default async function middleware(
   event: NextFetchEvent
 ) {
   const pathname = req.nextUrl.pathname;
-  const env = cfg.env;
-  const sweep = cfg.raw("SECURITY_SWEEP") === "1";
+  const { isProd, isDev, isGolden, securitySweep } = cfg;
+  const allowDebug = isDev || isGolden;
+  const allowE2E = !isProd || securitySweep || isGolden;
 
   // HARD BYPASSES — must stay first
   if (
@@ -42,45 +43,31 @@ export default async function middleware(
 
   // E2E reset (rewritten to /api/_dev/e2e/reset in dev only)
   if (pathname === "/api/e2e/reset") {
-    if (env === "production" && !sweep) {
+    if (!allowE2E) {
       return new Response(null, { status: 404 });
     }
     return NextResponse.next();
   }
 
   if (pathname.startsWith("/api/_dev/e2e/")) {
-    if (env === "production" && !sweep) {
+    if (!allowE2E) {
       return new Response(null, { status: 404 });
     }
     return NextResponse.next();
   }
 
   // Debug routes
-  if (
-    pathname.startsWith("/api/debug/") &&
-    (env !== "production" || sweep)
-  ) {
-    return NextResponse.next();
-  }
-
-  if (
-    pathname.startsWith("/api/debug/") &&
-    env === "production" && !sweep
-  ) {
+  if (pathname.startsWith("/api/debug/")) {
+    if (allowDebug) {
+      return NextResponse.next();
+    }
     return new Response(null, { status: 404 });
   }
 
-  if (
-    pathname.startsWith("/api/_dev/debug/") &&
-    (env !== "production" || sweep)
-  ) {
-    return NextResponse.next();
-  }
-
-  if (
-    pathname.startsWith("/api/_dev/debug/") &&
-    env === "production" && !sweep
-  ) {
+  if (pathname.startsWith("/api/_dev/debug/")) {
+    if (allowDebug) {
+      return NextResponse.next();
+    }
     return new Response(null, { status: 404 });
   }
 
