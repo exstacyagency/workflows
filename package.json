@@ -35,6 +35,7 @@
     "prod:guardrails": "tsx scripts/prod_guardrails.ts",
     "verify:prod-routes": "tsx scripts/verify-prod-routes.ts",
     "verify:prod-guardrails": "bash scripts/verify-prod-guardrails.sh",
+    "verify:prod-env": "bash scripts/verify-no-security-sweep-prod.sh",
     "start": "next start",
     "lint": "next lint",
     "prisma:generate": "prisma generate",
