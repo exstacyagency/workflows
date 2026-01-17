@@ -33,6 +33,7 @@
     "dev:with-env": "bash scripts/run_dev.sh",
     "build": "prisma generate && next build",
     "prod:guardrails": "tsx scripts/prod_guardrails.ts",
+    "verify:prod-routes": "tsx scripts/verify-prod-routes.ts",
     "verify:prod-guardrails": "bash scripts/verify-prod-guardrails.sh",
     "start": "next start",
     "lint": "next lint",
