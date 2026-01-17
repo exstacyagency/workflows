@@ -10,7 +10,11 @@ const nextConfig = {
     return config;
   },
   async rewrites() {
-    if (process.env.NODE_ENV === "production") {
+    const isProd = process.env.NODE_ENV === "production";
+    const sweep = process.env.SECURITY_SWEEP === "1";
+
+    // Only enable dev/debug rewrites in non-prod or golden (SECURITY_SWEEP) runs.
+    if (isProd && !sweep) {
       return [];
     }
 
