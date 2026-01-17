@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse, NextFetchEvent } from "next/server";
 import { withAuth } from "next-auth/middleware";
+import { cfg } from "@/lib/config";
 
 function applySecurityHeaders(res: NextResponse) {
   res.headers.set("X-Frame-Options", "DENY");
@@ -28,6 +29,7 @@ export default async function middleware(
   event: NextFetchEvent
 ) {
   const pathname = req.nextUrl.pathname;
+  const env = cfg.env;
 
   // HARD BYPASSES — must stay first
   if (
@@ -37,33 +39,32 @@ export default async function middleware(
     return NextResponse.next();
   }
 
-  // ❌ E2E reset must never be reachable in production
-  if (
-    pathname === "/api/e2e/reset" &&
-    process.env.NODE_ENV === "production"
-  ) {
-    return new Response(null, { status: 404 });
+  // E2E reset (rewritten to /api/_dev/e2e/reset in dev only)
+  if (pathname === "/api/e2e/reset") {
+    if (env === "production") {
+      return new Response(null, { status: 404 });
+    }
+    return NextResponse.next();
   }
 
-  // Allow E2E reset only outside production
-  if (
-    pathname === "/api/e2e/reset" &&
-    process.env.NODE_ENV !== "production"
-  ) {
+  if (pathname.startsWith("/api/_dev/e2e/")) {
+    if (env === "production") {
+      return new Response(null, { status: 404 });
+    }
     return NextResponse.next();
   }
 
   // Debug routes
   if (
     pathname.startsWith("/api/debug/") &&
-    process.env.NODE_ENV !== "production"
+    env !== "production"
   ) {
     return NextResponse.next();
   }
 
   if (
     pathname.startsWith("/api/debug/") &&
-    process.env.NODE_ENV === "production"
+    env === "production"
   ) {
     return new Response(null, { status: 404 });
   }
