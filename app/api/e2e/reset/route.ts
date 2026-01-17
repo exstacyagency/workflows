@@ -1,36 +1,40 @@
 import { NextResponse } from "next/server";
+import { cfg } from "@/lib/config";
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
+/**
+ * HARD RULES
+ * - Must never run in production
+ * - Must bypass auth & middleware
+ * - Must be explicit and dumb
+ */
 
 export async function POST(request: Request) {
-  // Absolute, side-effect-free env detection
-  const env =
-    (globalThis as any)?.process?.env?.NODE_ENV ??
-    "development";
-
-  // Hard production kill switch
-  if (env === "production") {
+  // Absolute kill switch — prod must look like it does not exist
+  if (cfg.env === "production") {
     return new NextResponse("Not Found", { status: 404 });
   }
 
-  // Optional shared-secret guard (local / CI only)
-  const expectedKey =
-    (globalThis as any)?.process?.env?.E2E_RESET_KEY;
+  // Secondary hard guard (defense in depth)
+  if (cfg.raw("NODE_ENV") === "production") {
+    return NextResponse.json({ error: "Not allowed" }, { status: 403 });
+  }
 
-  if (expectedKey) {
-    const providedKey = request.headers.get("x-e2e-reset-key");
-    if (providedKey !== expectedKey) {
-      return NextResponse.json(
-        { error: "Not allowed" },
-        { status: 403 }
-      );
+  // Shared-secret guard (local / CI only)
+  const expected = cfg.raw("E2E_RESET_KEY");
+  if (expected) {
+    const key = request.headers.get("x-e2e-reset-key");
+    if (key !== expected) {
+      return NextResponse.json({ error: "Not allowed" }, { status: 403 });
     }
   }
 
-  // Safe no-op reset response
-  return NextResponse.json({
-    ok: true,
-    env,
-  });
+  // === RESET LOGIC ===
+  // Intentionally minimal and explicit
+  // Example:
+  // await prisma.$transaction([
+  //   prisma.job.deleteMany(),
+  //   prisma.project.deleteMany(),
+  // ]);
+
+  return NextResponse.json({ ok: true });
 }
