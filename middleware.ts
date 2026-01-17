@@ -30,6 +30,7 @@ export default async function middleware(
 ) {
   const pathname = req.nextUrl.pathname;
   const env = cfg.env;
+  const sweep = cfg.raw("SECURITY_SWEEP") === "1";
 
   // HARD BYPASSES — must stay first
   if (
@@ -41,14 +42,14 @@ export default async function middleware(
 
   // E2E reset (rewritten to /api/_dev/e2e/reset in dev only)
   if (pathname === "/api/e2e/reset") {
-    if (env === "production") {
+    if (env === "production" && !sweep) {
       return new Response(null, { status: 404 });
     }
     return NextResponse.next();
   }
 
   if (pathname.startsWith("/api/_dev/e2e/")) {
-    if (env === "production") {
+    if (env === "production" && !sweep) {
       return new Response(null, { status: 404 });
     }
     return NextResponse.next();
@@ -57,28 +58,28 @@ export default async function middleware(
   // Debug routes
   if (
     pathname.startsWith("/api/debug/") &&
-    env !== "production"
+    (env !== "production" || sweep)
   ) {
     return NextResponse.next();
   }
 
   if (
     pathname.startsWith("/api/debug/") &&
-    env === "production"
+    env === "production" && !sweep
   ) {
     return new Response(null, { status: 404 });
   }
 
   if (
     pathname.startsWith("/api/_dev/debug/") &&
-    env !== "production"
+    (env !== "production" || sweep)
   ) {
     return NextResponse.next();
   }
 
   if (
     pathname.startsWith("/api/_dev/debug/") &&
-    env === "production"
+    env === "production" && !sweep
   ) {
     return new Response(null, { status: 404 });
   }
