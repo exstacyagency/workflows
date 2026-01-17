@@ -19,6 +19,10 @@ const nextConfig = {
         source: "/api/e2e/reset",
         destination: "/api/_dev/e2e/reset",
       },
+      {
+        source: "/api/debug/:path*",
+        destination: "/api/_dev/debug/:path*",
+      },
     ];
   },
 };
