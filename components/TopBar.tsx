@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 export default function TopBar() {
-  const pathname = usePathname();
+  const pathname = usePathname() ?? "";
   const parts = pathname.split("/").filter(Boolean); // ['', 'projects', 'id'] → ['projects','id']
 
   const crumbs = [

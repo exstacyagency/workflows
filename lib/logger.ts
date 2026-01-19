@@ -34,3 +34,26 @@ export async function logAudit(params: LogAuditParams): Promise<void> {
     console.error('Failed to write audit log', error);
   }
 }
+
+export function log(event: string, data: Record<string, unknown> = {}) {
+  console.log(
+    JSON.stringify({
+      ts: new Date().toISOString(),
+      event,
+      ...data,
+    })
+  );
+}
+
+export function logError(event: string, err: unknown, data: Record<string, unknown> = {}) {
+  const e = err instanceof Error ? err : new Error(String(err));
+  console.error(
+    JSON.stringify({
+      ts: new Date().toISOString(),
+      event,
+      error: e.message,
+      stack: e.stack,
+      ...data,
+    })
+  );
+}

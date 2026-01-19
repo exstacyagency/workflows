@@ -3,6 +3,8 @@ import { JobStatus, JobType, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { assertEntitled } from "@/lib/entitlements";
 import { isDev } from "@/lib/env";
+import { cfg } from "@/lib/config";
+import { log, logError } from "@/lib/logger";
 
 type JobPayload = {
   campaignId?: unknown;
@@ -24,6 +26,8 @@ function stableHash(input: unknown): string {
 }
 
 export async function POST(req: Request) {
+	log("api.jobs.start", { mode: cfg.RUNTIME_MODE });
+
   let body: JobPayload;
 
   try {
@@ -49,7 +53,8 @@ export async function POST(req: Request) {
   let account = user.account;
 
   if (!account) {
-    if (isDev()) {
+    // Allow automatic account creation in alpha/dev to keep smoke tests simple.
+    if (isDev() || cfg.RUNTIME_MODE === "alpha") {
       account = await prisma.account.create({
         data: {
           users: { connect: { id: user.id } },
@@ -161,6 +166,7 @@ export async function POST(req: Request) {
         },
       });
 
+      log("api.jobs.success", { jobId: job.id, mode: cfg.RUNTIME_MODE });
       return NextResponse.json(job, { status: 201 });
     } catch (err: any) {
       if (
@@ -176,6 +182,7 @@ export async function POST(req: Request) {
       throw err;
     }
   } catch (error) {
+    logError("api.jobs.failure", error);
     const message = error instanceof Error ? error.message : "Forbidden";
     return NextResponse.json({ error: message }, { status: 403 });
   }
