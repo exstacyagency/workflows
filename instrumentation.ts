@@ -1,17 +1,20 @@
 import { cfg } from "@/lib/config";
-import { assertRuntimeMode } from "@/src/runtime/assertMode.ts";
-import { IS_ALPHA } from "./config/runtime";
+import { CURRENT_RUNTIME_MODE, IS_ALPHA } from "./config/runtime";
 
 export const runtime = "nodejs";
 
-const MODE = assertRuntimeMode();
+const MODE = CURRENT_RUNTIME_MODE;
 
 const FORBIDDEN_PREFIXES = [
   "/api/e2e/",
   "/api/debug/",
 ];
 
-export async function register() {
+export function register() {
+  if (!MODE) {
+    throw new Error("RUNTIME MODE MISSING");
+  }
+
   if (IS_ALPHA) {
     console.log("[alpha] instrumentation enabled");
   }
