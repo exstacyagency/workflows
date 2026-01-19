@@ -10,6 +10,7 @@ import { reserveQuota, rollbackQuota, QuotaExceededError } from "../../../../lib
 import { JobStatus, JobType } from "@prisma/client";
 import { getRequestId } from "../../../../lib/observability";
 import { checkRateLimit } from "../../../../lib/rateLimiter";
+import { assertRuntimeMode } from "@/src/runtime/assertMode";
 
 const BodySchema = z.object({
   projectId: z.string().min(1),
@@ -18,6 +19,8 @@ const BodySchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  assertRuntimeMode();
+
   const requestId = getRequestId(req) ?? (globalThis.crypto?.randomUUID?.() ?? `req_${Date.now()}`);
   const securitySweep = cfg.raw("SECURITY_SWEEP") === "1";
   let userId: string | null = null;
