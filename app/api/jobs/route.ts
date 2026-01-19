@@ -3,6 +3,8 @@ import { JobStatus, JobType, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { assertEntitled } from "@/lib/entitlements";
 import { isDev } from "@/lib/env";
+import { cfg } from "@/lib/config";
+import { log, logError } from "@/lib/logger";
 import { assertRuntimeMode } from "@/src/runtime/assertMode";
 
 type JobPayload = {

@@ -53,6 +53,7 @@ export default async function middleware(
   if (!isProd && pathname.startsWith("/api/debug/")) {
     const res = applySecurityHeaders(NextResponse.next());
     return res;
+  }
   // E2E reset (rewritten to /api/_dev/e2e/reset in dev only)
   if (pathname === "/api/e2e/reset") {
     if (!allowE2E) {

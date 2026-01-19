@@ -11,16 +11,18 @@ export function getRuntimeModeFromEnv(): RuntimeMode | null {
 	return null;
 }
 
-export const CURRENT_RUNTIME_MODE = getRuntimeModeFromEnv();
-
-export const KILL_SWITCHES = {
-	enqueueJobs: true,
+export const RUNTIME_CONFIG = {
 	runWorkers: true,
 } as const;
 
-export const IS_ALPHA =
-	process.env.ALPHA_MODE === "true" || CURRENT_RUNTIME_MODE === "alpha" || process.env.SECURITY_SWEEP === "1";
-// Alpha is enabled when any of these signals are present. SECURITY_SWEEP covers deterministic runs.
+export const CURRENT_RUNTIME_MODE = getRuntimeModeFromEnv();
+
+/**
+ * Alpha is enabled when:
+ * - explicitly forced
+ * - runtime mode is alpha
+ * - running deterministic security sweep
+ */
 export const IS_ALPHA =
 	process.env.ALPHA_MODE === "true" ||
 	CURRENT_RUNTIME_MODE === "alpha" ||
