@@ -36,6 +36,7 @@ for k in "${required_envs[@]}"; do
 done
 
 export SECURITY_SWEEP="${SECURITY_SWEEP:-1}"
+export MODE="${MODE:-alpha}"
 
 echo "[e2e] migrate deploy"
 npx prisma migrate deploy
