@@ -1,23 +1,15 @@
 import { cfg } from "@/lib/config";
-import { RUNTIME_MODE, type RuntimeMode } from "@/config/runtime";
+import { RUNTIME_MODE } from "@/config/runtime";
 
-function isBuildTime(): boolean {
-  return cfg.raw("NEXT_PHASE") === "phase-production-build";
-}
+export type RuntimeMode = (typeof RUNTIME_MODE)[number];
 
 export function assertRuntimeMode(): RuntimeMode {
-  const mode = cfg.runtimeMode ?? cfg.MODE ?? null;
+  const mode = cfg.runtimeMode;
 
-  if (!mode) {
-    if (isBuildTime()) {
-      return "alpha";
-    }
-    throw new Error("RUNTIME MODE MISSING: You must start the app with MODE=alpha | beta | prod");
-  }
-
-  if (!(RUNTIME_MODE as readonly string[]).includes(mode)) {
-    if (mode === "alpha") return "alpha";
-    throw new Error(`INVALID RUNTIME MODE: ${mode}`);
+  if (!mode || !RUNTIME_MODE.includes(mode as RuntimeMode)) {
+    throw new Error(
+      `Invalid runtime mode: ${mode}. Expected one of ${RUNTIME_MODE.join(", ")}`
+    );
   }
 
   return mode as RuntimeMode;

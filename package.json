@@ -51,6 +51,8 @@
     "security:login-lockout": "node scripts/login_lockout_test.mjs",
     "seed:ci": "node scripts/seed_ci.mjs",
     "auth:cleanup": "node scripts/cleanup_auth_throttle.mjs",
+    "alpha:reset": "tsx scripts/alpha_reset.ts",
+    "alpha:smoke": "MODE=alpha NODE_ENV=production bash scripts/alpha_smoke.sh",
     "smoke:prod": "NODE_ENV=production npm run build && node scripts/prod_smoke.mjs",
     "test": "jest"
   },

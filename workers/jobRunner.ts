@@ -1,4 +1,5 @@
 import { cfg } from "@/lib/config";
+import { logError } from "@/lib/logger";
 import { loadDotEnvFileIfPresent } from "@/lib/config/dotenv";
 import { JobStatus, JobType } from "@prisma/client";
 import { runCustomerResearch } from "../services/customerResearchService.ts";
@@ -493,8 +494,9 @@ async function loop() {
   console.log(`[jobRunner] start poll=${POLL_MS}ms runOnce=${RUN_ONCE} mode=${pipelineContext.mode}`);
 
   while (true) {
+    let job: Awaited<ReturnType<typeof claimNextJob>> | null = null;
     try {
-      const job = await claimNextJob();
+      job = await claimNextJob();
       if (!job) {
         if (RUN_ONCE) return;
         await sleep(POLL_MS);
@@ -503,6 +505,11 @@ async function loop() {
 
       await runJob(job, pipelineContext);
     } catch (e) {
+      logError("job.failed", e, {
+        jobId: job?.id ?? null,
+        jobType: job?.type ?? null,
+        mode: cfg.RUNTIME_MODE,
+      });
       console.error("[jobRunner] loop error", e);
       if (RUN_ONCE) return;
       await sleep(POLL_MS);
