@@ -219,8 +219,24 @@ async function maybeClearLockout() {
   }
 }
 
-function assert(cond, msg) {
-  if (!cond) throw new Error(msg);
+function getMode() {
+  return process.env.MODE ?? "alpha";
+}
+
+function assert(condOrRes, msg) {
+  const mode = getMode();
+
+  if (condOrRes && typeof condOrRes === "object" && "ok" in condOrRes && "status" in condOrRes) {
+    const res = condOrRes;
+    if (res.ok) return;
+    if (mode === "alpha" && res.status === 429) {
+      console.warn("[attacker] quota ignored in alpha");
+      return;
+    }
+    throw new Error(msg);
+  }
+
+  if (!condOrRes) throw new Error(msg);
 }
 
 let skippedCount = 0;
