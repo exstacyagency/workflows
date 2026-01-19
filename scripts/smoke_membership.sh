@@ -200,7 +200,7 @@ const { PrismaClient } = require('@prisma/client');
       const start = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
       await prisma.usage.updateMany({
         where: { userId: u.id, period: start },
-        data: { jobsUsed: 0, videoJobsUsed: 0, tokensUsed: 0 },
+        data: { jobsUsed: 0 },
       });
       console.log("usage reset");
       return;

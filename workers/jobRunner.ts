@@ -10,10 +10,26 @@ import { runVideoImageGenerationJob } from "../lib/videoImageGenerationService.t
 import { runVideoGenerationJob } from "../lib/videoGenerationService.ts";
 import prisma from "../lib/prisma.ts";
 import { rollbackQuota } from "../lib/billing/usage.ts";
+import { assertRuntimeMode } from "../src/runtime/assertMode.ts";
+import { RuntimeMode } from "../src/runtime/mode.ts";
 
 if (cfg.raw("NODE_ENV") !== "production") {
   loadDotEnvFileIfPresent(".env.local");
   loadDotEnvFileIfPresent(".env");
+}
+
+type PipelineContext = {
+  mode: RuntimeMode;
+};
+
+const pipelineContext: PipelineContext = { mode: assertRuntimeMode() };
+
+console.log(`[BOOT] Runtime mode: ${pipelineContext.mode}`);
+if (pipelineContext.mode === "alpha") {
+  console.log("[PIPELINE] Running in ALPHA mode");
+}
+if (pipelineContext.mode === "alpha" && process.env.NODE_ENV === "production") {
+  throw new Error("INVALID CONFIG: MODE=alpha cannot run with NODE_ENV=production");
 }
 
 const IS_TEST = cfg.raw("NODE_ENV") === "test";
@@ -225,9 +241,13 @@ async function claimNextJob() {
   return row as { id: string; type: JobType; projectId: string; payload: unknown; idempotencyKey: string | null };
 }
 
-async function runJob(job: { id: string; type: JobType; projectId: string; payload: unknown; idempotencyKey: string | null }) {
+async function runJob(job: { id: string; type: JobType; projectId: string; payload: unknown; idempotencyKey: string | null }, context: PipelineContext) {
   const jobId = job.id;
   const payload = asObject(job.payload);
+
+  if (context.mode === "alpha" && process.env.NODE_ENV === "production") {
+    throw new Error("INVALID CONFIG: MODE=alpha cannot run with NODE_ENV=production");
+  }
 
   try {
     switch (job.type) {
@@ -470,7 +490,7 @@ async function runJob(job: { id: string; type: JobType; projectId: string; paylo
 }
 
 async function loop() {
-  console.log(`[jobRunner] start poll=${POLL_MS}ms runOnce=${RUN_ONCE}`);
+  console.log(`[jobRunner] start poll=${POLL_MS}ms runOnce=${RUN_ONCE} mode=${pipelineContext.mode}`);
 
   while (true) {
     try {
@@ -481,7 +501,7 @@ async function loop() {
         continue;
       }
 
-      await runJob(job);
+      await runJob(job, pipelineContext);
     } catch (e) {
       console.error("[jobRunner] loop error", e);
       if (RUN_ONCE) return;
