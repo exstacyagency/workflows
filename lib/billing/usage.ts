@@ -1,3 +1,4 @@
+import { FLAGS } from "@/config/flags";
 import { prisma } from "../prisma";
 import type { PlanId } from "./plans";
 import { getPlanLimits, type PlanLimits } from "./quotas";
@@ -95,6 +96,14 @@ export async function reserveQuota(
   metric: UsageMetric,
   amount = 1
 ): Promise<QuotaReservation> {
+  if (FLAGS.bypassQuota) {
+    return {
+      periodKey: getCurrentPeriodKey(),
+      metric,
+      amount,
+    };
+  }
+
   const periodKey = getCurrentPeriodKey();
   const period = periodKeyToUtcDate(periodKey);
 
@@ -141,6 +150,8 @@ export async function rollbackQuota(
   metric: UsageMetric,
   amount = 1
 ) {
+  if (FLAGS.bypassQuota) return;
+
   const period = periodKeyToUtcDate(periodKey);
   const column = USAGE_COLUMN_BY_METRIC[metric];
 
@@ -169,6 +180,14 @@ export async function assertQuota(
   metric: UsageMetric,
   amount = 1
 ) {
+  if (FLAGS.bypassQuota) {
+    return {
+      periodKey: getCurrentPeriodKey(),
+      used: 0,
+      limit: Number.MAX_SAFE_INTEGER,
+    };
+  }
+
   const limits = getPlanLimits(planId);
   const limit = limits[metric] ?? 0;
   const periodKey = getCurrentPeriodKey();

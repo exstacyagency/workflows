@@ -1,5 +1,14 @@
+const MODE = process.env.MODE ?? "dev";
+
+const IS_ALPHA = MODE === "alpha";
+const IS_BETA = MODE === "beta";
+const IS_PROD = MODE === "prod";
+
+console.log(`[BOOT] Runtime mode: ${MODE}`);
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  env: { MODE },
   experimental: {
     instrumentationHook: true,
   },
