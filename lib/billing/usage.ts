@@ -1,5 +1,5 @@
 import { FLAGS } from "@/config/flags";
-import { CURRENT_RUNTIME_MODE, RUNTIME_MODE } from "@/config/runtime";
+import { getRuntimeModeFromEnv } from "@/config/runtime";
 import { prisma } from "../prisma";
 import type { PlanId } from "./plans";
 import { getPlanLimits, type PlanLimits } from "./quotas";
@@ -97,7 +97,7 @@ export async function reserveQuota(
   metric: UsageMetric,
   amount = 1
 ): Promise<QuotaReservation> {
-  const isAlphaRuntime = CURRENT_RUNTIME_MODE === RUNTIME_MODE.alpha;
+  const isAlphaRuntime = getRuntimeModeFromEnv() === "alpha";
 
   if (FLAGS.bypassQuota) {
     return {
@@ -191,7 +191,7 @@ export async function assertQuota(
   metric: UsageMetric,
   amount = 1
 ) {
-  const isAlphaRuntime = CURRENT_RUNTIME_MODE === RUNTIME_MODE.alpha;
+  const isAlphaRuntime = getRuntimeModeFromEnv() === "alpha";
 
   if (FLAGS.bypassQuota) {
     return {
