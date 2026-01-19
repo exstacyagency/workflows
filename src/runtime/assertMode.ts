@@ -1,6 +1,6 @@
 import { cfg } from "@/lib/config";
 import { RUNTIME_MODE } from "@/config/runtime";
-import type { RuntimeMode } from "./mode";
+import type { RuntimeMode } from "@/config/runtime";
 
 export function assertRuntimeMode(): RuntimeMode {
   /**
