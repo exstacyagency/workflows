@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 
 export default function TopBar() {
   const pathname = usePathname() ?? "";
-  const pathname = usePathname();
   if (!pathname) {
     return null;
   }
