@@ -40,7 +40,7 @@ const IDENTIFIER_OPTIONS: IdentifierOption[] = [
 export default function CustomerResearchPage() {
   const params = useParams();
   const router = useRouter();
-  if (!params || !params.projectId) {
+  if (!params || typeof params.projectId !== "string") {
     throw new Error("Missing projectId param");
   }
 
@@ -56,6 +56,14 @@ export default function CustomerResearchPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+
+  if (!projectId) {
+    return (
+      <div className="px-6 py-6">
+        <p className="text-sm text-red-300">Project not found.</p>
+      </div>
+    );
+  }
 
   // Get current identifier option config
   const selectedOption = IDENTIFIER_OPTIONS.find(opt => opt.value === identifierType);

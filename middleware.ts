@@ -41,6 +41,19 @@ export default async function middleware(
     return NextResponse.next();
   }
 
+  if (cfg.RUNTIME_MODE === "alpha") {
+    if (pathname.startsWith("/billing")) {
+      return applySecurityHeaders(
+        NextResponse.json({ error: "Billing disabled in alpha" }, { status: 403 })
+      );
+    }
+  }
+
+  // Test-only debug routes must bypass NextAuth middleware; otherwise withAuth redirects before handler executes.
+  if (!isProd && pathname.startsWith("/api/debug/")) {
+    const res = applySecurityHeaders(NextResponse.next());
+    return res;
+  }
   // E2E reset (rewritten to /api/_dev/e2e/reset in dev only)
   if (pathname === "/api/e2e/reset") {
     if (!allowE2E) {
