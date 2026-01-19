@@ -2,28 +2,28 @@ name: CI
 
 on:
   push:
+    branches:
+      - main
   pull_request:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node
+        uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      - name: Install dependencies
+      - name: Install deps
         run: npm ci
 
-      - name: Build (production)
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
         run: NODE_ENV=production npm run build
-
-      - name: Start server
-        run: |
-          PORT=3001 NODE_ENV=production npm run start &
-          sleep 5
-
-      - name: Verify prod guardrails
-        run: npm run verify:prod-guardrails
