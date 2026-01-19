@@ -7,7 +7,9 @@
   "scripts": {
     "e2e:deterministic": "bash scripts/e2e_deterministic.sh",
     "routes:manifest": "tsx scripts/route_inventory.ts",
+    "baseline:check": "bash scripts/baseline_check.sh",
     "routes:check": "tsx scripts/routes_check.ts",
+    "e2e": "bash scripts/smoke_membership.sh",
     "freeze:docs": "tsx scripts/freeze_require_docs.ts",
     "freeze:check": "tsx scripts/freeze_check.ts",
     "contract:bump-check": "tsx scripts/contract_bump_check.ts",
