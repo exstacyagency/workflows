@@ -143,6 +143,18 @@ export async function POST(req: NextRequest) {
     let idempotencyKey = `script-generation:${projectId}`;
     if (breakerTest) idempotencyKey += `:${Date.now()}`;
 
+    const existingJob = await prisma.job.findFirst({
+      where: { projectId, idempotencyKey },
+      select: { id: true, status: true },
+    });
+
+    if (existingJob) {
+      return NextResponse.json(
+        { jobId: existingJob.id, ok: existingJob.status === JobStatus.COMPLETED },
+        { status: 200 },
+      );
+    }
+
     const isCI = cfg.raw("CI") === "true";
     const hasAnthropic = !!cfg.raw("ANTHROPIC_API_KEY");
 
@@ -212,15 +224,41 @@ export async function POST(req: NextRequest) {
 
     reservation = await reserveQuota(userId, planId, "researchQueries", 1);
 
-    const job = await prisma.job.create({
-      data: {
-        projectId,
-        type: JobType.SCRIPT_GENERATION,
-        status: JobStatus.RUNNING,
-        idempotencyKey,
-        payload: parsed.data,
-      },
-    });
+    let job;
+    try {
+      job = await prisma.job.create({
+        data: {
+          projectId,
+          type: JobType.SCRIPT_GENERATION,
+          status: JobStatus.RUNNING,
+          idempotencyKey,
+          payload: parsed.data,
+        },
+      });
+    } catch (err: any) {
+      if (err?.code === "P2002") {
+        const existing = await prisma.job.findFirst({
+          where: { projectId, idempotencyKey },
+          select: { id: true, status: true },
+        });
+
+        if (existing) {
+          if (reservation && userIdForQuota) {
+            await rollbackQuota(
+              userIdForQuota,
+              reservation.periodKey,
+              "researchQueries",
+              1,
+            );
+          }
+          return NextResponse.json(
+            { jobId: existing.id, ok: existing.status === JobStatus.COMPLETED },
+            { status: 200 },
+          );
+        }
+      }
+      throw err;
+    }
 
     await logAudit({
       userId,

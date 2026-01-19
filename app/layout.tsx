@@ -2,6 +2,7 @@ import "./globals.css";
 import type { Metadata } from "next";
 import Sidebar from "@/components/Sidebar";
 import TopBar from "@/components/TopBar";
+import { cfg } from "@/lib/config";
 
 export const metadata: Metadata = {
   title: "FrameForge AI Studio",
@@ -16,6 +17,19 @@ export default function RootLayout({
   return (
     <html lang="en" className="bg-slate-950">
       <body className="text-slate-50">
+        {cfg.RUNTIME_MODE === "alpha" && (
+          <div
+            style={{
+              background: "red",
+              color: "white",
+              padding: 6,
+              textAlign: "center",
+              fontWeight: 700,
+            }}
+          >
+            ALPHA MODE — EXPECT FAILURES
+          </div>
+        )}
         <div className="flex min-h-screen">
           {/* Fixed sidebar */}
           <Sidebar />

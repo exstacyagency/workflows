@@ -28,6 +28,14 @@ export default async function combinedMiddleware(req: NextRequest, event: NextFe
   const isProd = cfg.raw("NODE_ENV") === "production";
   const pathname = req.nextUrl.pathname;
 
+  if (cfg.RUNTIME_MODE === "alpha") {
+    if (pathname.startsWith("/billing")) {
+      return applySecurityHeaders(
+        NextResponse.json({ error: "Billing disabled in alpha" }, { status: 403 })
+      );
+    }
+  }
+
   // Test-only debug routes must bypass NextAuth middleware; otherwise withAuth redirects before handler executes.
   if (!isProd && pathname.startsWith("/api/debug/")) {
     const res = applySecurityHeaders(NextResponse.next());
