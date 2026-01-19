@@ -4,6 +4,8 @@ import { runWithState } from "../lib/jobRuntime.ts";
 import { startScriptGenerationJob } from "../lib/scriptGenerationService.ts";
 import * as patternSvc from "../lib/adPatternAnalysisService.ts";
 import * as transcriptsSvc from "../lib/adTranscriptCollectionService.ts";
+import { assertRuntimeMode } from "../src/runtime/assertMode.ts";
+import { RuntimeMode } from "../src/runtime/mode.ts";
 
 const prisma = new PrismaClient();
 
@@ -24,6 +26,20 @@ const MAX_WORKER_CONCURRENCY = Number(cfg.raw("MAX_WORKER_CONCURRENCY") ?? 2);
 const MAX_RUNNING_JOBS_PER_USER = Number(cfg.raw("MAX_RUNNING_JOBS_PER_USER") ?? 3);
 const RUNNING_JOB_TIMEOUT_MS = Number(cfg.raw("RUNNING_JOB_TIMEOUT_MS") ?? 5 * 60_000);
 const RUNNING_TIMEOUT_MAX_BATCH = Number(cfg.raw("RUNNING_TIMEOUT_MAX_BATCH") ?? 25);
+
+type PipelineContext = {
+  mode: RuntimeMode;
+};
+
+const pipelineContext: PipelineContext = { mode: assertRuntimeMode() };
+
+console.log(`[BOOT] Runtime mode: ${pipelineContext.mode}`);
+if (pipelineContext.mode === "alpha") {
+  console.log("[PIPELINE] Running in ALPHA mode");
+}
+if (pipelineContext.mode === "alpha" && process.env.NODE_ENV === "production") {
+  throw new Error("INVALID CONFIG: MODE=alpha cannot run with NODE_ENV=production");
+}
 
 async function fetchDueJobIds(type: JobType, nowMs: number) {
   const rows = await prisma.$queryRaw<Array<{ id: string }>>`
@@ -205,7 +221,7 @@ async function processOnce() {
 }
 
 async function main() {
-  console.log(`[retryRunner] starting poll=${POLL_MS}ms batch=${BATCH}`);
+  console.log(`[retryRunner] starting poll=${POLL_MS}ms batch=${BATCH} mode=${pipelineContext.mode}`);
   while (true) {
     try {
       await processOnce();

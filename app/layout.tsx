@@ -7,6 +7,8 @@ import { cfg } from "@/lib/config";
 export const metadata: Metadata = {
   title: "FrameForge AI Studio",
   description: "Cinematic AI ad production pipeline powered by FrameForge AI.",
+export const metadata = {
+  title: "App",
 };
 
 export default function RootLayout({
@@ -41,6 +43,8 @@ export default function RootLayout({
           </div>
         </div>
       </body>
+    <html lang="en">
+      <body>{children}</body>
     </html>
   );
 }

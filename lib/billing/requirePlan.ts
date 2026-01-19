@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import type { PlanId } from "@/lib/billing/plans";
+import { getRuntimeModeFromEnv } from "@/config/runtime";
 
 export class UpgradeRequiredError extends Error {
   requiredPlan: PlanId;
@@ -31,6 +32,9 @@ function normalizePlanId(planId: unknown): PlanId {
 }
 
 export async function assertMinPlan(userId: string, minPlan: PlanId): Promise<PlanId> {
+  const isAlphaRuntime = getRuntimeModeFromEnv() === "alpha";
+
+  if (isAlphaRuntime) return minPlan;
   if (minPlan === "FREE") return "FREE";
 
   const sub = await getUserSubscription(userId);

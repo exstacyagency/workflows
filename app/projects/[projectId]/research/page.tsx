@@ -41,6 +41,11 @@ export default function CustomerResearchPage() {
   const params = useParams();
   const router = useRouter();
   const projectId = typeof params?.projectId === "string" ? params.projectId : "";
+  if (!params || !params.projectId) {
+    throw new Error("Missing projectId param");
+  }
+
+  const projectId = params.projectId;
 
   // Form state
   const [offeringName, setOfferingName] = useState('');

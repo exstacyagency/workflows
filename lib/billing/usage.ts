@@ -1,3 +1,5 @@
+import { FLAGS } from "@/config/flags";
+import { getRuntimeModeFromEnv } from "@/config/runtime";
 import { prisma } from "../prisma";
 import type { PlanId } from "./plans";
 import { getPlanLimits, type PlanLimits } from "./quotas";
@@ -95,6 +97,16 @@ export async function reserveQuota(
   metric: UsageMetric,
   amount = 1
 ): Promise<QuotaReservation> {
+  const isAlphaRuntime = getRuntimeModeFromEnv() === "alpha";
+
+  if (FLAGS.bypassQuota) {
+    return {
+      periodKey: getCurrentPeriodKey(),
+      metric,
+      amount,
+    };
+  }
+
   const periodKey = getCurrentPeriodKey();
   const period = periodKeyToUtcDate(periodKey);
 
@@ -110,6 +122,10 @@ export async function reserveQuota(
       where: { userId_period: { userId, period } },
     });
     const used = Number((usage as any)?.[column] ?? 0);
+    if (isAlphaRuntime) {
+      console.warn("[alpha] quota exceeded, allowing request", { metric, limit, used });
+      return { periodKey, metric, amount };
+    }
     throw new QuotaExceededError({ metric, used, limit });
   }
 
@@ -129,6 +145,10 @@ export async function reserveQuota(
       where: { userId_period: { userId, period } },
     });
     const used = Number((usage as any)?.[column] ?? 0);
+    if (isAlphaRuntime) {
+      console.warn("[alpha] quota exceeded, allowing request", { metric, limit, used });
+      return { periodKey, metric, amount };
+    }
     throw new QuotaExceededError({ metric, used, limit });
   }
 
@@ -141,6 +161,8 @@ export async function rollbackQuota(
   metric: UsageMetric,
   amount = 1
 ) {
+  if (FLAGS.bypassQuota) return;
+
   const period = periodKeyToUtcDate(periodKey);
   const column = USAGE_COLUMN_BY_METRIC[metric];
 
@@ -169,6 +191,16 @@ export async function assertQuota(
   metric: UsageMetric,
   amount = 1
 ) {
+  const isAlphaRuntime = getRuntimeModeFromEnv() === "alpha";
+
+  if (FLAGS.bypassQuota) {
+    return {
+      periodKey: getCurrentPeriodKey(),
+      used: 0,
+      limit: Number.MAX_SAFE_INTEGER,
+    };
+  }
+
   const limits = getPlanLimits(planId);
   const limit = limits[metric] ?? 0;
   const periodKey = getCurrentPeriodKey();
@@ -178,6 +210,10 @@ export async function assertQuota(
   const used = Number((usage as any)?.[column] ?? 0);
 
   if (used + amount > limit) {
+    if (isAlphaRuntime) {
+      console.warn("[alpha] quota exceeded, allowing request", { metric, limit, used });
+      return { periodKey, used, limit };
+    }
     throw new QuotaExceededError({ metric, used, limit });
   }
 

@@ -1,21 +1,21 @@
-// middleware.ts
-import { cfg } from "@/lib/config";
-import { NextFetchEvent, NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, NextFetchEvent } from "next/server";
 import { withAuth } from "next-auth/middleware";
+import { cfg } from "@/lib/config";
 
 function applySecurityHeaders(res: NextResponse) {
   res.headers.set("X-Frame-Options", "DENY");
   res.headers.set("X-Content-Type-Options", "nosniff");
   res.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
-  res.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
-
+  res.headers.set(
+    "Permissions-Policy",
+    "camera=(), microphone=(), geolocation=()"
+  );
   return res;
 }
 
 const authMiddleware = withAuth(
   function middleware() {
-    const res = NextResponse.next();
-    return applySecurityHeaders(res);
+    return applySecurityHeaders(NextResponse.next());
   },
   {
     callbacks: {
@@ -24,9 +24,22 @@ const authMiddleware = withAuth(
   }
 );
 
-export default async function combinedMiddleware(req: NextRequest, event: NextFetchEvent) {
-  const isProd = cfg.raw("NODE_ENV") === "production";
+export default async function middleware(
+  req: NextRequest,
+  event: NextFetchEvent
+) {
   const pathname = req.nextUrl.pathname;
+  const { isProd, isDev, isGolden, securitySweep } = cfg;
+  const allowDebug = isDev || isGolden;
+  const allowE2E = !isProd || securitySweep || isGolden;
+
+  // HARD BYPASSES — must stay first
+  if (
+    pathname === "/api/health" ||
+    pathname.startsWith("/api/_e2e/")
+  ) {
+    return NextResponse.next();
+  }
 
   if (cfg.RUNTIME_MODE === "alpha") {
     if (pathname.startsWith("/billing")) {
@@ -40,20 +53,41 @@ export default async function combinedMiddleware(req: NextRequest, event: NextFe
   if (!isProd && pathname.startsWith("/api/debug/")) {
     const res = applySecurityHeaders(NextResponse.next());
     return res;
+  // E2E reset (rewritten to /api/_dev/e2e/reset in dev only)
+  if (pathname === "/api/e2e/reset") {
+    if (!allowE2E) {
+      return new Response(null, { status: 404 });
+    }
+    return NextResponse.next();
   }
 
-  if (isProd && pathname.startsWith("/api/debug")) {
+  if (pathname.startsWith("/api/_dev/e2e/")) {
+    if (!allowE2E) {
+      return new Response(null, { status: 404 });
+    }
+    return NextResponse.next();
+  }
+
+  // Debug routes
+  if (pathname.startsWith("/api/debug/")) {
+    if (allowDebug) {
+      return NextResponse.next();
+    }
     return new Response(null, { status: 404 });
   }
 
-  const requestId = (
-    req.headers.get("x-request-id") ||
-    (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`)
-  ).toString();
+  if (pathname.startsWith("/api/_dev/debug/")) {
+    if (allowDebug) {
+      return NextResponse.next();
+    }
+    return new Response(null, { status: 404 });
+  }
 
-  const res = (await authMiddleware(req as any, event)) as any;
-  res.headers.set("x-request-id", requestId);
-  return res;
+  // ✅ THIS IS THE KEY LINE
+  return (await authMiddleware(
+    req as any,
+    event
+  )) as NextResponse;
 }
 
 export const config = {
@@ -61,8 +95,6 @@ export const config = {
     "/projects/:path*",
     "/customer-profile/:path*",
     "/studio/:path*",
-    "/api/projects/:path*",
-    "/api/media/:path*",
-    "/api/debug/:path*",
+    "/api/:path*",
   ],
 };
