@@ -1,4 +1,5 @@
 import { FLAGS } from "@/config/flags";
+import { CURRENT_RUNTIME_MODE, RUNTIME_MODE } from "@/config/runtime";
 import { prisma } from "../prisma";
 import type { PlanId } from "./plans";
 import { getPlanLimits, type PlanLimits } from "./quotas";
@@ -96,6 +97,8 @@ export async function reserveQuota(
   metric: UsageMetric,
   amount = 1
 ): Promise<QuotaReservation> {
+  const isAlphaRuntime = CURRENT_RUNTIME_MODE === RUNTIME_MODE.alpha;
+
   if (FLAGS.bypassQuota) {
     return {
       periodKey: getCurrentPeriodKey(),
@@ -119,6 +122,10 @@ export async function reserveQuota(
       where: { userId_period: { userId, period } },
     });
     const used = Number((usage as any)?.[column] ?? 0);
+    if (isAlphaRuntime) {
+      console.warn("[alpha] quota exceeded, allowing request", { metric, limit, used });
+      return { periodKey, metric, amount };
+    }
     throw new QuotaExceededError({ metric, used, limit });
   }
 
@@ -138,6 +145,10 @@ export async function reserveQuota(
       where: { userId_period: { userId, period } },
     });
     const used = Number((usage as any)?.[column] ?? 0);
+    if (isAlphaRuntime) {
+      console.warn("[alpha] quota exceeded, allowing request", { metric, limit, used });
+      return { periodKey, metric, amount };
+    }
     throw new QuotaExceededError({ metric, used, limit });
   }
 
@@ -180,6 +191,8 @@ export async function assertQuota(
   metric: UsageMetric,
   amount = 1
 ) {
+  const isAlphaRuntime = CURRENT_RUNTIME_MODE === RUNTIME_MODE.alpha;
+
   if (FLAGS.bypassQuota) {
     return {
       periodKey: getCurrentPeriodKey(),
@@ -197,6 +210,10 @@ export async function assertQuota(
   const used = Number((usage as any)?.[column] ?? 0);
 
   if (used + amount > limit) {
+    if (isAlphaRuntime) {
+      console.warn("[alpha] quota exceeded, allowing request", { metric, limit, used });
+      return { periodKey, used, limit };
+    }
     throw new QuotaExceededError({ metric, used, limit });
   }
 
