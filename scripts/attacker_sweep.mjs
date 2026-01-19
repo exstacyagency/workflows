@@ -620,6 +620,9 @@ async function loginWithCredentials(baseUrl, email, password) {
 }
 
 async function run() {
+  if (process.env.MODE === "alpha") {
+    console.log("[alpha] attacker sweep running with quotas disabled");
+  }
   await maybeClearLockout();
   const skipMigrate =
     process.env.SKIP_MIGRATE_IN_SWEEP === "1" || process.env.CI === "true";
