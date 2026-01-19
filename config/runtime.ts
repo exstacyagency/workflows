@@ -20,3 +20,8 @@ export const KILL_SWITCHES = {
 
 export const IS_ALPHA =
 	process.env.ALPHA_MODE === "true" || CURRENT_RUNTIME_MODE === "alpha" || process.env.SECURITY_SWEEP === "1";
+// Alpha is enabled when any of these signals are present. SECURITY_SWEEP covers deterministic runs.
+export const IS_ALPHA =
+	process.env.ALPHA_MODE === "true" ||
+	CURRENT_RUNTIME_MODE === "alpha" ||
+	process.env.SECURITY_SWEEP === "1";
