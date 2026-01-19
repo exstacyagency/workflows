@@ -1,19 +1,24 @@
 import { cfg } from "@/lib/config";
-import { RUNTIME_MODE } from "@/config/runtime";
+import { RUNTIME_MODE, type RuntimeMode } from "@/config/runtime";
 
-export type RuntimeMode = (typeof RUNTIME_MODE)[keyof typeof RUNTIME_MODE];
+function isBuildTime(): boolean {
+  return cfg.raw("NEXT_PHASE") === "phase-production-build";
+}
 
 export function assertRuntimeMode(): RuntimeMode {
-  // During Next.js build / static analysis, do not throw.
-  if (typeof window === "undefined" && cfg.raw("NEXT_PHASE") === "phase-production-build") {
-    return RUNTIME_MODE.prod;
+  const mode = cfg.runtimeMode ?? cfg.MODE ?? null;
+
+  if (!mode) {
+    if (isBuildTime()) {
+      return "alpha";
+    }
+    throw new Error("RUNTIME MODE MISSING: You must start the app with MODE=alpha | beta | prod");
   }
 
-  const mode = cfg.MODE;
-
-  if (!mode || !(mode in RUNTIME_MODE)) {
-    throw new Error("RUNTIME MODE MISSING: Start the app with MODE=alpha | beta | prod");
+  if (!(RUNTIME_MODE as readonly string[]).includes(mode)) {
+    if (mode === "alpha") return "alpha";
+    throw new Error(`INVALID RUNTIME MODE: ${mode}`);
   }
 
-  return RUNTIME_MODE[mode as keyof typeof RUNTIME_MODE];
+  return mode as RuntimeMode;
 }

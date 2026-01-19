@@ -18,6 +18,7 @@ export const cfg = {
   },
   env: nodeEnv,
   MODE: process.env.MODE,
+  runtimeMode: process.env.MODE,
   isProd: nodeEnv === "production",
   isDev: nodeEnv !== "production",
   securitySweep,
