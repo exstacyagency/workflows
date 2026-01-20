@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import React from "react";
+import { Providers } from "./providers";
 
 export const metadata: Metadata = {
   title: "Workflows",
@@ -12,7 +13,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <Providers>{children}</Providers>
+      </body>
     </html>
   );
 }

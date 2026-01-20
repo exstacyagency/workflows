@@ -15,6 +15,17 @@ import { normalizeEmail } from "@/lib/normalizeEmail";
 const isProd = process.env.NODE_ENV === "production";
 
 export const authOptions: NextAuthOptions = {
+  cookies: {
+    sessionToken: {
+      name: "next-auth.session-token",
+      options: {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        secure: false, // dev only
+      },
+    },
+  },
   // Force a stable secret source. If this is missing, NextAuth behavior becomes flaky.
   // In dev we will warn loudly; in prod we should fail fast.
   secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || undefined,
