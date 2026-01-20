@@ -28,13 +28,16 @@ export async function POST(req: NextRequest) {
     errors.push("idempotencyKey must be at least 10 characters");
   }
 
-  const jobType = Object.values(JobType).includes(pipeline as JobType) ? (pipeline as JobType) : null;
-  if (pipeline && !jobType) {
-    errors.push("pipeline must be a valid JobType");
-  }
-
   if (errors.length > 0) {
     return NextResponse.json({ error: "Invalid payload", details: errors }, { status: 400 });
+  }
+
+  const jobType = Object.values(JobType).includes(pipeline as JobType) ? (pipeline as JobType) : null;
+  if (!jobType) {
+    return NextResponse.json(
+      { error: "Invalid payload", details: ["pipeline must be a valid JobType"] },
+      { status: 400 },
+    );
   }
 
   const project = await prisma.project.findFirst({
