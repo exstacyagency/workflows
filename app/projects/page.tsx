@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import CreateProjectButton from "./CreateProjectButton";
 
 type Project = {
   id: string;
@@ -41,6 +42,34 @@ export default function ProjectsPage() {
   useEffect(() => {
     loadProjects();
   }, []);
+
+  async function createProject() {
+    setCreating(true);
+    setError(null);
+
+    try {
+      const res = await fetch("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Alpha Test Project",
+          description: "Created from UI",
+        }),
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`${res.status}: ${text}`);
+      }
+
+      // reload projects after creation
+      window.location.reload();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setCreating(false);
+    }
+  }
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -95,7 +124,26 @@ export default function ProjectsPage() {
             {error}
           </p>
         )}
+        <div className="pt-2">
+          <CreateProjectButton />
+        </div>
       </section>
+
+      <div className="space-y-4">
+        <button
+          onClick={createProject}
+          disabled={creating}
+          className="rounded bg-blue-600 px-4 py-2 text-white disabled:opacity-50"
+        >
+          {creating ? "Creating…" : "Create Alpha Project"}
+        </button>
+
+        {error && (
+          <div className="text-sm text-red-500">
+            Failed to create project: {error}
+          </div>
+        )}
+      </div>
 
       {/* New Project form */}
       <section className="rounded-xl border border-slate-800 bg-slate-900/80 p-4 space-y-3">

@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import WhoAmI from "./WhoAmI";
+import CreateProjectButton from "@/app/(app)/projects/CreateProjectButton";
 
 type Project = {
   id: string;
@@ -47,6 +49,7 @@ export default function StudioHomePage() {
           <h1 className="text-2xl font-semibold text-slate-50">
             FrameForge AI · Studio Command Center
           </h1>
+          <WhoAmI />
           <p className="text-sm text-slate-300 mt-1">
             Monitor your production pipeline, resume active projects, and launch
             new cinematic workflows.
@@ -109,6 +112,7 @@ export default function StudioHomePage() {
       <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-4 space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-slate-100">Projects</h2>
+          <CreateProjectButton />
           <button
             onClick={loadProjects}
             disabled={loading}
