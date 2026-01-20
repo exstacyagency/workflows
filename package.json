@@ -4,6 +4,9 @@
   "description": "AI Ad Lab starter for customer research and ad ideation",
   "private": true,
   "type": "module",
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
   "scripts": {
     "e2e:deterministic": "bash scripts/e2e_deterministic.sh",
     "routes:manifest": "tsx scripts/route_inventory.ts",
