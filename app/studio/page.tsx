@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import StudioHeader from "./StudioHeader";
 import WhoAmI from "./WhoAmI";
 import CreateProjectButton from "@/app/(app)/projects/CreateProjectButton";
 
@@ -43,7 +44,9 @@ export default function StudioHomePage() {
   const lastProject = projects[0] || null;
 
   return (
-    <div className="px-6 py-6 space-y-8">
+    <>
+      <StudioHeader />
+      <div className="px-6 py-6 space-y-8">
       <section className="rounded-xl border border-slate-800 bg-slate-900/80 p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-slate-50">
@@ -160,5 +163,6 @@ export default function StudioHomePage() {
         </div>
       </section>
     </div>
+    </>
   );
 }
