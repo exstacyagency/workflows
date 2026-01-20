@@ -5,8 +5,9 @@ import { prisma } from "./prisma";
 export async function getSessionUserId(): Promise<string | null> {
   const session = await getServerSession(authOptions);
 
-  if (session?.user?.id) {
-    return session.user.id;
+  const userId = (session?.user as any)?.id as string | undefined;
+  if (userId) {
+    return userId;
   }
 
   // Fallback: resolve by email if id missing
