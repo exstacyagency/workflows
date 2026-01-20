@@ -234,17 +234,38 @@ async function claimNextJob() {
       FOR UPDATE SKIP LOCKED
       LIMIT 1
     )
-    RETURNING "id", "type", "projectId", "payload", "idempotencyKey";
+    RETURNING "id", "type", "projectId", "payload", "idempotencyKey", "status";
   `;
 
   const row = claimed[0];
   if (!row?.id) return null;
-  return row as { id: string; type: JobType; projectId: string; payload: unknown; idempotencyKey: string | null };
+  return row as {
+    id: string;
+    type: JobType;
+    projectId: string;
+    payload: unknown;
+    idempotencyKey: string | null;
+    status: JobStatus;
+  };
 }
 
-async function runJob(job: { id: string; type: JobType; projectId: string; payload: unknown; idempotencyKey: string | null }, context: PipelineContext) {
+async function runJob(
+  job: {
+    id: string;
+    type: JobType;
+    projectId: string;
+    payload: unknown;
+    idempotencyKey: string | null;
+    status: JobStatus;
+  },
+  context: PipelineContext,
+) {
   const jobId = job.id;
   const payload = asObject(job.payload);
+
+  if (job.status !== JobStatus.RUNNING) {
+    throw new Error(`Invalid job state: ${job.status}`);
+  }
 
   if (context.mode === "alpha" && process.env.NODE_ENV === "production") {
     throw new Error("INVALID CONFIG: MODE=alpha cannot run with NODE_ENV=production");
