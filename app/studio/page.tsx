@@ -24,6 +24,9 @@ export default function StudioHomePage() {
     setError(null);
     try {
       const res = await fetch("/api/projects");
+      if (res.status === 401 || res.status === 403) {
+        throw new Error("Unauthorized");
+      }
       if (!res.ok) {
         throw new Error("Failed to load projects");
       }
