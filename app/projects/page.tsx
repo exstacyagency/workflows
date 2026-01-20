@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import CreateProjectButton from "@/app/(app)/projects/CreateProjectButton";
 
 type Project = {
   id: string;
@@ -95,6 +96,9 @@ export default function ProjectsPage() {
             {error}
           </p>
         )}
+        <div className="pt-2">
+          <CreateProjectButton />
+        </div>
       </section>
 
       {/* New Project form */}

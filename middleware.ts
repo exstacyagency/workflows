@@ -29,6 +29,7 @@ export default async function middleware(
   event: NextFetchEvent
 ) {
   const pathname = req.nextUrl.pathname;
+
   const { isProd, isDev, isGolden, securitySweep } = cfg;
   const allowDebug = isDev || isGolden;
   const allowE2E = !isProd || securitySweep || isGolden;
