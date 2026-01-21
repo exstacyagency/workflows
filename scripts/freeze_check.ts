@@ -49,6 +49,8 @@ function main() {
       "2a9da42206129abe98f978c38a51ac142342c8c0a5a2ac9fdb73811b6072e0aa",
     "prisma/migrations/20260111112000_add_spend_event/migration.sql":
       "1c7a1b68635b6629e2ee4ef8fa1c4349f2c5a96f4b48533129e73cc99ce773b5",
+    "prisma/migrations/20260121023133_add_job_current_step/migration.sql":
+      "6377a15c6522141d8004e3067c4c39f26c935cf18bab1430efeddedd76f4b8e2",
   };
 
   const rules: Rule[] = [

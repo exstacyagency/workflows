@@ -55,6 +55,11 @@ export default async function middleware(
     const res = applySecurityHeaders(NextResponse.next());
     return res;
   }
+
+  // Allow jobs API to handle auth itself so it can return JSON (e.g., 400/401) instead of NextAuth redirects.
+  if (pathname.startsWith("/api/jobs")) {
+    return applySecurityHeaders(NextResponse.next());
+  }
   // E2E reset (rewritten to /api/_dev/e2e/reset in dev only)
   if (pathname === "/api/e2e/reset") {
     if (!allowE2E) {
