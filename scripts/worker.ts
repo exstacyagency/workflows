@@ -1,4 +1,5 @@
 import { PrismaClient, JobStatus } from "@prisma/client";
+import { updateJobStatus } from "@/lib/jobs/updateJobStatus";
 
 const prisma = new PrismaClient();
 
@@ -41,10 +42,10 @@ async function runJob(jobId: string) {
     // Simulate work
     await new Promise((r) => setTimeout(r, 2000));
 
+    await updateJobStatus(jobId, JobStatus.COMPLETED);
     await prisma.job.update({
       where: { id: jobId },
       data: {
-        status: JobStatus.COMPLETED,
         resultSummary: "Job completed successfully",
       },
     });
@@ -53,10 +54,10 @@ async function runJob(jobId: string) {
   } catch (error) {
     console.error(`❌ Job ${jobId} failed`, error);
 
+    await updateJobStatus(jobId, JobStatus.FAILED);
     await prisma.job.update({
       where: { id: jobId },
       data: {
-        status: JobStatus.FAILED,
         error:
           error instanceof Error
             ? error.message
