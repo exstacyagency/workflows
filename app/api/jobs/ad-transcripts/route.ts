@@ -111,8 +111,10 @@ export async function POST(req: NextRequest) {
       const job = await prisma.job.create({
         data: {
           projectId,
+          userId,
           type: JOB_TYPE,
           status: JobStatus.PENDING,
+          idempotencyKey,
           payload: parsed.data,
           resultSummary: "Skipped: SECURITY_SWEEP",
         },
@@ -160,8 +162,10 @@ export async function POST(req: NextRequest) {
     const job = await prisma.job.create({
       data: {
         projectId,
+        userId,
         type: JOB_TYPE,
         status: JobStatus.PENDING,
+        idempotencyKey,
         payload: {
           projectId,
           kind: "ad_transcript_collection",

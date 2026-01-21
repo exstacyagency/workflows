@@ -233,7 +233,13 @@ export default async function ProjectDashboardPage({ params }: Params) {
                   <p className="text-xs text-slate-400">
                     Started {dateFormatter.format(job.createdAt)} · Updated {dateFormatter.format(job.updatedAt)}
                   </p>
-                  {job.resultSummary && <p className="text-xs text-slate-300 mt-1">{job.resultSummary}</p>}
+                  {job.resultSummary && (
+                    <p className="text-xs text-slate-300 mt-1">
+                      {typeof job.resultSummary === "string"
+                        ? job.resultSummary
+                        : JSON.stringify(job.resultSummary)}
+                    </p>
+                  )}
                 </div>
               ))}
             </div>

@@ -54,12 +54,13 @@ export async function findIdempotentJob(params: {
 }
 
 export async function createJobWithIdempotency(params: {
+  userId: string;
   projectId: string;
   type: JobType;
   idempotencyKey: string;
   payload?: Record<string, any>;
 }) {
-  const { projectId, type, idempotencyKey, payload } = params;
+  const { userId, projectId, type, idempotencyKey, payload } = params;
 
   const existing = await findIdempotentJob({
     projectId,
@@ -71,8 +72,10 @@ export async function createJobWithIdempotency(params: {
   const job = await prisma.job.create({
     data: {
       projectId,
+      userId,
       type,
       status: JobStatus.PENDING,
+      idempotencyKey,
       payload: { ...(payload ?? {}), idempotencyKey },
     },
   });

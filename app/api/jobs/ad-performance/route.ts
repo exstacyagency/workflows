@@ -45,6 +45,7 @@ export async function POST(req: Request) {
   const job = await prisma.job.create({
     data: {
       projectId,
+      userId,
       type: JobType.AD_PERFORMANCE,
       status: "PENDING",
       idempotencyKey,

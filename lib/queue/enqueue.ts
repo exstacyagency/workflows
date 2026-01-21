@@ -2,8 +2,10 @@ import { prisma } from "@/lib/prisma";
 import { cfg } from "@/lib/config";
 import { isSelfHosted } from "@/lib/config/mode";
 import { JobStatus, JobType } from "@prisma/client";
+import { randomUUID } from "crypto";
 
 export type EnqueueJobInput = {
+  userId?: string;
   projectId: string;
   type: JobType;
   payload: Record<string, any>;
@@ -36,14 +38,26 @@ export async function enqueueJob(
   input: EnqueueJobInput
 ): Promise<{ jobId: string; reused: boolean }> {
   const backend = getQueueBackend();
+  const idempotencyKey = input.idempotencyKey ?? `enqueue:${randomUUID()}`;
+  let userId = input.userId;
+  if (!userId) {
+    const project = await prisma.project.findUnique({
+      where: { id: input.projectId },
+      select: { userId: true },
+    });
+    userId = project?.userId;
+  }
+  if (!userId) {
+    throw new Error("enqueueJob: project owner not found");
+  }
 
   if (backend === "db") {
-    if (input.idempotencyKey) {
+    if (idempotencyKey) {
       const existing = await prisma.job.findFirst({
         where: {
           projectId: input.projectId,
           type: input.type,
-          idempotencyKey: input.idempotencyKey,
+          idempotencyKey,
         },
         select: { id: true },
       });
@@ -63,9 +77,10 @@ export async function enqueueJob(
     const job = await prisma.job.create({
       data: {
         projectId: input.projectId,
+        userId,
         type: input.type,
         status: JobStatus.PENDING,
-        idempotencyKey: input.idempotencyKey ?? null,
+        idempotencyKey,
         payload: input.payload,
       },
       select: { id: true },

@@ -182,10 +182,12 @@ export async function POST(req: NextRequest) {
     const job = await prisma.job.create({
       data: {
         projectId,
+        userId,
         type: JobType.CUSTOMER_RESEARCH,
         status: securitySweep ? JobStatus.COMPLETED : JobStatus.PENDING,
+        idempotencyKey,
         payload: initialPayload,
-        resultSummary: securitySweep ? "Skipped: SECURITY_SWEEP" : null,
+        resultSummary: securitySweep ? "Skipped: SECURITY_SWEEP" : undefined,
         error: null,
       },
     });
