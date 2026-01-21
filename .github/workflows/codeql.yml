@@ -16,6 +16,11 @@ jobs:
       actions: read
       contents: read
       security-events: write
+    env:
+      # Custom property API is unavailable; skip property lookup to avoid 404s
+      CODEQL_ACTION_DISABLE_CUSTOM_PROPERTIES: true
+      CODEQL_ACTION_DISABLE_DEFAULT_REPO_CUSTOM_PROPERTIES: true
+      CODEQL_ACTION_USE_REPOSITORY_PROPERTIES: false
 
     strategy:
       fail-fast: false
@@ -27,11 +32,15 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@v4
+        env:
+          CODEQL_ACTION_DISABLE_CUSTOM_PROPERTIES: true
+          CODEQL_ACTION_DISABLE_DEFAULT_REPO_CUSTOM_PROPERTIES: true
+          CODEQL_ACTION_USE_REPOSITORY_PROPERTIES: false
         with:
           languages: ${{ matrix.language }}
 
       # No build step needed for JS/TS; CodeQL will still analyze source.
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@v4
 
