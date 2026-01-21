@@ -14,6 +14,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
   }
 
+  if ("status" in body) {
+    return NextResponse.json({ error: "Status cannot be set via API" }, { status: 400 });
+  }
+
+  if ("currentStep" in body) {
+    return NextResponse.json({ error: "currentStep is internal-only" }, { status: 400 });
+  }
+
   const projectId = typeof (body as any).projectId === "string" ? (body as any).projectId.trim() : "";
   const pipeline = typeof (body as any).pipeline === "string" ? (body as any).pipeline.trim() : "";
   const input = typeof (body as any).input === "object" && (body as any).input !== null ? (body as any).input : null;
