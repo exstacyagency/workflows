@@ -93,6 +93,24 @@ export async function POST(req: NextRequest) {
     let idempotencyKey = `script-generation:${projectId}`;
     if (breakerTest) idempotencyKey += `:${Date.now()}`;
 
+    const existingJob = await prisma.job.findFirst({
+      where: { projectId, userId, idempotencyKey },
+      select: { id: true, status: true },
+    });
+
+    if (existingJob) {
+      if (securitySweep) {
+        return NextResponse.json(
+          { jobId: existingJob.id, reused: true, started: false, skipped: true, reason: "SECURITY_SWEEP" },
+          { status: 200 },
+        );
+      }
+      return NextResponse.json(
+        { jobId: existingJob.id, ok: existingJob.status === JobStatus.COMPLETED },
+        { status: 200 },
+      );
+    }
+
     // SECURITY_SWEEP short-circuit
     if (securitySweep) {
       try {
@@ -141,18 +159,6 @@ export async function POST(req: NextRequest) {
 
       return NextResponse.json(
         { jobId: job.id, started: false, skipped: true, reason: "SECURITY_SWEEP" },
-        { status: 200 },
-      );
-    }
-
-    const existingJob = await prisma.job.findFirst({
-      where: { projectId, idempotencyKey },
-      select: { id: true, status: true },
-    });
-
-    if (existingJob) {
-      return NextResponse.json(
-        { jobId: existingJob.id, ok: existingJob.status === JobStatus.COMPLETED },
         { status: 200 },
       );
     }
