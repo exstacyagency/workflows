@@ -16,6 +16,7 @@ export type PipelineArtifacts = {
   storyboard?: unknown;
   editedVideo?: unknown;
   finalOutput?: unknown;
+  steps?: string[];
 };
 
 export async function executePipeline(
@@ -33,6 +34,8 @@ export async function executePipeline(
   artifacts.storyboard = await storyboardStep(ctx, artifacts);
   artifacts.editedVideo = await videoEditingStep(ctx, artifacts);
   artifacts.finalOutput = await finalPreviewStep(ctx, artifacts);
+
+  artifacts.steps = Object.keys(artifacts).filter((k) => k !== "steps");
 
   await markCompleted(ctx.jobId, artifacts);
 
@@ -55,10 +58,10 @@ async function markCompleted(jobId: string, artifacts: PipelineArtifacts) {
     where: { id: jobId },
     data: {
       status: JobStatus.COMPLETED,
-      resultSummary: {
+      resultSummary: JSON.stringify({
         completedAt: new Date().toISOString(),
-        steps: Object.keys(artifacts),
-      },
+        steps: artifacts.steps,
+      }),
     },
   });
 }
