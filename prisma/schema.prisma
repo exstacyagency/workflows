@@ -110,7 +110,7 @@ model Job {
   id             String   @id @default(uuid())
   projectId      String
   userId         String
-  type           String
+  type           JobType
   status         JobStatus @default(PENDING)
   currentStep    String?
   idempotencyKey String

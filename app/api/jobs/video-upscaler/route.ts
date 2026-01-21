@@ -132,10 +132,12 @@ export async function POST(req: NextRequest) {
     const job = await prisma.job.create({
       data: {
         projectId,
+        userId,
         type: JobType.VIDEO_UPSCALER,
         status: JobStatus.PENDING,
+        idempotencyKey,
         payload: { storyboardId, idempotencyKey },
-        resultSummary: securitySweep ? "Skipped: SECURITY_SWEEP" : null,
+        resultSummary: securitySweep ? "Skipped: SECURITY_SWEEP" : undefined,
         error: null,
       },
     });

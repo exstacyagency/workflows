@@ -190,6 +190,7 @@ export async function POST(req: NextRequest) {
       const job = await prisma.job.create({
         data: {
           projectId,
+          userId,
           type: JobType.VIDEO_GENERATION,
           status: JobStatus.PENDING,
           idempotencyKey,
@@ -285,6 +286,7 @@ export async function POST(req: NextRequest) {
       const job = await prisma.job.create({
         data: {
           projectId,
+          userId,
           type: JobType.VIDEO_GENERATION,
           status: JobStatus.PENDING,
           idempotencyKey,
