@@ -102,6 +102,7 @@ export async function POST(req: NextRequest) {
       storyboardId,
     ]);
     const existing = await findIdempotentJob({
+      userId,
       projectId,
       type: JobType.VIDEO_PROMPT_GENERATION,
       idempotencyKey,

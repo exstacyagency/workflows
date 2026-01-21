@@ -133,10 +133,14 @@ export async function POST(req: NextRequest) {
       productProblemSolved,
     ]);
 
-  const existing = await findIdempotentJob({
-    projectId,
-    type: JobType.CUSTOMER_RESEARCH,
-    idempotencyKey,
+  const existing = await prisma.job.findUnique({
+    where: {
+      userId_projectId_idempotencyKey: {
+        userId,
+        projectId,
+        idempotencyKey,
+      },
+    },
   });
   if (existing) {
     // If we’re in SECURITY_SWEEP, callers expect deterministic placeholder semantics.

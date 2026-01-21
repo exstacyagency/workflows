@@ -459,6 +459,7 @@ async function ensureSeededJobAndScript({ ownerEmail, projectId }) {
       where: { id: seededJobId },
       update: {
         projectId,
+        userId: user.id,
         type: "SCRIPT_GENERATION",
         status: "COMPLETED",
         payload: { projectId, seeded: true, kind: "security-sweep" },
@@ -468,6 +469,7 @@ async function ensureSeededJobAndScript({ ownerEmail, projectId }) {
       create: {
         id: seededJobId,
         projectId,
+        userId: user.id,
         type: "SCRIPT_GENERATION",
         status: "COMPLETED",
         payload: { projectId, seeded: true, kind: "security-sweep" },
