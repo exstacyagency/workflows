@@ -1,85 +1,122 @@
-import { prisma } from "@/lib/prisma";
 import { JobStatus } from "@prisma/client";
-import { advanceJobState } from "@/src/jobs/advanceJobState";
+import { prisma } from "@/lib/prisma";
 
-type PipelineContext = {
-  job: any;
-  payload?: any;
-  result?: any;
-  summary?: string;
+export type PipelineContext = {
+  jobId: string;
+  projectId: string;
+  input: unknown;
 };
 
-type PipelineStep = (ctx: PipelineContext) => Promise<PipelineContext>;
-
-type PipelineDefinition = {
-  steps: PipelineStep[];
+export type PipelineArtifacts = {
+  research?: unknown;
+  patterns?: unknown;
+  character?: unknown;
+  script?: unknown;
+  videoPrompts?: unknown;
+  storyboard?: unknown;
+  editedVideo?: unknown;
+  finalOutput?: unknown;
 };
 
-async function stepValidateInput(ctx: PipelineContext): Promise<PipelineContext> {
-  const payload = ctx.job?.payload;
-  if (!payload) {
-    throw new Error("Missing payload");
-  }
-  return { ...ctx, payload };
+export async function executePipeline(
+  ctx: PipelineContext,
+): Promise<PipelineArtifacts> {
+  const artifacts: PipelineArtifacts = {};
+
+  await markRunning(ctx.jobId);
+
+  artifacts.research = await researchStep(ctx);
+  artifacts.patterns = await patternBrainStep(ctx, artifacts);
+  artifacts.character = await characterSelectionStep(ctx, artifacts);
+  artifacts.script = await scriptGenerationStep(ctx, artifacts);
+  artifacts.videoPrompts = await videoPromptStep(ctx, artifacts);
+  artifacts.storyboard = await storyboardStep(ctx, artifacts);
+  artifacts.editedVideo = await videoEditingStep(ctx, artifacts);
+  artifacts.finalOutput = await finalPreviewStep(ctx, artifacts);
+
+  await markCompleted(ctx.jobId, artifacts);
+
+  return artifacts;
 }
 
-async function stepGenerateVideo(ctx: PipelineContext): Promise<PipelineContext> {
-  return {
-    ...ctx,
-    result: {
-      videoUrl: "https://example.com/fake-video.mp4",
+/* ─────────────────────────────
+   Internal helpers
+───────────────────────────── */
+
+async function markRunning(jobId: string) {
+  await prisma.job.update({
+    where: { id: jobId },
+    data: { status: JobStatus.RUNNING },
+  });
+}
+
+async function markCompleted(jobId: string, artifacts: PipelineArtifacts) {
+  await prisma.job.update({
+    where: { id: jobId },
+    data: {
+      status: JobStatus.COMPLETED,
+      resultSummary: {
+        completedAt: new Date().toISOString(),
+        steps: Object.keys(artifacts),
+      },
     },
-  };
+  });
 }
 
-async function stepFinalize(ctx: PipelineContext): Promise<PipelineContext> {
-  return {
-    ...ctx,
-    summary: "Video generated successfully",
-  };
+/* ─────────────────────────────
+   Pipeline steps (STUBS)
+───────────────────────────── */
+
+async function researchStep(_ctx: PipelineContext) {
+  return { stub: true };
 }
 
-const PIPELINES: Record<string, PipelineDefinition> = {
-  VIDEO_GENERATION: {
-    steps: [stepValidateInput, stepGenerateVideo, stepFinalize],
-  },
-};
+async function patternBrainStep(
+  _ctx: PipelineContext,
+  _artifacts: PipelineArtifacts,
+) {
+  return { stub: true };
+}
 
-export async function executeJob(jobId: string) {
-  const job = await prisma.job.findUnique({ where: { id: jobId } });
+async function characterSelectionStep(
+  _ctx: PipelineContext,
+  _artifacts: PipelineArtifacts,
+) {
+  return { stub: true };
+}
 
-  if (!job) throw new Error("Job not found");
-  if (job.status !== JobStatus.PENDING) {
-    throw new Error(`Job not runnable from status ${job.status}`);
-  }
+async function scriptGenerationStep(
+  _ctx: PipelineContext,
+  _artifacts: PipelineArtifacts,
+) {
+  return { stub: true };
+}
 
-  const pipeline = PIPELINES[job.type];
-  if (!pipeline) {
-    throw new Error(`Unknown pipeline: ${job.type}`);
-  }
+async function videoPromptStep(
+  _ctx: PipelineContext,
+  _artifacts: PipelineArtifacts,
+) {
+  return { stub: true };
+}
 
-  await advanceJobState(job.id, JobStatus.RUNNING, { currentStep: "init" });
+async function storyboardStep(
+  _ctx: PipelineContext,
+  _artifacts: PipelineArtifacts,
+) {
+  return { stub: true };
+}
 
-  let context: PipelineContext = { job };
-  let lastStepName: string | null = "init";
+async function videoEditingStep(
+  _ctx: PipelineContext,
+  _artifacts: PipelineArtifacts,
+) {
+  return { stub: true };
+}
 
-  try {
-    for (const step of pipeline.steps) {
-      const stepName = step.name || "step";
-      lastStepName = stepName;
-      await prisma.job.update({ where: { id: job.id }, data: { currentStep: stepName } });
-      context = await step(context);
-    }
-
-    const summary = context.summary ?? "Pipeline completed";
-    await prisma.job.update({
-      where: { id: job.id },
-      data: { currentStep: null, resultSummary: summary },
-    });
-    await advanceJobState(job.id, JobStatus.COMPLETED, { currentStep: null, error: null });
-  } catch (err: any) {
-    const message = err?.message ?? String(err);
-    await advanceJobState(job.id, JobStatus.FAILED, { currentStep: lastStepName, error: message });
-  }
+async function finalPreviewStep(
+  _ctx: PipelineContext,
+  _artifacts: PipelineArtifacts,
+) {
+  return { stub: true };
 }
 
