@@ -111,6 +111,7 @@ model Job {
   projectId      String
   type           JobType
   status         JobStatus @default(PENDING)
+  currentStep    String?
   idempotencyKey String?  @unique
   payload        Json?
   resultSummary  String?
