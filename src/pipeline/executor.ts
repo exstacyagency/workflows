@@ -1,6 +1,12 @@
 import { Job, JobStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { ResearchArtifacts as ResearchStepArtifacts } from "./contracts/research";
 import { PipelineArtifacts } from "./types";
+import { runPatternBrain } from "./patternBrain/executor";
+import {
+  PatternBrainArtifacts,
+  ResearchArtifacts as PatternBrainResearchArtifacts,
+} from "./patternBrain/types";
 import { runResearch } from "./steps/research";
 
 export type PipelineContext = {
@@ -24,7 +30,11 @@ export async function executePipeline(
   await markRunning(ctx.jobId);
 
   artifacts.research = await runResearchStep(job, resultSummary);
-  artifacts.patterns = await runPatternBrainStep(job, artifacts, resultSummary);
+  artifacts.patternBrain = await runPatternBrainStep(
+    job,
+    artifacts,
+    resultSummary,
+  );
   artifacts.character = await characterSelectionStep(ctx, artifacts);
   artifacts.script = await scriptGenerationStep(ctx, artifacts);
   artifacts.videoPrompts = await videoPromptStep(ctx, artifacts);
@@ -119,7 +129,8 @@ async function runPatternBrainStep(
   artifacts: PipelineArtifacts,
   resultSummary: Record<string, unknown>,
 ) {
-  const patterns = await patternBrainStep(job, artifacts);
+  const patternBrainInput = toPatternBrainResearch(artifacts.research);
+  const patterns = await runPatternBrain(patternBrainInput);
 
   await prisma.job.update({
     where: { id: job.id },
@@ -127,18 +138,46 @@ async function runPatternBrainStep(
       currentStep: "patternBrain",
       resultSummary: JSON.stringify({
         ...resultSummary,
-        patterns,
+        patternBrain: patterns,
       }),
     },
   });
 
-  resultSummary.patterns = patterns;
+  resultSummary.patternBrain = patterns;
 
   return patterns;
 }
 
-async function patternBrainStep(job: Job, _artifacts: PipelineArtifacts) {
-  return { jobId: job.id, stub: true };
+function toPatternBrainResearch(
+  research: ResearchStepArtifacts | undefined,
+): PatternBrainResearchArtifacts {
+  if (!research) {
+    return {
+      customerInsights: [],
+      productInsights: [],
+      adInsights: [],
+    };
+  }
+
+  const result: PatternBrainResearchArtifacts = {
+    customerInsights: [],
+    productInsights: [],
+    adInsights: [],
+  };
+
+  for (const insight of research.insights ?? []) {
+    const facts = insight.facts ?? [];
+
+    if (insight.category === "customer") {
+      result.customerInsights.push(...facts);
+    } else if (insight.category === "product") {
+      result.productInsights.push(...facts);
+    } else if (insight.category === "ad") {
+      result.adInsights.push(...facts);
+    }
+  }
+
+  return result;
 }
 
 async function characterSelectionStep(
