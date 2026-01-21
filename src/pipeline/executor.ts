@@ -1,106 +1,115 @@
 import { prisma } from "@/lib/prisma";
-import { JobStatus } from "@prisma/client";
+import type { Job } from "@prisma/client";
 import { ResearchArtifacts as ResearchStepArtifacts } from "./contracts/research";
 import { runPatternBrain } from "./patternBrain/executor";
 import { ResearchArtifacts as PatternBrainResearchArtifacts } from "./patternBrain/types";
 import { runResearch } from "./steps/research";
+import { PipelineStep } from "./types";
 
-export type PipelineStep =
-  | "research"
-  | "patternBrain"
-  | "character"
-  | "script"
-  | "videoPrompts"
-  | "storyboard"
-  | "editedVideo"
-  | "finalOutput";
+type JobPayload = {
+  forceFailStep?: PipelineStep;
+};
 
-const PIPELINE_STEPS: PipelineStep[] = [
-  "research",
-  "patternBrain",
-  "character",
-  "script",
-  "videoPrompts",
-  "storyboard",
-  "editedVideo",
-  "finalOutput",
-];
+async function setStep(jobId: string, step: PipelineStep) {
+  await prisma.job.update({
+    where: { id: jobId },
+    data: { currentStep: step },
+  });
+}
 
-export async function executePipeline(jobId: string) {
-  const job = await prisma.job.findUnique({ where: { id: jobId } });
-
-  if (!job) {
-    throw new Error(`Job ${jobId} not found`);
-  }
-
-  // Mark job as RUNNING once, up front
+async function failJob(jobId: string, step: PipelineStep, err: Error) {
   await prisma.job.update({
     where: { id: jobId },
     data: {
-      status: JobStatus.RUNNING,
-      updatedAt: new Date(),
+      status: "FAILED",
+      currentStep: step,
+      error: err.message,
     },
   });
+}
+
+async function maybeFail(payload: JobPayload, step: PipelineStep) {
+  if (payload.forceFailStep === step) {
+    throw new Error(`Forced failure at step: ${step}`);
+  }
+}
+
+export async function executePipeline(job: Job) {
+  // job.payload IS the input object
+  const payload = (job.payload ?? {}) as JobPayload;
 
   const artifacts: Record<string, unknown> = {};
 
   try {
-    for (const step of PIPELINE_STEPS) {
-      // 🔒 Authoritative step update (forward-only)
-      await prisma.job.update({
-        where: { id: jobId },
-        data: {
-          currentStep: step,
-          updatedAt: new Date(),
-        },
-      });
-
-      // Execute step in isolation
-      const result = await runStep(step, job, artifacts);
-
-      // Persist artifacts in-memory only (DB write at end)
-      artifacts[step] = result;
-
-      if (step === "patternBrain") {
-        // Persist Pattern Brain output for visibility
-        await prisma.job.update({
-          where: { id: jobId },
-          data: {
-            resultSummary: JSON.stringify({
-              patternBrain: result,
-            }),
-            updatedAt: new Date(),
-          },
-        });
-      }
-    }
-
-    // ✅ All steps completed successfully
     await prisma.job.update({
-      where: { id: jobId },
+      where: { id: job.id },
+      data: { status: "RUNNING" },
+    });
+
+    // RESEARCH
+    await setStep(job.id, "research");
+    job.currentStep = "research";
+    await maybeFail(payload, "research");
+    artifacts.research = await runStep("research", job, artifacts);
+
+    // PATTERN BRAIN (FAIL TEST TARGET)
+    await setStep(job.id, "pattern_brain");
+    job.currentStep = "pattern_brain";
+    await maybeFail(payload, "pattern_brain");
+    artifacts.pattern_brain = await runStep("pattern_brain", job, artifacts);
+
+    // CHARACTER
+    await setStep(job.id, "character");
+    job.currentStep = "character";
+    await maybeFail(payload, "character");
+    artifacts.character = await runStep("character", job, artifacts);
+
+    // SCRIPT
+    await setStep(job.id, "script");
+    job.currentStep = "script";
+    await maybeFail(payload, "script");
+    artifacts.script = await runStep("script", job, artifacts);
+
+    // VIDEO PROMPTS
+    await setStep(job.id, "video_prompts");
+    job.currentStep = "video_prompts";
+    await maybeFail(payload, "video_prompts");
+    artifacts.video_prompts = await runStep("video_prompts", job, artifacts);
+
+    // STORYBOARD
+    await setStep(job.id, "storyboard");
+    job.currentStep = "storyboard";
+    await maybeFail(payload, "storyboard");
+    artifacts.storyboard = await runStep("storyboard", job, artifacts);
+
+    // FINAL
+    await setStep(job.id, "final");
+    job.currentStep = "final";
+
+    await prisma.job.update({
+      where: { id: job.id },
       data: {
-        status: JobStatus.COMPLETED,
+        status: "COMPLETED",
         resultSummary: JSON.stringify({
-          steps: PIPELINE_STEPS,
-          completedAt: new Date().toISOString(),
-          patternBrain: artifacts.patternBrain,
+          steps: [
+            "research",
+            "pattern_brain",
+            "character",
+            "script",
+            "video_prompts",
+            "storyboard",
+            "final",
+          ],
         }),
-        updatedAt: new Date(),
       },
     });
   } catch (err) {
-    // ❌ Immediate, terminal failure
-    await prisma.job.update({
-      where: { id: jobId },
-      data: {
-        status: JobStatus.FAILED,
-        error: err instanceof Error ? err.message : "Unknown pipeline failure",
-        updatedAt: new Date(),
-      },
-    });
-
-    // Re-throw so runner logs it
-    throw err;
+    await failJob(
+      job.id,
+      (job.currentStep as PipelineStep) ?? "pattern_brain",
+      err as Error,
+    );
+    return; // hard stop
   }
 }
 
@@ -121,7 +130,7 @@ async function runStep(
         payload: job.payload,
       });
 
-    case "patternBrain": {
+    case "pattern_brain": {
       const research = artifacts.research as ResearchStepArtifacts | undefined;
       const mappedResearch = toPatternBrainResearch(research);
       return runPatternBrain(mappedResearch);
@@ -133,16 +142,13 @@ async function runStep(
     case "script":
       return runScriptGeneration(artifacts);
 
-    case "videoPrompts":
+    case "video_prompts":
       return runVideoPromptGeneration(artifacts);
 
     case "storyboard":
       return runStoryboardGeneration(artifacts);
 
-    case "editedVideo":
-      return runVideoEditing(artifacts);
-
-    case "finalOutput":
+    case "final":
       return runFinalOutput(artifacts);
 
     default:

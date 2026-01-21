@@ -12,3 +12,12 @@ export type PipelineArtifacts = {
   editedVideo?: unknown;
   finalOutput?: unknown;
 };
+
+export type PipelineStep =
+  | "research"
+  | "pattern_brain"
+  | "character"
+  | "script"
+  | "video_prompts"
+  | "storyboard"
+  | "final";
