@@ -107,20 +107,21 @@ model SpendEvent {
 //////////////////////
 
 model Job {
-  id             String    @id @default(uuid())
+  id             String   @id @default(uuid())
   projectId      String
-  type           JobType
+  userId         String
+  type           String
   status         JobStatus @default(PENDING)
   currentStep    String?
-  idempotencyKey String?  @unique
-  payload        Json?
-  resultSummary  String?
+  idempotencyKey String
+  payload        Json
+  resultSummary  Json?
   error          String?
-  estimatedCost  Float?
-  actualCost     Float?
+  estimatedCost  Int?
+  actualCost     Int?
   costBreakdown  Json?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
@@ -133,6 +134,7 @@ model Job {
   auditLogs        AuditLog[]
 
   @@index([projectId])
+  @@unique([userId, projectId, idempotencyKey])
   @@map("job")
 }
 
