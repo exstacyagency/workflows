@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { executeJob } from "@/src/pipeline/executor";
+import { executePipeline } from "@/src/pipeline/executor";
 
 async function run() {
   const job = await prisma.job.findFirst({
@@ -13,7 +13,11 @@ async function run() {
   }
 
   console.log("Running job:", job.id);
-  await executeJob(job.id);
+  await executePipeline({
+    jobId: job.id,
+    projectId: job.projectId,
+    input: job.payload,
+  });
 }
 
 run().catch((e) => {
