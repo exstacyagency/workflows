@@ -19,6 +19,7 @@ jobs:
     env:
       # Custom property API is unavailable; skip property lookup to avoid 404s
       CODEQL_ACTION_DISABLE_CUSTOM_PROPERTIES: true
+      CODEQL_ACTION_DISABLE_DEFAULT_REPO_CUSTOM_PROPERTIES: true
 
     strategy:
       fail-fast: false
@@ -31,6 +32,9 @@ jobs:
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
+        env:
+          CODEQL_ACTION_DISABLE_CUSTOM_PROPERTIES: true
+          CODEQL_ACTION_DISABLE_DEFAULT_REPO_CUSTOM_PROPERTIES: true
         with:
           languages: ${{ matrix.language }}
 
