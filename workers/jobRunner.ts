@@ -13,6 +13,7 @@ import prisma from "../lib/prisma.ts";
 import { rollbackQuota } from "../lib/billing/usage.ts";
 import { assertRuntimeMode } from "../src/runtime/assertMode.ts";
 import { RuntimeMode } from "../src/runtime/mode.ts";
+import { updateJobStatus } from "@/lib/jobs/updateJobStatus";
 
 if (cfg.raw("NODE_ENV") !== "production") {
   loadDotEnvFileIfPresent(".env.local");
@@ -117,24 +118,29 @@ async function rollbackJobQuotaIfNeeded(jobId: string, projectId: string, payloa
 async function markCompleted(jobId: string, result: any, summary?: string) {
   const existing = await prisma.job.findUnique({
     where: { id: jobId },
-    select: { payload: true, resultSummary: true },
+    select: { payload: true, resultSummary: true, status: true },
   });
-  const payload = asObject(existing?.payload);
+  if (!existing) return;
+
+  const payload = asObject(existing.payload);
   const data: any = {
-    status: JobStatus.COMPLETED,
     error: null,
     payload: { ...payload, result: serializeResult(result) },
   };
   if (summary !== undefined) data.resultSummary = summary;
+
+  await updateJobStatus(jobId, JobStatus.COMPLETED);
   await prisma.job.update({ where: { id: jobId }, data });
 }
 
 async function markFailed(jobId: string, err: unknown) {
   const existing = await prisma.job.findUnique({
     where: { id: jobId },
-    select: { payload: true, resultSummary: true },
+    select: { payload: true, resultSummary: true, status: true },
   });
-  const payload = asObject(existing?.payload);
+  if (!existing) return;
+
+  const payload = asObject(existing.payload);
   let errMsg = String((err as any)?.message ?? err);
   let transient = false;
   let provider: string | null = null;
@@ -173,10 +179,10 @@ async function markFailed(jobId: string, err: unknown) {
   };
   if (rawSnippet) nextPayload.lastErrorRaw = rawSnippet;
 
+  await updateJobStatus(jobId, JobStatus.FAILED);
   await prisma.job.update({
     where: { id: jobId },
     data: {
-      status: JobStatus.FAILED,
       error: errMsg,
       resultSummary:
         existing?.resultSummary ??
@@ -342,10 +348,7 @@ async function runJob(
           return;
         }
 
-        await prisma.job.update({
-          where: { id: jobId },
-          data: { status: JobStatus.RUNNING },
-        });
+        await updateJobStatus(jobId, JobStatus.RUNNING);
 
         const result = await runPatternAnalysis({
           projectId: job.projectId,

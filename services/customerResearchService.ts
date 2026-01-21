@@ -1,6 +1,7 @@
 import { cfg } from "@/lib/config";
 import { prisma } from '@/lib/prisma';
 import { JobStatus, ResearchSource } from '@prisma/client';
+import { updateJobStatus } from '@/lib/jobs/updateJobStatus';
 import { getBreaker } from '@/lib/circuitBreaker';
 import { ExternalServiceError } from "@/lib/externalServiceError";
 import { toB64Snippet, truncate } from "@/lib/utils/debugSnippet";
@@ -281,7 +282,7 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
 
   const { projectId, jobId, productName, productProblemSolved, productAmazonAsin, competitor1AmazonAsin, competitor2AmazonAsin } = params;
 
-  await prisma.job.update({ where: { id: jobId }, data: { status: JobStatus.RUNNING } });
+    await updateJobStatus(jobId, JobStatus.RUNNING);
 
   try {
     if (!productName || !productProblemSolved || !productAmazonAsin) {
@@ -387,20 +388,20 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
       throw new Error(`Only ${dedupedRows.length} rows (min: ${MIN_RESEARCH_ROWS})`);
     }
 
+    await updateJobStatus(jobId, JobStatus.COMPLETED);
     await prisma.job.update({
       where: { id: jobId },
       data: {
-        status: JobStatus.COMPLETED,
         resultSummary: `${dedupedRows.length} research rows collected`
       }
     });
 
     return storedRows;
   } catch (error) {
+    await updateJobStatus(jobId, JobStatus.FAILED);
     await prisma.job.update({
       where: { id: jobId },
       data: {
-        status: JobStatus.FAILED,
         error: error instanceof Error ? error.message : 'Unknown error'
       }
     });

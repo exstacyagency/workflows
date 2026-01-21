@@ -12,6 +12,7 @@ import { enforceUserConcurrency, findIdempotentJob } from '../../../../lib/jobGu
 import { JobStatus, JobType } from '@prisma/client';
 import { assertMinPlan, UpgradeRequiredError } from '../../../../lib/billing/requirePlan';
 import { reserveQuota, rollbackQuota, QuotaExceededError } from '../../../../lib/billing/usage';
+import { updateJobStatus } from '@/lib/jobs/updateJobStatus';
 
 export async function POST(req: NextRequest) {
   const userId = await getSessionUserId();
@@ -132,17 +133,14 @@ export async function POST(req: NextRequest) {
     });
     jobId = job.id;
 
-    await prisma.job.update({
-      where: { id: job.id },
-      data: { status: JobStatus.RUNNING },
-    });
+    await updateJobStatus(job.id, JobStatus.RUNNING);
 
     const result = await runVideoReviewer();
 
+    await updateJobStatus(job.id, JobStatus.COMPLETED);
     await prisma.job.update({
       where: { id: job.id },
       data: {
-        status: JobStatus.COMPLETED,
         resultSummary: `Video reviewer merged ${result.merged.length} storyboards`,
       },
     });
@@ -165,10 +163,10 @@ export async function POST(req: NextRequest) {
       await rollbackQuota(userId, reservation.periodKey, 'videoJobs', 1);
     }
     if (jobId) {
+      await updateJobStatus(jobId, JobStatus.FAILED);
       await prisma.job.update({
         where: { id: jobId },
         data: {
-          status: JobStatus.FAILED,
           error: err?.message ?? 'Video reviewer failed',
         },
       });

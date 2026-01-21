@@ -1,6 +1,7 @@
 // lib/videoPromptGenerationService.ts
 import prisma from '@/lib/prisma';
 import { JobStatus } from '@prisma/client';
+import { updateJobStatus } from '@/lib/jobs/updateJobStatus';
 
 /**
  * Build a per-scene video prompt.
@@ -145,30 +146,27 @@ export async function startVideoPromptGenerationJob(params: {
   jobId: string;
 }) {
   const { storyboardId, jobId } = params;
-  await prisma.job.update({
-    where: { id: jobId },
-    data: { status: JobStatus.RUNNING },
-  });
+    await updateJobStatus(jobId, JobStatus.RUNNING);
   try {
     const result = await runVideoPromptGeneration({
       storyboardId,
       jobId,
     });
 
-    await prisma.job.update({
-      where: { id: jobId },
-      data: {
-        status: JobStatus.COMPLETED,
-        resultSummary: `Video prompts generated: ${result.processed}/${result.sceneCount} scenes`,
-      },
-    });
+      await updateJobStatus(jobId, JobStatus.COMPLETED);
+      await prisma.job.update({
+        where: { id: jobId },
+        data: {
+          resultSummary: `Video prompts generated: ${result.processed}/${result.sceneCount} scenes`,
+        },
+      });
 
     return { jobId, ...result };
   } catch (err: any) {
+    await updateJobStatus(jobId, JobStatus.FAILED);
     await prisma.job.update({
       where: { id: jobId },
       data: {
-        status: JobStatus.FAILED,
         error: err?.message ?? 'Unknown error during video prompt generation',
       },
     });
