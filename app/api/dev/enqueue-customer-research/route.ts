@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUserId } from "@/lib/getSessionUserId";
 import { JobStatus, JobType } from "@prisma/client";
+import { randomUUID } from "crypto";
 
 export const runtime = "nodejs";
 
@@ -63,8 +64,10 @@ export async function POST(req: NextRequest) {
   const job = await prisma.job.create({
     data: {
       projectId,
+      userId,
       type: JobType.CUSTOMER_RESEARCH,
       status: JobStatus.PENDING,
+      idempotencyKey: randomUUID(),
       payload: {
         projectId,
         productName,

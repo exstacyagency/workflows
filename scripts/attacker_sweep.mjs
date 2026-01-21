@@ -459,8 +459,10 @@ async function ensureSeededJobAndScript({ ownerEmail, projectId }) {
       where: { id: seededJobId },
       update: {
         projectId,
+        userId: user.id,
         type: "SCRIPT_GENERATION",
         status: "COMPLETED",
+        idempotencyKey: "security-sweep:seeded-job",
         payload: { projectId, seeded: true, kind: "security-sweep" },
         resultSummary: "Seeded job for security sweep",
         error: null,
@@ -468,8 +470,10 @@ async function ensureSeededJobAndScript({ ownerEmail, projectId }) {
       create: {
         id: seededJobId,
         projectId,
+        userId: user.id,
         type: "SCRIPT_GENERATION",
         status: "COMPLETED",
+        idempotencyKey: "security-sweep:seeded-job",
         payload: { projectId, seeded: true, kind: "security-sweep" },
         resultSummary: "Seeded job for security sweep",
       },
