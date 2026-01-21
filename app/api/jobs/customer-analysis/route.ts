@@ -13,6 +13,7 @@ import { getSessionUserId } from '../../../../lib/getSessionUserId';
 import { enforceUserConcurrency, findIdempotentJob } from '../../../../lib/jobGuards';
 import { assertMinPlan, UpgradeRequiredError } from '../../../../lib/billing/requirePlan';
 import { reserveQuota, rollbackQuota, QuotaExceededError } from '../../../../lib/billing/usage';
+import { updateJobStatus } from "@/lib/jobs/updateJobStatus";
 
 function formatAnalysisJobSummary(result: Awaited<ReturnType<typeof runCustomerAnalysis>>) {
   const avatar = result.summary?.avatar;
@@ -169,10 +170,7 @@ export async function POST(req: NextRequest) {
     });
     jobId = job.id;
 
-    await prisma.job.update({
-      where: { id: jobId },
-      data: { status: JobStatus.RUNNING },
-    });
+    await updateJobStatus(jobId, JobStatus.RUNNING);
 
     await logAudit({
       userId,
@@ -193,13 +191,11 @@ export async function POST(req: NextRequest) {
         jobId,
       });
 
-      await prisma.job.update({
-        where: { id: jobId },
-        data: {
-          status: JobStatus.COMPLETED,
-          resultSummary: formatAnalysisJobSummary(result),
-        },
-      });
+        await updateJobStatus(jobId, JobStatus.COMPLETED);
+        await prisma.job.update({
+          where: { id: jobId },
+          data: { resultSummary: formatAnalysisJobSummary(result) },
+        });
 
       return NextResponse.json(
         { jobId, ...result },
@@ -210,13 +206,11 @@ export async function POST(req: NextRequest) {
         await rollbackQuota(userId, reservation.periodKey, 'researchQueries', 1);
         reservation = null;
       }
-      await prisma.job.update({
-        where: { id: jobId },
-        data: {
-          status: JobStatus.FAILED,
-          error: err?.message ?? 'Unknown error',
-        },
-      });
+        await updateJobStatus(jobId, JobStatus.FAILED);
+        await prisma.job.update({
+          where: { id: jobId },
+          data: { error: err?.message ?? 'Unknown error' },
+        });
 
       await logAudit({
         userId,

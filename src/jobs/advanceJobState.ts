@@ -1,12 +1,17 @@
-import { prisma } from "@/lib/prisma";
 import { JobStatus } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 import { assertValidTransition, isTerminalStatus } from "@/lib/jobStateMachine";
 
-export async function updateJobStatus(jobId: string, nextStatus: JobStatus) {
+interface AdvanceOptions {
+  currentStep?: string | null;
+  error?: string | null;
+}
+
+export async function advanceJobState(jobId: string, nextStatus: JobStatus, opts?: AdvanceOptions) {
   return prisma.$transaction(async (tx) => {
     const job = await tx.job.findUnique({
       where: { id: jobId },
-      select: { status: true },
+      select: { status: true, currentStep: true, error: true },
     });
 
     if (!job) {
@@ -19,9 +24,19 @@ export async function updateJobStatus(jobId: string, nextStatus: JobStatus) {
 
     assertValidTransition(job.status, nextStatus);
 
+    const data: Record<string, any> = { status: nextStatus };
+
+    if (opts && "currentStep" in opts) {
+      data.currentStep = opts.currentStep ?? null;
+    }
+
+    if (opts && "error" in opts) {
+      data.error = opts.error ?? null;
+    }
+
     return tx.job.update({
       where: { id: jobId },
-      data: { status: nextStatus },
+      data,
     });
   });
 }
