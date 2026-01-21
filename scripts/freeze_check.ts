@@ -51,6 +51,12 @@ function main() {
       "1c7a1b68635b6629e2ee4ef8fa1c4349f2c5a96f4b48533129e73cc99ce773b5",
     "prisma/migrations/20260121023133_add_job_current_step/migration.sql":
       "6377a15c6522141d8004e3067c4c39f26c935cf18bab1430efeddedd76f4b8e2",
+    "prisma/migrations/20260122123000_add_job_user_scope/migration.sql":
+      "7c5674326bcd5b677c7d649610543b23497812777add8cd6cf9d31638289adb7",
+    "prisma/migrations/20260122124500_drop_job_idempotency_key_unique/migration.sql":
+      "0ce9dc2c6ed7e64f522800f9eb050151c70e31f421665d2614365255b8ab54d8",
+    "prisma/migrations/20260122125500_fix_job_type_enum/migration.sql":
+      "9e10561977fe4ede1604485a64d8e785192a217dae258b483cfade696ca09c7e",
   };
 
   const rules: Rule[] = [
