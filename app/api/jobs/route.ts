@@ -34,6 +34,14 @@ export async function POST(req: Request) {
     );
   }
 
+  // Allow only explicitly supported input fields
+  const safeInput =
+    input && typeof input === "object"
+      ? {
+          ...(input.forceFailStep ? { forceFailStep: input.forceFailStep } : {}),
+        }
+      : {};
+
   try {
     const job = await prisma.$transaction(async (tx) => {
       const existing = await tx.job.findUnique({
@@ -55,7 +63,7 @@ export async function POST(req: Request) {
           projectId,
           userId,
           type: pipeline,
-          payload: input ?? {},
+          payload: safeInput,
           idempotencyKey,
           status: "PENDING",
         },

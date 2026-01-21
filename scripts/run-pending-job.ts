@@ -13,7 +13,7 @@ async function run() {
   }
 
   console.log("Running job:", job.id);
-  await executePipeline(job.id);
+  await executePipeline(job);
 }
 
 run().catch((e) => {
