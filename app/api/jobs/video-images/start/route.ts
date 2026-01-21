@@ -170,6 +170,7 @@ export async function POST(req: Request) {
           type: "VIDEO_IMAGE_GENERATION",
           status: "RUNNING" as any,
           projectId,
+          userId,
           idempotencyKey: result.idempotencyKey,
           payload: payload as any,
           resultSummary: null,

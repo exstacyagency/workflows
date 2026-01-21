@@ -99,6 +99,7 @@ export async function POST(req: NextRequest) {
     ]);
 
     const existing = await findIdempotentJob({
+      userId,
       projectId,
       type: JOB_TYPE,
       idempotencyKey,
@@ -153,15 +154,17 @@ export async function POST(req: NextRequest) {
     const job = await prisma.job.create({
       data: {
         projectId,
+        userId,
         type: JOB_TYPE,
         status: JobStatus.PENDING,
+        idempotencyKey,
         payload: {
           projectId,
           productName,
           kind: "character_generation",
           idempotencyKey,
         },
-        resultSummary: securitySweep ? "Skipped: SECURITY_SWEEP" : null,
+        resultSummary: securitySweep ? "Skipped: SECURITY_SWEEP" : undefined,
       },
       select: { id: true },
     });

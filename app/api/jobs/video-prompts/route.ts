@@ -102,6 +102,7 @@ export async function POST(req: NextRequest) {
       storyboardId,
     ]);
     const existing = await findIdempotentJob({
+      userId,
       projectId,
       type: JobType.VIDEO_PROMPT_GENERATION,
       idempotencyKey,
@@ -134,8 +135,10 @@ export async function POST(req: NextRequest) {
       const job = await prisma.job.create({
         data: {
           projectId,
+          userId,
           type: JobType.VIDEO_PROMPT_GENERATION,
           status: JobStatus.PENDING,
+          idempotencyKey,
           payload: { storyboardId, idempotencyKey },
           resultSummary: "Skipped: SECURITY_SWEEP",
           error: null,
@@ -162,8 +165,10 @@ export async function POST(req: NextRequest) {
     const job = await prisma.job.create({
       data: {
         projectId,
+        userId,
         type: JobType.VIDEO_PROMPT_GENERATION,
         status: JobStatus.PENDING,
+        idempotencyKey,
         payload: { storyboardId, idempotencyKey },
       },
     });

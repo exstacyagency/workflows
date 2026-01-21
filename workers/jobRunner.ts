@@ -240,7 +240,7 @@ async function claimNextJob() {
       FOR UPDATE SKIP LOCKED
       LIMIT 1
     )
-    RETURNING "id", "type", "projectId", "payload", "idempotencyKey", "status";
+    RETURNING "id", "type", "projectId", "userId", "payload", "idempotencyKey", "status";
   `;
 
   const row = claimed[0];
@@ -249,6 +249,7 @@ async function claimNextJob() {
     id: string;
     type: JobType;
     projectId: string;
+    userId: string;
     payload: unknown;
     idempotencyKey: string | null;
     status: JobStatus;
@@ -260,6 +261,7 @@ async function runJob(
     id: string;
     type: JobType;
     projectId: string;
+    userId: string;
     payload: unknown;
     idempotencyKey: string | null;
     status: JobStatus;
@@ -406,6 +408,7 @@ async function runJob(
             await prisma.job.create({
               data: {
                 projectId: job.projectId,
+                userId: job.userId,
                 type: JobType.VIDEO_IMAGE_GENERATION,
                 status: JobStatus.PENDING,
                 idempotencyKey: imageKey,
