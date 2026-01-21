@@ -1,22 +1,12 @@
 import { JobStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { PipelineArtifacts } from "./types";
+import { runResearch } from "./steps/research";
 
 export type PipelineContext = {
   jobId: string;
   projectId: string;
   input: unknown;
-};
-
-export type PipelineArtifacts = {
-  research?: unknown;
-  patterns?: unknown;
-  character?: unknown;
-  script?: unknown;
-  videoPrompts?: unknown;
-  storyboard?: unknown;
-  editedVideo?: unknown;
-  finalOutput?: unknown;
-  steps?: string[];
 };
 
 export async function executePipeline(
@@ -26,7 +16,7 @@ export async function executePipeline(
 
   await markRunning(ctx.jobId);
 
-  artifacts.research = await researchStep(ctx);
+  artifacts.research = await runResearch();
   artifacts.patterns = await patternBrainStep(ctx, artifacts);
   artifacts.character = await characterSelectionStep(ctx, artifacts);
   artifacts.script = await scriptGenerationStep(ctx, artifacts);
@@ -34,8 +24,6 @@ export async function executePipeline(
   artifacts.storyboard = await storyboardStep(ctx, artifacts);
   artifacts.editedVideo = await videoEditingStep(ctx, artifacts);
   artifacts.finalOutput = await finalPreviewStep(ctx, artifacts);
-
-  artifacts.steps = Object.keys(artifacts).filter((k) => k !== "steps");
 
   await markCompleted(ctx.jobId, artifacts);
 
@@ -54,13 +42,15 @@ async function markRunning(jobId: string) {
 }
 
 async function markCompleted(jobId: string, artifacts: PipelineArtifacts) {
+  const steps = Object.keys(artifacts);
   await prisma.job.update({
     where: { id: jobId },
     data: {
       status: JobStatus.COMPLETED,
       resultSummary: JSON.stringify({
         completedAt: new Date().toISOString(),
-        steps: artifacts.steps,
+        steps,
+        research: artifacts.research,
       }),
     },
   });
