@@ -1,11 +1,12 @@
 import { cfg } from "@/lib/config";
-import { PrismaClient, JobType } from "@prisma/client";
+import { PrismaClient, JobStatus, JobType } from "@prisma/client";
 import { runWithState } from "../lib/jobRuntime.ts";
 import { startScriptGenerationJob } from "../lib/scriptGenerationService.ts";
 import * as patternSvc from "../lib/adPatternAnalysisService.ts";
 import * as transcriptsSvc from "../lib/adTranscriptCollectionService.ts";
 import { assertRuntimeMode } from "../src/runtime/assertMode.ts";
 import { RuntimeMode } from "../src/runtime/mode.ts";
+import { updateJobStatus } from "@/lib/jobs/updateJobStatus";
 
 const prisma = new PrismaClient();
 
@@ -114,15 +115,15 @@ async function cleanupStuckRunningJobs() {
     const payload = (j.payload as any) ?? {};
     const attempts = Number(payload.attempts ?? 0) + 1;
 
+    await updateJobStatus(j.id, JobStatus.FAILED);
     await prisma.job.update({
       where: { id: j.id },
       data: {
-        status: "PENDING",
         error: "Worker timeout: stuck RUNNING",
         payload: {
           ...payload,
           attempts,
-          nextRunAt: Date.now(),
+          nextRunAt: null,
           lastError: "Worker timeout: stuck RUNNING",
         },
       },

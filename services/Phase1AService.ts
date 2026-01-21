@@ -1,6 +1,7 @@
 import { cfg } from "@/lib/config";
 import { prisma } from '@/lib/prisma';
 import { JobStatus, ResearchSource } from '@prisma/client';
+import { updateJobStatus } from '@/lib/jobs/updateJobStatus';
 
 // ============================================================================
 // Type Definitions
@@ -392,7 +393,7 @@ function dedupeRows(rows: ResearchRowInput[]) {
 export async function runPhase1A(input: Phase1AInput) {
   const { projectId, jobId, identifierType } = input;
 
-  await prisma.job.update({ where: { id: jobId }, data: { status: JobStatus.RUNNING } });
+  await updateJobStatus(jobId, JobStatus.RUNNING);
 
   try {
     // Build scraper array
@@ -461,20 +462,20 @@ export async function runPhase1A(input: Phase1AInput) {
 
     const summarySources = successfulScrapers.length ? successfulScrapers.join(', ') : 'no scrapers';
 
+    await updateJobStatus(jobId, JobStatus.COMPLETED);
     await prisma.job.update({
       where: { id: jobId },
       data: {
-        status: JobStatus.COMPLETED,
         resultSummary: `Captured ${dedupedRows.length} research rows from ${summarySources} after deduplication.`
       }
     });
 
     return storedRows;
   } catch (error) {
+    await updateJobStatus(jobId, JobStatus.FAILED);
     await prisma.job.update({
       where: { id: jobId },
       data: {
-        status: JobStatus.FAILED,
         error: error instanceof Error ? error.message : 'Unknown error'
       }
     });

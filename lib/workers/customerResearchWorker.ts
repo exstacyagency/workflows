@@ -2,6 +2,7 @@ import { getQueue, QueueName } from '@/lib/queue';
 import { runCustomerResearch } from '@/services/customerResearchService';
 import { prisma } from '@/lib/prisma';
 import { JobStatus } from '@prisma/client';
+import { updateJobStatus } from '@/lib/jobs/updateJobStatus';
 
 const queue = getQueue(QueueName.CUSTOMER_RESEARCH);
 
@@ -17,10 +18,7 @@ queue.process(async (job) => {
   } = job.data as any;
 
   try {
-    await prisma.job.update({
-      where: { id: jobId },
-      data: { status: JobStatus.RUNNING },
-    });
+    await updateJobStatus(jobId, JobStatus.RUNNING);
 
     job.progress(10);
 
@@ -50,10 +48,10 @@ queue.process(async (job) => {
         ? (result as any).sources.length
         : 0;
 
+    await updateJobStatus(jobId, JobStatus.COMPLETED);
     await prisma.job.update({
       where: { id: jobId },
       data: {
-        status: JobStatus.COMPLETED,
         resultSummary: `Research complete: ${rowsCollected} rows collected`,
       },
     });
@@ -62,10 +60,10 @@ queue.process(async (job) => {
 
     return result;
   } catch (err: any) {
+    await updateJobStatus(jobId, JobStatus.FAILED);
     await prisma.job.update({
       where: { id: jobId },
       data: {
-        status: JobStatus.FAILED,
         error: err.message,
       },
     });

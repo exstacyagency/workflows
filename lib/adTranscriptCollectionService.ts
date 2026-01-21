@@ -1,6 +1,7 @@
 import { cfg } from "@/lib/config";
 import { prisma } from './prisma.ts';
 import { AdPlatform, JobStatus } from '@prisma/client';
+import { updateJobStatus } from '@/lib/jobs/updateJobStatus';
 import pLimit from 'p-limit';
 import { guardedExternalCall } from './externalCallGuard.ts';
 import { env, requireEnv } from './configGuard.ts';
@@ -281,30 +282,27 @@ export async function startAdTranscriptJob(params: {
   jobId: string;
 }) {
   const { projectId, jobId } = params;
-  await prisma.job.update({
-    where: { id: jobId },
-    data: { status: JobStatus.RUNNING },
-  });
+  await updateJobStatus(jobId, JobStatus.RUNNING);
   try {
     const result = await runAdTranscriptCollection({
       projectId,
       jobId,
     });
 
+    await updateJobStatus(jobId, JobStatus.COMPLETED);
     await prisma.job.update({
       where: { id: jobId },
       data: {
-        status: JobStatus.COMPLETED,
         resultSummary: `Transcripts: ${result.processed}/${result.totalAssets}`,
       },
     });
 
     return { jobId, ...result };
   } catch (err: any) {
+    await updateJobStatus(jobId, JobStatus.FAILED);
     await prisma.job.update({
       where: { id: jobId },
       data: {
-        status: JobStatus.FAILED,
         error: err?.message ?? 'Unknown error in transcript collection',
       },
     });

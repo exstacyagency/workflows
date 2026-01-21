@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import { JobStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getSessionUserId } from "@/lib/getSessionUserId";
 import { requireProjectOwner404 } from "@/lib/auth/requireProjectOwner404";
 import { checkRateLimit } from "@/lib/rateLimiter";
+import { updateJobStatus } from "@/lib/jobs/updateJobStatus";
 
 export async function POST(
   req: NextRequest,
@@ -36,7 +38,7 @@ export async function POST(
   const payload: any = job.payload ?? {};
   const now = Date.now();
 
-  if (job.status === "PENDING") {
+  if (job.status === JobStatus.PENDING) {
     const nextRunAt = payload?.nextRunAt;
     const nextRunAtNum = typeof nextRunAt === "number" ? nextRunAt : Number(nextRunAt);
     if (!nextRunAtNum || Number.isNaN(nextRunAtNum) || nextRunAtNum <= now) {
@@ -45,7 +47,7 @@ export async function POST(
         { status: 409 }
       );
     }
-  } else if (job.status !== "FAILED") {
+  } else if (job.status !== JobStatus.FAILED) {
     return NextResponse.json(
       { error: "Job is not retryable in current status" },
       { status: 409 }
@@ -55,10 +57,15 @@ export async function POST(
   payload.dismissed = false;
   payload.nextRunAt = now - 1000;
 
+  try {
+    await updateJobStatus(jobId, JobStatus.PENDING);
+  } catch (err) {
+    return NextResponse.json({ error: "Invalid job state transition" }, { status: 409 });
+  }
+
   await prisma.job.update({
     where: { id: jobId },
     data: {
-      status: "PENDING",
       error: null,
       payload,
     },

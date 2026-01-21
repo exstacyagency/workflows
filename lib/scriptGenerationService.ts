@@ -2,6 +2,7 @@
 import { cfg } from "@/lib/config";
 import prisma from './prisma.ts';
 import { JobStatus, JobType, ScriptStatus } from '@prisma/client';
+import { updateJobStatus } from '@/lib/jobs/updateJobStatus';
 import type { Job } from '@prisma/client';
 import { guardedExternalCall } from './externalCallGuard.ts';
 import { env, requireEnv } from './configGuard.ts';
@@ -469,10 +470,10 @@ export async function startScriptGenerationJob(projectId: string, job: Job) {
 
     const script = await runScriptGeneration({ projectId, jobId: job.id });
 
+    await updateJobStatus(job.id, JobStatus.COMPLETED);
     await prisma.job.update({
       where: { id: job.id },
       data: {
-        status: JobStatus.COMPLETED,
         resultSummary: `Script generated (scriptId=${script.id}, words=${script.wordCount ?? 'unknown'})`,
       },
     });
@@ -483,10 +484,10 @@ export async function startScriptGenerationJob(projectId: string, job: Job) {
       script,
     };
   } catch (err: any) {
+    await updateJobStatus(job.id, JobStatus.FAILED);
     await prisma.job.update({
       where: { id: job.id },
       data: {
-        status: JobStatus.FAILED,
         error: err?.message ?? 'Unknown error during script generation',
       },
     });
