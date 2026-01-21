@@ -2,6 +2,7 @@
 import { cfg } from "@/lib/config";
 import prisma from '@/lib/prisma';
 import { JobStatus } from '@prisma/client';
+import { updateJobStatus } from '@/lib/jobs/updateJobStatus';
 import { env, requireEnv } from './configGuard.ts';
 
 type CharacterSpec = {
@@ -237,10 +238,7 @@ export async function startCharacterGenerationJob(params: {
   jobId: string;
 }) {
   const { projectId, productName, jobId } = params;
-  await prisma.job.update({
-    where: { id: jobId },
-    data: { status: JobStatus.RUNNING },
-  });
+  await updateJobStatus(jobId, JobStatus.RUNNING);
   try {
     const result = await runCharacterGeneration({
       projectId,
@@ -248,20 +246,20 @@ export async function startCharacterGenerationJob(params: {
       jobId,
     });
 
+    await updateJobStatus(jobId, JobStatus.COMPLETED);
     await prisma.job.update({
       where: { id: jobId },
       data: {
-        status: JobStatus.COMPLETED,
         resultSummary: `Character generation complete (male=${result.maleId}, female=${result.femaleId})`,
       },
     });
 
     return { jobId, ...result };
   } catch (err: any) {
+    await updateJobStatus(jobId, JobStatus.FAILED);
     await prisma.job.update({
       where: { id: jobId },
       data: {
-        status: JobStatus.FAILED,
         error: err?.message ?? 'Unknown error in character generation',
       },
     });

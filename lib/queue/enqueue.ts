@@ -52,7 +52,6 @@ export async function enqueueJob(
         await prisma.job.update({
           where: { id: existing.id },
           data: {
-            status: JobStatus.PENDING,
             error: null,
             payload: input.payload,
           },

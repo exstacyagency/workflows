@@ -5,6 +5,7 @@ import { enqueueJob } from "@/lib/queue/enqueue";
 import Anthropic from '@anthropic-ai/sdk';
 import { guardedExternalCall } from './externalCallGuard.ts';
 import { requireEnv } from './configGuard.ts';
+import { updateJobStatus } from "@/lib/jobs/updateJobStatus";
 
 const APIFY_TIMEOUT_MS = Number(cfg.raw("APIFY_TIMEOUT_MS") ?? 30_000);
 const APIFY_BREAKER_FAILS = Number(cfg.raw("APIFY_BREAKER_FAILS") ?? 3);
@@ -48,10 +49,7 @@ export async function runPatternAnalysis(args: { projectId: string; jobId: strin
     throw new Error(`Pattern analysis job not found: ${jobId}`);
   }
 
-  job = await prisma.job.update({
-    where: { id: job.id },
-    data: { status: JobStatus.RUNNING },
-  });
+  await updateJobStatus(job.id, JobStatus.RUNNING);
 
   try {
     requireEnv(['ANTHROPIC_API_KEY'], 'ANTHROPIC');
@@ -109,19 +107,20 @@ export async function runPatternAnalysis(args: { projectId: string; jobId: strin
       }
     });
 
+    await updateJobStatus(job.id, JobStatus.COMPLETED);
     job = await prisma.job.update({
       where: { id: job.id },
       data: {
-        status: JobStatus.COMPLETED,
         resultSummary: `Pattern analysis: ${parsed.patterns?.length || 0} patterns`,
       },
     });
 
     return parsed;
   } catch (err: any) {
+    await updateJobStatus(job.id, JobStatus.FAILED);
     await prisma.job.update({
       where: { id: job.id },
-      data: { status: JobStatus.FAILED, error: err.message },
+      data: { error: err.message },
     });
     throw err;
   }

@@ -2,6 +2,7 @@
 import prisma from '@/lib/prisma';
 import { AdPlatform, JobStatus } from '@prisma/client';
 import { env, requireEnv } from './configGuard.ts';
+import { updateJobStatus } from '@/lib/jobs/updateJobStatus';
 
 const APIFY_BASE = 'https://api.apify.com/v2';
 const APIFY_POLL_MS = 2000;
@@ -459,10 +460,7 @@ export async function startAdRawCollectionJob(params: {
   jobId: string;
 }) {
   const { projectId, industryCode, jobId } = params;
-  await prisma.job.update({
-    where: { id: jobId },
-    data: { status: JobStatus.RUNNING },
-  });
+  await updateJobStatus(jobId, JobStatus.RUNNING);
   try {
     const result = await runAdRawCollection({
       projectId,
@@ -476,10 +474,10 @@ export async function startAdRawCollectionJob(params: {
     });
     const payload = asPlainObject(existing?.payload);
 
+    await updateJobStatus(jobId, JobStatus.COMPLETED);
     await prisma.job.update({
       where: { id: jobId },
       data: {
-        status: JobStatus.COMPLETED,
         error: null,
         payload: {
           ...payload,
@@ -495,10 +493,10 @@ export async function startAdRawCollectionJob(params: {
 
     return { jobId, ...result.apify, totalSaved: result.totalSaved, totalValidated: result.totalValidated };
   } catch (err: any) {
+    await updateJobStatus(jobId, JobStatus.FAILED);
     await prisma.job.update({
       where: { id: jobId },
       data: {
-        status: JobStatus.FAILED,
         error: err?.message ?? 'Unknown error in Phase 2A',
       },
     });

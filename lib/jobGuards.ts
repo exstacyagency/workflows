@@ -1,22 +1,12 @@
 import { cfg } from "@/lib/config";
 import { prisma } from "@/lib/prisma";
 import { JobStatus, JobType } from "@prisma/client";
+import { updateJobStatus } from "@/lib/jobs/updateJobStatus";
 
 const MAX_RUNNING_JOBS_PER_USER = Number(
   cfg.raw("MAX_RUNNING_JOBS_PER_USER") ?? 3
 );
 const MAX_ATTEMPTS = Number(cfg.raw("MAX_JOB_ATTEMPTS") ?? 3);
-
-const transitionMap: Record<JobStatus, JobStatus[]> = {
-  [JobStatus.PENDING]: [JobStatus.RUNNING, JobStatus.FAILED],
-  [JobStatus.RUNNING]: [JobStatus.COMPLETED, JobStatus.FAILED],
-  [JobStatus.COMPLETED]: [],
-  [JobStatus.FAILED]: [],
-};
-
-export function canTransition(from: JobStatus, to: JobStatus) {
-  return (transitionMap[from] ?? []).includes(to);
-}
 
 export function computeBackoffMs(attempt: number) {
   const base = 1000;
@@ -98,14 +88,11 @@ export async function markJobStatus(
   const job = await prisma.job.findUnique({ where: { id: jobId } });
   if (!job) throw new Error("Job not found");
 
-  if (!canTransition(job.status, next)) {
-    return job;
-  }
+  await updateJobStatus(jobId, next);
 
   return prisma.job.update({
     where: { id: jobId },
     data: {
-      status: next,
       error: error ?? (next === JobStatus.FAILED ? "Job failed" : null),
     },
   });

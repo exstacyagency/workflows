@@ -12,6 +12,7 @@ import { enforceUserConcurrency, findIdempotentJob } from '../../../../lib/jobGu
 import { assertMinPlan, UpgradeRequiredError } from '../../../../lib/billing/requirePlan';
 import { reserveQuota, rollbackQuota, QuotaExceededError } from '../../../../lib/billing/usage';
 import { requireProjectOwner404 } from '@/lib/auth/requireProjectOwner404';
+import { updateJobStatus } from "@/lib/jobs/updateJobStatus";
 
 export const runtime = 'nodejs';
 
@@ -233,7 +234,8 @@ export async function POST(req: NextRequest) {
     // If we created a job but then failed during setup, mark it failed so callers don't poll forever.
     if (jobId) {
       try {
-        await prisma.job.update({ where: { id: jobId }, data: { status: JobStatus.FAILED, error: String(error?.message ?? error) } });
+        await updateJobStatus(jobId, JobStatus.FAILED);
+        await prisma.job.update({ where: { id: jobId }, data: { error: String(error?.message ?? error) } });
       } catch (e) {
         console.error('Failed to mark job as failed after setup error', e);
       }

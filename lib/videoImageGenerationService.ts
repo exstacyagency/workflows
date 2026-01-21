@@ -2,6 +2,8 @@ import { cfg } from "@/lib/config";
 import prisma from "./prisma";
 import { pollMultiFrameVideoImages } from "./videoImageOrchestrator";
 import type { ImageProviderId } from "./imageProviders/types";
+import { JobStatus } from "@prisma/client";
+import { updateJobStatus } from "@/lib/jobs/updateJobStatus";
 
 const KIE_HTTP_TIMEOUT_MS = Number(cfg.raw("KIE_HTTP_TIMEOUT_MS") ?? 20_000);
 const KIE_POLL_INTERVAL_MS = Number(cfg.raw("KIE_POLL_INTERVAL_MS") ?? 2_000);
@@ -47,10 +49,10 @@ export async function runVideoImageGenerationJob(args: RunArgs): Promise<void> {
   const payload = job.payload as any;
   const tasks = Array.isArray(payload?.tasks) ? payload.tasks : [];
   if (!tasks.length) {
+    await updateJobStatus(job.id, JobStatus.FAILED);
     await prisma.job.update({
       where: { id: job.id },
       data: {
-        status: "FAILED" as any,
         error: "Job payload has no tasks[]",
         resultSummary: "Video image generation failed",
       } as any,
@@ -77,10 +79,10 @@ export async function runVideoImageGenerationJob(args: RunArgs): Promise<void> {
   }
 
   if (polled.status === "FAILED") {
+    await updateJobStatus(job.id, JobStatus.FAILED);
     await prisma.job.update({
       where: { id: job.id },
       data: {
-        status: "FAILED" as any,
         error: polled.errorMessage ?? "One or more frames failed",
         payload: updatedPayload as any,
         resultSummary: "Video image generation failed",
@@ -90,10 +92,10 @@ export async function runVideoImageGenerationJob(args: RunArgs): Promise<void> {
   }
 
   if (polled.status === "SUCCEEDED") {
+    await updateJobStatus(job.id, JobStatus.COMPLETED);
     await prisma.job.update({
       where: { id: job.id },
       data: {
-        status: "COMPLETED" as any,
         error: null,
         payload: updatedPayload as any,
         resultSummary: `Video frames saved: ${polled.images.length}`,
@@ -123,10 +125,10 @@ export async function runVideoImageGenerationJob(args: RunArgs): Promise<void> {
   }
 
   // Still running
+  await updateJobStatus(job.id, JobStatus.RUNNING);
   await prisma.job.update({
     where: { id: job.id },
     data: {
-      status: "RUNNING" as any,
       error: null,
       payload: { ...updatedPayload, nextRunAt: Date.now() + KIE_POLL_INTERVAL_MS } as any,
       resultSummary: `Video frames in progress: ${polled.images.length}/${polled.tasks.length}`,
