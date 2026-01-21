@@ -96,6 +96,7 @@ export async function POST(req: NextRequest) {
       productProblemSolved ?? '',
     ]);
     const existing = await findIdempotentJob({
+      userId,
       projectId,
       type: JobType.CUSTOMER_ANALYSIS,
       idempotencyKey,

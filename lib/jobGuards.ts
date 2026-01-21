@@ -33,20 +33,19 @@ export async function enforceUserConcurrency(userId: string) {
 }
 
 export async function findIdempotentJob(params: {
+  userId: string;
   projectId: string;
   type: JobType;
   idempotencyKey: string;
 }) {
-  const { projectId, type, idempotencyKey } = params;
+  const { userId, projectId, type, idempotencyKey } = params;
 
   return prisma.job.findFirst({
     where: {
+      userId,
       projectId,
       type,
-      payload: {
-        path: ["idempotencyKey"],
-        equals: idempotencyKey,
-      },
+      idempotencyKey,
       status: { in: [JobStatus.PENDING, JobStatus.RUNNING] },
     },
     orderBy: { createdAt: "desc" },
@@ -63,6 +62,7 @@ export async function createJobWithIdempotency(params: {
   const { userId, projectId, type, idempotencyKey, payload } = params;
 
   const existing = await findIdempotentJob({
+    userId,
     projectId,
     type,
     idempotencyKey,

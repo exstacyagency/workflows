@@ -78,6 +78,7 @@ export async function POST(req: NextRequest) {
     ]);
 
     const existing = await findIdempotentJob({
+      userId,
       projectId,
       type: JOB_TYPE,
       idempotencyKey,
