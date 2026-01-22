@@ -112,14 +112,17 @@ model Job {
   userId         String
   type           JobType
   status         JobStatus @default(PENDING)
-  runtimeMode    String
+  runtimeMode    String    @default("alpha")
   currentStep    String?
   idempotencyKey String
-  payload        Json
-  resultSummary  Json?
-  error          String?
-  estimatedCost  Int?
-  actualCost     Int?
+  payload        Json?
+  determinism    Json      @default(dbgenerated("'{}'::jsonb"))
+  failureCode    String?
+  fixtureVersion String?
+  resultSummary  String?
+  error          Json?
+  estimatedCost  Float?
+  actualCost     Float?
   costBreakdown  Json?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt

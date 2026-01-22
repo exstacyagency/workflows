@@ -27,8 +27,12 @@ export async function getRetryState(jobId: string) {
 }
 
 export async function recordFailureForRetry(jobId: string, errMsg: string) {
-  const { payload } = await getRetryState(jobId);
+  const { job, payload } = await getRetryState(jobId);
   const attempts = Number(payload.attempts ?? 0) + 1;
+
+  if (job.status === JobStatus.FAILED || job.status === JobStatus.COMPLETED) {
+    return { willRetry: false, attempts, backoffMs: null };
+  }
 
   await updateJobStatus(jobId, JobStatus.FAILED);
   await prisma.job.update({

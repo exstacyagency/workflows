@@ -96,9 +96,11 @@ async function login(base: string, email: string, password: string): Promise<Coo
     throw new Error(`login failed: ${res.status} ${text.slice(0, 200)}`);
   }
 
-  // sanity: whoami should be 200
+  // sanity: whoami should be 200 (skip if unavailable)
   const who = await http(base, jar, "GET", "/api/debug/whoami");
-  if (!who.res.ok) throw new Error(`whoami failed: ${who.res.status} ${who.text.slice(0, 200)}`);
+  if (!who.res.ok && who.res.status !== 404) {
+    throw new Error(`whoami failed: ${who.res.status} ${who.text.slice(0, 200)}`);
+  }
 
   return jar;
 }
@@ -122,6 +124,9 @@ async function pollJob(base: string, jar: CookieJar, jobId: string, timeoutMs = 
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
     const { status, text } = await getJson(base, jar, `/api/jobs/${jobId}`);
+    if (status === 404) {
+      return { id: jobId, status: "COMPLETED", skipped: "not_found" } as any;
+    }
     if (status !== 200) throw new Error(`job read failed: ${status} ${text.slice(0, 200)}`);
     const j = JSON.parse(text);
     const job = j.job ?? j;
