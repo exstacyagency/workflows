@@ -25,13 +25,14 @@ export async function GET(req: NextRequest) {
   const db: any = prisma;
 
   const scriptRow = await db.script.findFirst({
-    where: { project: { userId } },
-    select: { id: true, mergedVideoUrl: true, upscaledVideoUrl: true, rawJson: true },
+    where: {
+      project: { userId },
+      OR: [{ mergedVideoUrl: key }, { upscaledVideoUrl: key }],
+    },
+    select: { id: true },
   });
 
-  const scriptMatch = scriptRow && (scriptRow.mergedVideoUrl === key || scriptRow.upscaledVideoUrl === key)
-    ? { id: scriptRow.id }
-    : null;
+  const scriptMatch = scriptRow ? { id: scriptRow.id } : null;
 
   let storyboardSceneMatch = null;
   if (!scriptMatch) {
