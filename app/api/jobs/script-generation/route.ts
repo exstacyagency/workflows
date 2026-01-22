@@ -100,6 +100,16 @@ export async function POST(req: NextRequest) {
 
     if (existingJob) {
       if (securitySweep) {
+        if (existingJob.status !== JobStatus.COMPLETED) {
+          await prisma.job.update({
+            where: { id: existingJob.id },
+            data: {
+              status: JobStatus.COMPLETED,
+              resultSummary: "Skipped: SECURITY_SWEEP",
+              error: null,
+            },
+          });
+        }
         return NextResponse.json(
           { jobId: existingJob.id, reused: true, started: false, skipped: true, reason: "SECURITY_SWEEP" },
           { status: 200 },
