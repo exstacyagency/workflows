@@ -8,24 +8,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let body;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-  }
-
+  const body = await req.json();
   const { projectId, pipeline, input, idempotencyKey, status } = body;
 
   if (!projectId || !pipeline || !idempotencyKey) {
     return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
-  }
-
-  if (status !== undefined) {
-    return NextResponse.json(
-      { error: "Status cannot be set via API" },
-      { status: 400 }
-    );
   }
 
   // Ensure project belongs to user
@@ -38,16 +25,26 @@ export async function POST(req: Request) {
   });
 
   if (!project) {
+    return NextResponse.json({ error: "Project not found for user" }, { status: 400 });
+  }
+
+  if (status !== undefined) {
     return NextResponse.json(
-      { error: "Project access denied" },
-      { status: 403 }
+      { error: "Status cannot be set via API" },
+      { status: 400 }
     );
   }
 
-  // 🔒 TOTAL IDEMPOTENCY GUARANTEE
+  // Allow only explicitly supported input fields
+  const safeInput =
+    input && typeof input === "object"
+      ? {
+          ...(input.forceFailStep ? { forceFailStep: input.forceFailStep } : {}),
+        }
+      : {};
+
   try {
     const job = await prisma.$transaction(async (tx) => {
-      // Always check first
       const existing = await tx.job.findUnique({
         where: {
           userId_projectId_idempotencyKey: {
@@ -62,23 +59,22 @@ export async function POST(req: Request) {
         return existing;
       }
 
-      // Create if and only if none exists
-      return await tx.job.create({
+      return tx.job.create({
         data: {
           projectId,
           userId,
           type: pipeline,
-          payload: input ?? {},
+          payload: safeInput,
           idempotencyKey,
           status: "PENDING",
         },
       });
     });
 
-    return NextResponse.json(job, { status: 200 });
+    return NextResponse.json(job);
   } catch (err: any) {
-    // Absolute safety net — no Prisma error may escape
-    if (err?.code === "P2002") {
+    // Handles race condition edge case
+    if (err.code === "P2002") {
       const existing = await prisma.job.findUnique({
         where: {
           userId_projectId_idempotencyKey: {
@@ -89,15 +85,9 @@ export async function POST(req: Request) {
         },
       });
 
-      if (existing) {
-        return NextResponse.json(existing, { status: 200 });
-      }
+      if (existing) return NextResponse.json(existing);
     }
 
-    console.error("Job creation failed:", err);
-    return NextResponse.json(
-      { error: "Job creation failed" },
-      { status: 500 }
-    );
+    throw err;
   }
 }

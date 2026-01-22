@@ -64,6 +64,11 @@ export async function POST(req: NextRequest) {
     }
 
     if (securitySweep) {
+      const sweepIdempotencyKey = JSON.stringify([
+        projectId,
+        JobType.PATTERN_ANALYSIS,
+        "SECURITY_SWEEP",
+      ]);
       try {
         reservation = await reserveQuota(userId, planId, 'researchQueries', 1);
       } catch (err: any) {
@@ -79,8 +84,10 @@ export async function POST(req: NextRequest) {
       const job = await prisma.job.create({
         data: {
           projectId,
+          userId,
           type: JobType.PATTERN_ANALYSIS,
           status: JobStatus.PENDING,
+          idempotencyKey: sweepIdempotencyKey,
           payload: parsed.data,
           resultSummary: "Skipped: SECURITY_SWEEP",
           error: null,
@@ -178,8 +185,10 @@ export async function POST(req: NextRequest) {
     const job = await prisma.job.create({
       data: {
         projectId,
+        userId,
         type: JobType.PATTERN_ANALYSIS,
         status: JobStatus.PENDING,
+        idempotencyKey,
         payload: {
           projectId,
           customerResearchJobId: customerResearchJob.id,
