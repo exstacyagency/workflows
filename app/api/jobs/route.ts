@@ -15,6 +15,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
   }
 
+  // Ensure project belongs to user
   const project = await prisma.project.findFirst({
     where: {
       id: projectId,
