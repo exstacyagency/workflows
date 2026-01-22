@@ -7,6 +7,7 @@ cd "$ROOT_DIR"
 echo "[e2e] deterministic start"
 
 BASE_URL="${BASE_URL:-http://localhost:3000}"
+KEEP_E2E_SERVER="${KEEP_E2E_SERVER:-0}"
 HEALTH_PATH="${HEALTH_PATH:-/api/health}"
 HEALTH_URL="${HEALTH_URL:-${BASE_URL}${HEALTH_PATH}}"
 
@@ -41,6 +42,9 @@ export MODE="${MODE:-alpha}"
 echo "[e2e] migrate deploy"
 npx prisma migrate deploy
 
+echo "[e2e] prisma generate"
+npx prisma generate
+
 echo "[e2e] bootstrap:dev"
 npm run bootstrap:dev
 
@@ -48,6 +52,10 @@ SERVER_PID=""
 WORKER_PID=""
 
 cleanup() {
+  if [ "${KEEP_E2E_SERVER}" = "1" ]; then
+    echo "[e2e] cleanup skipped (KEEP_E2E_SERVER=1)"
+    return
+  fi
   echo "[e2e] cleanup"
   if [ -n "${WORKER_PID}" ] && kill -0 "${WORKER_PID}" >/dev/null 2>&1; then
     kill "${WORKER_PID}" || true
@@ -62,12 +70,14 @@ echo "[e2e] start worker"
 npm run worker >/tmp/e2e_worker.log 2>&1 &
 WORKER_PID=$!
 
+echo "${WORKER_PID}" >/tmp/e2e_worker.pid
+
 echo "[e2e] start server"
 if command -v lsof >/dev/null 2>&1; then
-  EXISTING_PID="$(lsof -ti tcp:3000 || true)"
-  if [ -n "${EXISTING_PID}" ]; then
-    echo "[e2e] port 3000 in use, killing ${EXISTING_PID}"
-    kill -9 ${EXISTING_PID} || true
+  EXISTING_PIDS="$(lsof -i :3000 -t 2>/dev/null || true)"
+  if [ -n "${EXISTING_PIDS}" ]; then
+    echo "[e2e] clearing port 3000 (pids: ${EXISTING_PIDS})"
+    kill ${EXISTING_PIDS} >/dev/null 2>&1 || true
   fi
 fi
 if command -v fuser >/dev/null 2>&1; then
@@ -79,6 +89,8 @@ fi
 rm -rf .next
 npm run dev -- --port 3000 >/tmp/e2e_server.log 2>&1 &
 SERVER_PID=$!
+
+echo "${SERVER_PID}" >/tmp/e2e_server.pid
 
 echo "[e2e] wait for health"
 for i in $(seq 1 60); do
