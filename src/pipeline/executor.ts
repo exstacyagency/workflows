@@ -10,16 +10,31 @@ type JobPayload = {
   forceFailStep?: PipelineStep;
 };
 
-async function setStep(jobId: string, step: PipelineStep) {
-  await prisma.job.update({
+async function assertJobRunning(jobId: string) {
+  const job = await prisma.job.findUnique({
     where: { id: jobId },
+    select: { status: true },
+  });
+
+  if (!job || job.status !== "RUNNING") {
+    throw new Error("Job is no longer running");
+  }
+}
+
+async function setStep(jobId: string, step: PipelineStep) {
+  const updated = await prisma.job.updateMany({
+    where: { id: jobId, status: "RUNNING" },
     data: { currentStep: step },
   });
+
+  if (updated.count === 0) {
+    throw new Error("Job is no longer running");
+  }
 }
 
 async function failJob(jobId: string, step: PipelineStep, err: Error) {
-  await prisma.job.update({
-    where: { id: jobId },
+  await prisma.job.updateMany({
+    where: { id: jobId, status: "RUNNING" },
     data: {
       status: "FAILED",
       currentStep: step,
@@ -47,47 +62,54 @@ export async function executePipeline(job: Job) {
     });
 
     // RESEARCH
+    await assertJobRunning(job.id);
     await setStep(job.id, "research");
     job.currentStep = "research";
     await maybeFail(payload, "research");
     artifacts.research = await runStep("research", job, artifacts);
 
     // PATTERN BRAIN (FAIL TEST TARGET)
+    await assertJobRunning(job.id);
     await setStep(job.id, "pattern_brain");
     job.currentStep = "pattern_brain";
     await maybeFail(payload, "pattern_brain");
     artifacts.pattern_brain = await runStep("pattern_brain", job, artifacts);
 
     // CHARACTER
+    await assertJobRunning(job.id);
     await setStep(job.id, "character");
     job.currentStep = "character";
     await maybeFail(payload, "character");
     artifacts.character = await runStep("character", job, artifacts);
 
     // SCRIPT
+    await assertJobRunning(job.id);
     await setStep(job.id, "script");
     job.currentStep = "script";
     await maybeFail(payload, "script");
     artifacts.script = await runStep("script", job, artifacts);
 
     // VIDEO PROMPTS
+    await assertJobRunning(job.id);
     await setStep(job.id, "video_prompts");
     job.currentStep = "video_prompts";
     await maybeFail(payload, "video_prompts");
     artifacts.video_prompts = await runStep("video_prompts", job, artifacts);
 
     // STORYBOARD
+    await assertJobRunning(job.id);
     await setStep(job.id, "storyboard");
     job.currentStep = "storyboard";
     await maybeFail(payload, "storyboard");
     artifacts.storyboard = await runStep("storyboard", job, artifacts);
 
     // FINAL
+    await assertJobRunning(job.id);
     await setStep(job.id, "final");
     job.currentStep = "final";
 
-    await prisma.job.update({
-      where: { id: job.id },
+    await prisma.job.updateMany({
+      where: { id: job.id, status: "RUNNING" },
       data: {
         status: "COMPLETED",
         resultSummary: JSON.stringify({
