@@ -111,11 +111,15 @@ model Job {
   projectId      String
   type           JobType
   status         JobStatus @default(PENDING)
+  runtimeMode    String
   currentStep    String?
   idempotencyKey String?  @unique
   payload        Json?
+  determinism    Json
+  failureCode    String?
+  fixtureVersion String?
   resultSummary  String?
-  error          String?
+  error          Json?
   estimatedCost  Float?
   actualCost     Float?
   costBreakdown  Json?

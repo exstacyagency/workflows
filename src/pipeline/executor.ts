@@ -8,6 +8,8 @@ import {
   ResearchArtifacts as PatternBrainResearchArtifacts,
 } from "./patternBrain/types";
 import { runResearch } from "./steps/research";
+import { FailureCode } from "./failureCodes";
+import { ALPHA_ENABLED_STAGES } from "./alphaStages";
 
 export type PipelineContext = {
   jobId: string;
@@ -23,28 +25,55 @@ export async function executePipeline(
   if (!job) {
     throw new Error(`Job ${ctx.jobId} not found`);
   }
-
   const artifacts: PipelineArtifacts = {};
   const resultSummary = parseResultSummary(job.resultSummary);
 
-  await markRunning(ctx.jobId);
+  try {
+    if (job.runtimeMode !== "alpha") {
+      throw new Error("Pipeline execution outside alpha mode is forbidden");
+    }
 
-  artifacts.research = await runResearchStep(job, resultSummary);
-  artifacts.patternBrain = await runPatternBrainStep(
-    job,
-    artifacts,
-    resultSummary,
-  );
-  artifacts.character = await characterSelectionStep(ctx, artifacts);
-  artifacts.script = await scriptGenerationStep(ctx, artifacts);
-  artifacts.videoPrompts = await videoPromptStep(ctx, artifacts);
-  artifacts.storyboard = await storyboardStep(ctx, artifacts);
-  artifacts.editedVideo = await videoEditingStep(ctx, artifacts);
-  artifacts.finalOutput = await finalPreviewStep(ctx, artifacts);
+    console.log("ALPHA DETERMINISM:", job.determinism);
 
-  await markCompleted(ctx.jobId, artifacts, resultSummary);
+    await markRunning(ctx.jobId);
 
-  return artifacts;
+    artifacts.research = await runStep("research", () =>
+      runResearchStep(job, resultSummary),
+    );
+    artifacts.patternBrain = await runStep("pattern_brain", () =>
+      runPatternBrainStep(job, artifacts, resultSummary),
+    );
+    artifacts.character = await runStep("character", () =>
+      characterSelectionStep(ctx, artifacts),
+    );
+    artifacts.script = await runStep("script", () =>
+      scriptGenerationStep(ctx, artifacts),
+    );
+    artifacts.videoPrompts = await runStep("video_prompts", () =>
+      videoPromptStep(ctx, artifacts),
+    );
+    artifacts.storyboard = await runStep("storyboard", () =>
+      storyboardStep(ctx, artifacts),
+    );
+    artifacts.editedVideo = await runStep("video_editing", () =>
+      videoEditingStep(ctx, artifacts),
+    );
+    artifacts.finalOutput = await runStep("final", () =>
+      finalPreviewStep(ctx, artifacts),
+    );
+
+    await markCompleted(ctx.jobId, artifacts, resultSummary);
+
+    return artifacts;
+  } catch (err) {
+    await failJob(
+      job.id,
+      job.currentStep ?? "unknown",
+      FailureCode.INTEGRATION_FAILURE,
+      err instanceof Error ? err.message : "Unknown error",
+    );
+    return artifacts;
+  }
 }
 
 function parseResultSummary(raw: string | null | undefined): Record<string, unknown> {
@@ -90,6 +119,31 @@ async function markCompleted(
         completedAt,
         steps,
       }),
+    },
+  });
+}
+
+async function runStep<T>(step: string, fn: () => Promise<T>): Promise<T> {
+  if (!ALPHA_ENABLED_STAGES.has(step)) {
+    throw new Error(`Stage ${step} is disabled in alpha`);
+  }
+
+  return fn();
+}
+
+async function failJob(
+  jobId: string,
+  step: string,
+  code: FailureCode,
+  message: string,
+) {
+  await prisma.job.update({
+    where: { id: jobId },
+    data: {
+      status: JobStatus.FAILED,
+      currentStep: step,
+      failureCode: code,
+      error: { message },
     },
   });
 }

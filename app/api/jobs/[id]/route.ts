@@ -1,33 +1,31 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireJobAccess } from "@/lib/auth/requireJobAccess";
-
-export const runtime = 'nodejs';
+import { getSessionUserId } from "@/lib/getSessionUserId";
 
 export async function GET(
-  req: NextRequest,
+  _req: Request,
   { params }: { params: { id: string } }
 ) {
-  const access = await requireJobAccess(req, params.id);
-  if (access instanceof NextResponse) return access;
+  const userId = await getSessionUserId();
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
-  const job = await prisma.job.findUnique({
-    where: { id: params.id },
+  const job = await prisma.job.findFirst({
+    where: { id: params.id, userId },
     select: {
       id: true,
-      projectId: true,
-      type: true,
       status: true,
-      payload: true,
+      currentStep: true,
       resultSummary: true,
       error: true,
-      createdAt: true,
-      updatedAt: true,
-      estimatedCost: true,
-      actualCost: true,
-      costBreakdown: true,
+      failureCode: true,
     },
   });
-  if (!job) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  return NextResponse.json({ job }, { status: 200 });
+
+  if (!job) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  return NextResponse.json(job);
 }
