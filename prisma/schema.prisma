@@ -109,11 +109,12 @@ model SpendEvent {
 model Job {
   id             String    @id @default(uuid())
   projectId      String
+  userId         String
   type           JobType
   status         JobStatus @default(PENDING)
   runtimeMode    String
   currentStep    String?
-  idempotencyKey String?  @unique
+  idempotencyKey String
   payload        Json?
   determinism    Json
   failureCode    String?
@@ -137,6 +138,7 @@ model Job {
   auditLogs        AuditLog[]
 
   @@index([projectId])
+  @@unique([userId, projectId, idempotencyKey])
   @@map("job")
 }
 

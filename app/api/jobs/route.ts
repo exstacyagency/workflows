@@ -39,8 +39,8 @@ export async function POST(req: Request) {
 
   if (!project) {
     return NextResponse.json(
-      { error: "Project not found for user" },
-      { status: 400 }
+      { error: "Project access denied" },
+      { status: 403 }
     );
   }
 

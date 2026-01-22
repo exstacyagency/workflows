@@ -37,27 +37,35 @@ export async function executePipeline(
 
     await markRunning(ctx.jobId);
 
+    await setCurrentStep(ctx.jobId, "research");
     artifacts.research = await runStep("research", () =>
       runResearchStep(job, resultSummary),
     );
+    await setCurrentStep(ctx.jobId, "pattern_brain");
     artifacts.patternBrain = await runStep("pattern_brain", () =>
       runPatternBrainStep(job, artifacts, resultSummary),
     );
+    await setCurrentStep(ctx.jobId, "character");
     artifacts.character = await runStep("character", () =>
       characterSelectionStep(ctx, artifacts),
     );
+    await setCurrentStep(ctx.jobId, "script");
     artifacts.script = await runStep("script", () =>
       scriptGenerationStep(ctx, artifacts),
     );
+    await setCurrentStep(ctx.jobId, "video_prompts");
     artifacts.videoPrompts = await runStep("video_prompts", () =>
       videoPromptStep(ctx, artifacts),
     );
+    await setCurrentStep(ctx.jobId, "storyboard");
     artifacts.storyboard = await runStep("storyboard", () =>
       storyboardStep(ctx, artifacts),
     );
+    await setCurrentStep(ctx.jobId, "video_editing");
     artifacts.editedVideo = await runStep("video_editing", () =>
       videoEditingStep(ctx, artifacts),
     );
+    await setCurrentStep(ctx.jobId, "final");
     artifacts.finalOutput = await runStep("final", () =>
       finalPreviewStep(ctx, artifacts),
     );
@@ -98,6 +106,13 @@ async function markRunning(jobId: string) {
   await prisma.job.update({
     where: { id: jobId },
     data: { status: JobStatus.RUNNING },
+  });
+}
+
+async function setCurrentStep(jobId: string, step: string) {
+  await prisma.job.update({
+    where: { id: jobId },
+    data: { currentStep: step },
   });
 }
 
@@ -165,7 +180,6 @@ async function runResearchStep(
   await prisma.job.update({
     where: { id: job.id },
     data: {
-      currentStep: "research",
       resultSummary: JSON.stringify({
         ...resultSummary,
         research: artifacts,
@@ -189,7 +203,6 @@ async function runPatternBrainStep(
   await prisma.job.update({
     where: { id: job.id },
     data: {
-      currentStep: "patternBrain",
       resultSummary: JSON.stringify({
         ...resultSummary,
         patternBrain: patterns,
