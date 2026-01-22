@@ -107,7 +107,7 @@ model SpendEvent {
 //////////////////////
 
 model Job {
-  id             String    @id @default(uuid())
+  id             String   @id @default(uuid())
   projectId      String
   userId         String
   type           JobType
@@ -115,17 +115,14 @@ model Job {
   runtimeMode    String
   currentStep    String?
   idempotencyKey String
-  payload        Json?
-  determinism    Json
-  failureCode    String?
-  fixtureVersion String?
-  resultSummary  String?
-  error          Json?
-  estimatedCost  Float?
-  actualCost     Float?
+  payload        Json
+  resultSummary  Json?
+  error          String?
+  estimatedCost  Int?
+  actualCost     Int?
   costBreakdown  Json?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 

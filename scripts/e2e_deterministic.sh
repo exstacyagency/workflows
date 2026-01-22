@@ -63,6 +63,20 @@ npm run worker >/tmp/e2e_worker.log 2>&1 &
 WORKER_PID=$!
 
 echo "[e2e] start server"
+if command -v lsof >/dev/null 2>&1; then
+  EXISTING_PID="$(lsof -ti tcp:3000 || true)"
+  if [ -n "${EXISTING_PID}" ]; then
+    echo "[e2e] port 3000 in use, killing ${EXISTING_PID}"
+    kill -9 ${EXISTING_PID} || true
+  fi
+fi
+if command -v fuser >/dev/null 2>&1; then
+  if fuser 3000/tcp >/dev/null 2>&1; then
+    echo "[e2e] port 3000 in use (fuser), killing"
+    fuser -k 3000/tcp >/dev/null 2>&1 || true
+  fi
+fi
+rm -rf .next
 npm run dev -- --port 3000 >/tmp/e2e_server.log 2>&1 &
 SERVER_PID=$!
 

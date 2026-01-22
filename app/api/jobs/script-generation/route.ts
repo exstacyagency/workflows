@@ -89,6 +89,28 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const breakerTest = flag("FF_BREAKER_TEST");
+    let idempotencyKey = `script-generation:${projectId}`;
+    if (breakerTest) idempotencyKey += `:${Date.now()}`;
+
+    const existingJob = await prisma.job.findFirst({
+      where: { projectId, userId, idempotencyKey },
+      select: { id: true, status: true },
+    });
+
+    if (existingJob) {
+      if (securitySweep) {
+        return NextResponse.json(
+          { jobId: existingJob.id, reused: true, started: false, skipped: true, reason: "SECURITY_SWEEP" },
+          { status: 200 },
+        );
+      }
+      return NextResponse.json(
+        { jobId: existingJob.id, ok: existingJob.status === JobStatus.COMPLETED },
+        { status: 200 },
+      );
+    }
+
     // SECURITY_SWEEP short-circuit
     if (securitySweep) {
       try {
@@ -111,8 +133,10 @@ export async function POST(req: NextRequest) {
       const job = await prisma.job.create({
         data: {
           projectId,
+          userId,
           type: JobType.SCRIPT_GENERATION,
           status: JobStatus.COMPLETED,
+          idempotencyKey,
           payload: { ...parsed.data, skipped: true, reason: "SECURITY_SWEEP" },
           resultSummary: "Skipped: SECURITY_SWEEP",
           error: null,
@@ -139,22 +163,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const breakerTest = flag("FF_BREAKER_TEST");
-    let idempotencyKey = `script-generation:${projectId}`;
-    if (breakerTest) idempotencyKey += `:${Date.now()}`;
-
-    const existingJob = await prisma.job.findFirst({
-      where: { projectId, idempotencyKey },
-      select: { id: true, status: true },
-    });
-
-    if (existingJob) {
-      return NextResponse.json(
-        { jobId: existingJob.id, ok: existingJob.status === JobStatus.COMPLETED },
-        { status: 200 },
-      );
-    }
-
     const isCI = cfg.raw("CI") === "true";
     const hasAnthropic = !!cfg.raw("ANTHROPIC_API_KEY");
 
@@ -172,6 +180,7 @@ export async function POST(req: NextRequest) {
       const job = await prisma.job.create({
         data: {
           projectId,
+          userId,
           type: JobType.SCRIPT_GENERATION,
           status: JobStatus.COMPLETED,
           idempotencyKey,
@@ -229,6 +238,7 @@ export async function POST(req: NextRequest) {
       job = await prisma.job.create({
         data: {
           projectId,
+          userId,
           type: JobType.SCRIPT_GENERATION,
           status: JobStatus.RUNNING,
           idempotencyKey,

@@ -103,6 +103,7 @@ export async function POST(req: NextRequest) {
       storyboardId,
     ]);
     const existing = await findIdempotentJob({
+      userId,
       projectId,
       type: JobType.VIDEO_REVIEW,
       idempotencyKey,
@@ -126,8 +127,10 @@ export async function POST(req: NextRequest) {
     const job = await prisma.job.create({
       data: {
         projectId,
+        userId,
         type: JobType.VIDEO_REVIEW,
         status: JobStatus.PENDING,
+        idempotencyKey,
         payload: { storyboardId, idempotencyKey },
       },
     });

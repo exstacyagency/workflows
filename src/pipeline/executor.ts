@@ -1,100 +1,34 @@
-import { Job, JobStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import type { Job } from "@prisma/client";
 import { ResearchArtifacts as ResearchStepArtifacts } from "./contracts/research";
-import { PipelineArtifacts } from "./types";
 import { runPatternBrain } from "./patternBrain/executor";
-import {
-  PatternBrainArtifacts,
-  ResearchArtifacts as PatternBrainResearchArtifacts,
-} from "./patternBrain/types";
+import { ResearchArtifacts as PatternBrainResearchArtifacts } from "./patternBrain/types";
 import { runResearch } from "./steps/research";
-import { FailureCode } from "./failureCodes";
-import { ALPHA_ENABLED_STAGES } from "./alphaStages";
+import { PipelineStep } from "./types";
 
-export type PipelineContext = {
-  jobId: string;
-  projectId: string;
-  input: unknown;
+type JobPayload = {
+  forceFailStep?: PipelineStep;
 };
 
-export async function executePipeline(
-  ctx: PipelineContext,
-): Promise<PipelineArtifacts> {
-  const job = await prisma.job.findUnique({ where: { id: ctx.jobId } });
+async function assertJobRunning(jobId: string) {
+  const job = await prisma.job.findUnique({
+    where: { id: jobId },
+    select: { status: true },
+  });
 
-  if (!job) {
-    throw new Error(`Job ${ctx.jobId} not found`);
-  }
-  const artifacts: PipelineArtifacts = {};
-  const resultSummary = parseResultSummary(job.resultSummary);
-
-  try {
-    if (job.runtimeMode !== "alpha") {
-      throw new Error("Pipeline execution outside alpha mode is forbidden");
-    }
-
-    console.log("ALPHA DETERMINISM:", job.determinism);
-
-    await markRunning(ctx.jobId);
-
-    await setCurrentStep(ctx.jobId, "research");
-    artifacts.research = await runStep("research", () =>
-      runResearchStep(job, resultSummary),
-    );
-    await setCurrentStep(ctx.jobId, "pattern_brain");
-    artifacts.patternBrain = await runStep("pattern_brain", () =>
-      runPatternBrainStep(job, artifacts, resultSummary),
-    );
-    await setCurrentStep(ctx.jobId, "character");
-    artifacts.character = await runStep("character", () =>
-      characterSelectionStep(ctx, artifacts),
-    );
-    await setCurrentStep(ctx.jobId, "script");
-    artifacts.script = await runStep("script", () =>
-      scriptGenerationStep(ctx, artifacts),
-    );
-    await setCurrentStep(ctx.jobId, "video_prompts");
-    artifacts.videoPrompts = await runStep("video_prompts", () =>
-      videoPromptStep(ctx, artifacts),
-    );
-    await setCurrentStep(ctx.jobId, "storyboard");
-    artifacts.storyboard = await runStep("storyboard", () =>
-      storyboardStep(ctx, artifacts),
-    );
-    await setCurrentStep(ctx.jobId, "video_editing");
-    artifacts.editedVideo = await runStep("video_editing", () =>
-      videoEditingStep(ctx, artifacts),
-    );
-    await setCurrentStep(ctx.jobId, "final");
-    artifacts.finalOutput = await runStep("final", () =>
-      finalPreviewStep(ctx, artifacts),
-    );
-
-    await markCompleted(ctx.jobId, artifacts, resultSummary);
-
-    return artifacts;
-  } catch (err) {
-    await failJob(
-      job.id,
-      job.currentStep ?? "unknown",
-      FailureCode.INTEGRATION_FAILURE,
-      err instanceof Error ? err.message : "Unknown error",
-    );
-    return artifacts;
+  if (!job || job.status !== "RUNNING") {
+    throw new Error("Job is no longer running");
   }
 }
 
-function parseResultSummary(raw: string | null | undefined): Record<string, unknown> {
-  if (!raw) return {} as Record<string, unknown>;
+async function setStep(jobId: string, step: PipelineStep) {
+  const updated = await prisma.job.updateMany({
+    where: { id: jobId, status: "RUNNING" },
+    data: { currentStep: step },
+  });
 
-  try {
-    const parsed = JSON.parse(raw);
-    return typeof parsed === "object" && parsed !== null
-      ? (parsed as Record<string, unknown>)
-      : {};
-  } catch {
-    // Swallow parse errors to avoid blocking job execution.
-    return {} as Record<string, unknown>;
+  if (updated.count === 0) {
+    throw new Error("Job is no longer running");
   }
 }
 
@@ -127,78 +61,127 @@ async function markCompleted(
   await prisma.job.update({
     where: { id: jobId },
     data: {
-      status: JobStatus.COMPLETED,
-      resultSummary: JSON.stringify({
-        ...resultSummary,
-        ...artifacts,
-        completedAt,
-        steps,
-      }),
-    },
-  });
-}
-
-async function runStep<T>(step: string, fn: () => Promise<T>): Promise<T> {
-  if (!ALPHA_ENABLED_STAGES.has(step)) {
-    throw new Error(`Stage ${step} is disabled in alpha`);
-  }
-
-  return fn();
-}
-
-async function failJob(
-  jobId: string,
-  step: string,
-  code: FailureCode,
-  message: string,
-) {
-  await prisma.job.update({
-    where: { id: jobId },
-    data: {
-      status: JobStatus.FAILED,
+      status: "FAILED",
       currentStep: step,
-      failureCode: code,
-      error: { message },
+      error: err.message,
     },
   });
 }
 
-/* ─────────────────────────────
-   Pipeline steps (STUBS)
-───────────────────────────── */
-
-async function runResearchStep(
-  job: Job,
-  resultSummary: Record<string, unknown>,
-) {
-  const artifacts = await runResearch({
-    jobId: job.id,
-    projectId: job.projectId,
-    payload: job.payload,
-  });
-
-  await prisma.job.update({
-    where: { id: job.id },
-    data: {
-      resultSummary: JSON.stringify({
-        ...resultSummary,
-        research: artifacts,
-      }),
-    },
-  });
-
-  resultSummary.research = artifacts;
-
-  return artifacts;
+async function maybeFail(payload: JobPayload, step: PipelineStep) {
+  if (payload.forceFailStep === step) {
+    throw new Error(`Forced failure at step: ${step}`);
+  }
 }
 
-async function runPatternBrainStep(
-  job: Job,
-  artifacts: PipelineArtifacts,
-  resultSummary: Record<string, unknown>,
+export async function executePipeline(job: Job) {
+  // job.payload IS the input object
+  const payload = (job.payload ?? {}) as JobPayload;
+
+  const artifacts: Record<string, unknown> = {};
+
+  try {
+    await prisma.job.update({
+      where: { id: job.id },
+      data: { status: "RUNNING" },
+    });
+
+    // RESEARCH
+    await assertJobRunning(job.id);
+    await setStep(job.id, "research");
+    job.currentStep = "research";
+    await maybeFail(payload, "research");
+    artifacts.research = await runStep("research", job, artifacts);
+
+    // PATTERN BRAIN (FAIL TEST TARGET)
+    await assertJobRunning(job.id);
+    await setStep(job.id, "pattern_brain");
+    job.currentStep = "pattern_brain";
+    await maybeFail(payload, "pattern_brain");
+    artifacts.pattern_brain = await runStep("pattern_brain", job, artifacts);
+
+    // CHARACTER
+    await assertJobRunning(job.id);
+    await setStep(job.id, "character");
+    job.currentStep = "character";
+    await maybeFail(payload, "character");
+    artifacts.character = await runStep("character", job, artifacts);
+
+    // SCRIPT
+    await assertJobRunning(job.id);
+    await setStep(job.id, "script");
+    job.currentStep = "script";
+    await maybeFail(payload, "script");
+    artifacts.script = await runStep("script", job, artifacts);
+
+    // VIDEO PROMPTS
+    await assertJobRunning(job.id);
+    await setStep(job.id, "video_prompts");
+    job.currentStep = "video_prompts";
+    await maybeFail(payload, "video_prompts");
+    artifacts.video_prompts = await runStep("video_prompts", job, artifacts);
+
+    // STORYBOARD
+    await assertJobRunning(job.id);
+    await setStep(job.id, "storyboard");
+    job.currentStep = "storyboard";
+    await maybeFail(payload, "storyboard");
+    artifacts.storyboard = await runStep("storyboard", job, artifacts);
+
+    // FINAL
+    await assertJobRunning(job.id);
+    await setStep(job.id, "final");
+    job.currentStep = "final";
+
+    await prisma.job.updateMany({
+      where: { id: job.id, status: "RUNNING" },
+      data: {
+        status: "COMPLETED",
+        resultSummary: JSON.stringify({
+          steps: [
+            "research",
+            "pattern_brain",
+            "character",
+            "script",
+            "video_prompts",
+            "storyboard",
+            "final",
+          ],
+        }),
+      },
+    });
+  } catch (err) {
+    await failJob(
+      job.id,
+      (job.currentStep as PipelineStep) ?? "pattern_brain",
+      err as Error,
+    );
+    return; // hard stop
+  }
+}
+
+/**
+ * Internal-only step dispatcher.
+ * MUST NOT be exported or reachable via HTTP.
+ */
+async function runStep(
+  step: PipelineStep,
+  job: { id: string; projectId: string; payload: unknown },
+  artifacts: Record<string, unknown>,
 ) {
-  const patternBrainInput = toPatternBrainResearch(artifacts.research);
-  const patterns = await runPatternBrain(patternBrainInput);
+  switch (step) {
+    case "research":
+      return runResearch({
+        jobId: job.id,
+        projectId: job.projectId,
+        payload: job.payload,
+      });
+
+    case "pattern_brain": {
+      const research = artifacts.research as ResearchStepArtifacts | undefined;
+      const mappedResearch = toPatternBrainResearch(research);
+      return runPatternBrain(mappedResearch);
+    }
 
   await prisma.job.update({
     where: { id: job.id },
@@ -209,10 +192,25 @@ async function runPatternBrainStep(
       }),
     },
   });
+    case "character":
+      return runCharacterSelection(artifacts);
 
-  resultSummary.patternBrain = patterns;
+    case "script":
+      return runScriptGeneration(artifacts);
 
-  return patterns;
+    case "video_prompts":
+      return runVideoPromptGeneration(artifacts);
+
+    case "storyboard":
+      return runStoryboardGeneration(artifacts);
+
+    case "final":
+      return runFinalOutput(artifacts);
+
+    default:
+      // Exhaustiveness guard
+      throw new Error(`Unhandled pipeline step: ${step}`);
+  }
 }
 
 function toPatternBrainResearch(
@@ -247,45 +245,27 @@ function toPatternBrainResearch(
   return result;
 }
 
-async function characterSelectionStep(
-  _ctx: PipelineContext,
-  _artifacts: PipelineArtifacts,
-) {
+async function runCharacterSelection(_artifacts: Record<string, unknown>) {
   return { stub: true };
 }
 
-async function scriptGenerationStep(
-  _ctx: PipelineContext,
-  _artifacts: PipelineArtifacts,
-) {
+async function runScriptGeneration(_artifacts: Record<string, unknown>) {
   return { stub: true };
 }
 
-async function videoPromptStep(
-  _ctx: PipelineContext,
-  _artifacts: PipelineArtifacts,
-) {
+async function runVideoPromptGeneration(_artifacts: Record<string, unknown>) {
   return { stub: true };
 }
 
-async function storyboardStep(
-  _ctx: PipelineContext,
-  _artifacts: PipelineArtifacts,
-) {
+async function runStoryboardGeneration(_artifacts: Record<string, unknown>) {
   return { stub: true };
 }
 
-async function videoEditingStep(
-  _ctx: PipelineContext,
-  _artifacts: PipelineArtifacts,
-) {
+async function runVideoEditing(_artifacts: Record<string, unknown>) {
   return { stub: true };
 }
 
-async function finalPreviewStep(
-  _ctx: PipelineContext,
-  _artifacts: PipelineArtifacts,
-) {
+async function runFinalOutput(_artifacts: Record<string, unknown>) {
   return { stub: true };
 }
 
