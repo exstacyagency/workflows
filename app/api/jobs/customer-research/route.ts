@@ -146,6 +146,16 @@ export async function POST(req: NextRequest) {
     // If we’re in SECURITY_SWEEP, callers expect deterministic placeholder semantics.
     // Returning skipped:true avoids brittle smoke tests while preserving idempotency behavior.
     if (securitySweep) {
+      if (existing.status !== JobStatus.COMPLETED) {
+        await prisma.job.update({
+          where: { id: existing.id },
+          data: {
+            status: JobStatus.COMPLETED,
+            resultSummary: "Skipped: SECURITY_SWEEP",
+            error: null,
+          },
+        });
+      }
       return NextResponse.json(
         { jobId: existing.id, reused: true, started: false, skipped: true, reason: "SECURITY_SWEEP" },
         { status: 200 }
