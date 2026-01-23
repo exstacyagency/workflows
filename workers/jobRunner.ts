@@ -35,10 +35,12 @@ if (cfg.raw("NODE_ENV") !== "production") {
 }
 
 type PipelineContext = {
-  mode: RuntimeMode;
+  mode: "alpha" | "beta";
 };
 
-const pipelineContext: PipelineContext = { mode: getRuntimeMode() };
+const pipelineContext: PipelineContext = {
+  mode: assertRuntimeMode(),
+};
 
 console.log(`[BOOT] Runtime mode: ${pipelineContext.mode}`);
 if (pipelineContext.mode === "alpha") {

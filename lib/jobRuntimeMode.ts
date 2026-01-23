@@ -1,3 +1,14 @@
+export type RuntimeMode = "alpha" | "beta";
+
+export function assertRuntimeMode(): RuntimeMode {
+  const mode = process.env.RUNTIME_MODE ?? "beta";
+
+  if (mode !== "alpha" && mode !== "beta") {
+    throw new Error(`Invalid runtime mode: ${mode}`);
+  }
+
+  return mode;
+}
 import { cfg } from "@/lib/config";
 
 export type RuntimeMode = "alpha" | "production";
