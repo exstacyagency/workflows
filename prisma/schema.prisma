@@ -104,10 +104,10 @@ model Job {
   updatedAt        DateTime          @updatedAt
   currentStep      String?
   userId           String
-  runtimeMode      String            @default("alpha")
-  determinism      Json              @default("{}")
+  runtimeMode      String?
+  determinism      String?
   failureCode      String?
-  fixtureVersion   String?
+  fixtureVersion   Int?
   adAssets         AdAsset[]
   adPatternResults AdPatternResult[]
   auditLogs        AuditLog[]

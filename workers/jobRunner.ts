@@ -13,6 +13,24 @@ import prisma from "../lib/prisma.ts";
 import { rollbackQuota } from "../lib/billing/usage.ts";
 import { getRuntimeMode } from "../lib/jobRuntimeMode";
 import { updateJobStatus } from "@/lib/jobs/updateJobStatus";
+type PipelineContext = {
+  mode: RuntimeMode;
+};
+import { cfg } from "@/lib/config";
+import { logError } from "@/lib/logger";
+import { loadDotEnvFileIfPresent } from "@/lib/config/dotenv";
+import { JobStatus, JobType } from "@prisma/client";
+import { runCustomerResearch } from "../services/customerResearchService.ts";
+import { runAdRawCollection } from "../lib/adRawCollectionService.ts";
+import { runPatternAnalysis } from "../lib/patternAnalysisService.ts";
+import { startScriptGenerationJob } from "../lib/scriptGenerationService.ts";
+import { startVideoPromptGenerationJob } from "../lib/videoPromptGenerationService.ts";
+import { runVideoImageGenerationJob } from "../lib/videoImageGenerationService.ts";
+import { runVideoGenerationJob } from "../lib/videoGenerationService.ts";
+import prisma from "../lib/prisma.ts";
+import { rollbackQuota } from "../lib/billing/usage.ts";
+import { getRuntimeMode } from "../lib/jobRuntimeMode";
+import { updateJobStatus } from "@/lib/jobs/updateJobStatus";
 
 if (cfg.raw("NODE_ENV") !== "production") {
   loadDotEnvFileIfPresent(".env.local");
