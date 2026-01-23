@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { getSessionUserId } from "@/lib/getSessionUserId";
 import { requireProjectOwner404 } from "@/lib/auth/requireProjectOwner404";
 import { isAdminRequest } from "@/lib/admin/isAdminRequest";
@@ -115,7 +116,7 @@ export async function POST(
         payload.nextRunAt = Date.now() - 1000;
         const res = await prisma.job.updateMany({
           where: { id: j.id, projectId, status: "FAILED" },
-          data: { status: "PENDING", error: null, payload },
+          data: { status: "PENDING", error: Prisma.JsonNull, payload },
         });
         if (res.count) updated += res.count;
         else skipped++;

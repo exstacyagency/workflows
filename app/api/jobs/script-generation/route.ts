@@ -6,7 +6,7 @@ import { requireProjectOwner } from "../../../../lib/requireProjectOwner";
 import { ProjectJobSchema, parseJson } from "../../../../lib/validation/jobs";
 import { checkRateLimit } from "../../../../lib/rateLimiter";
 import { prisma } from "../../../../lib/prisma";
-import { JobStatus, JobType, ScriptStatus } from "@prisma/client";
+import { JobStatus, JobType, ScriptStatus, Prisma } from "@prisma/client";
 import { logAudit } from "../../../../lib/logger";
 import { getSessionUserId } from "../../../../lib/getSessionUserId";
 import { enforceUserConcurrency } from "../../../../lib/jobGuards";
@@ -106,7 +106,7 @@ export async function POST(req: NextRequest) {
             data: {
               status: JobStatus.COMPLETED,
               resultSummary: "Skipped: SECURITY_SWEEP",
-              error: null,
+              error: Prisma.JsonNull,
             },
           });
         }
@@ -149,7 +149,7 @@ export async function POST(req: NextRequest) {
           idempotencyKey,
           payload: { ...parsed.data, skipped: true, reason: "SECURITY_SWEEP" },
           resultSummary: "Skipped: SECURITY_SWEEP",
-          error: null,
+          error: Prisma.JsonNull,
         },
         select: { id: true },
       });

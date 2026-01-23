@@ -1,6 +1,6 @@
 // lib/adRawCollectionService.ts
 import prisma from '@/lib/prisma';
-import { AdPlatform, JobStatus } from '@prisma/client';
+import { AdPlatform, JobStatus, Prisma } from '@prisma/client';
 import { env, requireEnv } from './configGuard.ts';
 import { updateJobStatus } from '@/lib/jobs/updateJobStatus';
 
@@ -478,7 +478,7 @@ export async function startAdRawCollectionJob(params: {
     await prisma.job.update({
       where: { id: jobId },
       data: {
-        error: null,
+        error: Prisma.JsonNull,
         payload: {
           ...payload,
           result: {

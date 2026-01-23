@@ -1,7 +1,7 @@
 import { cfg } from "@/lib/config";
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '../../../../lib/prisma';
-import { JobType, JobStatus } from '@prisma/client';
+import { JobType, JobStatus, Prisma } from '@prisma/client';
 import { requireProjectOwner } from '../../../../lib/requireProjectOwner';
 import { ProjectJobSchema, parseJson } from '../../../../lib/validation/jobs';
 import { checkRateLimit } from '../../../../lib/rateLimiter';
@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
           idempotencyKey: sweepIdempotencyKey,
           payload: parsed.data,
           resultSummary: "Skipped: SECURITY_SWEEP",
-          error: null,
+          error: Prisma.JsonNull,
         },
         select: { id: true },
       });

@@ -1,6 +1,6 @@
 import { cfg } from "@/lib/config";
 import { prisma } from "@/lib/prisma";
-import { JobStatus, JobType } from "@prisma/client";
+import { JobStatus, JobType, Prisma } from "@prisma/client";
 import { updateJobStatus } from "@/lib/jobs/updateJobStatus";
 
 const MAX_RUNNING_JOBS_PER_USER = Number(
@@ -96,7 +96,7 @@ export async function markJobStatus(
   return prisma.job.update({
     where: { id: jobId },
     data: {
-      error: error ?? (next === JobStatus.FAILED ? "Job failed" : null),
+      error: error ?? (next === JobStatus.FAILED ? "Job failed" : Prisma.JsonNull),
     },
   });
 }

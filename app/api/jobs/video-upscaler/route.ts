@@ -9,7 +9,7 @@ import { checkRateLimit } from '../../../../lib/rateLimiter';
 import { logAudit } from '../../../../lib/logger';
 import { getSessionUserId } from '../../../../lib/getSessionUserId';
 import { enforceUserConcurrency, findIdempotentJob } from '../../../../lib/jobGuards';
-import { JobStatus, JobType } from '@prisma/client';
+import { JobStatus, JobType, Prisma } from '@prisma/client';
 import { assertMinPlan, UpgradeRequiredError } from '../../../../lib/billing/requirePlan';
 import { reserveQuota, rollbackQuota, QuotaExceededError } from '../../../../lib/billing/usage';
 import { updateJobStatus } from "../../../../lib/jobs/updateJobStatus";
@@ -139,7 +139,7 @@ export async function POST(req: NextRequest) {
         idempotencyKey,
         payload: { storyboardId, idempotencyKey },
         resultSummary: securitySweep ? "Skipped: SECURITY_SWEEP" : undefined,
-        error: null,
+        error: Prisma.JsonNull,
       },
     });
     jobId = job.id;

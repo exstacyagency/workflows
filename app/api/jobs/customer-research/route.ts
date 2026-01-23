@@ -1,7 +1,7 @@
 import { cfg } from "@/lib/config";
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '../../../../lib/prisma';
-import { JobStatus, JobType, ResearchSource } from '@prisma/client';
+import { JobStatus, JobType, ResearchSource, Prisma } from '@prisma/client';
 import { estimateCustomerResearchCost, checkBudget } from '../../../../lib/costEstimator';
 import { checkRateLimit } from '../../../../lib/rateLimiter';
 import { z } from 'zod';
@@ -152,7 +152,7 @@ export async function POST(req: NextRequest) {
           data: {
             status: JobStatus.COMPLETED,
             resultSummary: "Skipped: SECURITY_SWEEP",
-            error: null,
+            error: Prisma.JsonNull,
           },
         });
       }
@@ -202,7 +202,7 @@ export async function POST(req: NextRequest) {
         idempotencyKey,
         payload: initialPayload,
         resultSummary: securitySweep ? "Skipped: SECURITY_SWEEP" : undefined,
-        error: null,
+        error: Prisma.JsonNull,
       },
     });
     jobId = job.id;
