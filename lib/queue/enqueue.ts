@@ -3,6 +3,7 @@ import { cfg } from "@/lib/config";
 import { isSelfHosted } from "@/lib/config/mode";
 import { JobStatus, JobType, Prisma } from "@prisma/client";
 import { randomUUID } from "crypto";
+import { getRuntimeMode } from "../jobRuntimeMode";
 
 export type EnqueueJobInput = {
   userId?: string;
