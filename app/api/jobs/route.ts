@@ -1,5 +1,6 @@
 // Patch 2 — Fix API guard crash during build
-const isBuildPhase = process.env.NEXT_PHASE === "phase-production-build";
+import { cfg } from "@/lib/config";
+const isBuildPhase = cfg.raw("NEXT_PHASE") === "phase-production-build";
 
 function assertValidRuntimeMode(mode: string) {
   if (mode !== "alpha" && mode !== "production") {
