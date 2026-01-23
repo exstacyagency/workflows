@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { getSessionUserId } from "@/lib/getSessionUserId";
+import { RUNTIME_MODE } from "@/lib/runtimeMode";
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
@@ -9,7 +10,15 @@ export async function POST(req: Request) {
   }
 
   const body = await req.json();
-  const { projectId, pipeline, input, idempotencyKey, status } = body;
+  const { projectId, pipeline, input, idempotencyKey, status, mode } = body;
+
+  // 🚨 HARD GUARD: production jobs forbidden in alpha
+  if (RUNTIME_MODE === "alpha" && mode === "production") {
+    return NextResponse.json(
+      { error: "Production jobs are not allowed in alpha" },
+      { status: 403 }
+    );
+  }
 
   if (!projectId || !pipeline || !idempotencyKey) {
     return NextResponse.json({ error: "Invalid payload" }, { status: 400 });

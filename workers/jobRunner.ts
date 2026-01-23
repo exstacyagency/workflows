@@ -225,12 +225,12 @@ async function handleProviderConfig(jobId: string, provider: string, requiredEnv
 async function claimNextJob() {
   const dueBefore = nowMs();
   const claimed = await prisma.$queryRaw<any[]>`
-    UPDATE "Job"
+    UPDATE job
     SET "status" = CAST('RUNNING' AS "JobStatus"),
         "updatedAt" = NOW()
     WHERE "id" = (
       SELECT "id"
-      FROM "Job"
+      FROM job
       WHERE "status" = CAST('PENDING' AS "JobStatus")
         AND (
           ("payload"->>'nextRunAt') IS NULL
@@ -374,6 +374,42 @@ async function runJob(
 
         const result = await startScriptGenerationJob(job.projectId, fresh);
         await markCompleted(jobId, { ok: true, ...result });
+        return;
+      }
+
+      case JobType.STORYBOARD_GENERATION: {
+        const scriptId = String(payload?.scriptId ?? "").trim();
+
+        try {
+          const storyboard = await prisma.storyboard.create({
+            data: {
+              projectId: job.projectId,
+              jobId: job.id,
+              scriptId: scriptId || null,
+            },
+          });
+
+          // Persist reference for downstream jobs
+          await prisma.job.update({
+            where: { id: job.id },
+            data: {
+              resultSummary: {
+                storyboardId: storyboard.id,
+              },
+            },
+          });
+
+          await markCompleted(jobId, {
+            ok: true,
+            storyboardId: storyboard.id,
+            scriptId: scriptId || null,
+          });
+        } catch (e: any) {
+          const msg = String(e?.message ?? e ?? "Unknown error");
+          await rollbackJobQuotaIfNeeded(jobId, job.projectId, payload);
+          await markFailed(jobId, e);
+          await appendResultSummary(jobId, `Storyboard generation failed: ${msg}`);
+        }
         return;
       }
 
