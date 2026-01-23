@@ -6,7 +6,6 @@ export function isBeta(mode: RuntimeMode) {
 import { prisma } from "./prisma.ts";
 import { JobStatus, Prisma } from "@prisma/client";
 import { updateJobStatus } from "@/lib/jobs/updateJobStatus";
-import { getRuntimeMode } from "./jobRuntimeMode";
 
 type Payload = Record<string, any>;
 
