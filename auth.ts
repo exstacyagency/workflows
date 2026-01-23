@@ -65,7 +65,7 @@ export const authOptions: NextAuthOptions = {
           where: { email },
         });
 
-        if (cfg.raw("AUTH_DEBUG") === "1") {
+        if (cfg().raw("AUTH_DEBUG") === "1") {
           console.log("[AUTH_DEBUG] email", email, "user?", !!user, "hasHash?", !!user?.passwordHash);
         }
         if (!user || !user.passwordHash) {
@@ -76,7 +76,7 @@ export const authOptions: NextAuthOptions = {
         }
 
         const isValid = await bcrypt.compare(credentials.password, user.passwordHash);
-        if (cfg.raw("AUTH_DEBUG") === "1") {
+        if (cfg().raw("AUTH_DEBUG") === "1") {
           console.log("[AUTH_DEBUG] bcrypt compare", isValid);
         }
         if (!isValid) {

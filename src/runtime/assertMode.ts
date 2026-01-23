@@ -4,7 +4,7 @@ import { RUNTIME_MODE } from "@/config/runtime";
 export type RuntimeMode = (typeof RUNTIME_MODE)[number];
 
 export function assertRuntimeMode(): RuntimeMode {
-  const mode = cfg.runtimeMode;
+  const mode = cfg().RUNTIME_MODE;
 
   if (!mode || !RUNTIME_MODE.includes(mode as RuntimeMode)) {
     throw new Error(

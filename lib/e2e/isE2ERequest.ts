@@ -3,11 +3,11 @@ import { headers } from "next/headers";
 
 export function isE2ERequest(): boolean {
   // Never allow in prod
-  if (cfg.raw("NODE_ENV") === "production") {
+  if (cfg().raw("NODE_ENV") === "production") {
     return false;
   }
 
-  const expected = cfg.raw("E2E_RESET_KEY");
+  const expected = cfg().raw("E2E_RESET_KEY");
   if (!expected) return false;
 
   const h = headers();

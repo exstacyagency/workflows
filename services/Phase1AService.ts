@@ -48,10 +48,10 @@ type ResearchRowInput = ArrayElement<
 type ResearchRowPayload = Omit<ResearchRowInput, 'projectId' | 'jobId'>;
 
 const APIFY_BASE = 'https://api.apify.com/v2';
-const FETCH_RETRY_ATTEMPTS = Number(cfg.raw("CUSTOMER_RESEARCH_FETCH_RETRIES") ?? 3);
-const REDDIT_PAGE_SIZE = Number(cfg.raw("CUSTOMER_RESEARCH_REDDIT_PAGE_SIZE") ?? 75);
-const REDDIT_MAX_PAGES = Number(cfg.raw("CUSTOMER_RESEARCH_REDDIT_PAGES") ?? 3);
-const MIN_RESEARCH_ROWS = Number(cfg.raw("CUSTOMER_RESEARCH_MIN_ROWS") ?? 25);
+const FETCH_RETRY_ATTEMPTS = Number(cfg().raw("CUSTOMER_RESEARCH_FETCH_RETRIES") ?? 3);
+const REDDIT_PAGE_SIZE = Number(cfg().raw("CUSTOMER_RESEARCH_REDDIT_PAGE_SIZE") ?? 75);
+const REDDIT_MAX_PAGES = Number(cfg().raw("CUSTOMER_RESEARCH_REDDIT_PAGES") ?? 3);
+const MIN_RESEARCH_ROWS = Number(cfg().raw("CUSTOMER_RESEARCH_MIN_ROWS") ?? 25);
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -82,7 +82,7 @@ async function fetchWithRetry(url: string, init: RequestInit | undefined, label:
 }
 
 async function runApifyActor<T>(actorId: string, input: Record<string, unknown>) {
-  const token = cfg.raw("APIFY_TOKEN") ?? cfg.raw("APIFY_API_TOKEN");
+  const token = cfg().raw("APIFY_TOKEN") ?? cfg().raw("APIFY_API_TOKEN");
   if (!token) {
     throw new Error('APIFY_TOKEN is not set');
   }
@@ -172,7 +172,7 @@ class RedditScraper {
 
     const collected: RedditPost[] = [];
     let after: string | undefined;
-    const headers = { 'User-Agent': cfg.raw("REDDIT_USER_AGENT") || 'ai-ad-lab/1.0' };
+    const headers = { 'User-Agent': cfg().raw("REDDIT_USER_AGENT") || 'ai-ad-lab/1.0' };
 
     for (let page = 0; page < REDDIT_MAX_PAGES; page++) {
       const searchUrl = new URL('https://www.reddit.com/search.json');

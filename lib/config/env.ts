@@ -21,5 +21,5 @@ export function parseDeploymentMode(raw?: string): DeploymentMode {
 }
 
 export function getDeploymentMode(): DeploymentMode {
-  return parseDeploymentMode(cfg.raw("DEPLOYMENT_MODE"));
+  return parseDeploymentMode(cfg().raw("DEPLOYMENT_MODE"));
 }

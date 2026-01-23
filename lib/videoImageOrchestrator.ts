@@ -38,7 +38,7 @@ export type StartMultiFrameResult = {
 };
 
 function mustEnv(name: string, fallback?: string): string {
-  const v = cfg.raw(name) ?? fallback;
+  const v = cfg().raw(name) ?? fallback;
   if (!v) throw new Error(`Missing required env var: ${name}`);
   return v;
 }
@@ -78,7 +78,7 @@ export async function startMultiFrameVideoImages(args: StartMultiFrameArgs): Pro
   const providerId = provider.id;
 
   // Default deny spend unless explicitly enabled.
-  if ((cfg.raw("KIE_LIVE_MODE") ?? "0") !== "1") {
+  if ((cfg().raw("KIE_LIVE_MODE") ?? "0") !== "1") {
     throw new Error("KIE live mode is disabled. Set KIE_LIVE_MODE=1 to allow paid image generation.");
   }
 

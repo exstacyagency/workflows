@@ -15,12 +15,12 @@ export type EnqueueJobInput = {
 
 function getQueueBackend(): "db" | "redis" {
   // Self-host defaults to DB queue unless explicitly overridden.
-  if (isSelfHosted()) return (cfg.raw("QUEUE_BACKEND") as any) === "redis" ? "redis" : "db";
-  return (cfg.raw("QUEUE_BACKEND") as any) === "redis" ? "redis" : "db";
+  if (isSelfHosted()) return (cfg().raw("QUEUE_BACKEND") as any) === "redis" ? "redis" : "db";
+  return (cfg().raw("QUEUE_BACKEND") as any) === "redis" ? "redis" : "db";
 }
 
 function assertRedisConfigured() {
-  const url = (cfg.raw("REDIS_URL") ?? "").trim();
+  const url = (cfg().raw("REDIS_URL") ?? "").trim();
   if (!url) {
     throw new Error("QUEUE_BACKEND=redis requires REDIS_URL to be set");
   }

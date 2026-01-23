@@ -36,7 +36,7 @@ export async function GET(req: Request, { params }: { params: { projectId: strin
   try {
     const url = new URL(req.url);
     const wantDebug = url.searchParams.get("debug") === "1";
-    const allowDebug = cfg.raw("NODE_ENV") !== "production";
+    const allowDebug = cfg().raw("NODE_ENV") !== "production";
     const debugEnabled = wantDebug && allowDebug;
     const userId = await getSessionUserId();
     if (!userId) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
@@ -186,7 +186,7 @@ export async function GET(req: Request, { params }: { params: { projectId: strin
     );
   } catch (e: any) {
     const msg = String(e?.message || e || "Unknown error");
-    const isDev = cfg.raw("NODE_ENV") !== "production";
+    const isDev = cfg().raw("NODE_ENV") !== "production";
     return NextResponse.json(
       { ok: false, error: msg, ...(isDev ? { stack: String(e?.stack || "") } : {}) },
       { status: 500 }

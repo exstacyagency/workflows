@@ -152,7 +152,7 @@ export async function POST(req: Request) {
     });
   } catch (e: any) {
     const msg = String(e?.message || e || "Unknown error");
-    const isDev = cfg.raw("NODE_ENV") !== "production";
+    const isDev = cfg().raw("NODE_ENV") !== "production";
     return NextResponse.json(
       {
         ok: false,

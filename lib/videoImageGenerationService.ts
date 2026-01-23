@@ -5,9 +5,9 @@ import type { ImageProviderId } from "./imageProviders/types";
 import { JobStatus } from "@prisma/client";
 import { updateJobStatus } from "@/lib/jobs/updateJobStatus";
 
-const KIE_HTTP_TIMEOUT_MS = Number(cfg.raw("KIE_HTTP_TIMEOUT_MS") ?? 20_000);
-const KIE_POLL_INTERVAL_MS = Number(cfg.raw("KIE_POLL_INTERVAL_MS") ?? 2_000);
-const JOB_MAX_RUNTIME_MS = Number(cfg.raw("WORKER_JOB_MAX_RUNTIME_MS") ?? 20 * 60_000);
+const KIE_HTTP_TIMEOUT_MS = Number(cfg().raw("KIE_HTTP_TIMEOUT_MS") ?? 20_000);
+const KIE_POLL_INTERVAL_MS = Number(cfg().raw("KIE_POLL_INTERVAL_MS") ?? 2_000);
+const JOB_MAX_RUNTIME_MS = Number(cfg().raw("WORKER_JOB_MAX_RUNTIME_MS") ?? 20 * 60_000);
 
 type RunArgs = {
   jobId: string;

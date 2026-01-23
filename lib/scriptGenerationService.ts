@@ -8,10 +8,10 @@ import { guardedExternalCall } from './externalCallGuard.ts';
 import { env, requireEnv } from './configGuard.ts';
 import { flag, devNumber } from './flags.ts';
 
-const LLM_TIMEOUT_MS = Number(cfg.raw("LLM_TIMEOUT_MS") ?? 30_000);
-const LLM_BREAKER_FAILS = Number(cfg.raw("LLM_BREAKER_FAILS") ?? 3);
-const LLM_BREAKER_COOLDOWN_MS = Number(cfg.raw("LLM_BREAKER_COOLDOWN_MS") ?? 60_000);
-const LLM_RETRIES = Number(cfg.raw("LLM_RETRIES") ?? 1);
+const LLM_TIMEOUT_MS = Number(cfg().raw("LLM_TIMEOUT_MS") ?? 30_000);
+const LLM_BREAKER_FAILS = Number(cfg().raw("LLM_BREAKER_FAILS") ?? 3);
+const LLM_BREAKER_COOLDOWN_MS = Number(cfg().raw("LLM_BREAKER_COOLDOWN_MS") ?? 60_000);
+const LLM_RETRIES = Number(cfg().raw("LLM_RETRIES") ?? 1);
 
 type Pattern = {
   pattern_name: string;
@@ -69,7 +69,7 @@ function getAnthropicHeaders(apiKey: string) {
 }
 
 async function callAnthropic(system: string, prompt: string): Promise<string> {
-  const model = cfg.raw("ANTHROPIC_MODEL") ?? 'claude-3-opus-20240229';
+  const model = cfg().raw("ANTHROPIC_MODEL") ?? 'claude-3-opus-20240229';
   requireEnv(['ANTHROPIC_API_KEY'], 'ANTHROPIC');
   const apiKey = env('ANTHROPIC_API_KEY')!;
   const headers = getAnthropicHeaders(apiKey);

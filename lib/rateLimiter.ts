@@ -61,8 +61,8 @@ export async function checkRateLimit(
   identifier: string,
   opts: RateLimitOptions = {},
 ): Promise<RateLimitResult> {
-  const force = cfg.raw("FORCE_RATE_LIMIT") === '1';
-  const isProd = cfg.raw("NODE_ENV") === 'production';
+  const force = cfg().raw("FORCE_RATE_LIMIT") === '1';
+  const isProd = cfg().raw("NODE_ENV") === 'production';
   if (!isProd && !force) {
     return { allowed: true };
   }

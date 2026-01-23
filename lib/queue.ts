@@ -4,12 +4,12 @@ import Bull from 'bull';
 import Redis from 'ioredis';
 
 function assertRedisConfigured() {
-  const url = (cfg.raw("REDIS_URL") ?? "").trim();
+  const url = (cfg().raw("REDIS_URL") ?? "").trim();
   if (!url) throw new Error("QUEUE_BACKEND=redis requires REDIS_URL");
   return url;
 }
 
-const REDIS_URL = (cfg.raw("REDIS_URL") ?? '').trim();
+const REDIS_URL = (cfg().raw("REDIS_URL") ?? '').trim();
 
 const redisBaseOptions = {
   maxRetriesPerRequest: null,

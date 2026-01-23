@@ -30,7 +30,7 @@ export default async function middleware(
 ) {
   const pathname = req.nextUrl.pathname;
 
-  const { isProd, isDev, isGolden, securitySweep } = cfg;
+  const { isProd, isDev, isGolden, securitySweep } = cfg();
   const allowDebug = isDev || isGolden;
   const allowE2E = !isProd || securitySweep || isGolden;
 
@@ -42,7 +42,7 @@ export default async function middleware(
     return NextResponse.next();
   }
 
-  if (cfg.RUNTIME_MODE === "alpha") {
+  if (cfg().RUNTIME_MODE === "alpha") {
     if (pathname.startsWith("/billing")) {
       return applySecurityHeaders(
         NextResponse.json({ error: "Billing disabled in alpha" }, { status: 403 })

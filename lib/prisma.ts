@@ -13,7 +13,7 @@ export const prisma =
     log: ['query', 'error', 'warn'],
   });
 
-if (cfg.raw("NODE_ENV") !== 'production') {
+if (cfg().raw("NODE_ENV") !== 'production') {
   globalForPrisma.prisma = prisma;
 }
 

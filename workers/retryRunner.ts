@@ -10,23 +10,23 @@ import { updateJobStatus } from "@/lib/jobs/updateJobStatus";
 
 const prisma = new PrismaClient();
 
-const IS_TEST = cfg.raw("NODE_ENV") === "test";
+const IS_TEST = cfg().raw("NODE_ENV") === "test";
 
-const DEFAULT_POLL_MS = Number(cfg.raw("RETRY_POLL_MS") ?? 5000);
-const TEST_POLL_MS = Number(cfg.raw("RETRY_TEST_POLL_MS") ?? 50);
+const DEFAULT_POLL_MS = Number(cfg().raw("RETRY_POLL_MS") ?? 5000);
+const TEST_POLL_MS = Number(cfg().raw("RETRY_TEST_POLL_MS") ?? 50);
 
-const DEFAULT_MAX_RETRIES = Number(cfg.raw("RETRY_MAX_RETRIES") ?? 5);
-const DEFAULT_RETRY_DELAY_MS = Number(cfg.raw("RETRY_DELAY_MS") ?? 30_000);
+const DEFAULT_MAX_RETRIES = Number(cfg().raw("RETRY_MAX_RETRIES") ?? 5);
+const DEFAULT_RETRY_DELAY_MS = Number(cfg().raw("RETRY_DELAY_MS") ?? 30_000);
 
 const MAX_RETRIES = IS_TEST ? 1 : DEFAULT_MAX_RETRIES;
 const RETRY_DELAY_MS = IS_TEST ? 0 : DEFAULT_RETRY_DELAY_MS;
 
 const POLL_MS = IS_TEST ? TEST_POLL_MS : DEFAULT_POLL_MS;
-const BATCH = Number(cfg.raw("RETRY_BATCH") ?? 5);
-const MAX_WORKER_CONCURRENCY = Number(cfg.raw("MAX_WORKER_CONCURRENCY") ?? 2);
-const MAX_RUNNING_JOBS_PER_USER = Number(cfg.raw("MAX_RUNNING_JOBS_PER_USER") ?? 3);
-const RUNNING_JOB_TIMEOUT_MS = Number(cfg.raw("RUNNING_JOB_TIMEOUT_MS") ?? 5 * 60_000);
-const RUNNING_TIMEOUT_MAX_BATCH = Number(cfg.raw("RUNNING_TIMEOUT_MAX_BATCH") ?? 25);
+const BATCH = Number(cfg().raw("RETRY_BATCH") ?? 5);
+const MAX_WORKER_CONCURRENCY = Number(cfg().raw("MAX_WORKER_CONCURRENCY") ?? 2);
+const MAX_RUNNING_JOBS_PER_USER = Number(cfg().raw("MAX_RUNNING_JOBS_PER_USER") ?? 3);
+const RUNNING_JOB_TIMEOUT_MS = Number(cfg().raw("RUNNING_JOB_TIMEOUT_MS") ?? 5 * 60_000);
+const RUNNING_TIMEOUT_MAX_BATCH = Number(cfg().raw("RUNNING_TIMEOUT_MAX_BATCH") ?? 25);
 
 type PipelineContext = {
   mode: RuntimeMode;

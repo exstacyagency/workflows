@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const securitySweep = cfg.raw("SECURITY_SWEEP") === "1";
+  const securitySweep = cfg().raw("SECURITY_SWEEP") === "1";
   let reservation: { periodKey: string; metric: string; amount: number } | null = null;
   let planId: 'FREE' | 'GROWTH' | 'SCALE' = 'FREE';
 
@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Rate limit to prevent spam
-    if (cfg.raw("NODE_ENV") === 'production') {
+    if (cfg().raw("NODE_ENV") === 'production') {
       const rateCheck = await checkRateLimit(projectId);
       if (!rateCheck.allowed) {
         return NextResponse.json(

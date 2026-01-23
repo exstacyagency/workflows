@@ -29,7 +29,7 @@ import prisma from "../lib/prisma.ts";
 import { rollbackQuota } from "../lib/billing/usage.ts";
 import { updateJobStatus } from "@/lib/jobs/updateJobStatus";
 
-if (cfg.raw("NODE_ENV") !== "production") {
+if (cfg().raw("NODE_ENV") !== "production") {
   loadDotEnvFileIfPresent(".env.local");
   loadDotEnvFileIfPresent(".env");
 }
@@ -50,14 +50,14 @@ if (pipelineContext.mode === "alpha" && process.env.NODE_ENV === "production") {
   throw new Error("INVALID CONFIG: MODE=alpha cannot run with NODE_ENV=production");
 }
 
-const IS_TEST = cfg.raw("NODE_ENV") === "test";
+const IS_TEST = cfg().raw("NODE_ENV") === "test";
 
-const DEFAULT_POLL_INTERVAL_MS = Number(cfg.raw("WORKER_POLL_MS") ?? 1000);
-const TEST_POLL_INTERVAL_MS = Number(cfg.raw("WORKER_TEST_POLL_MS") ?? 50);
+const DEFAULT_POLL_INTERVAL_MS = Number(cfg().raw("WORKER_POLL_MS") ?? 1000);
+const TEST_POLL_INTERVAL_MS = Number(cfg().raw("WORKER_TEST_POLL_MS") ?? 50);
 
 const POLL_MS = IS_TEST ? TEST_POLL_INTERVAL_MS : DEFAULT_POLL_INTERVAL_MS;
-const RUN_ONCE = cfg.raw("RUN_ONCE") === "1";
-const WORKER_JOB_MAX_RUNTIME_MS = Number(cfg.raw("WORKER_JOB_MAX_RUNTIME_MS") ?? 20 * 60_000);
+const RUN_ONCE = cfg().raw("RUN_ONCE") === "1";
+const WORKER_JOB_MAX_RUNTIME_MS = Number(cfg().raw("WORKER_JOB_MAX_RUNTIME_MS") ?? 20 * 60_000);
 
 type JsonObject = Record<string, any>;
 
@@ -102,7 +102,7 @@ function serializeResult(value: any) {
 
 function envMissing(keys: string[]) {
   return keys.filter((k) => {
-    const v = cfg.raw(k);
+    const v = cfg().raw(k);
     return !v || v.trim() === "";
   });
 }
@@ -229,7 +229,7 @@ async function handleProviderConfig(jobId: string, provider: string, requiredEnv
   if (missing.length === 0) return { ok: true as const };
 
   const reason = `${provider} not configured`;
-  if (cfg.raw("CI") === "true") {
+  if (cfg().raw("CI") === "true") {
     await markCompleted(jobId, { ok: true, skipped: true, reason }, `Skipped: ${reason}`);
     return { ok: false as const, skipped: true as const };
   }
@@ -298,7 +298,7 @@ async function runJob(
   try {
     switch (job.type) {
       case JobType.CUSTOMER_RESEARCH: {
-        const apifyToken = cfg.raw("APIFY_TOKEN") ?? cfg.raw("APIFY_API_TOKEN");
+        const apifyToken = cfg().raw("APIFY_TOKEN") ?? cfg().raw("APIFY_API_TOKEN");
         const hasApifyToken = !!apifyToken;
         if (!hasApifyToken) {
           await rollbackJobQuotaIfNeeded(jobId, job.projectId, payload);
@@ -337,7 +337,7 @@ async function runJob(
       case JobType.AD_PERFORMANCE: {
         const cfgToken = await handleProviderConfig(jobId, "Apify", ["APIFY_API_TOKEN"]);
         if (!cfgToken.ok) return;
-        const datasetId = (cfg.raw("APIFY_DATASET_ID") ?? "").trim();
+        const datasetId = (cfg().raw("APIFY_DATASET_ID") ?? "").trim();
         if (!datasetId) {
           const cfgActor = await handleProviderConfig(jobId, "Apify", ["APIFY_ACTOR_ID"]);
           if (!cfgActor.ok) return;
@@ -587,7 +587,7 @@ async function loop() {
       logError("job.failed", e, {
         jobId: job?.id ?? null,
         jobType: job?.type ?? null,
-        mode: cfg.RUNTIME_MODE,
+        mode: cfg().RUNTIME_MODE,
       });
       console.error("[jobRunner] loop error", e);
       if (RUN_ONCE) return;

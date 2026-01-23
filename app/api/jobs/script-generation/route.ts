@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
   const requestId = getRequestId(req);
   logInfo("api.request", { requestId, path: req.nextUrl?.pathname });
 
-  const securitySweep = cfg.raw("SECURITY_SWEEP") === "1";
+  const securitySweep = cfg().raw("SECURITY_SWEEP") === "1";
 
   let reservation:
     | { periodKey: string; metric: string; amount: number }
@@ -173,8 +173,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const isCI = cfg.raw("CI") === "true";
-    const hasAnthropic = !!cfg.raw("ANTHROPIC_API_KEY");
+    const isCI = cfg().raw("CI") === "true";
+    const hasAnthropic = !!cfg().raw("ANTHROPIC_API_KEY");
 
     // CI fallback (NO VIDEO FIELDS)
     if (isCI && !hasAnthropic) {
@@ -224,14 +224,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!devTest && !cfg.raw("ANTHROPIC_API_KEY")) {
+    if (!devTest && !cfg().raw("ANTHROPIC_API_KEY")) {
       return NextResponse.json(
         { error: "Anthropic is not configured" },
         { status: 500 },
       );
     }
 
-    if (!devTest && cfg.raw("NODE_ENV") === "production") {
+    if (!devTest && cfg().raw("NODE_ENV") === "production") {
       const rateCheck = await checkRateLimit(projectId);
       if (!rateCheck.allowed) {
         return NextResponse.json(

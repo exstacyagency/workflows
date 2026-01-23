@@ -2,8 +2,8 @@ import { cfg } from "@/lib/config";
 import { getAuthSession } from "@/auth";
 
 export async function GET() {
-  const securitySweep = cfg.securitySweep;
-  const isProd = cfg.isProd;
+  const securitySweep = cfg().securitySweep;
+  const isProd = cfg().isProd;
 
   void isProd; // avoid unused; prod status not part of allow condition
 

@@ -1,41 +1,25 @@
 /* eslint-disable no-restricted-properties */
-
-const nodeEnv = process.env.NODE_ENV ?? "development";
-const runtimeMode = process.env.MODE;
-const securitySweep = process.env.SECURITY_SWEEP === "1";
-
-export const cfg = {
-  raw(name: string): string | undefined {
-    switch (name) {
-      case "NODE_ENV":
-        return process.env.NODE_ENV;
-      case "CI":
-        return process.env.CI;
-      case "GITHUB_ACTIONS":
-        return process.env.GITHUB_ACTIONS;
-      default:
-        return process.env[name];
-    }
-  },
-  env: nodeEnv,
-  MODE: runtimeMode,
-  runtimeMode,
-  RUNTIME_MODE: runtimeMode,
-  isProd: nodeEnv === "production",
-  isDev: nodeEnv !== "production",
-  securitySweep,
-  isGolden: securitySweep,
-  JOB_IDEMPOTENCY_ENABLED: process.env.JOB_IDEMPOTENCY_ENABLED === "true",
-};
-
-const isProd = cfg.raw("NODE_ENV") === "production";
-const isCI = cfg.raw("CI") === "true" || cfg.raw("GITHUB_ACTIONS") === "true";
-const isNextBuild = cfg.raw("NEXT_PHASE") === "phase-production-build";
-const isEdgeRuntime = cfg.raw("NEXT_RUNTIME") === "edge";
-const isHostedProd = Boolean(
-  cfg.raw("VERCEL") || cfg.raw("FLY_ALLOC_ID") || cfg.raw("RAILWAY_STATIC_URL") || cfg.raw("AWS_REGION")
-);
-
-if (!isNextBuild && isProd && !isCI && !isEdgeRuntime && isHostedProd && cfg.securitySweep) {
-  throw new Error("SECURITY_SWEEP must not be enabled in production");
+// eslint-disable-next-line no-restricted-properties
+export function cfg() {
+  const NODE_ENV = process.env.NODE_ENV;
+  const env = NODE_ENV ?? 'development';
+  const securitySweep = process.env.SECURITY_SWEEP === '1';
+  const isGolden = securitySweep;
+  return {
+    MODE: process.env.MODE,
+    ALPHA_ONLY: process.env.ALPHA_ONLY,
+    ENABLE_ALPHA_PIPELINE: process.env.ENABLE_ALPHA_PIPELINE,
+    ALPHA_GUARD_DISABLED: process.env.ALPHA_GUARD_DISABLED,
+    NODE_ENV,
+    env,
+    NEXT_PHASE: process.env.NEXT_PHASE,
+    securitySweep,
+    isProd: NODE_ENV === 'production',
+    isGolden,
+    isDev: NODE_ENV !== 'production',
+    RUNTIME_MODE: process.env.MODE,
+    raw(name: string): string | undefined {
+      return process.env[name];
+    },
+  };
 }

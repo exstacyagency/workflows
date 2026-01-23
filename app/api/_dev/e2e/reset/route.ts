@@ -6,12 +6,12 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   // Only available when not in production
-  if (cfg.env === "production") {
+  if (cfg().env === "production") {
     return new NextResponse(null, { status: 404 });
   }
 
   // Optional shared-secret guard (local / CI only)
-  const expectedKey = cfg.raw("E2E_RESET_KEY");
+  const expectedKey = cfg().raw("E2E_RESET_KEY");
   if (expectedKey) {
     const providedKey = request.headers.get("x-e2e-reset-key");
     if (providedKey !== expectedKey) {
@@ -19,5 +19,5 @@ export async function POST(request: Request) {
     }
   }
 
-  return NextResponse.json({ ok: true, env: cfg.env });
+  return NextResponse.json({ ok: true, env: cfg().env });
 }

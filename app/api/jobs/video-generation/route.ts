@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
   assertRuntimeMode();
 
   const requestId = getRequestId(req) ?? (globalThis.crypto?.randomUUID?.() ?? `req_${Date.now()}`);
-  const securitySweep = cfg.raw("SECURITY_SWEEP") === "1";
+  const securitySweep = cfg().raw("SECURITY_SWEEP") === "1";
   let userId: string | null = null;
   // Track rollback primitives explicitly (avoids TS narrowing issues)
   let reservationPeriodKey: string | null = null;
@@ -103,7 +103,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    if (cfg.raw("NODE_ENV") === "production") {
+    if (cfg().raw("NODE_ENV") === "production") {
       const rateCheck = await checkRateLimit(projectId);
       if (!rateCheck.allowed) {
         await rollbackReservation();

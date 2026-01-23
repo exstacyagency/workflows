@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-  const securitySweep = cfg.raw("SECURITY_SWEEP") === "1";
+  const securitySweep = cfg().raw("SECURITY_SWEEP") === "1";
   let projectId: string | null = null;
   let jobId: string | null = null;
   let reservation: { periodKey: string; metric: string; amount: number } | null =
@@ -80,14 +80,14 @@ export async function POST(req: NextRequest) {
     }
 
     // SECURITY_SWEEP should not require vendor keys.
-    if (!securitySweep && !cfg.raw("FAL_API_KEY")) {
+    if (!securitySweep && !cfg().raw("FAL_API_KEY")) {
       return NextResponse.json(
         { error: 'FAL is not configured' },
         { status: 500 },
       );
     }
 
-    if (cfg.raw("NODE_ENV") === 'production') {
+    if (cfg().raw("NODE_ENV") === 'production') {
       const rateCheck = await checkRateLimit(projectId);
       if (!rateCheck.allowed) {
         return NextResponse.json(

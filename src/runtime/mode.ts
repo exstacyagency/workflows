@@ -5,7 +5,7 @@ export type RuntimeMode = "alpha" | "beta" | "prod" | "dev";
 const ALLOWED_MODES: RuntimeMode[] = ["alpha", "beta", "prod", "dev"];
 
 export function getRuntimeMode(): RuntimeMode {
-  const mode = cfg.raw("MODE") as RuntimeMode | undefined;
+  const mode = cfg().raw("MODE") as RuntimeMode | undefined;
 
   if (!mode) {
     throw new Error(

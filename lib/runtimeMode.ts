@@ -2,7 +2,7 @@ import { cfg } from "@/lib/config";
 
 export type RuntimeMode = "alpha" | "beta" | "prod";
 
-export const RUNTIME_MODE = cfg.RUNTIME_MODE as RuntimeMode;
+export const RUNTIME_MODE = cfg().RUNTIME_MODE as RuntimeMode;
 
 if (!RUNTIME_MODE) {
   throw new Error("RUNTIME_MODE must be set");

@@ -16,7 +16,7 @@ export async function assertEntitled(
   action: EntitlementAction,
   context?: EntitlementContext,
 ): Promise<void> {
-  if (cfg.raw("PANIC_DISABLE_ALL") === "true") {
+  if (cfg().raw("PANIC_DISABLE_ALL") === "true") {
     throw new Error("SYSTEM_DISABLED");
   }
 

@@ -17,7 +17,7 @@ type InputBody = {
 };
 
 export async function POST(req: NextRequest) {
-  if (cfg.raw("NODE_ENV") === "production" || cfg.raw("DISABLE_DEV_ADMIN") === "true") {
+  if (cfg().raw("NODE_ENV") === "production" || cfg().raw("DISABLE_DEV_ADMIN") === "true") {
     return new NextResponse(null, { status: 404 });
   }
 

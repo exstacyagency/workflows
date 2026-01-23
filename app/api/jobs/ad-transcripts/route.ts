@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const securitySweep = cfg.raw("SECURITY_SWEEP") === "1";
+  const securitySweep = cfg().raw("SECURITY_SWEEP") === "1";
   let projectId: string | null = null;
   let jobId: string | null = null;
   let reservation:
@@ -143,14 +143,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!cfg.raw("ASSEMBLYAI_API_KEY")) {
+    if (!cfg().raw("ASSEMBLYAI_API_KEY")) {
       return NextResponse.json(
         { error: "ASSEMBLYAI_API_KEY must be set" },
         { status: 500 }
       );
     }
 
-    if (cfg.raw("NODE_ENV") === "production") {
+    if (cfg().raw("NODE_ENV") === "production") {
       const rateCheck = await checkRateLimit(projectId);
       if (!rateCheck.allowed) {
         return NextResponse.json(

@@ -9,14 +9,15 @@ import { prisma } from "@/lib/prisma";
  * - Must be explicit and dumb
  */
 
+
 export async function POST() {
   // Hard kill in production
-  if (cfg.isProd) {
+  if (cfg().isProd) {
     return new NextResponse(null, { status: 404 });
   }
 
   // Explicitly require e2e / golden context
-  if (!cfg.securitySweep && !cfg.isGolden) {
+  if (!cfg().securitySweep && !cfg().isGolden) {
     return new NextResponse(null, { status: 404 });
   }
 

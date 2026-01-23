@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const securitySweep = cfg.raw("SECURITY_SWEEP") === "1";
+  const securitySweep = cfg().raw("SECURITY_SWEEP") === "1";
   let projectId: string | null = null;
   let jobId: string | null = null;
   let reservation:
@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
-    if (!securitySweep && !cfg.raw("ANTHROPIC_API_KEY")) {
+    if (!securitySweep && !cfg().raw("ANTHROPIC_API_KEY")) {
       return NextResponse.json(
         { error: "Anthropic is not configured" },
         { status: 500 }
@@ -178,7 +178,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (cfg.raw("NODE_ENV") === "production") {
+    if (cfg().raw("NODE_ENV") === "production") {
       const rateCheck = await checkRateLimit(projectId);
       if (!rateCheck.allowed) {
         return NextResponse.json(

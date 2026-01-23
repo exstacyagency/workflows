@@ -151,7 +151,7 @@ export class KieImageProvider implements VideoImageProvider {
   }
 
   async createTask(input: CreateVideoImagesInput): Promise<CreateVideoImagesOutput> {
-    if (cfg.raw("KIE_LIVE_MODE") !== "1") {
+    if (cfg().raw("KIE_LIVE_MODE") !== "1") {
       throw new Error(
         "KIE live mode is disabled. Set KIE_LIVE_MODE=1 to allow paid image generation."
       );

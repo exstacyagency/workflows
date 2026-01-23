@@ -16,8 +16,8 @@ export async function POST() {
 
   // SECURITY: secret must exist, but we never expose it
   const secret =
-    cfg.raw("AUTH_SECRET") ||
-    cfg.raw("NEXTAUTH_SECRET");
+    cfg().raw("AUTH_SECRET") ||
+    cfg().raw("NEXTAUTH_SECRET");
 
   if (!secret) {
     return NextResponse.json(

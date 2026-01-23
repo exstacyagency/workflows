@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid planId" }, { status: 400 });
   }
 
-  const appUrl = cfg.raw("APP_URL")?.trim();
+  const appUrl = cfg().raw("APP_URL")?.trim();
   if (!appUrl) {
     return NextResponse.json({ error: "Billing not configured" }, { status: 500 });
   }

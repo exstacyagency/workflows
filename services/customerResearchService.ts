@@ -98,7 +98,7 @@ async function fetchWithRetry(url: string, init: RequestInit | undefined, label:
 }
 
 async function runApifyActor<T>(actorId: string, input: Record<string, unknown>) {
-  const token = cfg.raw("APIFY_TOKEN") ?? cfg.raw("APIFY_API_TOKEN");
+  const token = cfg().raw("APIFY_TOKEN") ?? cfg().raw("APIFY_API_TOKEN");
   if (!token) throw new Error('APIFY_TOKEN not set');
 
   const runResponse = await fetchWithRetry(

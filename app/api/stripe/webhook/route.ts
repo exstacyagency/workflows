@@ -205,7 +205,7 @@ export async function POST(req: NextRequest) {
 
   const rawBody = await req.text();
   const sig = req.headers.get("stripe-signature");
-  const webhookSecret = cfg.raw("STRIPE_WEBHOOK_SECRET");
+  const webhookSecret = cfg().raw("STRIPE_WEBHOOK_SECRET");
   if (!webhookSecret || !sig) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }

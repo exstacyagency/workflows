@@ -4,9 +4,9 @@ import { JobStatus, JobType, Prisma } from "@prisma/client";
 import { updateJobStatus } from "@/lib/jobs/updateJobStatus";
 
 const MAX_RUNNING_JOBS_PER_USER = Number(
-  cfg.raw("MAX_RUNNING_JOBS_PER_USER") ?? 3
+  cfg().raw("MAX_RUNNING_JOBS_PER_USER") ?? 3
 );
-const MAX_ATTEMPTS = Number(cfg.raw("MAX_JOB_ATTEMPTS") ?? 3);
+const MAX_ATTEMPTS = Number(cfg().raw("MAX_JOB_ATTEMPTS") ?? 3);
 
 export function computeBackoffMs(attempt: number) {
   const base = 1000;
