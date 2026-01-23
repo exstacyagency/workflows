@@ -2,15 +2,17 @@
 
 export default function GlobalError({
   error,
+  reset,
 }: {
   error: Error & { digest?: string };
+  reset: () => void;
 }) {
-  console.error(error);
-
   return (
     <html>
       <body>
-        <h1>Application error</h1>
+        <h2>Something went wrong</h2>
+        <pre>{error.message}</pre>
+        <button onClick={reset}>Retry</button>
       </body>
     </html>
   );

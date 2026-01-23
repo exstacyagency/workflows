@@ -1,5 +1,19 @@
+// Patch 2 — Fix API guard crash during build
+import { cfg } from "@/lib/config";
+const isBuildPhase = cfg.raw("NEXT_PHASE") === "phase-production-build";
+
+function assertValidRuntimeMode(mode: string) {
+  if (mode !== "alpha" && mode !== "production") {
+    throw new Error(`Invalid runtime mode: ${mode}`);
+  }
+}
+
+if (!isBuildPhase) {
+  assertValidRuntimeMode(getRuntimeMode());
+}
 import { prisma } from "@/lib/prisma";
 import { getSessionUserId } from "@/lib/getSessionUserId";
+import { getRuntimeMode } from "@/lib/jobRuntimeMode";
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
@@ -9,7 +23,15 @@ export async function POST(req: Request) {
   }
 
   const body = await req.json();
-  const { projectId, pipeline, input, idempotencyKey, status } = body;
+  const { projectId, pipeline, input, idempotencyKey, status, mode } = body;
+
+  // 🚨 HARD GUARD: production jobs forbidden in alpha
+  if (getRuntimeMode() === "alpha" && mode === "production") {
+    return NextResponse.json(
+      { error: "Production jobs are not allowed in alpha" },
+      { status: 403 }
+    );
+  }
 
   if (!projectId || !pipeline || !idempotencyKey) {
     return NextResponse.json({ error: "Invalid payload" }, { status: 400 });

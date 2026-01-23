@@ -7,7 +7,7 @@ import { getSessionUserId } from "../../../../lib/getSessionUserId";
 import { requireProjectOwner } from "../../../../lib/requireProjectOwner";
 import { assertMinPlan, UpgradeRequiredError } from "../../../../lib/billing/requirePlan";
 import { reserveQuota, rollbackQuota, QuotaExceededError } from "../../../../lib/billing/usage";
-import { JobStatus, JobType } from "@prisma/client";
+import { JobStatus, JobType, Prisma } from "@prisma/client";
 import { getRequestId } from "../../../../lib/observability";
 import { checkRateLimit } from "../../../../lib/rateLimiter";
 import { assertRuntimeMode } from "@/src/runtime/assertMode";
@@ -208,7 +208,7 @@ export async function POST(req: NextRequest) {
             reason: "SECURITY_SWEEP",
           },
           resultSummary: "Skipped: SECURITY_SWEEP",
-          error: null,
+          error: Prisma.JsonNull,
         },
       });
       jobId = job.id;

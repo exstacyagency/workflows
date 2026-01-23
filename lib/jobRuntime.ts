@@ -1,6 +1,7 @@
 import { prisma } from "./prisma.ts";
-import { JobStatus } from "@prisma/client";
+import { JobStatus, Prisma } from "@prisma/client";
 import { updateJobStatus } from "@/lib/jobs/updateJobStatus";
+import { getRuntimeMode } from "./jobRuntimeMode";
 
 type Payload = Record<string, any>;
 
@@ -11,7 +12,7 @@ export async function setStatus(jobId: string, next: JobStatus, error?: string |
   await updateJobStatus(jobId, next);
   return prisma.job.update({
     where: { id: jobId },
-    data: { error: error ?? (next === JobStatus.FAILED ? "Job failed" : null) },
+    data: { error: error ?? (next === JobStatus.FAILED ? "Job failed" : Prisma.JsonNull) },
   });
 }
 
@@ -68,7 +69,7 @@ export async function runWithState(jobId: string, fn: () => Promise<any>) {
 
   if (job.status === JobStatus.PENDING) {
     await updateJobStatus(jobId, JobStatus.RUNNING);
-    await prisma.job.update({ where: { id: jobId }, data: { error: null } });
+    await prisma.job.update({ where: { id: jobId }, data: { error: Prisma.JsonNull } });
   }
 
   try {
