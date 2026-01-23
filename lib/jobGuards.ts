@@ -2,7 +2,6 @@ import { cfg } from "@/lib/config";
 import { prisma } from "@/lib/prisma";
 import { JobStatus, JobType, Prisma } from "@prisma/client";
 import { updateJobStatus } from "@/lib/jobs/updateJobStatus";
-import { getRuntimeMode } from "./jobRuntimeMode";
 
 const MAX_RUNNING_JOBS_PER_USER = Number(
   cfg.raw("MAX_RUNNING_JOBS_PER_USER") ?? 3
