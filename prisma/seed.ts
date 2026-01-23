@@ -4,31 +4,33 @@ import bcrypt from "bcryptjs";
 const prisma = new PrismaClient();
 
 async function main() {
-  const email = "admin@example.com";
 
-  // 1. Ensure user exists
-  const user = await prisma.user.upsert({
-    where: { email },
-    update: {},
-    create: {
-      email,
-      name: "Admin",
-      passwordHash: await bcrypt.hash("admin123", 10),
-    },
-  });
+  // 1. Ensure test user exists with email 'test@local.dev', prefer id 'user_test' if creating
+  const testUserEmail = "test@local.dev";
+  let testUser = await prisma.user.findUnique({ where: { email: testUserEmail } });
+  if (!testUser) {
+    testUser = await prisma.user.create({
+      data: {
+        id: "user_test",
+        email: testUserEmail,
+        name: "Test User",
+        passwordHash: await bcrypt.hash("test123", 10),
+      },
+    });
+  }
 
-  // 2. Ensure project exists for THAT user
+  // 2. Ensure project exists for THAT user (idempotent upsert)
   await prisma.project.upsert({
     where: { id: "proj_test" },
     update: {},
     create: {
       id: "proj_test",
-      name: "Security Sweep Project",
-      userId: user.id,
+      name: "Test Project",
+      userId: testUser.id, // MUST match seeded test user
     },
   });
 
-  console.log("Seed complete for:", user.email);
+  console.log("Seed complete for:", testUser.email);
 }
 
 main()
