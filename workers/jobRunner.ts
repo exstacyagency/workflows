@@ -11,8 +11,7 @@ import { runVideoImageGenerationJob } from "../lib/videoImageGenerationService.t
 import { runVideoGenerationJob } from "../lib/videoGenerationService.ts";
 import prisma from "../lib/prisma.ts";
 import { rollbackQuota } from "../lib/billing/usage.ts";
-import { assertRuntimeMode } from "../src/runtime/assertMode.ts";
-import { RuntimeMode } from "../src/runtime/mode.ts";
+import { getRuntimeMode } from "../lib/jobRuntimeMode";
 import { updateJobStatus } from "@/lib/jobs/updateJobStatus";
 
 if (cfg.raw("NODE_ENV") !== "production") {
