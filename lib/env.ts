@@ -1,13 +1,12 @@
-import { cfg } from "@/lib/config";
+import { cfg } from '@/lib/config/runtime';
 
-export function isDev(): boolean {
-  return cfg.raw("NODE_ENV") !== "production";
-}
+const isBuildTime =
+  cfg().NEXT_PHASE === 'phase-production-build';
 
-export const JOB_IDEMPOTENCY_ENABLED = cfg.JOB_IDEMPOTENCY_ENABLED;
+if (!isBuildTime) {
+  const c = cfg();
 
-export const MODE = cfg.MODE;
-
-if (cfg.env === 'production' && cfg.MODE !== 'beta') {
-  throw new Error('Production build must run in MODE=beta');
+  if (c.NODE_ENV === 'production' && c.MODE !== 'beta') {
+    throw new Error('Production runtime must run in MODE=beta');
+  }
 }

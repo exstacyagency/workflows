@@ -12,7 +12,6 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  betaBootCheck();
 
   return (
     <html lang="en">
