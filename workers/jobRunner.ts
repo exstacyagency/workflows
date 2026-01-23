@@ -1,25 +1,22 @@
-import { cfg } from "@/lib/config";
 import { logError } from "@/lib/logger";
-import { loadDotEnvFileIfPresent } from "@/lib/config/dotenv";
 import { JobStatus, JobType } from "@prisma/client";
-import { runCustomerResearch } from "../services/customerResearchService.ts";
-import { runAdRawCollection } from "../lib/adRawCollectionService.ts";
-import { runPatternAnalysis } from "../lib/patternAnalysisService.ts";
-import { startScriptGenerationJob } from "../lib/scriptGenerationService.ts";
-import { startVideoPromptGenerationJob } from "../lib/videoPromptGenerationService.ts";
-import { runVideoImageGenerationJob } from "../lib/videoImageGenerationService.ts";
-import { runVideoGenerationJob } from "../lib/videoGenerationService.ts";
-import prisma from "../lib/prisma.ts";
-import { rollbackQuota } from "../lib/billing/usage.ts";
-import { getRuntimeMode } from "../lib/jobRuntimeMode";
-import { updateJobStatus } from "@/lib/jobs/updateJobStatus";
-type PipelineContext = {
-  mode: RuntimeMode;
-};
+import type { RuntimeMode } from "@/lib/jobRuntimeMode";
 import { cfg } from "@/lib/config";
-import { logError } from "@/lib/logger";
+// ...existing code...
+// ...existing code...
+// ...existing code...
+// ...existing code...
+// ...existing code...
+// ...existing code...
+// ...existing code...
+// ...existing code...
+// ...existing code...
+// ...existing code...
+// ...existing code...
+// ...existing code...
+// ...existing code...
 import { loadDotEnvFileIfPresent } from "@/lib/config/dotenv";
-import { JobStatus, JobType } from "@prisma/client";
+// ...existing code...
 import { runCustomerResearch } from "../services/customerResearchService.ts";
 import { runAdRawCollection } from "../lib/adRawCollectionService.ts";
 import { runPatternAnalysis } from "../lib/patternAnalysisService.ts";
@@ -41,7 +38,7 @@ type PipelineContext = {
   mode: RuntimeMode;
 };
 
-const pipelineContext: PipelineContext = { mode: assertRuntimeMode() };
+const pipelineContext: PipelineContext = { mode: getRuntimeMode() };
 
 console.log(`[BOOT] Runtime mode: ${pipelineContext.mode}`);
 if (pipelineContext.mode === "alpha") {
