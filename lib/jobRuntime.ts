@@ -1,3 +1,8 @@
+import type { RuntimeMode } from "./jobRuntimeMode";
+
+export function isBeta(mode: RuntimeMode) {
+  return mode === "beta";
+}
 import { prisma } from "./prisma.ts";
 import { JobStatus, Prisma } from "@prisma/client";
 import { updateJobStatus } from "@/lib/jobs/updateJobStatus";
