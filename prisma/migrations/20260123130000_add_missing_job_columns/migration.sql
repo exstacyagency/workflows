@@ -1,9 +1,0 @@
-ALTER TABLE "job"
-  ADD COLUMN IF NOT EXISTS "runtimeMode" TEXT,
-  ADD COLUMN IF NOT EXISTS "determinism" TEXT,
-  ADD COLUMN IF NOT EXISTS "failureCode" TEXT,
-  ADD COLUMN IF NOT EXISTS "fixtureVersion" INTEGER;
-
-ALTER TABLE "job"
-  ALTER COLUMN "error" TYPE JSONB
-  USING "error"::jsonb;
