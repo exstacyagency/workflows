@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import React from "react";
 import { Providers } from "./providers";
+import { betaBootCheck } from "@/lib/betaBoot";
 
 export const metadata: Metadata = {
   title: "Workflows",
@@ -11,6 +12,8 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  betaBootCheck();
+
   return (
     <html lang="en">
       <body>
