@@ -1,9 +1,9 @@
+import { assertRuntimeMode } from "../jobRuntimeMode";
 import { prisma } from "@/lib/prisma";
 import { cfg } from "@/lib/config";
 import { isSelfHosted } from "@/lib/config/mode";
 import { JobStatus, JobType, Prisma } from "@prisma/client";
 import { randomUUID } from "crypto";
-import { getRuntimeMode } from "../jobRuntimeMode";
 
 export type EnqueueJobInput = {
   userId?: string;
@@ -48,9 +48,10 @@ export async function enqueueJob(
     });
     userId = project?.userId;
   }
-  if (!userId) {
-    throw new Error("enqueueJob: project owner not found");
-  }
+    const runtimeMode = assertRuntimeMode();
+    if (!userId) {
+      throw new Error("enqueueJob: project owner not found");
+    }
 
   if (backend === "db") {
     if (idempotencyKey) {
@@ -83,6 +84,7 @@ export async function enqueueJob(
         status: JobStatus.PENDING,
         idempotencyKey,
         payload: input.payload,
+          runtimeMode,
       },
       select: { id: true },
     });
