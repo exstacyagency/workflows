@@ -2,6 +2,7 @@
 import { cfg } from "@/lib/config";
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '../../../../lib/prisma';
+import { Prisma } from "@prisma/client";
 import { JobStatus, JobType } from '@prisma/client';
 import { runCustomerAnalysis } from '../../../../lib/customerAnalysisService';
 import { requireProjectOwner } from '../../../../lib/requireProjectOwner';
@@ -127,7 +128,7 @@ export async function POST(req: NextRequest) {
           idempotencyKey,
           payload: parsed.data,
           resultSummary: "Skipped: SECURITY_SWEEP",
-          error: null,
+          error: Prisma.JsonNull,
         },
         select: { id: true },
       });

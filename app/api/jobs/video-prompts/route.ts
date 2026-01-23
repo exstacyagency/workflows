@@ -8,7 +8,7 @@ import { checkRateLimit } from '../../../../lib/rateLimiter';
 import { logAudit } from '../../../../lib/logger';
 import { getSessionUserId } from '../../../../lib/getSessionUserId';
 import { enforceUserConcurrency, findIdempotentJob } from '../../../../lib/jobGuards';
-import { JobStatus, JobType } from '@prisma/client';
+import { JobStatus, JobType, Prisma } from '@prisma/client';
 import { assertMinPlan, UpgradeRequiredError } from '../../../../lib/billing/requirePlan';
 import { reserveQuota, rollbackQuota, QuotaExceededError } from '../../../../lib/billing/usage';
 import { requireProjectOwner404 } from '@/lib/auth/requireProjectOwner404';
@@ -141,7 +141,7 @@ export async function POST(req: NextRequest) {
           idempotencyKey,
           payload: { storyboardId, idempotencyKey },
           resultSummary: "Skipped: SECURITY_SWEEP",
-          error: null,
+          error: Prisma.JsonNull,
         },
         select: { id: true },
       });

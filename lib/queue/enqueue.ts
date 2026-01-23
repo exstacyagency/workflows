@@ -1,8 +1,9 @@
 import { prisma } from "@/lib/prisma";
 import { cfg } from "@/lib/config";
 import { isSelfHosted } from "@/lib/config/mode";
-import { JobStatus, JobType } from "@prisma/client";
+import { JobStatus, JobType, Prisma } from "@prisma/client";
 import { randomUUID } from "crypto";
+import { getRuntimeMode } from "../jobRuntimeMode";
 
 export type EnqueueJobInput = {
   userId?: string;
@@ -66,7 +67,7 @@ export async function enqueueJob(
         await prisma.job.update({
           where: { id: existing.id },
           data: {
-            error: null,
+            error: Prisma.JsonNull,
             payload: input.payload,
           },
         });

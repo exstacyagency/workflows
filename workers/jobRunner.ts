@@ -1,7 +1,22 @@
-import { cfg } from "@/lib/config";
 import { logError } from "@/lib/logger";
-import { loadDotEnvFileIfPresent } from "@/lib/config/dotenv";
 import { JobStatus, JobType } from "@prisma/client";
+import type { RuntimeMode } from "@/lib/jobRuntimeMode";
+import { cfg } from "@/lib/config";
+// ...existing code...
+// ...existing code...
+// ...existing code...
+// ...existing code...
+// ...existing code...
+// ...existing code...
+// ...existing code...
+// ...existing code...
+// ...existing code...
+// ...existing code...
+// ...existing code...
+// ...existing code...
+// ...existing code...
+import { loadDotEnvFileIfPresent } from "@/lib/config/dotenv";
+// ...existing code...
 import { runCustomerResearch } from "../services/customerResearchService.ts";
 import { runAdRawCollection } from "../lib/adRawCollectionService.ts";
 import { runPatternAnalysis } from "../lib/patternAnalysisService.ts";
@@ -11,8 +26,7 @@ import { runVideoImageGenerationJob } from "../lib/videoImageGenerationService.t
 import { runVideoGenerationJob } from "../lib/videoGenerationService.ts";
 import prisma from "../lib/prisma.ts";
 import { rollbackQuota } from "../lib/billing/usage.ts";
-import { assertRuntimeMode } from "../src/runtime/assertMode.ts";
-import { RuntimeMode } from "../src/runtime/mode.ts";
+import { getRuntimeMode } from "../lib/jobRuntimeMode";
 import { updateJobStatus } from "@/lib/jobs/updateJobStatus";
 
 if (cfg.raw("NODE_ENV") !== "production") {
@@ -24,7 +38,7 @@ type PipelineContext = {
   mode: RuntimeMode;
 };
 
-const pipelineContext: PipelineContext = { mode: assertRuntimeMode() };
+const pipelineContext: PipelineContext = { mode: getRuntimeMode() };
 
 console.log(`[BOOT] Runtime mode: ${pipelineContext.mode}`);
 if (pipelineContext.mode === "alpha") {
@@ -225,12 +239,12 @@ async function handleProviderConfig(jobId: string, provider: string, requiredEnv
 async function claimNextJob() {
   const dueBefore = nowMs();
   const claimed = await prisma.$queryRaw<any[]>`
-    UPDATE "Job"
+    UPDATE job
     SET "status" = CAST('RUNNING' AS "JobStatus"),
         "updatedAt" = NOW()
     WHERE "id" = (
       SELECT "id"
-      FROM "Job"
+      FROM job
       WHERE "status" = CAST('PENDING' AS "JobStatus")
         AND (
           ("payload"->>'nextRunAt') IS NULL
@@ -374,6 +388,42 @@ async function runJob(
 
         const result = await startScriptGenerationJob(job.projectId, fresh);
         await markCompleted(jobId, { ok: true, ...result });
+        return;
+      }
+
+      case JobType.STORYBOARD_GENERATION: {
+        const scriptId = String(payload?.scriptId ?? "").trim();
+
+        try {
+          const storyboard = await prisma.storyboard.create({
+            data: {
+              projectId: job.projectId,
+              jobId: job.id,
+              scriptId: scriptId || null,
+            },
+          });
+
+          // Persist reference for downstream jobs
+          await prisma.job.update({
+            where: { id: job.id },
+            data: {
+              resultSummary: {
+                storyboardId: storyboard.id,
+              },
+            },
+          });
+
+          await markCompleted(jobId, {
+            ok: true,
+            storyboardId: storyboard.id,
+            scriptId: scriptId || null,
+          });
+        } catch (e: any) {
+          const msg = String(e?.message ?? e ?? "Unknown error");
+          await rollbackJobQuotaIfNeeded(jobId, job.projectId, payload);
+          await markFailed(jobId, e);
+          await appendResultSummary(jobId, `Storyboard generation failed: ${msg}`);
+        }
         return;
       }
 

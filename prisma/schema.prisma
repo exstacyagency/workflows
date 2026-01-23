@@ -7,83 +7,70 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-//////////////////////
-// CORE OWNERSHIP  //
-//////////////////////
-
 model User {
-  id               String   @id @default(cuid())
-  email            String   @unique
+  id               String        @id @default(cuid())
+  email            String        @unique
   name             String?
   passwordHash     String?
-  stripeCustomerId String?  @unique
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  stripeCustomerId String?       @unique
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
   accountId        String?
-  account          Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
-
-  projects         Project[]
   auditLogs        AuditLog[]
+  projects         Project[]
   subscription     Subscription?
   usage            Usage[]
+  account          Account?      @relation(fields: [accountId], references: [id])
 
   @@map("user")
 }
 
 model Project {
-  id          String   @id @default(uuid())
-  userId      String
-  name        String
-  description String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
+  id                   String                @id @default(uuid())
+  userId               String
+  name                 String
+  description          String?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  adAssets             AdAsset[]
+  adPatternReferences  AdPatternReference[]
+  adPatternResults     AdPatternResult[]
+  auditLogs            AuditLog[]
+  characters           Character[]
+  customerAvatars      CustomerAvatar[]
   jobs                 Job[]
+  productIntelligences ProductIntelligence[]
+  user                 User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  researchRows         ResearchRow[]
   scripts              Script[]
   storyboards          Storyboard[]
-  characters           Character[]
-  researchRows         ResearchRow[]
-  adAssets             AdAsset[]
-  adPatternResults     AdPatternResult[]
-  adPatternReferences  AdPatternReference[]
-  customerAvatars      CustomerAvatar[]
-  productIntelligences ProductIntelligence[]
-  auditLogs            AuditLog[]
 
   @@index([userId])
   @@map("project")
 }
 
-//////////////////////
-// ACCOUNTS & CRM   //
-//////////////////////
-
 model Account {
-  id        String      @id @default(cuid())
-  tier      AccountTier @default(FREE)
-  spend     Int         @default(0)
-  spendCap  Int         @default(0)
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
-
-  users     User[]
-  campaigns Campaign[]
+  id          String       @id @default(cuid())
+  tier        AccountTier  @default(FREE)
+  spendCap    Int          @default(0)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  spend       Int          @default(0)
+  campaigns   Campaign[]
   spendEvents SpendEvent[]
+  users       User[]
 
   @@map("account")
 }
 
 model Campaign {
-  id        String   @id @default(cuid())
+  id        String        @id @default(cuid())
   accountId String
   name      String
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
   state     CampaignState @default(DRAFT)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  account   Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
   @@index([accountId])
   @@map("campaign")
@@ -95,46 +82,43 @@ model SpendEvent {
   amount    Int
   sourceId  String   @unique
   createdAt DateTime @default(now())
-
-  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  account   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
   @@index([accountId])
   @@map("spend_event")
 }
 
-//////////////////////
-// JOBS & LOGGING  //
-//////////////////////
-
 model Job {
-  id             String   @id @default(uuid())
-  projectId      String
-  userId         String
-  type           JobType
-  status         JobStatus @default(PENDING)
-  currentStep    String?
-  idempotencyKey String
-  payload        Json
-  resultSummary  Json?
-  error          String?
-  estimatedCost  Int?
-  actualCost     Int?
-  costBreakdown  Json?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-
-  scripts          Script[]
-  storyboards      Storyboard[]
-  characters       Character[]
-  researchRows     ResearchRow[]
+  id               String            @id @default(uuid())
+  projectId        String
+  type             JobType
+  status           JobStatus         @default(PENDING)
+  idempotencyKey   String
+  payload          Json
+  resultSummary    Json?
+  error            Json?
+  estimatedCost    Int?
+  actualCost       Int?
+  costBreakdown    Json?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  currentStep      String?
+  userId           String
+  runtimeMode      String?
+  determinism      String?
+  failureCode      String?
+  fixtureVersion   Int?
   adAssets         AdAsset[]
   adPatternResults AdPatternResult[]
   auditLogs        AuditLog[]
+  characters       Character[]
+  project          Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  researchRows     ResearchRow[]
+  scripts          Script[]
+  storyboards      Storyboard[]
 
-  @@index([projectId])
   @@unique([userId, projectId, idempotencyKey])
+  @@index([projectId])
   @@map("job")
 }
 
@@ -147,10 +131,9 @@ model AuditLog {
   metadata  Json?
   ip        String?
   createdAt DateTime @default(now())
-
-  user    User?    @relation(fields: [userId], references: [id])
-  project Project? @relation(fields: [projectId], references: [id])
-  job     Job?     @relation(fields: [jobId], references: [id])
+  job       Job?     @relation(fields: [jobId], references: [id])
+  project   Project? @relation(fields: [projectId], references: [id])
+  user      User?    @relation(fields: [userId], references: [id])
 
   @@index([userId])
   @@index([projectId])
@@ -158,81 +141,68 @@ model AuditLog {
   @@map("audit_log")
 }
 
-//////////////////////
-// DOMAIN TABLES   //
-//////////////////////
-
 model ResearchRow {
-  id         String         @id @default(uuid())
-  projectId  String
-  jobId      String?
-  source     ResearchSource
-  content    String
-  metadata   Json?
-  createdAt  DateTime       @default(now())
-
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  job     Job?    @relation(fields: [jobId], references: [id])
+  id        String         @id @default(uuid())
+  projectId String
+  jobId     String?
+  source    ResearchSource
+  content   String
+  metadata  Json?
+  createdAt DateTime       @default(now())
+  job       Job?           @relation(fields: [jobId], references: [id])
+  project   Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
   @@map("research_row")
 }
 
 model Script {
-  id                String   @id @default(cuid())
-  projectId         String
-  jobId             String?
-  mergedVideoUrl    String?
-  upscaledVideoUrl  String?
-  status            ScriptStatus
-  rawJson           Json
-  wordCount         Int?
-  upscaleError      String?
-  createdAt         DateTime @default(now())
-
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  job     Job?    @relation(fields: [jobId], references: [id])
-  storyboards Storyboard[]
+  id               String       @id @default(cuid())
+  projectId        String
+  jobId            String?
+  mergedVideoUrl   String?
+  upscaledVideoUrl String?
+  status           ScriptStatus
+  rawJson          Json
+  wordCount        Int?
+  upscaleError     String?
+  createdAt        DateTime     @default(now())
+  job              Job?         @relation(fields: [jobId], references: [id])
+  project          Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  storyboards      Storyboard[]
 
   @@map("script")
 }
 
 model Storyboard {
-  id        String   @id @default(uuid())
+  id        String            @id @default(uuid())
   projectId String
   jobId     String?
   scriptId  String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  job     Job?    @relation(fields: [jobId], references: [id])
-  script  Script? @relation(fields: [scriptId], references: [id])
-
-  scenes StoryboardScene[]
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+  job       Job?              @relation(fields: [jobId], references: [id])
+  project   Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  script    Script?           @relation(fields: [scriptId], references: [id])
+  scenes    StoryboardScene[]
 
   @@index([projectId])
   @@map("storyboard")
 }
 
 model StoryboardScene {
-  id           String   @id @default(uuid())
+  id           String     @id @default(uuid())
   storyboardId String
   sceneNumber  Int
   rawJson      Json?
-  status       String   @default("pending")
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  storyboard Storyboard @relation(fields: [storyboardId], references: [id], onDelete: Cascade)
+  status       String     @default("pending")
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  storyboard   Storyboard @relation(fields: [storyboardId], references: [id], onDelete: Cascade)
 
   @@index([storyboardId])
   @@map("storyboard_scene")
 }
-
-//////////////////////
-// ADDITIONAL DOMAIN //
-//////////////////////
 
 model Character {
   id        String   @id @default(uuid())
@@ -242,9 +212,8 @@ model Character {
   metadata  Json?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  job     Job?    @relation(fields: [jobId], references: [id])
+  job       Job?     @relation(fields: [jobId], references: [id])
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
   @@map("character")
@@ -258,9 +227,8 @@ model AdAsset {
   rawJson   Json
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
-
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  job     Job?    @relation(fields: [jobId], references: [id])
+  job       Job?       @relation(fields: [jobId], references: [id])
+  project   Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
   @@map("ad_asset")
@@ -273,9 +241,8 @@ model AdPatternResult {
   summary   String?
   rawJson   Json?
   createdAt DateTime @default(now())
-
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  job     Job?    @relation(fields: [jobId], references: [id])
+  job       Job?     @relation(fields: [jobId], references: [id])
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
   @@map("ad_pattern_result")
@@ -287,8 +254,7 @@ model AdPatternReference {
   source    String
   metadata  Json?
   createdAt DateTime @default(now())
-
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
   @@map("ad_pattern_reference")
@@ -301,8 +267,7 @@ model CustomerAvatar {
   persona   Json?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
   @@map("customer_avatar")
@@ -314,26 +279,20 @@ model ProductIntelligence {
   insights  Json
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
   @@map("product_intelligence")
 }
 
-//////////////////////
-// BILLING / AUTH  //
-//////////////////////
-
 model Subscription {
-  id       String  @id @default(cuid())
-  userId   String  @unique
-  planId   PlanId
-  status   String  @default("active")
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  planId    PlanId
+  status    String   @default("active")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("subscription")
 }
@@ -343,16 +302,11 @@ model Usage {
   userId   String
   period   DateTime
   jobsUsed Int      @default(0)
-
-  user User @relation(fields: [userId], references: [id])
+  user     User     @relation(fields: [userId], references: [id])
 
   @@unique([userId, period])
   @@map("usage")
 }
-
-//////////////////////
-// ENUMS          //
-//////////////////////
 
 enum JobType {
   CUSTOMER_RESEARCH
@@ -407,7 +361,6 @@ enum CampaignState {
   ARCHIVED
 }
 
-// Script lifecycle statuses. Values chosen to match status strings used across the codebase.
 enum ScriptStatus {
   seeded
   PENDING

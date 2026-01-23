@@ -18,12 +18,15 @@ const PROJECT = {
 };
 
 async function main() {
+    // Cleanup: delete any existing user with email 'test@local.dev' to guarantee deterministic id
+    await prisma.user.deleteMany({ where: { email: "test@local.dev" } });
   // --- users ---
   for (const u of USERS) {
     const hash = await bcrypt.hash(u.password, 10);
     await prisma.user.upsert({
       where: { email: u.email },
       create: {
+        id: u.email === "test@local.dev" ? "user_test" : undefined,
         email: u.email,
         passwordHash: hash,
       },

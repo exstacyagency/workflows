@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { JobStatus } from "@prisma/client";
+import { JobStatus, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getSessionUserId } from "@/lib/getSessionUserId";
 import { requireProjectOwner404 } from "@/lib/auth/requireProjectOwner404";
@@ -66,7 +66,7 @@ export async function POST(
   await prisma.job.update({
     where: { id: jobId },
     data: {
-      error: null,
+      error: Prisma.JsonNull,
       payload,
     },
   });
