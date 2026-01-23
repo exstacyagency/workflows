@@ -1,3 +1,4 @@
+import { assertRuntimeMode } from "../lib/jobRuntimeMode";
 import { logError } from "@/lib/logger";
 import { JobStatus, JobType } from "@prisma/client";
 import type { RuntimeMode } from "@/lib/jobRuntimeMode";
@@ -26,7 +27,6 @@ import { runVideoImageGenerationJob } from "../lib/videoImageGenerationService.t
 import { runVideoGenerationJob } from "../lib/videoGenerationService.ts";
 import prisma from "../lib/prisma.ts";
 import { rollbackQuota } from "../lib/billing/usage.ts";
-import { getRuntimeMode } from "../lib/jobRuntimeMode";
 import { updateJobStatus } from "@/lib/jobs/updateJobStatus";
 
 if (cfg.raw("NODE_ENV") !== "production") {
@@ -35,10 +35,12 @@ if (cfg.raw("NODE_ENV") !== "production") {
 }
 
 type PipelineContext = {
-  mode: RuntimeMode;
+  mode: "alpha" | "beta";
 };
 
-const pipelineContext: PipelineContext = { mode: getRuntimeMode() };
+const pipelineContext: PipelineContext = {
+  mode: assertRuntimeMode(),
+};
 
 console.log(`[BOOT] Runtime mode: ${pipelineContext.mode}`);
 if (pipelineContext.mode === "alpha") {

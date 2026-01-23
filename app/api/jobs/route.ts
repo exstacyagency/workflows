@@ -9,11 +9,11 @@ function assertValidRuntimeMode(mode: string) {
 }
 
 if (!isBuildPhase) {
-  assertValidRuntimeMode(getRuntimeMode());
+  assertValidRuntimeMode(assertRuntimeMode());
 }
 import { prisma } from "@/lib/prisma";
 import { getSessionUserId } from "@/lib/getSessionUserId";
-import { getRuntimeMode } from "@/lib/jobRuntimeMode";
+import { assertRuntimeMode } from "@/lib/jobRuntimeMode";
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
@@ -26,7 +26,7 @@ export async function POST(req: Request) {
   const { projectId, pipeline, input, idempotencyKey, status, mode } = body;
 
   // 🚨 HARD GUARD: production jobs forbidden in alpha
-  if (getRuntimeMode() === "alpha" && mode === "production") {
+  if (assertRuntimeMode() === "alpha" && mode === "production") {
     return NextResponse.json(
       { error: "Production jobs are not allowed in alpha" },
       { status: 403 }
