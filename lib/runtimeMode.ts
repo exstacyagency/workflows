@@ -1,13 +1,23 @@
-import { cfg } from "@/lib/config";
+import { cfg } from "./config";
 
-export type RuntimeMode = "alpha" | "beta" | "prod";
+// ensure this file never touches process.env directly
 
-export const RUNTIME_MODE = cfg.RUNTIME_MODE as RuntimeMode;
+export type RuntimeMode = "dev" | "beta" | "prod";
 
-if (!RUNTIME_MODE) {
-  throw new Error("RUNTIME_MODE must be set");
+export function getRuntimeMode(): RuntimeMode {
+  if (cfg.MODE === "prod" || cfg.MODE === "beta" || cfg.MODE === "dev") {
+    return cfg.MODE;
+  }
+  return "dev";
 }
 
-if (RUNTIME_MODE !== "alpha") {
-  throw new Error(`Invalid runtime mode for alpha: ${RUNTIME_MODE}`);
+export function assertRuntimeModeAllowed() {
+  if (cfg.raw("NEXT_PHASE") === "phase-production-build") {
+    return;
+  }
+
+  const mode = getRuntimeMode();
+  if (cfg.raw("NODE_ENV") === "production" && mode === "dev") {
+    throw new Error("Production build must run in MODE=beta or MODE=prod");
+  }
 }

@@ -1,3 +1,6 @@
+if (process.env.NODE_ENV === "production" && !process.env.MODE) {
+}
+
 const MODE = process.env.MODE ?? "dev";
 
 const IS_ALPHA = MODE === "alpha";
