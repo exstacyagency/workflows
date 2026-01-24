@@ -1,9 +1,10 @@
 // lib/runtime/requireMode.ts
-import { cfg } from "../config/runtime";
-export function requireRuntimeMode() {
-  if (process.env.NODE_ENV !== "production") return;
+import { cfg } from "@/lib/config";
 
-  const mode = process.env.MODE;
+export function requireRuntimeMode() {
+  if (cfg.nodeEnv !== "production") return;
+
+  const mode = cfg.mode;
 
   if (!mode) {
     throw new Error("MODE must be explicitly set in production");
