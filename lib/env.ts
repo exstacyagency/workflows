@@ -8,6 +8,7 @@ export const JOB_IDEMPOTENCY_ENABLED = cfg.JOB_IDEMPOTENCY_ENABLED;
 
 export const MODE = cfg.MODE;
 
-if (cfg.env === 'production' && cfg.MODE !== 'beta') {
-  throw new Error('Production build must run in MODE=beta');
+// Only crash if production mode is not one of the allowed values
+if (cfg.env === 'production' && !['beta', 'prod'].includes(String(cfg.MODE))) {
+  throw new Error('Production build must run in MODE=beta or MODE=prod');
 }
