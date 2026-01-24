@@ -15,14 +15,6 @@ const nodeEnv = getEnv("NODE_ENV") ?? "development";
 const runtimeMode = getEnv("MODE");
 const securitySweep = getEnv("SECURITY_SWEEP") === "1";
 
-// Enforce explicit MODE in production and prevent dev mode in production
-if (nodeEnv === "production" && !runtimeMode) {
-  throw new Error("MODE must be explicitly set in production");
-}
-
-if (nodeEnv === "production" && !["beta", "prod"].includes(runtimeMode!)) {
-  throw new Error("Invalid MODE for production");
-}
 
 export const cfg = {
   raw: getEnv,
