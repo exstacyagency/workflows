@@ -26,4 +26,7 @@ jobs:
         run: npm run lint
 
       - name: Build
-        run: NODE_ENV=production npm run build
+        env:
+          NODE_ENV: production
+          MODE: beta
+        run: npm run build

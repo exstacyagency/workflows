@@ -1,4 +1,5 @@
 import { cfg } from "@/lib/config";
+import { requireRuntimeMode } from "@/lib/runtime/requireMode";
 import { isSelfHosted } from "@/lib/config/mode";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -7,6 +8,8 @@ import { getStripe } from "@/lib/stripe";
 import { getPriceIdForPlan } from "@/lib/billing/plans";
 
 export async function POST(req: NextRequest) {
+
+  requireRuntimeMode();
   if (isSelfHosted()) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
