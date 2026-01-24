@@ -27,6 +27,8 @@ export const cfg = {
   securitySweep,
   isGolden: securitySweep,
   JOB_IDEMPOTENCY_ENABLED: getEnv("JOB_IDEMPOTENCY_ENABLED") === "true",
+  nodeEnv,
+  mode: runtimeMode,
 };
 
 const isProd = cfg.raw("NODE_ENV") === "production";
