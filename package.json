@@ -8,6 +8,7 @@
     "seed": "tsx prisma/seed.ts"
   },
   "scripts": {
+    "test:prod-boot": "bash scripts/test-prod-boot.sh",
     "e2e:deterministic": "bash scripts/e2e_deterministic.sh",
     "routes:manifest": "tsx scripts/route_inventory.ts",
     "baseline:check": "bash scripts/baseline_check.sh",
