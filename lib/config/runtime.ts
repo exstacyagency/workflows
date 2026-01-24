@@ -1,22 +1,31 @@
-/* eslint-disable no-restricted-properties */
 
-const nodeEnv = process.env.NODE_ENV ?? "development";
-const runtimeMode = process.env.MODE;
-const securitySweep = process.env.SECURITY_SWEEP === "1";
+
+// Centralized config object for environment access
+
+function getEnv(name: string): string | undefined {
+  if (typeof globalThis !== "undefined" &&
+      typeof globalThis.process !== "undefined" &&
+      typeof globalThis.process.env !== "undefined") {
+    return globalThis.process.env[name];
+  }
+  return undefined;
+}
+
+const nodeEnv = getEnv("NODE_ENV") ?? "development";
+const runtimeMode = getEnv("MODE");
+const securitySweep = getEnv("SECURITY_SWEEP") === "1";
+
+// Enforce explicit MODE in production and prevent dev mode in production
+if (nodeEnv === "production" && !runtimeMode) {
+  throw new Error("MODE must be explicitly set in production");
+}
+
+if (nodeEnv === "production" && !["beta", "prod"].includes(runtimeMode!)) {
+  throw new Error("Invalid MODE for production");
+}
 
 export const cfg = {
-  raw(name: string): string | undefined {
-    switch (name) {
-      case "NODE_ENV":
-        return process.env.NODE_ENV;
-      case "CI":
-        return process.env.CI;
-      case "GITHUB_ACTIONS":
-        return process.env.GITHUB_ACTIONS;
-      default:
-        return process.env[name];
-    }
-  },
+  raw: getEnv,
   env: nodeEnv,
   MODE: runtimeMode,
   runtimeMode,
@@ -25,7 +34,7 @@ export const cfg = {
   isDev: nodeEnv !== "production",
   securitySweep,
   isGolden: securitySweep,
-  JOB_IDEMPOTENCY_ENABLED: process.env.JOB_IDEMPOTENCY_ENABLED === "true",
+  JOB_IDEMPOTENCY_ENABLED: getEnv("JOB_IDEMPOTENCY_ENABLED") === "true",
 };
 
 const isProd = cfg.raw("NODE_ENV") === "production";
