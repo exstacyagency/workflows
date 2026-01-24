@@ -1,3 +1,7 @@
+import { assertRuntimeModeAllowed } from "@/lib/runtimeMode";
+
+assertRuntimeModeAllowed();
+
 export default function NotFound() {
   return (
     <html>
