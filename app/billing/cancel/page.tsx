@@ -1,3 +1,7 @@
+import { assertRuntimeModeAllowed } from "@/lib/runtimeMode";
+
+assertRuntimeModeAllowed();
+
 import { notFound } from "next/navigation";
 import { isSelfHosted } from "@/lib/config/mode";
 
