@@ -17,7 +17,7 @@ export function assertRuntimeModeAllowed() {
   }
 
   const mode = getRuntimeMode();
-  if (cfg.env === "production" && mode === "dev") {
+  if (cfg.raw("NODE_ENV") === "production" && mode === "dev") {
     throw new Error("Production build must run in MODE=beta or MODE=prod");
   }
 }
