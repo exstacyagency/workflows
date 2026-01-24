@@ -1,5 +1,4 @@
 if (process.env.NODE_ENV === "production" && !process.env.MODE) {
-  process.env.MODE = "beta";
 }
 
 const MODE = process.env.MODE ?? "dev";
