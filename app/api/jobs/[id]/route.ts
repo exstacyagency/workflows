@@ -2,11 +2,9 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUserId } from "@/lib/getSessionUserId";
 
-export async function GET(
-  _req: Request,
-  { params }: { params: { id: string } }
-) {
-  const userId = await getSessionUserId();
+export async function GET(req: Request, { params }: { params: { id: string } }) {
+  // Pass req as NextRequest for test token support
+  const userId = await getSessionUserId(req as any);
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
