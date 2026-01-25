@@ -1,3 +1,8 @@
+            - name: Test auth isolation
+              env:
+                NODE_ENV: production
+                MODE: beta
+              run: npm run test:auth-isolation
       - name: Test deployment-real beta boot
         env:
           NODE_ENV: production
