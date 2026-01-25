@@ -1,6 +1,9 @@
 // Patch 2 — Fix API guard crash during build
 import { cfg } from "@/lib/config";
-const isBuildPhase = cfg.raw("NEXT_PHASE") === "phase-production-build";
+import { prisma } from "@/lib/prisma";
+import { getSessionUserId } from "@/lib/getSessionUserId";
+import { assertRuntimeMode } from "@/lib/jobRuntimeMode";
+import { NextResponse } from "next/server";
 
 function assertValidRuntimeMode(mode: string) {
   if (mode !== "alpha" && mode !== "production") {
@@ -8,16 +11,15 @@ function assertValidRuntimeMode(mode: string) {
   }
 }
 
-if (!isBuildPhase) {
-  assertValidRuntimeMode(assertRuntimeMode());
-}
-import { prisma } from "@/lib/prisma";
-import { getSessionUserId } from "@/lib/getSessionUserId";
-import { assertRuntimeMode } from "@/lib/jobRuntimeMode";
-import { NextResponse } from "next/server";
-
 export async function POST(req: Request) {
-  const userId = await getSessionUserId();
+  const isBuildPhase = cfg.raw("NEXT_PHASE") === "phase-production-build";
+  if (!isBuildPhase) {
+    assertValidRuntimeMode(assertRuntimeMode());
+  }
+
+  // Pass req as NextRequest for test token support
+  // Cast to any to support both Node and Edge runtimes
+  const userId = await getSessionUserId(req as any);
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
