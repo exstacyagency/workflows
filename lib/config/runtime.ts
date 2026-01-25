@@ -29,6 +29,7 @@ export const cfg = {
   JOB_IDEMPOTENCY_ENABLED: getEnv("JOB_IDEMPOTENCY_ENABLED") === "true",
   nodeEnv,
   mode: runtimeMode,
+  authTestSecret: getEnv("AUTH_TEST_SECRET"),
 };
 
 const isProd = cfg.raw("NODE_ENV") === "production";

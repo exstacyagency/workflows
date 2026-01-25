@@ -46,6 +46,7 @@ model Project {
   storyboards          Storyboard[]
 
   @@index([userId])
+  @@unique([userId, name])
   @@map("project")
 }
 
