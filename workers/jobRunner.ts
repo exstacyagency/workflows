@@ -42,7 +42,22 @@ const pipelineContext: PipelineContext = {
   mode: assertRuntimeMode(),
 };
 
-console.log(`[BOOT] Runtime mode: ${pipelineContext.mode}`);
+// Inline getRuntimeMode logic (must be JS, not TS)
+function getRuntimeMode() {
+  const nodeEnv = process.env.NODE_ENV;
+  const explicitMode = process.env.MODE;
+  if (nodeEnv === "production") {
+    if (explicitMode === "prod" || explicitMode === "beta") {
+      return explicitMode;
+    }
+    return "beta";
+  }
+  return explicitMode === "prod" || explicitMode === "beta"
+    ? explicitMode
+    : "dev";
+}
+const runtimeMode = getRuntimeMode();
+console.log(`[BOOT] Runtime mode: ${runtimeMode}`);
 if (pipelineContext.mode === "alpha") {
   console.log("[PIPELINE] Running in ALPHA mode");
 }

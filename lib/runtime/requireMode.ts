@@ -1,3 +1,6 @@
+// NOTE:
+// This function MUST NOT be imported by instrumentation.
+// Runtime-only enforcement.
 // lib/runtime/requireMode.ts
 import { cfg } from "@/lib/config";
 
