@@ -32,6 +32,7 @@ export const cfg = {
   authTestSecret: getEnv("AUTH_TEST_SECRET"),
 };
 
+  // Safe production default (instrumentation-safe)
 const isProd = cfg.raw("NODE_ENV") === "production";
 const isCI = cfg.raw("CI") === "true" || cfg.raw("GITHUB_ACTIONS") === "true";
 const isNextBuild = cfg.raw("NEXT_PHASE") === "phase-production-build";

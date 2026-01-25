@@ -7,7 +7,22 @@ const IS_ALPHA = MODE === "alpha";
 const IS_BETA = MODE === "beta";
 const IS_PROD = MODE === "prod";
 
-console.log(`[BOOT] Runtime mode: ${MODE}`);
+// Inline getRuntimeMode logic (must be JS, not TS)
+function getRuntimeMode() {
+  const nodeEnv = process.env.NODE_ENV;
+  const explicitMode = process.env.MODE;
+  if (nodeEnv === "production") {
+    if (explicitMode === "prod" || explicitMode === "beta") {
+      return explicitMode;
+    }
+    return "beta";
+  }
+  return explicitMode === "prod" || explicitMode === "beta"
+    ? explicitMode
+    : "dev";
+}
+const runtimeMode = getRuntimeMode();
+console.log(`[BOOT] Runtime mode: ${runtimeMode}`);
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
