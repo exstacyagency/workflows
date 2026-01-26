@@ -1,17 +1,6 @@
 import { cookies } from "next/headers";
 import { db } from "@/lib/db";
+import { cfg } from "@/lib/config";
 
-export async function getSessionUserId(): Promise<string> {
-  // Dev/test: check for test_session cookie
-  const cookieStore = cookies();
-  const testToken = cookieStore.get("test_session")?.value;
-  if (process.env.NODE_ENV !== "production" && testToken) {
-    const session = await db.testSession.findUnique({
-      where: { token: testToken },
-    });
-    if (!session) throw new Error("UNAUTHENTICATED");
-    return session.userId;
-  }
-  throw new Error("UNAUTHENTICATED");
-}
+export { getSessionUserId } from "@/lib/auth/getSessionUserId";
 

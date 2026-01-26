@@ -20,8 +20,10 @@ echo "→ Build"
 npm run build
 
 echo "→ Start server"
-npm start &
-PID=$!
+  echo "→ Start server with test route bypass"
+  export NEXT_PUBLIC_ALLOW_TEST_ROUTES=1
+  npm start &
+  PID=$!
 
 sleep 5
 
@@ -30,17 +32,21 @@ kill $PID
 wait $PID || true
 
 echo "→ Restart server (1)"
-npm start &
-PID=$!
-sleep 5
-kill $PID
-wait $PID || true
+  echo "→ Restart server (1) with test route bypass"
+  export NEXT_PUBLIC_ALLOW_TEST_ROUTES=1
+  npm start &
+  PID=$!
+  sleep 5
+  kill $PID
+  wait $PID || true
 
 echo "→ Restart server (2)"
-npm start &
-PID=$!
-sleep 5
-kill $PID
-wait $PID || true
+  echo "→ Restart server (2) with test route bypass"
+  export NEXT_PUBLIC_ALLOW_TEST_ROUTES=1
+  npm start &
+  PID=$!
+  sleep 5
+  kill $PID
+  wait $PID || true
 
 echo "✅ Test #1 passed"

@@ -61,7 +61,10 @@
     "smoke:prod": "NODE_ENV=production npm run build && node scripts/prod_smoke.mjs",
     "dev:run-job": "tsx scripts/run-pending-job.ts",
     "test": "jest",
-    "test:isolation": "NODE_ENV=test node --test tests/isolation.self-operator.test.ts"
+    "test:isolation": "NODE_ENV=test node --test tests/isolation.self-operator.test.ts",
+    "dev:test": "NODE_ENV=test next dev",
+    "start:test": "NODE_ENV=test next start",
+    "bootstrap:test": "NODE_ENV=test tsx scripts/bootstrap-dev.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.2",

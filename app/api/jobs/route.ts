@@ -6,7 +6,7 @@ import { assertValidRuntimeMode } from "@/lib/runtime/assertValidRuntimeMode";
 // Patch 2 — Fix API guard crash during build
 import { cfg } from "@/lib/config";
 import { prisma } from "@/lib/prisma";
-import { getSessionUserId } from "@/lib/getSessionUserId";
+import { getSessionUserId } from "@/lib/auth/getSessionUserId";
 import { assertRuntimeMode } from "@/lib/jobRuntimeMode";
 import { NextResponse } from "next/server";
 
@@ -21,7 +21,7 @@ export async function POST(req: Request) {
 
   // Pass req as NextRequest for test token support
   // Cast to any to support both Node and Edge runtimes
-  const userId = await getSessionUserId(req as any);
+  const userId = await getSessionUserId(req);
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

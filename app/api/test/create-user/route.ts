@@ -1,13 +1,18 @@
-export const runtime = "nodejs";
+
+
+import { cfg } from "@/lib/config";
+import { assertTestEnv } from "@/lib/auth/testSession";
+assertTestEnv();
 
 import { NextResponse } from "next/server";
-import { TextEncoder } from "util";
 import { db } from "@/lib/db";
 import { createTestSession } from "@/lib/auth/testSession";
 import { randomUUID } from "crypto";
+
 export async function POST() {
-  if (process.env.NODE_ENV === "production") {
-    return new Response("Not Found", { status: 404 });
+  const isEnabled = cfg.ENABLE_TEST_USERS === true;
+  if (!isEnabled) {
+    return NextResponse.json({ error: "Disabled" }, { status: 403 });
   }
 
   const user = await db.user.create({
@@ -18,7 +23,7 @@ export async function POST() {
 
   const token = await createTestSession(user.id);
 
-  const res = Response.json({
+  const res = NextResponse.json({
     userId: user.id,
     email: user.email,
   });

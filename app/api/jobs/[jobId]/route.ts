@@ -7,6 +7,9 @@ export async function GET(
   { params }: { params: { jobId: string } }
 ) {
   const userId = await getSessionUserId();
+  if (!userId) {
+    return new Response("Unauthorized", { status: 401 });
+  }
   try {
     const job = await requireJobAccess(params.jobId, userId);
     return Response.json(job);

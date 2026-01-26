@@ -30,6 +30,7 @@ export const cfg = {
   nodeEnv,
   mode: runtimeMode,
   authTestSecret: getEnv("AUTH_TEST_SECRET"),
+  ENABLE_TEST_USERS: getEnv("ENABLE_TEST_USERS") === "true",
 };
 
   // Safe production default (instrumentation-safe)
