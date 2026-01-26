@@ -1,39 +1,42 @@
-import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
-import { getSessionUserId } from "@/lib/auth/getSessionUserId";
 
-export async function GET() {
-  const userId = await getSessionUserId();
-  console.log("AUTH USER ID:", userId);
+import { NextResponse } from "next/server"
+import { getSessionUserId } from "@/lib/auth/getSessionUserId"
+import { db } from "@/lib/db"
+export async function POST(request: Request) {
+  const userId = await getSessionUserId(request)
 
   if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const projects = await prisma.project.findMany({
-    where: {
-      userId,
-    },
-    orderBy: { createdAt: "desc" },
-  });
+  const body = await request.json()
 
-  return NextResponse.json(projects);
+  try {
+    const project = await db.project.create({
+      data: {
+        ...body,
+        userId
+      }
+    })
+    return NextResponse.json(project)
+  } catch (err: any) {
+    if (err.code === 'P2002' && err.meta?.target?.includes('userId') && err.meta?.target?.includes('name')) {
+      return NextResponse.json({ error: "Project with this name already exists for this user." }, { status: 409 })
+    }
+    throw err
+  }
 }
 
-export async function POST(req: Request) {
-  const userId = await getSessionUserId();
+export async function GET(request: Request) {
+  const userId = await getSessionUserId(request)
+
   if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const body = await req.json();
+  const projects = await db.project.findMany({
+    where: { userId }
+  })
 
-  const project = await prisma.project.create({
-    data: {
-      name: body.name,
-      userId,
-    },
-  });
-
-  return NextResponse.json(project);
+  return NextResponse.json(projects)
 }
