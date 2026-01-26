@@ -1,22 +1,13 @@
-import { cfg } from "@/lib/config";
 
-export type RuntimeMode = "dev" | "beta" | "prod";
+export function getRuntimeMode(): "alpha" | "dev" | "production" {
+  if (process.env.NODE_ENV === "test") return "dev";
+  if (process.env.NODE_ENV === "development") return "dev";
 
-export function getRuntimeMode(): RuntimeMode {
-  const nodeEnv = cfg.raw("NODE_ENV");
-  const explicitMode = cfg.raw("MODE");
+  const mode = process.env.RUNTIME_MODE;
 
-  // Production runtime must NEVER be dev
-  if (nodeEnv === "production") {
-    if (explicitMode === "prod" || explicitMode === "beta") {
-      return explicitMode as RuntimeMode;
-    }
-    // hard default for prod runtime
-    return "beta";
+  if (mode === "alpha" || mode === "dev" || mode === "production") {
+    return mode;
   }
 
-  // Non-production
-  return explicitMode === "prod" || explicitMode === "beta"
-    ? explicitMode as RuntimeMode
-    : "dev";
+  return "dev";
 }

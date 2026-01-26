@@ -1,3 +1,8 @@
+
+
+import { getRuntimeMode } from "@/lib/runtime/getRuntimeMode";
+import { assertValidRuntimeMode } from "@/lib/runtime/assertValidRuntimeMode";
+
 // Patch 2 — Fix API guard crash during build
 import { cfg } from "@/lib/config";
 import { prisma } from "@/lib/prisma";
@@ -5,16 +10,13 @@ import { getSessionUserId } from "@/lib/getSessionUserId";
 import { assertRuntimeMode } from "@/lib/jobRuntimeMode";
 import { NextResponse } from "next/server";
 
-function assertValidRuntimeMode(mode: string) {
-  if (mode !== "alpha" && mode !== "production") {
-    throw new Error(`Invalid runtime mode: ${mode}`);
-  }
-}
+
 
 export async function POST(req: Request) {
   const isBuildPhase = cfg.raw("NEXT_PHASE") === "phase-production-build";
   if (!isBuildPhase) {
-    assertValidRuntimeMode(assertRuntimeMode());
+    const runtimeMode = getRuntimeMode();
+    assertValidRuntimeMode(runtimeMode);
   }
 
   // Pass req as NextRequest for test token support
