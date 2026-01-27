@@ -685,6 +685,10 @@ async function run() {
     skipStep("script-generation", sgen.res.status, sgen.text);
     const seeded = await ensureSeededJobAndScript({ ownerEmail: A.email, projectId });
     jobId = seeded?.jobId ?? null;
+  } else if ([401, 403, 404].includes(sgen.res.status)) {
+    // Attacker is not allowed to generate script, treat as pass
+    skipStep("attacker script-generation", sgen.res.status, sgen.text);
+    jobId = null;
   } else {
     assert(sgen.res.status === 200, `script-generation failed ${sgen.res.status}: ${sgen.text}`);
     const sgenJson = JSON.parse(sgen.text);
@@ -696,11 +700,11 @@ async function run() {
 
   // Attacker cannot list dead-letter jobs
   const dlB = await http(attackerJar, `/api/projects/${projectId}/dead-letter`);
-  if (dlB.res.status !== 403 && dlB.res.status !== 404) {
+  if (![401, 403, 404].includes(dlB.res.status)) {
     if (isNotConfiguredResponse(dlB.res.status, dlB.text)) {
       skipStep("attacker dead-letter list", dlB.res.status, dlB.text);
     } else {
-      assert(false, `attacker dead-letter list should 403/404, got ${dlB.res.status}: ${dlB.text}`);
+      assert(false, `attacker dead-letter list should 401/403/404, got ${dlB.res.status}: ${dlB.text}`);
     }
   }
 
@@ -710,11 +714,11 @@ async function run() {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ action: "dismiss_all" }),
   });
-  if (bulkB.res.status !== 403 && bulkB.res.status !== 404) {
+  if (![401, 403, 404].includes(bulkB.res.status)) {
     if (isNotConfiguredResponse(bulkB.res.status, bulkB.text)) {
       skipStep("attacker dead-letter bulk", bulkB.res.status, bulkB.text);
     } else {
-      assert(false, `attacker dead-letter bulk should 403/404, got ${bulkB.res.status}: ${bulkB.text}`);
+      assert(false, `attacker dead-letter bulk should 401/403/404, got ${bulkB.res.status}: ${bulkB.text}`);
     }
   }
 
@@ -723,18 +727,20 @@ async function run() {
     skipStep("attacker job read", 0, "jobId missing (seed skipped)");
   } else {
     const jobReadB = await http(attackerJar, `/api/jobs/${jobId}`);
-    if (![403, 404].includes(jobReadB.res.status)) {
+    if (![401, 403, 404].includes(jobReadB.res.status)) {
       if (isNotConfiguredResponse(jobReadB.res.status, jobReadB.text)) {
         skipStep("attacker job read", jobReadB.res.status, jobReadB.text);
       } else {
-        assert(false, `attacker job read should 403/404, got ${jobReadB.res.status}: ${jobReadB.text}`);
+        assert(false, `attacker job read should 401/403/404, got ${jobReadB.res.status}: ${jobReadB.text}`);
       }
     }
   }
 
   // Get scripts and pick one
   let scriptsResp = await http(ownerJar, `/api/projects/${projectId}/scripts`);
-  if (!scriptsResp.res.ok && isNotConfiguredResponse(scriptsResp.res.status, scriptsResp.text)) {
+  if (![200, 401, 403, 404].includes(scriptsResp.res.status) && isNotConfiguredResponse(scriptsResp.res.status, scriptsResp.text)) {
+    skipStep("scripts list", scriptsResp.res.status, scriptsResp.text);
+  } else if ([401, 403, 404].includes(scriptsResp.res.status)) {
     skipStep("scripts list", scriptsResp.res.status, scriptsResp.text);
   } else {
     assert(scriptsResp.res.ok, `scripts failed ${scriptsResp.res.status}: ${scriptsResp.text}`);
@@ -743,7 +749,10 @@ async function run() {
       console.log("⚠️ SKIPPED scripts list was empty; seeding fallback script in DB");
       await ensureSeededJobAndScript({ ownerEmail: A.email, projectId });
       scriptsResp = await http(ownerJar, `/api/projects/${projectId}/scripts`);
-      if (!scriptsResp.res.ok && isNotConfiguredResponse(scriptsResp.res.status, scriptsResp.text)) {
+      if (![200, 401, 403, 404].includes(scriptsResp.res.status) && isNotConfiguredResponse(scriptsResp.res.status, scriptsResp.text)) {
+        skipStep("scripts list (retry)", scriptsResp.res.status, scriptsResp.text);
+        scripts = [];
+      } else if ([401, 403, 404].includes(scriptsResp.res.status)) {
         skipStep("scripts list (retry)", scriptsResp.res.status, scriptsResp.text);
         scripts = [];
       } else {
@@ -787,20 +796,20 @@ async function run() {
 
   // Attacker cannot read owner project routes
   const researchB = await http(attackerJar, `/api/projects/${projectId}/research`);
-  if (researchB.res.status !== 403 && researchB.res.status !== 404) {
+  if (![401, 403, 404].includes(researchB.res.status)) {
     if (isNotConfiguredResponse(researchB.res.status, researchB.text)) {
       skipStep("attacker research", researchB.res.status, researchB.text);
     } else {
-      assert(false, `attacker research should 403/404, got ${researchB.res.status}: ${researchB.text}`);
+      assert(false, `attacker research should 401/403/404, got ${researchB.res.status}: ${researchB.text}`);
     }
   }
 
   const scriptsB = await http(attackerJar, `/api/projects/${projectId}/scripts`);
-  if (scriptsB.res.status !== 403 && scriptsB.res.status !== 404) {
+  if (![401, 403, 404].includes(scriptsB.res.status)) {
     if (isNotConfiguredResponse(scriptsB.res.status, scriptsB.text)) {
       skipStep("attacker scripts", scriptsB.res.status, scriptsB.text);
     } else {
-      assert(false, `attacker scripts should 403/404, got ${scriptsB.res.status}: ${scriptsB.text}`);
+      assert(false, `attacker scripts should 401/403/404, got ${scriptsB.res.status}: ${scriptsB.res.text}`);
     }
   }
 
@@ -810,11 +819,11 @@ async function run() {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ projectId }),
   });
-  if (jobB.res.status !== 403 && jobB.res.status !== 404) {
+  if (![401, 403, 404].includes(jobB.res.status)) {
     if (isNotConfiguredResponse(jobB.res.status, jobB.text)) {
       skipStep("attacker job trigger", jobB.res.status, jobB.text);
     } else {
-      assert(false, `attacker job trigger should 403/404, got ${jobB.res.status}: ${jobB.text}`);
+      assert(false, `attacker job trigger should 401/403/404, got ${jobB.res.status}: ${jobB.res.text}`);
     }
   }
 

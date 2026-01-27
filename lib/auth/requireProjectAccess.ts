@@ -37,7 +37,8 @@ export async function requireProjectAccess(
   return { userId, projectId: project.id };
 }
 
-export async function requireProjectAccess(projectId: string, userId: string) {
+// Renamed to avoid redeclaration error
+export async function requireProjectAccessById(projectId: string, userId: string) {
   const project = await db.project.findFirst({
     where: { id: projectId, userId },
   });

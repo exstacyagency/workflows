@@ -7,9 +7,21 @@ async function createUser() {
   const res = await fetch(`${base}/api/test/create-user`, {
     method: "POST",
   });
-  const cookie = res.headers.get("set-cookie")!;
   const body = await res.json();
-  return { cookie, userId: body.userId };
+  const testSessionCookie = res.headers.get("set-cookie")?.match(/test_session=([^;]+)/)?.[0];
+  assert(testSessionCookie, "No test_session cookie returned");
+  // Authenticate with dedicated test Credentials provider in test/dev/beta
+  const authRes = await fetch(`${base}/api/test/auth/callback/credentials`, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded", "cookie": testSessionCookie },
+    body: `token=${encodeURIComponent(testSessionCookie.split('=')[1])}`,
+    redirect: "manual",
+  });
+  const nextAuthSessionCookie = authRes.headers.get("set-cookie")?.split(';')[0];
+  assert(nextAuthSessionCookie, "No session cookie returned from NextAuth");
+  // Combine both cookies for subsequent requests
+  const combinedCookie = `${testSessionCookie}; ${nextAuthSessionCookie}`;
+  return { cookie: combinedCookie, userId: body.userId };
 }
 
 async function authedFetch(

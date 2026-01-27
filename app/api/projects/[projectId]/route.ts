@@ -1,18 +1,17 @@
-
 import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth/requireSession";
 import { db } from "@/lib/db";
 
-export async function GET(req: NextRequest, { params }: { params: { jobId: string } }) {
+export async function GET(req: NextRequest, { params }: { params: { projectId: string } }) {
   const session = await requireSession(req);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const job = await db.job.findUnique({
-    where: { id: params.jobId },
-    select: { userId: true },
-  });
   const userId = (session.user as { id?: string })?.id;
-  if (!job || !userId || job.userId !== userId) {
+  const project = await db.project.findUnique({
+    where: { id: params.projectId },
+    select: { id: true, userId: true, name: true, createdAt: true, updatedAt: true },
+  });
+  if (!project || !userId || project.userId !== userId) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
-  return NextResponse.json(job, { status: 200 });
+  return NextResponse.json(project, { status: 200 });
 }
