@@ -1,11 +1,12 @@
 
 import { getSessionUserId } from "@/lib/auth/getSessionUserId";
 import { db } from "@/lib/db";
+
 export async function POST(
-  request: Request,
+  _request: Request,
   { params }: { params: { jobId: string } }
 ) {
-  const userId = await getSessionUserId(request)
+  const userId = await getSessionUserId();
 
   if (!userId) {
     return new Response("Unauthorized", { status: 401 })

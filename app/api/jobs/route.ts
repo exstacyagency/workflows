@@ -15,13 +15,12 @@ import { NextResponse } from "next/server";
 export async function POST(req: Request) {
   const isBuildPhase = cfg.raw("NEXT_PHASE") === "phase-production-build";
   if (!isBuildPhase) {
-    const runtimeMode = getRuntimeMode();
-    assertValidRuntimeMode(runtimeMode);
+    assertValidRuntimeMode();
   }
 
   // Pass req as NextRequest for test token support
   // Cast to any to support both Node and Edge runtimes
-  const userId = await getSessionUserId(req);
+  const userId = await getSessionUserId();
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
