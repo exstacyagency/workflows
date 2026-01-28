@@ -1,4 +1,4 @@
-// lib/auth.ts
+// auth.ts
 import { cfg } from "@/lib/config";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
@@ -28,9 +28,6 @@ export const authOptions: NextAuthOptions = {
   },
   secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || undefined,
   session: { strategy: "jwt" },
-  pages: {
-    signIn: "/login",
-  },
   providers: [
     Credentials({
       name: "Credentials",
@@ -40,14 +37,12 @@ export const authOptions: NextAuthOptions = {
       },
       async authorize(credentials, req) {
         if (!credentials?.email || !credentials?.password) return null;
-
         const email = normalizeEmail(credentials.email);
         if (!email) return null;
         const ip =
           (req as any)?.headers?.get?.("x-forwarded-for")?.split(",")?.[0]?.trim() ??
           (req as any)?.headers?.["x-forwarded-for"]?.split?.(",")?.[0]?.trim?.() ??
           null;
-
         if (isProd) {
           try {
             const gate = await checkAuthAllowedDb({ kind: "login", ip, email });
@@ -58,11 +53,9 @@ export const authOptions: NextAuthOptions = {
             return null;
           }
         }
-
         const user = await prisma.user.findUnique({
           where: { email },
         });
-
         if (cfg.raw("AUTH_DEBUG") === "1") {
           console.log("[AUTH_DEBUG] email", email, "user?", !!user, "hasHash?", !!user?.passwordHash);
         }
@@ -72,7 +65,6 @@ export const authOptions: NextAuthOptions = {
           }
           return null;
         }
-
         const isValid = await bcrypt.compare(credentials.password, user.passwordHash);
         if (cfg.raw("AUTH_DEBUG") === "1") {
           console.log("[AUTH_DEBUG] bcrypt compare", isValid);
@@ -83,11 +75,9 @@ export const authOptions: NextAuthOptions = {
           }
           return null;
         }
-
         if (isProd) {
           await recordLoginSuccessDb({ ip, email });
         }
-
         return {
           id: user.id,
           email: user.email,
@@ -121,4 +111,6 @@ export const authOptions: NextAuthOptions = {
   },
 };
 
-export const getAuthSession = () => getServerSession(authOptions);
+export async function getAuthSession() {
+  return getServerSession(authOptions);
+}

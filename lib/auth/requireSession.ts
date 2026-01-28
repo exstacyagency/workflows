@@ -44,5 +44,7 @@ export async function requireSession(request?: any) {
   const session = await getServerSession(authOptions);
   const userId = (session?.user as { id?: string })?.id;
   if (!session || !userId) return null;
-  return session;
+  
+  // Return consistent shape
+  return { user: { id: userId } };
 }
