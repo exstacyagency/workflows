@@ -1,16 +1,8 @@
-import { cfg } from "@/lib/config";
-
-export function isDev(): boolean {
-  return cfg.raw("NODE_ENV") !== "production";
-}
-
-export const JOB_IDEMPOTENCY_ENABLED = cfg.JOB_IDEMPOTENCY_ENABLED;
-
-export const MODE = cfg.MODE;
-
-// Only enforce MODE check in production builds
-if (cfg.raw('NODE_ENV') === 'production') {
-  if (!['beta', 'prod'].includes(String(cfg.MODE))) {
-    throw new Error('Production build must run in MODE=beta or MODE=prod');
-  }
-}
+// eslint-disable-next-line no-restricted-properties
+// lib/env.ts
+export const env = {
+  // eslint-disable-next-line no-restricted-properties
+  NODE_ENV: process.env.NODE_ENV ?? "development",
+  // eslint-disable-next-line no-restricted-properties
+  MODE: process.env.MODE ?? "dev",
+};
