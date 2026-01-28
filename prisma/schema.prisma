@@ -129,6 +129,7 @@ model Job {
   scripts          Script[]
   storyboards      Storyboard[]
 
+  @@unique([id, userId])
   @@unique([userId, projectId, idempotencyKey])
   @@index([projectId])
   @@map("job")

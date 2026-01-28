@@ -1,88 +1,109 @@
-import assert from "assert";
-import { test } from "node:test";
+// tests/isolation.self-operator.test.ts
+import { startTestServer, stopTestServer } from "./utils/testServer";
+import { clearTestData } from "@/lib/testStore";
+import type { Server } from "http";
 
-const base = "http://localhost:3000";
+let server: Server;
+let baseUrl: string;
 
-async function createUser() {
-  const res = await fetch(`${base}/api/test/create-user`, {
+beforeAll(async () => {
+  const result = await startTestServer();
+  server = result.server;
+  baseUrl = `http://localhost:${result.port}`;
+}, 60000);
+
+afterAll(async () => {
+  await clearTestData();
+  await stopTestServer();
+}, 10000);
+
+async function createUser(): Promise<{ cookie: string }> {
+  const res = await fetch(`${baseUrl}/api/test/create-user`, {
     method: "POST",
   });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`create-user failed ${res.status}: ${text.slice(0, 300)}`);
+  }
+
   const body = await res.json();
-  const testSessionCookie = res.headers.get("set-cookie")?.match(/test_session=([^;]+)/)?.[0];
-  assert(testSessionCookie, "No test_session cookie returned");
-  // Authenticate with dedicated test Credentials provider in test/dev/beta
-  const authRes = await fetch(`${base}/api/test/auth/callback/credentials`, {
+  if (!body?.token) throw new Error("No test token");
+
+  const testSessionCookie = `test_session=${body.token}`;
+
+  const authRes = await fetch(`${baseUrl}/api/test/auth/callback/credentials`, {
     method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded", "cookie": testSessionCookie },
-    body: `token=${encodeURIComponent(testSessionCookie.split('=')[1])}`,
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+      cookie: testSessionCookie,
+    },
+    body: `token=${encodeURIComponent(body.token)}`,
     redirect: "manual",
   });
-  const nextAuthSessionCookie = authRes.headers.get("set-cookie")?.split(';')[0];
-  assert(nextAuthSessionCookie, "No session cookie returned from NextAuth");
-  // Combine both cookies for subsequent requests
-  const combinedCookie = `${testSessionCookie}; ${nextAuthSessionCookie}`;
-  return { cookie: combinedCookie, userId: body.userId };
+
+  if (!authRes.ok) {
+    const text = await authRes.text();
+    throw new Error(`auth failed ${authRes.status}: ${text.slice(0, 300)}`);
+  }
+
+  const authSetCookie = authRes.headers.get("set-cookie");
+  if (!authSetCookie) throw new Error("No auth cookie");
+
+  return { cookie: `${testSessionCookie}; ${authSetCookie.split(";")[0]}` };
 }
 
-async function authedFetch(
-  url: string,
-  cookie: string,
-  opts: any = {}
-) {
+async function authedFetch(url: string, cookie: string, opts: any = {}) {
   return fetch(url, {
     ...opts,
-    headers: {
-      ...(opts.headers || {}),
-      cookie,
-    },
+    headers: { ...(opts.headers || {}), cookie, "content-type": "application/json" },
   });
 }
 
-test("Self-operator isolation", async (t) => {
-  const A = await createUser();
-  const B = await createUser();
+describe("Self-operator isolation", () => {
+  test("User A cannot access User B's resources", async () => {
+    const A = await createUser();
+    const B = await createUser();
 
-  // B creates project
-  const projectRes = await authedFetch(
-    `${base}/api/projects`,
-    B.cookie,
-    {
+    const projectRes = await authedFetch(`${baseUrl}/api/projects`, B.cookie, {
       method: "POST",
       body: JSON.stringify({ name: "B Project" }),
-    }
-  );
-  const project = await projectRes.json();
+    });
+    
+    expect(projectRes.ok).toBe(true);
+    const project = await projectRes.json();
 
-  // A cannot see B project
-  const leak = await authedFetch(
-    `${base}/api/projects/${project.id}`,
-    A.cookie
-  );
-  assert(leak.status === 404 || leak.status === 403);
+    const leak = await authedFetch(`${baseUrl}/api/projects/${project.id}`, A.cookie);
+    expect([403, 404]).toContain(leak.status);
 
-  // B creates job
-  const jobRes = await authedFetch(
-    `${base}/api/jobs`,
-    B.cookie,
-    {
+    const jobRes = await authedFetch(`${baseUrl}/api/jobs`, B.cookie, {
       method: "POST",
-      body: JSON.stringify({ projectId: project.id }),
+      body: JSON.stringify({ 
+        projectId: project.id,
+        pipeline: "CUSTOMER_RESEARCH",
+        idempotencyKey: `test-${Date.now()}`
+      }),
+    });
+    
+    if (!jobRes.ok) {
+      const errorText = await jobRes.text();
+      console.error('Job creation failed:', {
+        status: jobRes.status,
+        body: errorText,
+        cookie: B.cookie,
+        projectId: project.id
+      });
     }
-  );
-  const job = await jobRes.json();
+    
+    expect(jobRes.ok).toBe(true);
+    const job = await jobRes.json();
 
-  // A cannot read job
-  const jobLeak = await authedFetch(
-    `${base}/api/jobs/${job.id}`,
-    A.cookie
-  );
-  assert(jobLeak.status === 404 || jobLeak.status === 403);
+    const jobLeak = await authedFetch(`${baseUrl}/api/jobs/${job.id}`, A.cookie);
+    expect([403, 404]).toContain(jobLeak.status);
 
-  // A cannot retry job
-  const retry = await authedFetch(
-    `${base}/api/jobs/${job.id}/retry`,
-    A.cookie,
-    { method: "POST" }
-  );
-  assert(retry.status === 404 || retry.status === 403);
+    const retry = await authedFetch(`${baseUrl}/api/jobs/${job.id}/retry`, A.cookie, {
+      method: "POST",
+    });
+    expect([403, 404]).toContain(retry.status);
+  }, 30000);
 });

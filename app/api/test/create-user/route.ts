@@ -1,38 +1,17 @@
-
-
-import { cfg } from "@/lib/config";
-import { assertTestEnv } from "@/lib/auth/testSession";
-assertTestEnv();
-
-import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
-import { createTestSession } from "@/lib/auth/testSession";
-import { randomUUID } from "crypto";
+import { NextResponse } from 'next/server';
+import { createTestUser } from '@/lib/testStore';
+import { cfg } from '@/lib/config';
 
 export async function POST() {
-  const isEnabled = cfg.ENABLE_TEST_USERS === true;
-  if (!isEnabled) {
-    return NextResponse.json({ error: "Disabled" }, { status: 403 });
+  if (cfg.nodeEnv === 'production') {
+    return NextResponse.json({ error: 'Not available in production' }, { status: 403 });
   }
 
-  const user = await db.user.create({
-    data: {
-      email: `test-${randomUUID()}@local.dev`,
-    },
+  const { id, email, token } = await createTestUser();
+  
+  return NextResponse.json({ 
+    userId: id, 
+    email, 
+    token 
   });
-
-  const token = await createTestSession(user.id);
-
-  const res = NextResponse.json({
-    userId: user.id,
-    email: user.email,
-  });
-
-  res.headers.append(
-    "Set-Cookie",
-    `test_session=${token}; Path=/; HttpOnly; SameSite=Lax`
-  );
-
-  return res;
 }
-

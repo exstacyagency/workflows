@@ -1,18 +1,37 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth/requireSession";
-import { db } from "@/lib/db";
+import { prisma } from "@/lib/db";
 
-export async function GET(req: NextRequest, { params }: { params: { jobId: string } }) {
+
+export async function GET(
+  req: NextRequest,
+  { params }: { params: { jobId: string } }
+) {
   const session = await requireSession(req);
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const job = await db.job.findUnique({
-    where: { id: params.jobId },
-    select: { userId: true },
-  });
-  const userId = (session.user as { id?: string })?.id;
-  if (!job || !userId || job.userId !== userId) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!session) {
+    return NextResponse.json(
+      { error: "Unauthorized" },
+      { status: 401 }
+    );
   }
+
+  const job = await prisma.job.findUnique({
+    where: {
+      id_userId: {
+        id: params.jobId,
+        userId: session.user.id,
+      },
+    },
+  });
+
+  if (!job) {
+    // IMPORTANT: hide existence
+    return NextResponse.json(
+      { error: "Not Found" },
+      { status: 404 }
+    );
+  }
+
   return NextResponse.json(job, { status: 200 });
 }

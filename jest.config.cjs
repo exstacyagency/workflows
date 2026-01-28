@@ -10,7 +10,5 @@ module.exports = {
   transform: {
     ...tsJestTransformCfg,
   },
-  moduleNameMapper: pathsToModuleNameMapper(compilerOptions.paths || {}, {
-    prefix: "<rootDir>/",
-  }),
+  moduleNameMapper: { "^@/(.*)$": "<rootDir>/$1" },
 };
