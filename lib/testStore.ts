@@ -1,5 +1,6 @@
 // lib/testStore.ts
 import { db } from '@/lib/db';
+import { randomBytes } from 'crypto';
 
 export const testSessions = new Map<string, { 
   userId: string; 
@@ -11,10 +12,10 @@ let userCounter = 0;
 
 export async function createTestUser(): Promise<{ id: string; email: string; token: string }> {
   const timestamp = Date.now();
-  const random = Math.random().toString(36).slice(2, 8);
+  const random = randomBytes(6).toString('hex');
   const id = `test_${timestamp}_${random}`;
   const email = `test_${timestamp}_${random}@test.local`;
-  const token = `tok_${random}${timestamp}`;
+  const token = `tok_${randomBytes(16).toString('hex')}`;
   
   await db.user.create({
     data: {
