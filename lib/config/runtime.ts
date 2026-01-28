@@ -6,14 +6,15 @@ function getEnv(key: string): string {
 }
 /* eslint-enable no-restricted-properties */
 
+const nodeEnv = getEnv("NODE_ENV") || "development";
+const runtimeMode = getEnv("MODE") || "alpha";
+const securitySweep = getEnv("SECURITY_SWEEP") === "1";
+const isProd = nodeEnv === "production";
+const isDev = nodeEnv === "development";
+const isGolden = getEnv("GOLDEN_MODE") === "1" || getEnv("IS_GOLDEN") === "1";
+const enableTestUsers = getEnv("ENABLE_TEST_USERS") === "true" || isDev;
+
 export function getRuntimeConfig() {
-  const nodeEnv = getEnv("NODE_ENV") || "development";
-  const runtimeMode = getEnv("MODE") || "alpha";
-  const securitySweep = getEnv("SECURITY_SWEEP") === "1";
-  const isProd = nodeEnv === "production";
-  const isDev = nodeEnv === "development";
-  const isGolden = getEnv("GOLDEN_MODE") === "1" || getEnv("IS_GOLDEN") === "1";
-  
   return {
     raw: getEnv,
     env: nodeEnv,
@@ -41,10 +42,10 @@ export const cfg = {
   MODE: runtimeMode,
   runtimeMode,
   RUNTIME_MODE: runtimeMode,
-  isProd: nodeEnv === "production",
-  isDev: nodeEnv !== "production",
+  isProd,
+  isDev,
   securitySweep,
-  isGolden: securitySweep,
+  isGolden,
   JOB_IDEMPOTENCY_ENABLED: getEnv("JOB_IDEMPOTENCY_ENABLED") === "true",
   nodeEnv,
   mode: runtimeMode,
