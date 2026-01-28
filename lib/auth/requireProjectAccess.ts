@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUserId } from "@/lib/getSessionUserId";
+import { db } from "@/lib/db";
 
 type ProjectAccess = {
   userId: string;
@@ -34,4 +35,17 @@ export async function requireProjectAccess(
   }
 
   return { userId, projectId: project.id };
+}
+
+// Renamed to avoid redeclaration error
+export async function requireProjectAccessById(projectId: string, userId: string) {
+  const project = await db.project.findFirst({
+    where: { id: projectId, userId },
+  });
+
+  if (!project) {
+    throw new Error("NOT_FOUND");
+  }
+
+  return project;
 }

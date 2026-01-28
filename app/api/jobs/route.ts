@@ -1,33 +1,29 @@
-// Patch 2 — Fix API guard crash during build
+// app/api/jobs/route.ts
+console.log("[jobs] root handler HIT");
+
+import { getRuntimeMode } from "@/lib/runtime/getRuntimeMode";
+import { assertValidRuntimeMode } from "@/lib/runtime/assertValidRuntimeMode";
 import { cfg } from "@/lib/config";
 import { prisma } from "@/lib/prisma";
-import { getSessionUserId } from "@/lib/getSessionUserId";
+import { requireSession } from "@/lib/auth/requireSession";
 import { assertRuntimeMode } from "@/lib/jobRuntimeMode";
 import { NextResponse } from "next/server";
-
-function assertValidRuntimeMode(mode: string) {
-  if (mode !== "alpha" && mode !== "production") {
-    throw new Error(`Invalid runtime mode: ${mode}`);
-  }
-}
 
 export async function POST(req: Request) {
   const isBuildPhase = cfg.raw("NEXT_PHASE") === "phase-production-build";
   if (!isBuildPhase) {
-    assertValidRuntimeMode(assertRuntimeMode());
+    assertValidRuntimeMode();
   }
 
-  // Pass req as NextRequest for test token support
-  // Cast to any to support both Node and Edge runtimes
-  const userId = await getSessionUserId(req as any);
-  if (!userId) {
+  const session = await requireSession(req);
+  if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const userId = session.user.id;
 
   const body = await req.json();
   const { projectId, pipeline, input, idempotencyKey, status, mode } = body;
 
-  // 🚨 HARD GUARD: production jobs forbidden in alpha
   if (assertRuntimeMode() === "alpha" && mode === "production") {
     return NextResponse.json(
       { error: "Production jobs are not allowed in alpha" },
@@ -39,7 +35,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
   }
 
-  // Ensure project belongs to user
   const project = await prisma.project.findFirst({
     where: {
       id: projectId,
@@ -59,7 +54,6 @@ export async function POST(req: Request) {
     );
   }
 
-  // Allow only explicitly supported input fields
   const safeInput =
     input && typeof input === "object"
       ? {
@@ -97,7 +91,6 @@ export async function POST(req: Request) {
 
     return NextResponse.json(job);
   } catch (err: any) {
-    // Handles race condition edge case
     if (err.code === "P2002") {
       const existing = await prisma.job.findUnique({
         where: {
