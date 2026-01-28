@@ -1,4 +1,4 @@
-// auth.ts
+// lib/auth.ts
 import { cfg } from "@/lib/config";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
@@ -22,14 +22,15 @@ export const authOptions: NextAuthOptions = {
         httpOnly: true,
         sameSite: "lax",
         path: "/",
-        secure: false, // dev only
+        secure: false,
       },
     },
   },
-  // Force a stable secret source. If this is missing, NextAuth behavior becomes flaky.
-  // In dev we will warn loudly; in prod we should fail fast.
   secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || undefined,
   session: { strategy: "jwt" },
+  pages: {
+    signIn: "/login",
+  },
   providers: [
     Credentials({
       name: "Credentials",
@@ -47,8 +48,6 @@ export const authOptions: NextAuthOptions = {
           (req as any)?.headers?.["x-forwarded-for"]?.split?.(",")?.[0]?.trim?.() ??
           null;
 
-        // DEV FIX: disable lockout/throttle entirely in dev to stop "random" sign-in failures.
-        // Throttle/lockout is for production abuse control, not local iteration.
         if (isProd) {
           try {
             const gate = await checkAuthAllowedDb({ kind: "login", ip, email });
@@ -56,7 +55,6 @@ export const authOptions: NextAuthOptions = {
               return null;
             }
           } catch (e) {
-            // Collapse to a generic failure to avoid leaking throttle state.
             return null;
           }
         }

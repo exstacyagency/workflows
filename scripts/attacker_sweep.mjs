@@ -90,7 +90,7 @@ async function ensureProjectExistsOrFail() {
     // name: String
     // description: String?
     // userId: String
-    // We’ll attach it to the sweep user.
+    // We'll attach it to the sweep user.
     const email = normalizeEmailInput(TEST_EMAIL) || TEST_EMAIL;
     const user = await prisma.user.findUnique({ where: { email }, select: { id: true } });
     if (!user) throw new Error(`[seed] cannot seed project; user not found for ${email}`);
@@ -327,19 +327,26 @@ function addSetCookiesToJar(jar, setCookies) {
   const arr = Array.isArray(setCookies) ? setCookies : setCookies ? [setCookies] : [];
   for (const sc of arr) {
     if (!sc) continue;
-    console.log(`[login] set-cookie: ${String(sc).split(";")[0]}`);
     const first = String(sc || "").split(";")[0].trim();
     const eq = first.indexOf("=");
     if (eq === -1) continue;
     const name = first.slice(0, eq).trim();
+    const value = first.slice(eq + 1).trim();
     if (!name) continue;
-    jar.cookies.set(name, first);
+    console.log(`[login] set-cookie: ${name}=${value}`);
+    jar.cookies.set(name, value);
   }
 }
 
 function cookieHeader(jar) {
   if (!jar?.cookies || jar.cookies.size === 0) return "";
-  return Array.from(jar.cookies.values()).join("; ");
+  const parts = [];
+  for (const [name, value] of jar.cookies.entries()) {
+    parts.push(`${name}=${value}`);
+  }
+  const header = parts.join("; ");
+  console.log(`[debug] cookie header: ${header}`);
+  return header;
 }
 
 async function http(jar, urlOrPath, opts = {}, redirectsLeft = 5) {

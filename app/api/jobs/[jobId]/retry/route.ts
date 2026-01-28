@@ -1,26 +1,41 @@
-
-import { getSessionUserId } from "@/lib/auth/getSessionUserId";
-import { db } from "@/lib/db";
+import { NextRequest, NextResponse } from "next/server";
+import { requireSession } from "@/lib/auth/requireSession";
+import { prisma } from "@/lib/db";
 
 export async function POST(
-  _request: Request,
+  req: NextRequest,
   { params }: { params: { jobId: string } }
 ) {
-  const userId = await getSessionUserId();
+  const session = await requireSession(req);
 
-  if (!userId) {
-    return new Response("Unauthorized", { status: 401 })
+  if (!session) {
+    return NextResponse.json(
+      { error: "Unauthorized" },
+      { status: 401 }
+    );
   }
 
-  const job = await db.job.findUnique({
-    where: { id: params.jobId },
-    select: { id: true, userId: true }
-  })
+  const job = await prisma.job.findUnique({
+    where: {
+      id_userId: {
+        id: params.jobId,
+        userId: session.user.id,
+      },
+    },
+  });
 
-  if (!job || job.userId !== userId) {
-    return new Response("Forbidden", { status: 403 })
+  if (!job) {
+    // IMPORTANT: hide existence
+    return NextResponse.json(
+      { error: "Not Found" },
+      { status: 404 }
+    );
   }
 
-  // retry must create a new job; do not mutate `job`
-  // existing retry logic
+  // enqueue retry here
+  // await enqueueJob(job)
+
+  return NextResponse.json({ ok: true });
 }
+
+
