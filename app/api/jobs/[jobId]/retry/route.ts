@@ -1,3 +1,4 @@
+// app/api/jobs/[jobId]/retry/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth/requireSession";
 import { prisma } from "@/lib/db";
@@ -8,7 +9,7 @@ export async function POST(
 ) {
   const session = await requireSession(req);
 
-  if (!session) {
+  if (!session || !session.user) {
     return NextResponse.json(
       { error: "Unauthorized" },
       { status: 401 }
@@ -37,5 +38,3 @@ export async function POST(
 
   return NextResponse.json({ ok: true });
 }
-
-

@@ -33,6 +33,7 @@ export function getRuntimeConfig() {
     authTestSecret: getEnv("AUTH_TEST_SECRET"),
     databaseUrl: getEnv("DATABASE_URL"),
     redisUrl: getEnv("REDIS_URL"),
+    nextauthUrl: getEnv("NEXTAUTH_URL"),
   };
 }
 
@@ -51,4 +52,5 @@ export const cfg = {
   mode: runtimeMode,
   authTestSecret: getEnv("AUTH_TEST_SECRET"),
   ENABLE_TEST_USERS: enableTestUsers,
+  nextauthUrl: getEnv("NEXTAUTH_URL"),
 };

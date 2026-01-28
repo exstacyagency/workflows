@@ -89,8 +89,8 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   pages: {
-    signIn: "/login",
-    error: "/login",
+    signIn: "/api/auth/signin",
+    error: "/api/auth/signin",
   },
   session: {
     strategy: "jwt",
