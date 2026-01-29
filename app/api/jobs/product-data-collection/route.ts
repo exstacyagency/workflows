@@ -1,28 +1,24 @@
-// app/api/jobs/customer-research/route.ts
+// app/api/jobs/product-data-collection/route.ts
 import { cfg } from "@/lib/config";
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '../../../../lib/prisma';
-import { JobStatus, JobType, ResearchSource, Prisma } from '@prisma/client';
-import { estimateCustomerResearchCost, checkBudget } from '../../../../lib/costEstimator';
+import { JobStatus, JobType, Prisma } from '@prisma/client';
 import { checkRateLimit } from '../../../../lib/rateLimiter';
 import { z } from 'zod';
 import { ProjectJobSchema, parseJson } from '../../../../lib/validation/jobs';
 import { logAudit } from '../../../../lib/logger';
 import { getSessionUserId } from '../../../../lib/getSessionUserId';
-import { enforceUserConcurrency, findIdempotentJob } from '../../../../lib/jobGuards';
 import { requireProjectOwner404 } from '@/lib/auth/requireProjectOwner404';
 import { updateJobStatus } from "@/lib/jobs/updateJobStatus";
 import { randomUUID } from 'crypto';
 
 export const runtime = 'nodejs';
 
-const CustomerResearchSchema = ProjectJobSchema.extend({
+const ProductDataCollectionSchema = ProjectJobSchema.extend({
   productName: z.string().min(1, 'productName is required'),
-  productProblemSolved: z.string().min(1, 'productProblemSolved is required'),
-  productAmazonAsin: z.string().min(1, 'productAmazonAsin is required'),
-  competitor1AmazonAsin: z.string().optional(),
-  competitor2AmazonAsin: z.string().optional(),
-  forceNew: z.boolean().optional().default(false),
+  productUrl: z.string().url('productUrl must be a valid URL'),
+  competitors: z.array(z.string().url()).optional().default([]),
+  runId: z.string().optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -37,7 +33,7 @@ export async function POST(req: NextRequest) {
     req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null;
 
   try {
-    const parsed = await parseJson(req, CustomerResearchSchema);
+    const parsed = await parseJson(req, ProductDataCollectionSchema);
     if (!parsed.success) {
       return NextResponse.json(
         { error: parsed.error, details: parsed.details },
@@ -47,20 +43,14 @@ export async function POST(req: NextRequest) {
     const {
       projectId: parsedProjectId,
       productName,
-      productProblemSolved,
-      productAmazonAsin,
-      competitor1AmazonAsin,
-      competitor2AmazonAsin,
-      forceNew,
+      productUrl,
+      competitors,
+      runId,
     } = parsed.data;
     projectId = parsedProjectId;
 
     const deny = await requireProjectOwner404(projectId);
     if (deny) return deny;
-
-    // REMOVED: Plan check (lines 47-58)
-    // REMOVED: Apify check (lines 60-67)
-    // REMOVED: Concurrency check (lines 69-76)
 
     if (cfg.raw("NODE_ENV") === 'production' && cfg.raw("FORCE_RATE_LIMIT") === "1") {
       const rateCheck = await checkRateLimit(projectId);
@@ -72,36 +62,25 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const costEstimate = securitySweep
-      ? { totalCost: 0 }
-      : await estimateCustomerResearchCost({
-          productAmazonAsin,
-          competitor1AmazonAsin,
-          competitor2AmazonAsin,
-        });
-
-    // REMOVED: Budget check (lines 84-95)
-
-    // Create new research run
-    const run = await prisma.researchRun.create({
-      data: { 
-        projectId, 
-        status: 'IN_PROGRESS' 
-      }
-    });
+    // Create new research run if no runId provided
+    let effectiveRunId = runId;
+    if (!effectiveRunId) {
+      const run = await prisma.researchRun.create({
+        data: { 
+          projectId, 
+          status: 'IN_PROGRESS' 
+        }
+      });
+      effectiveRunId = run.id;
+    }
 
     const idempotencyKey = randomUUID();
-
-    // REMOVED: Quota reservation (lines 123-134)
 
     const initialPayload: any = {
       projectId,
       productName,
-      productProblemSolved,
-      productAmazonAsin,
-      competitor1AmazonAsin,
-      competitor2AmazonAsin,
-      estimatedCost: costEstimate.totalCost ?? 0,
+      productUrl,
+      competitors,
       idempotencyKey,
       skipped: securitySweep,
       reason: securitySweep ? "SECURITY_SWEEP" : null,
@@ -111,36 +90,16 @@ export async function POST(req: NextRequest) {
       data: {
         projectId,
         userId,
-        type: JobType.CUSTOMER_RESEARCH,
+        type: JobType.PRODUCT_DATA_COLLECTION,
         status: securitySweep ? JobStatus.COMPLETED : JobStatus.PENDING,
         idempotencyKey,
-        runId: run.id,
+        runId: effectiveRunId,
         payload: initialPayload,
         resultSummary: securitySweep ? "Skipped: SECURITY_SWEEP" : undefined,
         error: Prisma.JsonNull,
       },
     });
     jobId = job.id;
-
-    if (securitySweep) {
-      await prisma.researchRow.createMany({
-        data: [
-          {
-            projectId,
-            jobId,
-            source: ResearchSource.REDDIT_PRODUCT,
-            content: "Deterministic placeholder research content.",
-            metadata: {
-              indexLabel: "golden",
-              title: "SECURITY_SWEEP placeholder",
-              verified: false,
-              importance: 0,
-              rating: 0,
-            },
-          },
-        ],
-      });
-    }
 
     await logAudit({
       userId,
@@ -149,16 +108,15 @@ export async function POST(req: NextRequest) {
       action: 'job.create',
       ip,
       metadata: {
-        type: 'customer-research',
+        type: 'product-data-collection',
       },
     });
 
     return NextResponse.json(
-      { jobId, runId: run.id, started: !securitySweep, skipped: securitySweep, reason: securitySweep ? "SECURITY_SWEEP" : null },
+      { jobId, runId: effectiveRunId, started: !securitySweep, skipped: securitySweep, reason: securitySweep ? "SECURITY_SWEEP" : null },
       { status: 200 },
     );
   } catch (error: any) {
-    // REMOVED: Quota rollback (lines 205-207)
     if (jobId) {
       try {
         await updateJobStatus(jobId, JobStatus.FAILED);
@@ -174,13 +132,13 @@ export async function POST(req: NextRequest) {
       action: 'job.error',
       ip,
       metadata: {
-        type: 'customer-research',
+        type: 'product-data-collection',
         error: String(error?.message ?? error),
       },
     });
-    console.error('[API] Customer research job creation failed:', error);
+    console.error('[API] Product data collection job creation failed:', error);
     return NextResponse.json(
-      { error: error?.message ?? 'Customer research job creation failed' },
+      { error: error?.message ?? 'Product data collection job creation failed' },
       { status: 500 }
     );
   }

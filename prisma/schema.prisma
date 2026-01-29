@@ -55,6 +55,7 @@ model Project {
   productIntelligences ProductIntelligence[]
   user                 User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   researchRows         ResearchRow[]
+  researchRuns         ResearchRun[]
   scripts              Script[]
   storyboards          Storyboard[]
 
@@ -102,6 +103,18 @@ model SpendEvent {
   @@map("spend_event")
 }
 
+model ResearchRun {
+  id        String    @id @default(uuid())
+  projectId String
+  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  status    RunStatus @default(IN_PROGRESS)
+  createdAt DateTime  @default(now())
+  jobs      Job[]
+
+  @@index([projectId])
+  @@map("research_run")
+}
+
 model Job {
   id               String            @id @default(uuid())
   projectId        String
@@ -122,6 +135,7 @@ model Job {
   determinism      String?
   failureCode      String?
   fixtureVersion   Int?
+  runId            String?
   adAssets         AdAsset[]
   adPatternResults AdPatternResult[]
   auditLogs        AuditLog[]
@@ -130,10 +144,12 @@ model Job {
   researchRows     ResearchRow[]
   scripts          Script[]
   storyboards      Storyboard[]
+  researchRun      ResearchRun?      @relation(fields: [runId], references: [id])
 
   @@unique([id, userId])
   @@unique([userId, projectId, idempotencyKey])
   @@index([projectId])
+  @@index([runId])
   @@map("job")
 }
 
@@ -335,6 +351,8 @@ enum JobType {
   VIDEO_REVIEW
   VIDEO_UPSCALER
   AD_PERFORMANCE
+  PRODUCT_DATA_COLLECTION
+  PRODUCT_ANALYSIS
 }
 
 enum ResearchSource {
@@ -383,4 +401,10 @@ enum ScriptStatus {
   upscaled
   upscale_pending
   upscale_failed
+}
+
+enum RunStatus {
+  IN_PROGRESS
+  COMPLETED
+  FAILED
 }

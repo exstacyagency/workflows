@@ -1,4 +1,4 @@
-// app/api/jobs/customer-analysis/route.ts
+// app/api/jobs/product-analysis/route.ts
 import { cfg } from "@/lib/config";
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '../../../../lib/prisma';
@@ -10,15 +10,9 @@ import { z } from 'zod';
 import { checkRateLimit } from '../../../../lib/rateLimiter';
 import { logAudit } from '../../../../lib/logger';
 import { getSessionUserId } from '../../../../lib/getSessionUserId';
-import { enforceUserConcurrency, findIdempotentJob } from '../../../../lib/jobGuards';
-import { assertMinPlan, UpgradeRequiredError } from '../../../../lib/billing/requirePlan';
-import { reserveQuota, rollbackQuota, QuotaExceededError } from '../../../../lib/billing/usage';
-import { addJob, QueueName } from '@/lib/queue';
 import { randomUUID } from 'crypto';
 
-const CustomerAnalysisSchema = ProjectJobSchema.extend({
-  productName: z.string().optional(),
-  productProblemSolved: z.string().optional(),
+const ProductAnalysisSchema = ProjectJobSchema.extend({
   runId: z.string().optional(),
 });
 
@@ -30,12 +24,10 @@ export async function POST(req: NextRequest) {
   const securitySweep = cfg.raw("SECURITY_SWEEP") === "1";
   let projectId: string | null = null;
   let jobId: string | null = null;
-  let didReserveQuota = false;
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null;
-  let planId: 'FREE' | 'GROWTH' | 'SCALE' = 'FREE';
 
   try {
-    const parsed = await parseJson(req, CustomerAnalysisSchema);
+    const parsed = await parseJson(req, ProductAnalysisSchema);
     if (!parsed.success) {
       return NextResponse.json(
         { error: parsed.error, details: parsed.details },
@@ -43,82 +35,47 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { projectId: parsedProjectId, productName, productProblemSolved, runId } = parsed.data;
+    const { projectId: parsedProjectId, runId } = parsed.data;
     projectId = parsedProjectId;
     const auth = await requireProjectOwner(projectId);
     if (auth.error) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
-    try {
-      planId = await assertMinPlan(userId, 'GROWTH');
-    } catch (err: any) {
-      if (err instanceof UpgradeRequiredError) {
-        return NextResponse.json(
-          { error: 'Upgrade required', requiredPlan: err.requiredPlan },
-          { status: 402 },
-        );
-      }
-      console.error(err);
-      return NextResponse.json({ error: 'Billing check failed' }, { status: 500 });
-    }
-
-    if (!securitySweep) {
-      const concurrency = await enforceUserConcurrency(userId);
-      if (!concurrency.allowed) {
-        return NextResponse.json(
-          { error: concurrency.reason },
-          { status: 429 },
-        );
-      }
-    }
-
-    // Get runId from request or find most recent completed research job
+    // Get runId from request or find most recent completed product data collection job
     let effectiveRunId = runId;
     if (!effectiveRunId) {
-      const latestResearch = await prisma.job.findFirst({
+      const latestCollection = await prisma.job.findFirst({
         where: {
           projectId,
-          type: JobType.CUSTOMER_RESEARCH,
+          type: 'PRODUCT_DATA_COLLECTION' as any,
           status: JobStatus.COMPLETED,
           runId: { not: null },
         },
         orderBy: { createdAt: 'desc' },
         select: { runId: true },
       });
-      effectiveRunId = latestResearch?.runId ?? undefined;
+      effectiveRunId = latestCollection?.runId ?? undefined;
     }
 
     if (!effectiveRunId) {
       return NextResponse.json(
-        { error: 'No completed customer research job found. Please run customer research first.' },
+        { error: 'No completed product data collection job found. Please run product data collection first.' },
         { status: 400 }
       );
     }
 
     const idempotencyKey = randomUUID();
 
-    try {
-      await reserveQuota(userId, planId, 'researchQueries', 1);
-      didReserveQuota = true;
-    } catch (err: any) {
-      if (err instanceof QuotaExceededError) {
-        return NextResponse.json(
-          { error: 'Quota exceeded', metric: 'researchQueries', limit: err.limit, used: err.used },
-          { status: 429 },
-        );
-      }
-      throw err;
-    }
-
     if (securitySweep) {
       const job = await prisma.job.create({
         data: {
           projectId,
           userId,
-          type: JobType.CUSTOMER_ANALYSIS,
+          type: 'PRODUCT_ANALYSIS' as any,
           status: JobStatus.PENDING,
           idempotencyKey,
+          runId: effectiveRunId,
           payload: parsed.data,
           resultSummary: "Skipped: SECURITY_SWEEP",
           error: Prisma.JsonNull,
@@ -132,10 +89,10 @@ export async function POST(req: NextRequest) {
         jobId,
         action: "job.create",
         ip,
-        metadata: { type: "customer-analysis", skipped: true, reason: "SECURITY_SWEEP" },
+        metadata: { type: "product-analysis", skipped: true, reason: "SECURITY_SWEEP" },
       });
       return NextResponse.json(
-        { jobId, started: false, skipped: true, reason: "SECURITY_SWEEP" },
+        { jobId, runId: effectiveRunId, started: false, skipped: true, reason: "SECURITY_SWEEP" },
         { status: 200 },
       );
     }
@@ -154,7 +111,7 @@ export async function POST(req: NextRequest) {
       data: {
         projectId,
         userId,
-        type: JobType.CUSTOMER_ANALYSIS,
+        type: 'PRODUCT_ANALYSIS' as any,
         status: JobStatus.PENDING,
         idempotencyKey,
         runId: effectiveRunId,
@@ -163,13 +120,6 @@ export async function POST(req: NextRequest) {
     });
     jobId = job.id;
 
-    await addJob(QueueName.CUSTOMER_ANALYSIS, job.id, {
-      jobId: job.id,
-      projectId,
-      productName,
-      productProblemSolved,
-    });
-
     await logAudit({
       userId,
       projectId,
@@ -177,19 +127,15 @@ export async function POST(req: NextRequest) {
       action: 'job.create',
       ip,
       metadata: {
-        type: 'customer-analysis',
+        type: 'product-analysis',
       },
     });
 
     return NextResponse.json(
-      { jobId, started: true },
+      { jobId, runId: effectiveRunId, started: true },
       { status: 202 },
     );
   } catch (err: any) {
-    if (didReserveQuota) {
-      const periodKey = new Date().toISOString().slice(0, 7);
-      await rollbackQuota(userId, periodKey, 'researchQueries', 1).catch(console.error);
-    }
     await logAudit({
       userId,
       projectId,
@@ -197,7 +143,7 @@ export async function POST(req: NextRequest) {
       action: 'job.error',
       ip,
       metadata: {
-        type: 'customer-analysis',
+        type: 'product-analysis',
         error: String(err?.message ?? err),
       },
     });

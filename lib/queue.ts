@@ -1,3 +1,4 @@
+// lib/queue.ts
 import { cfg } from "@/lib/config";
 import { isSelfHosted } from "@/lib/config/mode";
 import Bull from 'bull';
@@ -32,6 +33,7 @@ export const redis: Redis | null = (() => {
 
 export const QueueName = {
   CUSTOMER_RESEARCH: 'customer-research',
+  CUSTOMER_ANALYSIS: 'customer-analysis',
   AD_COLLECTION: 'ad-collection',
   AD_TRANSCRIPTS: 'ad-transcripts',
   PATTERN_ANALYSIS: 'pattern-analysis',

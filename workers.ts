@@ -1,5 +1,4 @@
-
-// Inline getRuntimeMode logic (must be JS, not TS)
+// workers.ts
 function getRuntimeMode() {
 	const nodeEnv = process.env.NODE_ENV;
 	const explicitMode = process.env.MODE;
@@ -21,6 +20,7 @@ console.log(`[BOOT] Runtime mode: ${runtimeMode}`);
 
 async function startWorkers() {
 	await import('./lib/workers/customerResearchWorker');
+	await import('./lib/workers/customerAnalysisWorker');
 	console.log('[Workers] All workers initialized');
 }
 
