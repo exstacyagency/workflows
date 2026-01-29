@@ -12,8 +12,14 @@ import { enforceUserConcurrency, findIdempotentJob } from "@/lib/jobGuards";
 import { JobStatus, JobType } from "@prisma/client";
 import { assertMinPlan, UpgradeRequiredError } from "@/lib/billing/requirePlan";
 import { reserveQuota, rollbackQuota, QuotaExceededError } from "@/lib/billing/usage";
+import { randomUUID } from 'crypto';
+import { z } from 'zod';
 
 const JOB_TYPE = JobType.AD_PERFORMANCE; // enum-safe, schema-backed
+
+const AdTranscriptsSchema = ProjectJobSchema.extend({
+  runId: z.string().optional(),
+});
 
 export async function POST(req: NextRequest) {
   const userId = await getSessionUserId();
@@ -34,7 +40,7 @@ export async function POST(req: NextRequest) {
   let planId: "FREE" | "GROWTH" | "SCALE" = "FREE";
 
   try {
-    const parsed = await parseJson(req, ProjectJobSchema);
+    const parsed = await parseJson(req, AdTranscriptsSchema);
     if (!parsed.success) {
       return NextResponse.json(
         { error: parsed.error, details: parsed.details },
@@ -42,7 +48,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    projectId = parsed.data.projectId;
+    const { projectId: parsedProjectId, runId } = parsed.data;
+    projectId = parsedProjectId;
 
     const auth = await requireProjectOwner(projectId);
     if (auth.error) {
@@ -71,25 +78,34 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const idempotencyKey = JSON.stringify([
-      projectId,
-      JOB_TYPE,
-      "ad-transcripts",
-    ]);
+    // Get runId from request or find most recent completed ad collection job
+    let effectiveRunId = runId;
+    if (!effectiveRunId) {
+      const latestCollection = await prisma.job.findFirst({
+        where: {
+          projectId,
+          type: JobType.AD_PERFORMANCE,
+          status: JobStatus.COMPLETED,
+          runId: { not: null },
+          payload: {
+            path: ['jobType'],
+            equals: 'ad_raw_collection',
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        select: { runId: true },
+      });
+      effectiveRunId = latestCollection?.runId ?? undefined;
+    }
 
-    const existing = await findIdempotentJob({
-      userId,
-      projectId,
-      type: JOB_TYPE,
-      idempotencyKey,
-    });
-
-    if (existing) {
+    if (!effectiveRunId) {
       return NextResponse.json(
-        { jobId: existing.id, reused: true },
-        { status: 200 }
+        { error: 'No completed ad collection job found. Please run ad collection first.' },
+        { status: 400 }
       );
     }
+
+    const idempotencyKey = randomUUID();
 
     try {
       reservation = await reserveQuota(userId, planId, "researchQueries", 1);
@@ -167,6 +183,7 @@ export async function POST(req: NextRequest) {
         type: JOB_TYPE,
         status: JobStatus.PENDING,
         idempotencyKey,
+        runId: effectiveRunId,
         payload: {
           projectId,
           kind: "ad_transcript_collection",
@@ -191,7 +208,7 @@ export async function POST(req: NextRequest) {
       metadata: { type: "ad-transcripts" },
     });
 
-    return NextResponse.json(result, { status: 200 });
+    return NextResponse.json({ ...result, runId: effectiveRunId }, { status: 200 });
   } catch (err: any) {
     console.error(err);
 

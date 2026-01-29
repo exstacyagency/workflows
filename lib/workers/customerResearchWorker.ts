@@ -1,8 +1,9 @@
-import { getQueue, QueueName } from '@/lib/queue';
-import { runCustomerResearch } from '@/services/customerResearchService';
-import { prisma } from '@/lib/prisma';
+// lib/workers/customerResearchWorker.ts
+import { getQueue, QueueName } from '../queue';
+import { runCustomerResearch } from '../../services/customerResearchService';
+import prisma from '../prisma';
 import { JobStatus } from '@prisma/client';
-import { updateJobStatus } from '@/lib/jobs/updateJobStatus';
+import { updateJobStatus } from '../jobs/updateJobStatus';
 
 const queue = getQueue(QueueName.CUSTOMER_RESEARCH);
 
