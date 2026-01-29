@@ -12,7 +12,6 @@ import { getSessionUserId } from '@/lib/getSessionUserId';
 import { enforceUserConcurrency, findIdempotentJob } from '@/lib/jobGuards';
 import { assertMinPlan, UpgradeRequiredError } from '@/lib/billing/requirePlan';
 import { reserveQuota, rollbackQuota, QuotaExceededError } from '@/lib/billing/usage';
-import { addJob, QueueName } from '@/lib/queue';
 import { randomUUID } from 'crypto';
 import { z } from 'zod';
 
@@ -200,12 +199,7 @@ export async function POST(req: NextRequest) {
     });
     jobId = job.id;
 
-    await addJob(QueueName.PATTERN_ANALYSIS, job.id, {
-      jobId: job.id,
-      projectId,
-      customerResearchJobId: customerResearchJob.id,
-      adPerformanceJobId: adTranscriptsJob.id,
-    });
+    // Job will be picked up by jobRunner worker (no queue needed)
 
     await logAudit({
       userId,
