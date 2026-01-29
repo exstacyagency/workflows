@@ -4,6 +4,7 @@
 import { useParams, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { JobStatus, JobType } from "@prisma/client";
+import toast, { Toaster } from "react-hot-toast";
 
 type Job = {
   id: string;
@@ -43,6 +44,7 @@ export default function CreativeStudioPage() {
   const [error, setError] = useState<string | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [submitting, setSubmitting] = useState<string | null>(null);
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [researchQuality, setResearchQuality] = useState<ResearchQuality>({
     customer: false,
     product: false,
@@ -56,6 +58,17 @@ export default function CreativeStudioPage() {
     loadJobs();
   }, [projectId]);
 
+  // Auto-refresh jobs every 5 seconds
+  useEffect(() => {
+    if (!projectId) return;
+    
+    const interval = setInterval(() => {
+      loadJobs();
+    }, 5000);
+    
+    return () => clearInterval(interval);
+  }, [projectId]);
+
   async function loadJobs() {
     try {
       const res = await fetch(`/api/projects/${projectId}/jobs`, {
@@ -65,6 +78,7 @@ export default function CreativeStudioPage() {
       const data = await res.json();
       const loadedJobs = data.jobs || [];
       setJobs(loadedJobs);
+      setLastRefresh(new Date());
       
       // Calculate research quality
       const customer = loadedJobs.some(
@@ -237,8 +251,10 @@ export default function CreativeStudioPage() {
 
       // Reload jobs
       await loadJobs();
+      toast.success("Job started successfully!");
     } catch (err: any) {
       setError(err.message);
+      toast.error(err.message || "Failed to start job");
     } finally {
       setSubmitting(null);
     }
@@ -250,6 +266,15 @@ export default function CreativeStudioPage() {
     if (nextStep) {
       await runStep(nextStep);
     }
+  }
+
+  function Spinner() {
+    return (
+      <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+      </svg>
+    );
   }
 
   function getStepBadge(status: ProductionStep["status"]) {
@@ -285,11 +310,24 @@ export default function CreativeStudioPage() {
       {/* Header */}
       <section className="rounded-xl border border-slate-800 bg-slate-900/80 p-6">
         <div className="flex items-start justify-between">
-          <div>
+          <div className="flex-1">
             <h1 className="text-2xl font-semibold text-slate-50">Creative Studio</h1>
-            <p className="text-sm text-slate-300 mt-1">
-              Transform your research into high-quality video ads through our automated production pipeline.
-            </p>
+            <div className="flex items-center gap-3 mt-1">
+              <p className="text-sm text-slate-300">
+                Transform your research into high-quality video ads through our automated production pipeline.
+              </p>
+              {lastRefresh && (
+                <div className="flex items-center gap-2 text-xs text-slate-500">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-sky-500"></span>
+                  </span>
+                  <span>
+                    Updated {Math.floor((new Date().getTime() - lastRefresh.getTime()) / 1000)}s ago
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
           <div className="text-right">
             <div className="text-3xl font-bold text-slate-50">
@@ -378,13 +416,32 @@ export default function CreativeStudioPage() {
                       {step.locked && (
                         <p className="text-xs text-slate-500">🔒 {step.lockReason}</p>
                       )}
-                      {step.lastJob && (
+                      {step.lastJob && step.status !== "failed" && step.status !== "running" && (
                         <p className="text-xs text-slate-400">
                           {step.lastJob.resultSummary || "Job completed"}
                         </p>
                       )}
+                      {step.status === "running" && (
+                        <div className="mt-3 flex items-center gap-2 text-sky-400">
+                          <Spinner />
+                          <span className="text-xs">Processing...</span>
+                        </div>
+                      )}
                       {step.status === "failed" && step.lastJob?.error && (
-                        <p className="text-xs text-red-400">{step.lastJob.error}</p>
+                        <div className="mt-3 rounded-lg bg-red-500/10 border border-red-500/30 p-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex-1">
+                              <p className="text-xs font-semibold text-red-300 mb-1">Error Details:</p>
+                              <p className="text-xs text-red-400">{step.lastJob.error}</p>
+                            </div>
+                            <button
+                              onClick={() => runStep(step)}
+                              className="text-xs text-red-400 hover:text-red-300 underline whitespace-nowrap"
+                            >
+                              Try again →
+                            </button>
+                          </div>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -397,8 +454,9 @@ export default function CreativeStudioPage() {
                       step.status === "running" ||
                       submitting === step.key
                     }
-                    className="px-4 py-2 rounded-md bg-sky-500 hover:bg-sky-400 disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed text-sm font-medium text-white transition-colors whitespace-nowrap"
+                    className="px-4 py-2 rounded-md bg-sky-500 hover:bg-sky-400 disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed text-sm font-medium text-white transition-colors whitespace-nowrap flex items-center gap-2"
                   >
+                    {submitting === step.key && <Spinner />}
                     {submitting === step.key
                       ? "Starting..."
                       : step.status === "completed"
@@ -430,6 +488,7 @@ export default function CreativeStudioPage() {
           <p>• Final video will be available in the Scripts & Media section</p>
         </div>
       </section>
+      <Toaster position="top-right" />
     </div>
   );
 }
