@@ -26,6 +26,7 @@ interface Job {
   createdAt: string;
   startedAt?: string;
   completedAt?: string;
+  runId?: string | null;
 }
 
 interface ResearchStep {
@@ -67,6 +68,17 @@ interface ProductCollectionFormData {
   competitorUrls: string[];
 }
 
+interface RunAllResearchFormData {
+  productName: string;
+  productProblemSolved: string;
+  productAmazonAsin: string;
+  competitor1Asin?: string;
+  competitor2Asin?: string;
+  industryCode: string;
+  productUrl: string;
+  competitorUrls: string[];
+}
+
 export default function ResearchHubPage() {
   const params = useParams();
   const router = useRouter();
@@ -79,11 +91,10 @@ export default function ResearchHubPage() {
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
 
   // Modal states
-  const [showCustomerModal, setShowCustomerModal] = useState(false);
-  const [showAdModal, setShowAdModal] = useState(false);
-  const [showProductModal, setShowProductModal] = useState(false);
+  const [activeStepModal, setActiveStepModal] = useState<string | null>(null);
   const [pendingStep, setPendingStep] = useState<{ step: ResearchStep; trackKey: string } | null>(null);
   const [showNewRunModal, setShowNewRunModal] = useState(false);
+  const [showRunAllModal, setShowRunAllModal] = useState(false);
 
   // Load jobs on mount
   useEffect(() => {
@@ -263,6 +274,23 @@ export default function ResearchHubPage() {
     return Math.round((completed / track.steps.length) * 100);
   };
 
+  // Get run status based on jobs with currentRunId
+  const getRunStatus = () => {
+    if (!currentRunId) return null;
+    
+    const runJobs = jobs.filter(j => j.runId === currentRunId);
+    if (runJobs.length === 0) return 'NOT_STARTED';
+    
+    const hasRunning = runJobs.some(j => j.status === 'RUNNING');
+    const hasFailed = runJobs.some(j => j.status === 'FAILED');
+    const allCompleted = runJobs.every(j => j.status === 'COMPLETED');
+    
+    if (hasRunning) return 'IN_PROGRESS';
+    if (hasFailed) return 'FAILED';
+    if (allCompleted) return 'COMPLETED';
+    return 'IN_PROGRESS';
+  };
+
   // Check if step can run
   const canRun = (step: ResearchStep, track: ResearchTrack): boolean => {
     if (step.status === "RUNNING" || step.status === "PENDING") return false;
@@ -289,15 +317,15 @@ export default function ResearchHubPage() {
     // Show modal for steps that need input
     if (step.id === "customer-research") {
       setPendingStep({ step, trackKey });
-      setShowCustomerModal(true);
+      setActiveStepModal(step.id);
       return;
     } else if (step.id === "ad-collection") {
       setPendingStep({ step, trackKey });
-      setShowAdModal(true);
+      setActiveStepModal(step.id);
       return;
     } else if (step.id === "product-collection") {
       setPendingStep({ step, trackKey });
-      setShowProductModal(true);
+      setActiveStepModal(step.id);
       return;
     }
 
@@ -360,7 +388,7 @@ export default function ResearchHubPage() {
       ...(formData.competitor2Asin && { competitor2Asin: formData.competitor2Asin }),
     };
 
-    setShowCustomerModal(false);
+    setActiveStepModal(null);
     await executeStep(pendingStep.step, payload);
     setPendingStep(null);
   };
@@ -368,7 +396,7 @@ export default function ResearchHubPage() {
   const handleAdCollectionSubmit = async (formData: AdCollectionFormData) => {
     if (!pendingStep) return;
     
-    setShowAdModal(false);
+    setActiveStepModal(null);
     await executeStep(pendingStep.step, { industryCode: formData.industryCode });
     setPendingStep(null);
   };
@@ -382,7 +410,7 @@ export default function ResearchHubPage() {
       competitorUrls: formData.competitorUrls.filter(url => url.trim() !== ''),
     };
 
-    setShowProductModal(false);
+    setActiveStepModal(null);
     await executeStep(pendingStep.step, payload);
     setPendingStep(null);
   };
@@ -392,6 +420,68 @@ export default function ResearchHubPage() {
     setShowNewRunModal(false);
     toast.success("New research run started!");
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleRunAllResearch = async (formData: RunAllResearchFormData) => {
+    setShowRunAllModal(false);
+    
+    const runId = crypto.randomUUID();
+    setCurrentRunId(runId);
+    
+    toast.success("Starting all research jobs...");
+    
+    try {
+      // Start Customer Research
+      const customerResearchPayload = {
+        projectId,
+        runId,
+        productName: formData.productName,
+        productProblemSolved: formData.productProblemSolved,
+        productAmazonAsin: formData.productAmazonAsin,
+        ...(formData.competitor1Asin && { competitor1Asin: formData.competitor1Asin }),
+        ...(formData.competitor2Asin && { competitor2Asin: formData.competitor2Asin }),
+      };
+      
+      await fetch('/api/jobs/customer-research', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(customerResearchPayload),
+      });
+      
+      // Start Ad Collection
+      const adCollectionPayload = {
+        projectId,
+        runId,
+        industryCode: formData.industryCode,
+      };
+      
+      await fetch('/api/jobs/ad-collection', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(adCollectionPayload),
+      });
+      
+      // Start Product Data Collection
+      const productCollectionPayload = {
+        projectId,
+        runId,
+        productName: formData.productName,
+        productUrl: formData.productUrl,
+        competitorUrls: formData.competitorUrls.filter(url => url.trim() !== ''),
+      };
+      
+      await fetch('/api/jobs/product-data-collection', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(productCollectionPayload),
+      });
+      
+      await loadJobs();
+      toast.success("All research jobs started successfully!");
+    } catch (error: any) {
+      console.error("Failed to start research jobs:", error);
+      toast.error(error.message || "Failed to start some research jobs");
+    }
   };
 
   // Spinner component
@@ -431,36 +521,11 @@ export default function ResearchHubPage() {
 
   return (
     <>
-      {/* Customer Research Modal */}
-      {showCustomerModal && (
-        <CustomerResearchModal
-          onSubmit={handleCustomerResearchSubmit}
-          onClose={() => {
-            setShowCustomerModal(false);
-            setPendingStep(null);
-          }}
-        />
-      )}
-
-      {/* Ad Collection Modal */}
-      {showAdModal && (
-        <AdCollectionModal
-          onSubmit={handleAdCollectionSubmit}
-          onClose={() => {
-            setShowAdModal(false);
-            setPendingStep(null);
-          }}
-        />
-      )}
-
-      {/* Product Collection Modal */}
-      {showProductModal && (
-        <ProductCollectionModal
-          onSubmit={handleProductCollectionSubmit}
-          onClose={() => {
-            setShowProductModal(false);
-            setPendingStep(null);
-          }}
+      {/* Run All Research Modal */}
+      {showRunAllModal && (
+        <RunAllResearchModal
+          onSubmit={handleRunAllResearch}
+          onClose={() => setShowRunAllModal(false)}
         />
       )}
 
@@ -521,20 +586,34 @@ export default function ResearchHubPage() {
               )}
             </div>
           </div>
-          {currentRunId && (
-            <div className="flex items-center gap-3">
-              <div className="text-right">
-                <div className="text-xs text-slate-500 mb-1">Current Research Run</div>
-                <div className="text-sm font-mono text-emerald-400">{currentRunId.slice(0, 8)}...</div>
-              </div>
-              <button
-                onClick={() => setShowNewRunModal(true)}
-                className="px-4 py-2 rounded bg-emerald-500 hover:bg-emerald-400 text-white text-sm font-medium shadow-lg"
-              >
-                Start New Run
-              </button>
-            </div>
-          )}
+        </div>
+      </div>
+
+      {/* Current Run Banner */}
+      <div className="mb-6 p-4 rounded-lg bg-slate-900/50 border border-slate-800">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs text-slate-500 mb-1">Current Research Run</p>
+            <p className="text-sm text-slate-300 font-mono flex items-center gap-2">
+              {currentRunId || 'No active run - click "Run All Research" to start'}
+              {currentRunId && (
+                <span className={`px-2 py-0.5 rounded text-xs ${
+                  getRunStatus() === 'COMPLETED' ? 'bg-emerald-500/10 text-emerald-400' :
+                  getRunStatus() === 'FAILED' ? 'bg-red-500/10 text-red-400' :
+                  'bg-sky-500/10 text-sky-400'
+                }`}>
+                  {getRunStatus()}
+                </span>
+              )}
+            </p>
+          </div>
+          <button
+            onClick={() => setShowRunAllModal(true)}
+            disabled={currentRunId !== null}
+            className="px-4 py-2 text-sm bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg font-medium"
+          >
+            Run All Research
+          </button>
         </div>
       </div>
 
@@ -556,15 +635,9 @@ export default function ResearchHubPage() {
               }`}
             >
               {/* Track Header */}
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h2 className="text-xl font-bold text-white">{track.label}</h2>
-                  <p className="text-sm text-slate-400">{track.description}</p>
-                </div>
-                <div className="text-right">
-                  <div className="text-2xl font-bold text-white">{completion}%</div>
-                  <div className="text-xs text-slate-500">Complete</div>
-                </div>
+              <div className="mb-4">
+                <h2 className="text-xl font-bold text-white">{track.label}</h2>
+                <p className="text-sm text-slate-400">{track.description}</p>
               </div>
 
               {/* Progress Bar */}
@@ -587,13 +660,6 @@ export default function ResearchHubPage() {
                         key={step.id}
                         className="flex items-start gap-4 p-4 rounded-lg bg-slate-900/50 border border-slate-800"
                       >
-                        {/* Step Number */}
-                        <div className="flex-shrink-0">
-                          <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-sm font-bold text-slate-400">
-                            {idx + 1}
-                          </div>
-                        </div>
-
                         {/* Step Info */}
                         <div className="flex-1 min-w-0">
                           <h3 className="text-sm font-semibold text-white mb-1">
@@ -631,13 +697,21 @@ export default function ResearchHubPage() {
 
                         {/* Action Button */}
                         <div className="flex-shrink-0 flex gap-2">
-                          {step.status === "COMPLETED" && (
-                            <button
-                              onClick={() => router.push(`/projects/${projectId}/research-hub/jobs/${step.jobType}`)}
-                              className="px-4 py-2 rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 text-sm flex items-center gap-2"
-                            >
-                              View Results
-                            </button>
+                          {step.status === "COMPLETED" && step.lastJob && (
+                            <div className="flex flex-col gap-1">
+                              <button
+                                onClick={() => router.push(`/projects/${projectId}/research-hub/results/${step.lastJob!.id}`)}
+                                className="text-sky-400 hover:text-sky-300 text-xs underline"
+                              >
+                                View Results
+                              </button>
+                              <button
+                                onClick={() => router.push(`/projects/${projectId}/research-hub/jobs/${step.jobType}`)}
+                                className="text-slate-400 hover:text-slate-300 text-xs underline"
+                              >
+                                View History
+                              </button>
+                            </div>
                           )}
                           {step.status === "COMPLETED" ? (
                             <button
@@ -663,6 +737,39 @@ export default function ResearchHubPage() {
                             </button>
                           )}
                         </div>
+
+                        {/* Step Modal - Render inline */}
+                        {activeStepModal === step.id && (
+                          <>
+                            {step.id === "customer-research" && (
+                              <CustomerResearchModal
+                                onSubmit={handleCustomerResearchSubmit}
+                                onClose={() => {
+                                  setActiveStepModal(null);
+                                  setPendingStep(null);
+                                }}
+                              />
+                            )}
+                            {step.id === "ad-collection" && (
+                              <AdCollectionModal
+                                onSubmit={handleAdCollectionSubmit}
+                                onClose={() => {
+                                  setActiveStepModal(null);
+                                  setPendingStep(null);
+                                }}
+                              />
+                            )}
+                            {step.id === "product-collection" && (
+                              <ProductCollectionModal
+                                onSubmit={handleProductCollectionSubmit}
+                                onClose={() => {
+                                  setActiveStepModal(null);
+                                  setPendingStep(null);
+                                }}
+                              />
+                            )}
+                          </>
+                        )}
                       </div>
                     );
                   })}
@@ -671,21 +778,6 @@ export default function ResearchHubPage() {
             </div>
           );
         })}
-      </div>
-
-      {/* Next Step CTA */}
-      <div className="mt-8 p-6 rounded-lg bg-slate-900/50 border border-slate-800">
-        <h3 className="text-lg font-bold text-white mb-2">Ready for Production?</h3>
-        <p className="text-sm text-slate-400 mb-4">
-          Once you've completed your research, head to the Creative Studio to generate
-          ad scripts and videos.
-        </p>
-        <Link
-          href={`/projects/${projectId}/creative-studio`}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded bg-sky-500 hover:bg-sky-400 text-white text-sm font-medium"
-        >
-          Go to Creative Studio →
-        </Link>
       </div>
 
       {/* Recent Jobs */}
@@ -709,6 +801,21 @@ export default function ResearchHubPage() {
             </div>
           ))}
         </div>
+      </div>
+
+      {/* Next Step CTA */}
+      <div className="mt-8 p-6 rounded-lg bg-slate-900/50 border border-slate-800">
+        <h3 className="text-lg font-bold text-white mb-2">Ready for Production?</h3>
+        <p className="text-sm text-slate-400 mb-4">
+          Once you've completed your research, head to the Creative Studio to generate
+          ad scripts and videos.
+        </p>
+        <Link
+          href={`/projects/${projectId}/creative-studio`}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded bg-sky-500 hover:bg-sky-400 text-white text-sm font-medium"
+        >
+          Go to Creative Studio →
+        </Link>
       </div>
     </div>
     <Toaster position="top-right" />
@@ -1038,6 +1145,233 @@ function ProductCollectionModal({
                 className="flex-1 px-4 py-2 rounded bg-violet-500 hover:bg-violet-400 text-white font-medium"
               >
                 Collect Data
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Run All Research Modal Component
+function RunAllResearchModal({
+  onSubmit,
+  onClose,
+}: {
+  onSubmit: (data: RunAllResearchFormData) => void;
+  onClose: () => void;
+}) {
+  const [formData, setFormData] = useState<RunAllResearchFormData>({
+    productName: "",
+    productProblemSolved: "",
+    productAmazonAsin: "",
+    competitor1Asin: "",
+    competitor2Asin: "",
+    industryCode: "",
+    productUrl: "",
+    competitorUrls: [""],
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.productName || !formData.productProblemSolved || !formData.productAmazonAsin || !formData.industryCode || !formData.productUrl) {
+      alert("Please fill in all required fields");
+      return;
+    }
+    onSubmit(formData);
+  };
+
+  const addCompetitorUrl = () => {
+    setFormData({
+      ...formData,
+      competitorUrls: [...formData.competitorUrls, ""],
+    });
+  };
+
+  const removeCompetitorUrl = (index: number) => {
+    setFormData({
+      ...formData,
+      competitorUrls: formData.competitorUrls.filter((_, i) => i !== index),
+    });
+  };
+
+  const updateCompetitorUrl = (index: number, value: string) => {
+    const newUrls = [...formData.competitorUrls];
+    newUrls[index] = value;
+    setFormData({ ...formData, competitorUrls: newUrls });
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-slate-900 rounded-lg border border-slate-700 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="p-6">
+          <h2 className="text-xl font-bold text-white mb-2">Run All Research</h2>
+          <p className="text-sm text-slate-400 mb-6">
+            Enter all details to start customer, ad, and product research simultaneously
+          </p>
+
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Customer Research Section */}
+            <div className="border-t border-slate-700 pt-4">
+              <h3 className="text-lg font-semibold text-emerald-400 mb-3">Customer Research</h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                    Product Name <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.productName}
+                    onChange={(e) => setFormData({ ...formData, productName: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    placeholder="e.g., Wireless Headphones"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                    Product Problem Solved <span className="text-red-400">*</span>
+                  </label>
+                  <textarea
+                    value={formData.productProblemSolved}
+                    onChange={(e) => setFormData({ ...formData, productProblemSolved: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    placeholder="e.g., Provides noise cancellation for focus"
+                    rows={2}
+                    required
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                      Amazon ASIN <span className="text-red-400">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.productAmazonAsin}
+                      onChange={(e) => setFormData({ ...formData, productAmazonAsin: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      placeholder="B07XYZ1234"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                      Competitor 1 ASIN
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.competitor1Asin}
+                      onChange={(e) => setFormData({ ...formData, competitor1Asin: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      placeholder="B08ABC5678"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                      Competitor 2 ASIN
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.competitor2Asin}
+                      onChange={(e) => setFormData({ ...formData, competitor2Asin: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      placeholder="B09DEF9012"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Ad Research Section */}
+            <div className="border-t border-slate-700 pt-4">
+              <h3 className="text-lg font-semibold text-sky-400 mb-3">Ad Research</h3>
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">
+                  Industry Code <span className="text-red-400">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={formData.industryCode}
+                  onChange={(e) => setFormData({ ...formData, industryCode: e.target.value })}
+                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                  placeholder="e.g., tech, fitness, beauty"
+                  required
+                />
+              </div>
+            </div>
+
+            {/* Product Research Section */}
+            <div className="border-t border-slate-700 pt-4">
+              <h3 className="text-lg font-semibold text-violet-400 mb-3">Product Research</h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                    Product URL <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    type="url"
+                    value={formData.productUrl}
+                    onChange={(e) => setFormData({ ...formData, productUrl: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                    placeholder="https://example.com/product"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                    Competitor URLs <span className="text-slate-500">(optional)</span>
+                  </label>
+                  <div className="space-y-2">
+                    {formData.competitorUrls.map((url, index) => (
+                      <div key={index} className="flex gap-2">
+                        <input
+                          type="url"
+                          value={url}
+                          onChange={(e) => updateCompetitorUrl(index, e.target.value)}
+                          className="flex-1 px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                          placeholder="https://competitor.com/product"
+                        />
+                        {formData.competitorUrls.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeCompetitorUrl(index)}
+                            className="px-3 py-2 rounded bg-red-500/20 hover:bg-red-500/30 text-red-400"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={addCompetitorUrl}
+                      className="text-sm text-violet-400 hover:text-violet-300"
+                    >
+                      + Add another competitor URL
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-4 border-t border-slate-700">
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex-1 px-4 py-2 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="flex-1 px-4 py-2 rounded bg-emerald-500 hover:bg-emerald-400 text-white font-medium"
+              >
+                Start All Research
               </button>
             </div>
           </form>
