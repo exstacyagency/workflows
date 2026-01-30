@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { projectId: string } }
+  { params }: { params: { projectId: string; jobId: string } }
 ) {
   try {
     const userId = await getSessionUserId();
@@ -12,10 +12,9 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { projectId } = params;
-    const { searchParams } = new URL(request.url);
-    const typeFilter = searchParams.get("type");
+    const { projectId, jobId } = params;
 
+    // Verify project access
     const project = await prisma.project.findFirst({
       where: {
         id: projectId,
@@ -30,42 +29,40 @@ export async function GET(
       );
     }
 
-    const whereClause: any = {
-      projectId,
-      userId: userId,
-    };
-
-    // Add type filter if provided
-    if (typeFilter) {
-      whereClause.type = typeFilter;
-    }
-
-    const jobs = await prisma.job.findMany({
-      where: whereClause,
-      orderBy: {
-        createdAt: "desc",
+    // Fetch the specific job
+    const job = await prisma.job.findFirst({
+      where: {
+        id: jobId,
+        projectId,
+        userId: userId,
       },
       select: {
         id: true,
         type: true,
         status: true,
         error: true,
+        resultSummary: true,
         payload: true,
         createdAt: true,
         updatedAt: true,
-        runId: true,
       },
     });
 
+    if (!job) {
+      return NextResponse.json(
+        { error: "Job not found or access denied" },
+        { status: 404 }
+      );
+    }
+
     return NextResponse.json({
       success: true,
-      jobs,
-      count: jobs.length,
+      job,
     });
   } catch (error) {
-    console.error("Error fetching jobs:", error);
+    console.error("Error fetching job:", error);
     return NextResponse.json(
-      { error: "Failed to fetch jobs" },
+      { error: "Failed to fetch job" },
       { status: 500 }
     );
   }
