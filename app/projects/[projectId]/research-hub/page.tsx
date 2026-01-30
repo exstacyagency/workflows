@@ -83,6 +83,7 @@ export default function ResearchHubPage() {
   const [showAdModal, setShowAdModal] = useState(false);
   const [showProductModal, setShowProductModal] = useState(false);
   const [pendingStep, setPendingStep] = useState<{ step: ResearchStep; trackKey: string } | null>(null);
+  const [showNewRunModal, setShowNewRunModal] = useState(false);
 
   // Load jobs on mount
   useEffect(() => {
@@ -95,21 +96,34 @@ export default function ResearchHubPage() {
   useEffect(() => {
     if (!projectId) return;
     
+    console.log('[Auto-refresh] Setting up interval for projectId:', projectId);
     const interval = setInterval(() => {
+      console.log('[Auto-refresh] Triggering loadJobs...');
       loadJobs();
     }, 5000);
     
-    return () => clearInterval(interval);
+    return () => {
+      console.log('[Auto-refresh] Cleaning up interval');
+      clearInterval(interval);
+    };
   }, [projectId]);
 
   const loadJobs = async () => {
+    console.log('[loadJobs] Starting job fetch...', { projectId, timestamp: new Date().toISOString() });
     try {
       const response = await fetch(`/api/projects/${projectId}/jobs`);
       const data = await response.json();
 
+      console.log('[loadJobs] Fetched jobs:', { 
+        success: data.success, 
+        jobCount: data.jobs?.length,
+        jobs: data.jobs 
+      });
+
       if (data.success) {
         setJobs(data.jobs);
         setLastRefresh(new Date());
+        console.log('[loadJobs] Jobs state updated successfully');
       }
     } catch (error) {
       console.error("Failed to load jobs:", error);
@@ -225,6 +239,15 @@ export default function ResearchHubPage() {
 
       const lastJob = relevantJobs[0];
       const status = lastJob?.status || "NOT_STARTED";
+
+      console.log(`[Step Status] ${step.id}:`, {
+        jobType: step.jobType,
+        relevantJobsCount: relevantJobs.length,
+        lastJobId: lastJob?.id,
+        lastJobStatus: lastJob?.status,
+        calculatedStatus: status,
+        allJobsForType: jobs.filter(j => j.type === step.jobType).map(j => ({ id: j.id, status: j.status }))
+      });
 
       return {
         ...step,
@@ -364,6 +387,13 @@ export default function ResearchHubPage() {
     setPendingStep(null);
   };
 
+  const handleStartNewRun = () => {
+    setCurrentRunId(null);
+    setShowNewRunModal(false);
+    toast.success("New research run started!");
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   // Spinner component
   const Spinner = () => {
     return (
@@ -434,6 +464,34 @@ export default function ResearchHubPage() {
         />
       )}
 
+      {/* New Run Confirmation Modal */}
+      {showNewRunModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-900 rounded-lg border border-slate-700 max-w-md w-full">
+            <div className="p-6">
+              <h2 className="text-xl font-bold text-white mb-2">Start New Research Run?</h2>
+              <p className="text-sm text-slate-400 mb-6">
+                This will begin tracking a fresh set of research jobs. Your previous run data will remain accessible in the job history.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowNewRunModal(false)}
+                  className="flex-1 px-4 py-2 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleStartNewRun}
+                  className="flex-1 px-4 py-2 rounded bg-emerald-500 hover:bg-emerald-400 text-white font-medium"
+                >
+                  Start New Run
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="px-6 py-6 max-w-7xl mx-auto">
       {/* Header */}
       <div className="mb-8">
@@ -470,8 +528,8 @@ export default function ResearchHubPage() {
                 <div className="text-sm font-mono text-emerald-400">{currentRunId.slice(0, 8)}...</div>
               </div>
               <button
-                onClick={() => setCurrentRunId(null)}
-                className="px-4 py-2 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-medium"
+                onClick={() => setShowNewRunModal(true)}
+                className="px-4 py-2 rounded bg-emerald-500 hover:bg-emerald-400 text-white text-sm font-medium shadow-lg"
               >
                 Start New Run
               </button>
@@ -572,7 +630,15 @@ export default function ResearchHubPage() {
                         </div>
 
                         {/* Action Button */}
-                        <div className="flex-shrink-0">
+                        <div className="flex-shrink-0 flex gap-2">
+                          {step.status === "COMPLETED" && (
+                            <button
+                              onClick={() => router.push(`/projects/${projectId}/research-hub/jobs/${step.jobType}`)}
+                              className="px-4 py-2 rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 text-sm flex items-center gap-2"
+                            >
+                              View Results
+                            </button>
+                          )}
                           {step.status === "COMPLETED" ? (
                             <button
                               onClick={() => runStep(step, track.key)}
