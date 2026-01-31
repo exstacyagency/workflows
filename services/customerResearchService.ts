@@ -14,6 +14,12 @@ export type RunCustomerResearchParams = {
   productAmazonAsin: string;
   competitor1AmazonAsin?: string;
   competitor2AmazonAsin?: string;
+  // Reddit search parameters
+  redditKeywords?: string[];
+  redditSubreddits?: string[];
+  maxPosts?: number;
+  timeRange?: 'week' | 'month' | 'year' | 'all';
+  scrapeComments?: boolean;
 };
 
 type RedditPost = {
@@ -248,9 +254,35 @@ async function fetchApifyAmazonReviews(asin: string, starFilter: 'five_star' | '
   return runApifyActor<AmazonReview>('ZebkvH3nVOrafqr5T', input);
 }
 
-async function fetchApifyRedditByUrls(urls: string[]) {
-  if (urls.length === 0) return [] as RedditPost[];
-  const input = { includeNsfw: false, scrapeComments: true, urls: urls.slice(0, 20) };
+async function fetchApifyReddit(options: {
+  queries: string[];
+  subreddits?: string[];
+  maxPostsPerQuery?: number;
+  timeRange?: 'week' | 'month' | 'year' | 'all';
+  scrapeComments?: boolean;
+}) {
+  const { queries, subreddits, maxPostsPerQuery, timeRange, scrapeComments } = options;
+  
+  if (!queries || queries.length === 0) return [] as RedditPost[];
+  
+  const input = {
+    // Search Queries (required)
+    queries,
+    sort: 'relevance',
+    timeRange: timeRange || 'month',
+    
+    // Limits
+    maxPostsPerQuery: maxPostsPerQuery || 50,
+    maxCommentsPerPost: 100,
+    
+    // Options
+    scrapeComments: scrapeComments !== undefined ? scrapeComments : true,
+    includeNsfw: false,
+    
+    // Optional subreddit targeting
+    ...(subreddits && subreddits.length > 0 && { subreddits }),
+  };
+  
   return runApifyActor<RedditPost>('TwqHBuZZPHJxiQrTU', input);
 }
 
@@ -280,7 +312,20 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
     };
   }
 
-  const { projectId, jobId, productName, productProblemSolved, productAmazonAsin, competitor1AmazonAsin, competitor2AmazonAsin } = params;
+  const { 
+    projectId, 
+    jobId, 
+    productName, 
+    productProblemSolved, 
+    productAmazonAsin, 
+    competitor1AmazonAsin, 
+    competitor2AmazonAsin,
+    redditKeywords,
+    redditSubreddits,
+    maxPosts,
+    timeRange,
+    scrapeComments,
+  } = params;
 
     await updateJobStatus(jobId, JobStatus.RUNNING);
 
@@ -289,18 +334,25 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
       throw new Error('productName, productProblemSolved, productAmazonAsin required');
     }
 
-    const [productPosts, problemPosts] = await Promise.all([
-      searchReddit(productName),
-      searchReddit(productProblemSolved)
-    ]);
+    // Build combined search queries: product name + problem + optional extra keywords
+    const queries = [
+      productName,
+      productProblemSolved,
+      ...(redditKeywords || [])
+    ].filter(Boolean);
 
-    const productUrls = extractUrlsFromPosts(productPosts);
-    const problemUrls = extractUrlsFromPosts(problemPosts);
-
-    const [productDetails, problemDetails] = await Promise.all([
-      fetchApifyRedditByUrls(productUrls),
-      fetchApifyRedditByUrls(problemUrls)
-    ]);
+    // Single Reddit scrape with all queries combined
+    const redditData = await fetchApifyReddit({
+      queries,
+      subreddits: redditSubreddits,
+      maxPostsPerQuery: maxPosts,
+      timeRange,
+      scrapeComments,
+    });
+    
+    // Split results for filtering (use all data for both)
+    const productDetails = redditData;
+    const problemDetails = redditData;
 
     const filteredProductComments = filterProductComments(productDetails, productName);
     const filteredProblemComments = filterProblemComments(problemDetails);

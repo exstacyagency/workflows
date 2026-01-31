@@ -218,15 +218,8 @@ async function fetchApifyAds(options: {
   industryCode: string;
   projectId: string;
 }): Promise<{ items: ApifyAd[]; actorId: string | null; runId: string | null; datasetId: string }> {
-  requireEnv(['APIFY_API_TOKEN'], 'APIFY');
-
-  const datasetIdFromEnv = env('APIFY_DATASET_ID');
-  if (datasetIdFromEnv) {
-    const items = (await fetchDatasetItems(datasetIdFromEnv)) as ApifyAd[];
-    return { items, actorId: env('APIFY_ACTOR_ID') ?? null, runId: null, datasetId: datasetIdFromEnv };
-  }
-
-  requireEnv(['APIFY_ACTOR_ID'], 'APIFY');
+  requireEnv(['APIFY_API_TOKEN', 'APIFY_ACTOR_ID'], 'APIFY');
+  
   const actorId = env('APIFY_ACTOR_ID')!;
   const { runId, datasetId } = await runApifyActor({
     industryCode: options.industryCode,
