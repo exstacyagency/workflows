@@ -56,6 +56,12 @@ interface CustomerResearchFormData {
   productAmazonAsin: string;
   competitor1Asin?: string;
   competitor2Asin?: string;
+  // Reddit search parameters
+  redditKeywords: string;
+  redditSubreddits?: string;
+  maxPosts: number;
+  timeRange: 'week' | 'month' | 'year' | 'all';
+  scrapeComments: boolean;
 }
 
 interface AdCollectionFormData {
@@ -451,6 +457,12 @@ export default function ResearchHubPage() {
       productAmazonAsin: formData.productAmazonAsin,
       ...(formData.competitor1Asin && { competitor1Asin: formData.competitor1Asin }),
       ...(formData.competitor2Asin && { competitor2Asin: formData.competitor2Asin }),
+      // Reddit search parameters
+      redditKeywords: formData.redditKeywords.split(',').map(k => k.trim()).filter(Boolean),
+      ...(formData.redditSubreddits && { redditSubreddits: formData.redditSubreddits.split(',').map(s => s.trim()).filter(Boolean) }),
+      maxPosts: formData.maxPosts,
+      timeRange: formData.timeRange,
+      scrapeComments: formData.scrapeComments,
     };
 
     setActiveStepModal(null);
@@ -979,6 +991,11 @@ function CustomerResearchModal({
     productAmazonAsin: "",
     competitor1Asin: "",
     competitor2Asin: "",
+    redditKeywords: "",
+    redditSubreddits: "",
+    maxPosts: 50,
+    timeRange: 'month',
+    scrapeComments: true,
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -1066,6 +1083,91 @@ function CustomerResearchModal({
                 className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 placeholder="e.g., B09DEF9012"
               />
+            </div>
+
+            {/* Reddit Search Settings */}
+            <div className="border-t border-slate-700 pt-4 mt-4">
+              <h3 className="text-sm font-semibold text-slate-300 mb-3">Reddit Search Settings</h3>
+              <p className="text-xs text-slate-400 mb-4">
+                Product name and problem will automatically be searched on Reddit. Add extra keywords below if needed.
+              </p>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                    Additional Reddit Keywords <span className="text-slate-500">(optional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.redditKeywords}
+                    onChange={(e) => setFormData({ ...formData, redditKeywords: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    placeholder="noise cancelling, ANC, battery life"
+                  />
+                  <p className="text-xs text-slate-500 mt-1">Optional - Add extra keywords beyond product name and problem</p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                    Target Subreddits <span className="text-slate-500">(optional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.redditSubreddits || ''}
+                    onChange={(e) => setFormData({ ...formData, redditSubreddits: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    placeholder="headphones, audiophile, BuyItForLife"
+                  />
+                  <p className="text-xs text-slate-500 mt-1">Leave empty to search all subreddits</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                      Max Posts
+                    </label>
+                    <select
+                      value={formData.maxPosts}
+                      onChange={(e) => setFormData({ ...formData, maxPosts: Number(e.target.value) })}
+                      className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    >
+                      <option value={25}>25 posts</option>
+                      <option value={50}>50 posts</option>
+                      <option value={100}>100 posts</option>
+                      <option value={200}>200 posts</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                      Time Range
+                    </label>
+                    <select
+                      value={formData.timeRange}
+                      onChange={(e) => setFormData({ ...formData, timeRange: e.target.value as 'week' | 'month' | 'year' | 'all' })}
+                      className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    >
+                      <option value="week">Past Week</option>
+                      <option value="month">Past Month</option>
+                      <option value="year">Past Year</option>
+                      <option value="all">All Time</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.scrapeComments}
+                      onChange={(e) => setFormData({ ...formData, scrapeComments: e.target.checked })}
+                      className="w-4 h-4 rounded border-slate-700 bg-slate-800 text-emerald-500 focus:ring-2 focus:ring-emerald-500"
+                    />
+                    <span className="text-sm text-slate-300">Scrape comments from posts</span>
+                  </label>
+                  <p className="text-xs text-slate-500 mt-1 ml-6">Recommended for deeper insights</p>
+                </div>
+              </div>
             </div>
 
             <div className="flex gap-3 pt-4">

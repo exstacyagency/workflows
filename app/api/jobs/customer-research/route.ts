@@ -23,6 +23,12 @@ const CustomerResearchSchema = ProjectJobSchema.extend({
   competitor1AmazonAsin: z.string().optional(),
   competitor2AmazonAsin: z.string().optional(),
   forceNew: z.boolean().optional().default(false),
+  // Reddit search parameters
+  redditKeywords: z.array(z.string()).optional(),
+  redditSubreddits: z.array(z.string()).optional(),
+  maxPosts: z.number().optional(),
+  timeRange: z.enum(['week', 'month', 'year', 'all']).optional(),
+  scrapeComments: z.boolean().optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -52,6 +58,11 @@ export async function POST(req: NextRequest) {
       competitor1AmazonAsin,
       competitor2AmazonAsin,
       forceNew,
+      redditKeywords,
+      redditSubreddits,
+      maxPosts,
+      timeRange,
+      scrapeComments,
     } = parsed.data;
     projectId = parsedProjectId;
 
@@ -105,6 +116,12 @@ export async function POST(req: NextRequest) {
       idempotencyKey,
       skipped: securitySweep,
       reason: securitySweep ? "SECURITY_SWEEP" : null,
+      // Reddit search parameters
+      ...(redditKeywords && { redditKeywords }),
+      ...(redditSubreddits && { redditSubreddits }),
+      ...(maxPosts && { maxPosts }),
+      ...(timeRange && { timeRange }),
+      ...(typeof scrapeComments === 'boolean' && { scrapeComments }),
     };
 
     const job = await prisma.job.create({
