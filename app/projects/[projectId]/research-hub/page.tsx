@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import toast, { Toaster } from "react-hot-toast";
 
@@ -90,6 +90,8 @@ interface RunAllResearchFormData {
 export default function ResearchHubPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const selectedProductFromUrl = searchParams.get('product');
   const projectId = params?.projectId as string;
 
   const [loading, setLoading] = useState(true);
@@ -99,13 +101,18 @@ export default function ResearchHubPage() {
   const [currentRunId, setCurrentRunId] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [recentlyCompleted, setRecentlyCompleted] = useState<Set<string>>(new Set());
+  const [selectedProduct, setSelectedProduct] = useState<string | null>(selectedProductFromUrl);
+  const [products, setProducts] = useState<string[]>([]);
+  const [pauseAutoRefresh, setPauseAutoRefresh] = useState(false);
+  const [customerModalTab, setCustomerModalTab] = useState<"scrape" | "upload">("scrape");
+  const [uploadJobId, setUploadJobId] = useState<string | null>(null);
+  const [uploadOnly, setUploadOnly] = useState(false);
 
   // Modal states
   const [activeStepModal, setActiveStepModal] = useState<string | null>(null);
   const [pendingStep, setPendingStep] = useState<{ step: ResearchStep; trackKey: string } | null>(null);
   const [showNewRunModal, setShowNewRunModal] = useState(false);
   const [showRunAllModal, setShowRunAllModal] = useState(false);
-  const [showUploadModal, setShowUploadModal] = useState<JobType | null>(null);
 
   // Load jobs on mount
   useEffect(() => {
@@ -114,21 +121,22 @@ export default function ResearchHubPage() {
     }
   }, [projectId]);
 
-  // Auto-refresh jobs every 5 seconds
+
+  // Auto-refresh jobs every 30 seconds
   useEffect(() => {
-    if (!projectId) return;
+    if (!projectId || pauseAutoRefresh) return;
     
     console.log('[Auto-refresh] Setting up interval for projectId:', projectId);
     const interval = setInterval(() => {
       console.log('[Auto-refresh] Triggering loadJobs...');
       loadJobs();
-    }, 5000);
+    }, 30000);
     
     return () => {
       console.log('[Auto-refresh] Cleaning up interval');
       clearInterval(interval);
     };
-  }, [projectId]);
+  }, [projectId, pauseAutoRefresh]);
 
   // Detect job completions and show celebration
   useEffect(() => {
@@ -157,8 +165,9 @@ export default function ResearchHubPage() {
     });
   }, [jobs, previousJobs]);
 
-  const loadJobs = async () => {
-    console.log('[loadJobs] Starting job fetch...', { projectId, timestamp: new Date().toISOString() });
+  const loadJobs = async (forceProduct?: string) => {
+    console.log('[loadJobs] Starting job fetch...', { projectId, forceProduct, timestamp: new Date().toISOString() });
+    setLoading(true);
     try {
       const response = await fetch(`/api/projects/${projectId}/jobs`);
       const data = await response.json();
@@ -169,14 +178,35 @@ export default function ResearchHubPage() {
         jobs: data.jobs 
       });
 
-      if (data.success) {
-        setPreviousJobs(jobs);
-        setJobs(data.jobs);
-        setLastRefresh(new Date());
-        console.log('[loadJobs] Jobs state updated successfully');
+      if (!data.success) {
+        throw new Error('Failed to load jobs');
       }
+
+      const uniqueProducts = [...new Set(
+        data.jobs
+          .map((j: any) => j.payload?.productName)
+          .filter(Boolean)
+      )] as string[];
+
+      setProducts(uniqueProducts);
+
+      const productToFilter = forceProduct !== undefined ? forceProduct : selectedProduct;
+
+      if (!productToFilter && uniqueProducts.length > 0 && products.length === 0) {
+        setSelectedProduct(uniqueProducts[0]);
+        return;
+      }
+
+      const filteredJobs = productToFilter
+        ? data.jobs.filter((j: any) => j.payload?.productName === productToFilter)
+        : data.jobs;
+
+      setPreviousJobs(jobs);
+      setJobs(filteredJobs || []);
+      setLastRefresh(new Date());
+      console.log('[loadJobs] Jobs filtered:', { product: productToFilter, filteredCount: filteredJobs.length });
     } catch (error) {
-      console.error("Failed to load jobs:", error);
+      console.error('[loadJobs] Error:', error);
     } finally {
       setLoading(false);
     }
@@ -333,6 +363,10 @@ export default function ResearchHubPage() {
     return Math.round((completed / track.steps.length) * 100);
   };
 
+  const latestCompletedCustomerResearchJob = jobs
+    .filter((job) => job.type === "CUSTOMER_RESEARCH" && job.status === "COMPLETED")
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+
   // Get unique runs
   const runs = Array.from(new Set(jobs.map(j => j.runId).filter(Boolean)));
 
@@ -402,6 +436,9 @@ export default function ResearchHubPage() {
 
     // Show modal for steps that need input
     if (step.id === "customer-research") {
+      setCustomerModalTab("scrape");
+      setUploadJobId(null);
+      setUploadOnly(false);
       setPendingStep({ step, trackKey });
       setActiveStepModal(step.id);
       return;
@@ -652,7 +689,9 @@ export default function ResearchHubPage() {
         </Link>
         <div className="flex items-center justify-between">
           <div className="flex-1">
-            <h1 className="text-3xl font-bold text-white mb-2">Research Hub</h1>
+            <h1 className="text-3xl font-bold text-white mb-2">
+              Research Hub{selectedProduct ? ` - ${selectedProduct}` : ""}
+            </h1>
             <div className="flex items-center gap-3">
               <p className="text-slate-400">
                 Build a comprehensive understanding of your customers, ads, and product
@@ -670,6 +709,14 @@ export default function ResearchHubPage() {
               )}
             </div>
           </div>
+          {selectedProduct && (
+            <Link
+              href={`/projects/${projectId}/research/data?product=${selectedProduct}`}
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded text-sm text-slate-200"
+            >
+              View All Data
+            </Link>
+          )}
         </div>
       </div>
 
@@ -678,6 +725,36 @@ export default function ResearchHubPage() {
         <div className="flex items-center justify-between">
           <div className="flex-1">
             <p className="text-xs text-slate-500 mb-2">Current Research Run</p>
+            {products.length > 0 ? (
+              <div className="flex items-center gap-3 mb-3">
+                <label className="text-sm text-slate-400">Product:</label>
+                <select
+                  value={selectedProduct || ''}
+                  onChange={(e) => {
+                    const newProduct = e.target.value;
+                    setPauseAutoRefresh(true);
+                    setSelectedProduct(newProduct);
+                    const url = new URL(window.location.href);
+                    url.searchParams.set('product', newProduct);
+                    router.replace(url.pathname + url.search, { scroll: false });
+                    loadJobs(newProduct);
+                    setTimeout(() => setPauseAutoRefresh(false), 10000);
+                  }}
+                  className="px-4 py-2 bg-slate-800 border border-slate-700 rounded text-sm min-w-[200px]"
+                >
+                  {products.map(product => (
+                    <option key={product} value={product}>
+                      {product}
+                    </option>
+                  ))}
+                </select>
+                <span className="text-xs text-slate-500">
+                  ({jobs.length} runs for this product)
+                </span>
+              </div>
+            ) : (
+              <p className="text-sm text-slate-400 mb-3">No product research runs yet</p>
+            )}
             <select
               value={currentRunId || ''}
               onChange={(e) => setCurrentRunId(e.target.value || null)}
@@ -758,9 +835,12 @@ export default function ResearchHubPage() {
                   {track.steps.map((step, idx) => {
                     const locked = !canRun(step, track);
                     const isRunning = runningStep === step.id;
+                    const customerResearchJob = step.jobType === "CUSTOMER_RESEARCH"
+                      ? latestCompletedCustomerResearchJob
+                      : undefined;
                     const rowsCollected =
                       step.jobType === "CUSTOMER_RESEARCH"
-                        ? getRowsCollected(step.lastJob?.resultSummary)
+                        ? getRowsCollected(customerResearchJob?.resultSummary)
                         : undefined;
 
                     return (
@@ -807,24 +887,37 @@ export default function ResearchHubPage() {
 
                         {/* Action Button */}
                         <div className="flex-shrink-0 flex gap-2">
-                          {step.status === "COMPLETED" && step.lastJob && (
+                          {step.jobType === "CUSTOMER_RESEARCH" ? (
+                            customerResearchJob && (
                             <div className="flex flex-col gap-1">
                               <button
-                                onClick={() => router.push(`/projects/${projectId}/research-hub/results/${step.lastJob!.id}`)}
+                                onClick={() => router.push(`/projects/${projectId}/research-hub/results/${customerResearchJob.id}`)}
                                 className="text-sky-400 hover:text-sky-300 text-xs underline"
                               >
                                 View Results
                               </button>
-                              {step.jobType === "CUSTOMER_RESEARCH" && (
+                              <>
                                 <Link
-                                  href={`/projects/${projectId}/research/data/${step.lastJob!.id}`}
+                                  href={`/projects/${projectId}/research/data/${customerResearchJob.id}`}
                                   className="text-sky-400 hover:text-sky-300 text-xs underline"
                                 >
                                   {typeof rowsCollected === "number"
                                     ? `View Raw Data (${rowsCollected} rows)`
                                     : "View Raw Data"}
                                 </Link>
-                              )}
+                                <button
+                                  onClick={() => {
+                                    setUploadJobId(customerResearchJob.id);
+                                    setCustomerModalTab("upload");
+                                    setUploadOnly(true);
+                                    setPendingStep({ step, trackKey: track.key });
+                                    setActiveStepModal(step.id);
+                                  }}
+                                  className="text-sky-400 hover:text-sky-300 text-xs underline"
+                                >
+                                  Upload More Data
+                                </button>
+                              </>
                               <button
                                 onClick={() => {
                                   const url = currentRunId 
@@ -837,7 +930,29 @@ export default function ResearchHubPage() {
                                 {currentRunId ? 'View Run History' : 'View All History'}
                               </button>
                             </div>
-                          )}
+                            )
+                          ) : (
+                          step.status === "COMPLETED" && step.lastJob && (
+                            <div className="flex flex-col gap-1">
+                              <button
+                                onClick={() => router.push(`/projects/${projectId}/research-hub/results/${step.lastJob!.id}`)}
+                                className="text-sky-400 hover:text-sky-300 text-xs underline"
+                              >
+                                View Results
+                              </button>
+                              <button
+                                onClick={() => {
+                                  const url = currentRunId 
+                                    ? `/projects/${projectId}/research-hub/jobs/${step.jobType}?runId=${currentRunId}`
+                                    : `/projects/${projectId}/research-hub/jobs/${step.jobType}`;
+                                  router.push(url);
+                                }}
+                                className="text-slate-400 hover:text-slate-300 text-xs underline"
+                              >
+                                {currentRunId ? 'View Run History' : 'View All History'}
+                              </button>
+                            </div>
+                          ))}
                           {step.status === "COMPLETED" ? (
                             <button
                               onClick={() => runStep(step, track.key)}
@@ -859,18 +974,6 @@ export default function ResearchHubPage() {
                               >
                                 {isRunning ? "Starting..." : locked ? "🔒 Locked" : "Run"}
                               </button>
-                              {/* Upload button for collection steps */}
-                              {(step.jobType === 'CUSTOMER_RESEARCH' || 
-                                step.jobType === 'AD_PERFORMANCE' || 
-                                step.jobType === 'PRODUCT_DATA_COLLECTION') && 
-                                step.status === 'NOT_STARTED' && !locked && (
-                                <button
-                                  onClick={() => setShowUploadModal(step.jobType)}
-                                  className="px-4 py-2 rounded text-sm font-medium bg-slate-700 hover:bg-slate-600 text-slate-300"
-                                >
-                                  📤 Upload
-                                </button>
-                              )}
                             </>
                           )}
                         </div>
@@ -881,9 +984,16 @@ export default function ResearchHubPage() {
                             {step.id === "customer-research" && (
                               <CustomerResearchModal
                                 onSubmit={handleCustomerResearchSubmit}
+                                projectId={projectId}
+                                uploadJobId={uploadJobId}
+                                initialTab={customerModalTab}
+                                uploadOnly={uploadOnly}
                                 onClose={() => {
                                   setActiveStepModal(null);
                                   setPendingStep(null);
+                                  setUploadJobId(null);
+                                  setCustomerModalTab("scrape");
+                                  setUploadOnly(false);
                                 }}
                               />
                             )}
@@ -908,22 +1018,6 @@ export default function ResearchHubPage() {
                           </>
                         )}
 
-                        {/* Upload Modal - Render inline */}
-                        {showUploadModal === step.jobType && (
-                          <div className='mt-4 p-4 bg-slate-900 border border-slate-700 rounded-lg'>
-                            <UploadDataModal
-                              jobType={step.jobType}
-                              projectId={projectId}
-                              currentRunId={currentRunId}
-                              onSuccess={() => {
-                                setShowUploadModal(null);
-                                loadJobs();
-                                toast.success('Data uploaded successfully!');
-                              }}
-                              onClose={() => setShowUploadModal(null)}
-                            />
-                          </div>
-                        )}
                       </div>
                     );
                   })}
@@ -989,10 +1083,19 @@ export default function ResearchHubPage() {
 function CustomerResearchModal({
   onSubmit,
   onClose,
+  initialTab = "scrape",
+  projectId,
+  uploadJobId,
+  uploadOnly = false,
 }: {
   onSubmit: (data: CustomerResearchFormData) => void;
   onClose: () => void;
+  initialTab?: "scrape" | "upload";
+  projectId: string;
+  uploadJobId: string | null;
+  uploadOnly?: boolean;
 }) {
+  const [activeTab, setActiveTab] = useState<"scrape" | "upload">(initialTab);
   const [formData, setFormData] = useState<CustomerResearchFormData>({
     productName: "",
     productProblemSolved: "",
@@ -1006,6 +1109,14 @@ function CustomerResearchModal({
     timeRange: 'month',
     scrapeComments: true,
   });
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+
+  useEffect(() => {
+    setActiveTab(initialTab);
+    setUploadFile(null);
+    setUploading(false);
+  }, [initialTab]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1016,16 +1127,83 @@ function CustomerResearchModal({
     onSubmit(formData);
   };
 
+  const handleUpload = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!uploadFile) {
+      toast.error("Please select a file");
+      return;
+    }
+    if (!uploadJobId) {
+      toast.error("Missing job reference for upload");
+      return;
+    }
+
+    setUploading(true);
+    const formDataUpload = new FormData();
+    formDataUpload.append("file", uploadFile);
+    formDataUpload.append("jobId", uploadJobId);
+    formDataUpload.append("projectId", projectId);
+
+    try {
+      const response = await fetch(`/api/projects/${projectId}/research/upload`, {
+        method: "POST",
+        body: formDataUpload,
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Upload failed");
+      }
+      toast.success(`Added ${data.rowsAdded} rows from uploaded file`);
+      onClose();
+    } catch (error: any) {
+      toast.error(error.message || "Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-slate-900 rounded-lg border border-slate-700 max-w-lg w-full max-h-[90vh] overflow-y-auto">
         <div className="p-6">
-          <h2 className="text-xl font-bold text-white mb-2">Product & Competitor Details</h2>
+          <h2 className="text-xl font-bold text-white mb-2">
+            {uploadOnly ? "Upload Research Data" : "Collect Customer Data"}
+          </h2>
           <p className="text-sm text-slate-400 mb-6">
-            Enter your product details to collect customer insights
+            {uploadOnly
+              ? "Add additional research data to your existing collection"
+              : "Scrape from Reddit/Amazon or upload your own research data"}
           </p>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          {!uploadOnly && (
+            <div className="flex gap-2 mb-6 border-b border-slate-700">
+              <button
+                type="button"
+                onClick={() => setActiveTab("scrape")}
+                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === "scrape"
+                    ? "border-sky-500 text-sky-400"
+                    : "border-transparent text-slate-400 hover:text-slate-300"
+                }`}
+              >
+                Scrape Data
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("upload")}
+                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === "upload"
+                    ? "border-sky-500 text-sky-400"
+                    : "border-transparent text-slate-400 hover:text-slate-300"
+                }`}
+              >
+                Upload Data
+              </button>
+            </div>
+          )}
+
+          {!uploadOnly && activeTab === "scrape" && (
+            <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-slate-300 mb-2">
                 Product Name <span className="text-red-400">*</span>
@@ -1210,6 +1388,53 @@ function CustomerResearchModal({
               </button>
             </div>
           </form>
+          )}
+
+          {(uploadOnly || activeTab === "upload") && (
+            <form onSubmit={handleUpload} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">
+                  Upload Research File
+                </label>
+                <p className="text-xs text-slate-400 mb-3">
+                  Accepted formats: CSV, TXT, PDF, DOCX, JSON
+                </p>
+                <input
+                  type="file"
+                  accept=".csv,.txt,.pdf,.docx,.json"
+                  onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                  className="block w-full text-sm text-slate-400
+                    file:mr-4 file:py-2 file:px-4
+                    file:rounded file:border-0
+                    file:text-sm file:font-medium
+                    file:bg-sky-600 file:text-white
+                    hover:file:bg-sky-500"
+                />
+                {uploadFile && (
+                  <p className="text-xs text-slate-400 mt-2">
+                    Selected: {uploadFile.name} ({(uploadFile.size / 1024).toFixed(1)} KB)
+                  </p>
+                )}
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded text-sm"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={uploading || !uploadFile}
+                  className="px-4 py-2 bg-sky-600 hover:bg-sky-500 disabled:opacity-50 disabled:cursor-not-allowed rounded text-sm"
+                >
+                  {uploading ? "Uploading..." : "Upload & Add Data"}
+                </button>
+              </div>
+            </form>
+          )}
         </div>
       </div>
     </div>
@@ -1416,259 +1641,6 @@ function ProductCollectionModal({
               </button>
             </div>
           </form>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Upload Data Modal Component
-function UploadDataModal({
-  jobType,
-  projectId,
-  currentRunId,
-  onSuccess,
-  onClose,
-}: {
-  jobType: JobType;
-  projectId: string;
-  currentRunId: string | null;
-  onSuccess: () => void;
-  onClose: () => void;
-}) {
-  const [file, setFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [preview, setPreview] = useState<any>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const schemas = {
-    CUSTOMER_RESEARCH: {
-      type: 'csv',
-      required: ['source', 'text', 'rating', 'author'],
-      example: 'source,text,rating,author\nreddit,Great product,5,user123'
-    },
-    AD_PERFORMANCE: {
-      type: 'csv',
-      required: ['adId', 'platform', 'transcript', 'views'],
-      example: 'adId,platform,transcript,views\n001,facebook,Buy now,10000'
-    },
-    PRODUCT_DATA_COLLECTION: {
-      type: 'json',
-      required: ['productName', 'features', 'competitors'],
-      example: '{"productName":"X","features":[],"competitors":[]}'
-    }
-  };
-
-  const schema = schemas[jobType as keyof typeof schemas];
-
-  const parseCSV = (text: string): any[] => {
-    const lines = text.trim().split('\n');
-    if (lines.length < 2) return [];
-    
-    const headers = lines[0].split(',').map(h => h.trim());
-    return lines.slice(1).map(line => {
-      const values = line.split(',').map(v => v.trim());
-      const obj: any = {};
-      headers.forEach((header, i) => {
-        obj[header] = values[i] || '';
-      });
-      return obj;
-    });
-  };
-
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = e.target.files?.[0];
-    if (!selectedFile) return;
-
-    setFile(selectedFile);
-    setError(null);
-    setPreview(null);
-
-    try {
-      const text = await selectedFile.text();
-      let data: any;
-
-      if (schema.type === 'csv') {
-        data = parseCSV(text);
-      } else {
-        data = JSON.parse(text);
-      }
-
-      // Validate format
-      const validation = validateFormat(data);
-      if (!validation.valid) {
-        setError(validation.error!);
-        return;
-      }
-
-      setPreview(data);
-    } catch (err: any) {
-      setError(`Failed to parse file: ${err.message}`);
-    }
-  };
-
-  const validateFormat = (data: any): { valid: boolean; error?: string } => {
-    if (schema.type === 'csv') {
-      if (!Array.isArray(data)) {
-        return { valid: false, error: 'Must be CSV format' };
-      }
-      if (data.length === 0) {
-        return { valid: false, error: 'File is empty' };
-      }
-      
-      const columns = Object.keys(data[0] || {});
-      const missing = schema.required.filter(col => !columns.includes(col));
-      
-      if (missing.length > 0) {
-        return {
-          valid: false,
-          error: `Missing columns: ${missing.join(', ')}. Expected: ${schema.required.join(', ')}`
-        };
-      }
-    }
-
-    if (schema.type === 'json') {
-      const missing = schema.required.filter(key => !(key in data));
-      if (missing.length > 0) {
-        return {
-          valid: false,
-          error: `Missing fields: ${missing.join(', ')}`
-        };
-      }
-    }
-
-    return { valid: true };
-  };
-
-  const handleUpload = async () => {
-    if (!preview) return;
-
-    setUploading(true);
-    setError(null);
-
-    try {
-      const response = await fetch('/api/jobs/upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          projectId,
-          runId: currentRunId,
-          jobType,
-          data: preview,
-        }),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Upload failed');
-      }
-
-      onSuccess();
-    } catch (err: any) {
-      setError(err.message || 'Upload failed');
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const downloadTemplate = () => {
-    const blob = new Blob([schema.example], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `template_${jobType.toLowerCase()}.${schema.type === 'csv' ? 'csv' : 'json'}`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-slate-900 rounded-lg border border-slate-700 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="p-6">
-          <h2 className="text-xl font-bold text-white mb-2">Upload Data</h2>
-          <p className="text-sm text-slate-400 mb-6">
-            Upload your {jobType.replace(/_/g, ' ').toLowerCase()} data
-          </p>
-
-          {/* Format Help */}
-          <div className="mb-6 p-4 rounded-lg bg-slate-800 border border-slate-700">
-            <h3 className="text-sm font-semibold text-white mb-2">Expected Format</h3>
-            <p className="text-xs text-slate-400 mb-2">
-              File type: <span className="text-white font-mono">{schema.type.toUpperCase()}</span>
-            </p>
-            <p className="text-xs text-slate-400 mb-2">
-              Required fields: <span className="text-white font-mono">{schema.required.join(', ')}</span>
-            </p>
-            <button
-              onClick={downloadTemplate}
-              className="text-xs text-sky-400 hover:text-sky-300 underline"
-            >
-              Download template file
-            </button>
-          </div>
-
-          {/* File Input */}
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-slate-300 mb-2">
-              Select File
-            </label>
-            <input
-              type="file"
-              accept={schema.type === 'csv' ? '.csv' : '.json'}
-              onChange={handleFileSelect}
-              className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white text-sm file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-sky-600 file:text-white hover:file:bg-sky-500"
-            />
-          </div>
-
-          {/* Error Display */}
-          {error && (
-            <div className="mb-6 p-4 rounded-lg bg-red-500/10 border border-red-500/30">
-              <p className="text-sm text-red-400">{error}</p>
-            </div>
-          )}
-
-          {/* Preview */}
-          {preview && !error && (
-            <div className="mb-6 p-4 rounded-lg bg-slate-800 border border-slate-700">
-              <h3 className="text-sm font-semibold text-white mb-2">Preview</h3>
-              <div className="text-xs text-slate-400 font-mono max-h-40 overflow-auto">
-                {Array.isArray(preview) ? (
-                  <div>
-                    <p className="text-emerald-400 mb-2">✓ {preview.length} rows found</p>
-                    <pre>{JSON.stringify(preview.slice(0, 3), null, 2)}</pre>
-                    {preview.length > 3 && <p className="mt-2">... and {preview.length - 3} more rows</p>}
-                  </div>
-                ) : (
-                  <pre>{JSON.stringify(preview, null, 2)}</pre>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Actions */}
-          <div className="flex gap-3">
-            <button
-              onClick={onClose}
-              disabled={uploading}
-              className="flex-1 px-4 py-2 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium disabled:opacity-50"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleUpload}
-              disabled={!preview || uploading || !!error}
-              className="flex-1 px-4 py-2 rounded bg-sky-600 hover:bg-sky-500 text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-            >
-              {uploading && (
-                <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
-                </svg>
-              )}
-              {uploading ? 'Uploading...' : 'Upload Data'}
-            </button>
-          </div>
         </div>
       </div>
     </div>
