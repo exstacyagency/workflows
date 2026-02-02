@@ -1,3 +1,6 @@
+import dotenv from "dotenv";
+dotenv.config();
+
 import { assertRuntimeMode } from "../lib/jobRuntimeMode";
 import { logError } from "@/lib/logger";
 import { JobStatus, JobType } from "@prisma/client";
@@ -16,7 +19,6 @@ import { cfg } from "@/lib/config";
 // ...existing code...
 // ...existing code...
 // ...existing code...
-import { loadDotEnvFileIfPresent } from "@/lib/config/dotenv";
 // ...existing code...
 import { runCustomerResearch } from "../services/customerResearchService.ts";
 import { runAdRawCollection } from "../lib/adRawCollectionService.ts";
@@ -31,9 +33,8 @@ import prisma from "../lib/prisma.ts";
 import { rollbackQuota } from "../lib/billing/usage.ts";
 import { updateJobStatus } from "@/lib/jobs/updateJobStatus";
 
-if (cfg.raw("NODE_ENV") !== "production") {
-  loadDotEnvFileIfPresent(".env.local");
-  loadDotEnvFileIfPresent(".env");
+function writeLog(line: string) {
+  process.stdout.write(`${line}\n`);
 }
 
 type PipelineContext = {
@@ -59,9 +60,9 @@ function getRuntimeMode() {
     : "dev";
 }
 const runtimeMode = getRuntimeMode();
-console.log(`[BOOT] Runtime mode: ${runtimeMode}`);
+writeLog(`[BOOT] Runtime mode: ${runtimeMode}`);
 if (pipelineContext.mode === "alpha") {
-  console.log("[PIPELINE] Running in ALPHA mode");
+  writeLog("[PIPELINE] Running in ALPHA mode");
 }
 if (pipelineContext.mode === "alpha" && process.env.NODE_ENV === "production") {
   throw new Error("INVALID CONFIG: MODE=alpha cannot run with NODE_ENV=production");
@@ -315,13 +316,22 @@ async function runJob(
   try {
     switch (job.type) {
       case JobType.CUSTOMER_RESEARCH: {
-        const apifyToken = cfg.raw("APIFY_TOKEN") ?? cfg.raw("APIFY_API_TOKEN");
-        const hasApifyToken = !!apifyToken;
-        if (!hasApifyToken) {
+        writeLog("=== CUSTOMER_RESEARCH JOB ===");
+        writeLog("Checking Apify token...");
+        writeLog("process.env.APIFY_API_TOKEN:", process.env.APIFY_API_TOKEN ? "exists" : "missing");
+
+        const apifyToken = cfg.raw("APIFY_API_TOKEN");
+        writeLog("cfg.raw result:", apifyToken ? "found token" : "NO TOKEN");
+        writeLog("hasApifyToken:", !!apifyToken);
+
+        if (!apifyToken) {
+          writeLog("SKIPPING: Apify not configured");
           await rollbackJobQuotaIfNeeded(jobId, job.projectId, payload);
           await markCompleted(jobId, { ok: true, skipped: true, reason: "Apify not configured" });
           return;
         }
+
+        writeLog("Proceeding with research...");
 
         const {
           productName,
@@ -329,9 +339,15 @@ async function runJob(
           productAmazonAsin,
           competitor1AmazonAsin,
           competitor2AmazonAsin,
+          redditKeywords,
+          redditSubreddits,
+          maxPosts,
+          maxCommentsPerPost,
+          timeRange,
+          scrapeComments,
         } = payload;
 
-        if (!productName || !productProblemSolved || !productAmazonAsin) {
+        if (!productName || !productProblemSolved) {
           await rollbackJobQuotaIfNeeded(jobId, job.projectId, payload);
           await markFailed(jobId, "Invalid payload: missing required customer research fields");
           return;
@@ -345,6 +361,12 @@ async function runJob(
           productAmazonAsin,
           competitor1AmazonAsin,
           competitor2AmazonAsin,
+          redditKeywords,
+          redditSubreddits,
+          maxPosts,
+          maxCommentsPerPost,
+          timeRange,
+          scrapeComments,
         });
 
         await markCompleted(jobId, { ok: true, rows: Array.isArray(result) ? result.length : null });
@@ -619,19 +641,38 @@ async function runJob(
 }
 
 async function loop() {
-  console.log(`[jobRunner] start poll=${POLL_MS}ms runOnce=${RUN_ONCE} mode=${pipelineContext.mode}`);
+  writeLog(`[jobRunner] start poll=${POLL_MS}ms runOnce=${RUN_ONCE} mode=${pipelineContext.mode}`);
 
   while (true) {
+    writeLog("[WORKER] Polling for jobs...");
     let job: Awaited<ReturnType<typeof claimNextJob>> | null = null;
     try {
       job = await claimNextJob();
       if (!job) {
+        writeLog("[WORKER] No jobs to claim");
+        const allPending = await prisma.job.findMany({
+          where: { status: "PENDING" },
+          take: 5,
+          select: {
+            id: true,
+            type: true,
+            status: true,
+            payload: true,
+            createdAt: true,
+          },
+        });
+        writeLog("[WORKER] PENDING jobs in database:", JSON.stringify(allPending, null, 2));
         if (RUN_ONCE) return;
         await sleep(POLL_MS);
         continue;
       }
 
+      writeLog("[WORKER] Claimed job:", job.id, "Type:", job.type);
       await runJob(job, pipelineContext);
+      writeLog("[WORKER] Finished job:", job.id);
+      if (!RUN_ONCE) {
+        await sleep(POLL_MS);
+      }
     } catch (e) {
       logError("job.failed", e, {
         jobId: job?.id ?? null,
@@ -645,6 +686,25 @@ async function loop() {
   }
 }
 
+const STARTUP_DELAY_MS = 10_000;
+const STARTUP_POST_ENV_DELAY_MS = 5_000;
+
+async function startWorker() {
+  writeLog("=== WORKER STARTING ===");
+  writeLog("Waiting 10 seconds before checking environment...");
+  await new Promise((resolve) => setTimeout(resolve, STARTUP_DELAY_MS));
+
+  writeLog("=== WORKER ENV CHECK ===");
+  writeLog("APIFY_API_TOKEN:", process.env.APIFY_API_TOKEN ? "✓ Present" : "✗ Missing");
+  writeLog("ANTHROPIC_API_KEY:", process.env.ANTHROPIC_API_KEY ? "✓ Present" : "✗ Missing");
+  writeLog("NODE_ENV:", process.env.NODE_ENV);
+  writeLog("========================");
+  writeLog("Starting job polling in 5 seconds...");
+  await new Promise((resolve) => setTimeout(resolve, STARTUP_POST_ENV_DELAY_MS));
+
+  await loop();
+}
+
 process.on("unhandledRejection", (reason) => {
   console.error("[jobRunner] unhandledRejection", reason);
 });
@@ -652,7 +712,7 @@ process.on("uncaughtException", (err) => {
   console.error("[jobRunner] uncaughtException", err);
 });
 
-loop()
+startWorker()
   .catch((e) => {
     console.error("[jobRunner] fatal", e);
     process.exitCode = 1;

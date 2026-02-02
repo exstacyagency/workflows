@@ -18,6 +18,7 @@ export type RunCustomerResearchParams = {
   redditKeywords?: string[];
   redditSubreddits?: string[];
   maxPosts?: number;
+  maxCommentsPerPost?: number;
   timeRange?: 'week' | 'month' | 'year' | 'all';
   scrapeComments?: boolean;
 };
@@ -34,6 +35,9 @@ type RedditPost = {
   permalink?: string;
   title?: string;
   postId?: string;
+  parentId?: string | null;
+  depth?: number;
+  createdAt?: Date;
 };
 
 type AmazonReview = {
@@ -42,6 +46,52 @@ type AmazonReview = {
   rating?: number;
   verified?: boolean;
   date?: string;
+};
+
+type RedditScraperRequest = {
+  subredditName?: string;
+  maxPosts?: number;
+  scrapeComments?: boolean;
+  maxCommentsPerPost?: number;
+  searchQuery?: string;
+};
+
+type RedditScraperPost = {
+  id: string;
+  title?: string;
+  author?: string;
+  subreddit?: string;
+  upvotes?: number;
+  num_comments?: number;
+  url?: string;
+  selftext?: string;
+  created_utc?: number;
+  permalink?: string;
+  is_video?: boolean;
+  thumbnail?: string;
+};
+
+type RedditScraperComment = {
+  id: string;
+  post_id: string;
+  author?: string;
+  body?: string;
+  upvotes?: number;
+  depth?: number;
+  parent_id?: string | null;
+  created_utc?: number;
+};
+
+type RedditScraperResponse = {
+  posts: RedditScraperPost[];
+  comments: RedditScraperComment[];
+  meta?: {
+    subreddit?: string;
+    total_posts?: number;
+    total_comments?: number;
+    scraped_at?: string;
+    [key: string]: unknown;
+  };
 };
 
 type ArrayElement<T> = T extends (infer U)[] ? U : T;
@@ -103,16 +153,18 @@ async function fetchWithRetry(url: string, init: RequestInit | undefined, label:
   }, label);
 }
 
-async function runApifyActor<T>(actorId: string, input: Record<string, unknown>) {
-  const token = cfg.raw("APIFY_TOKEN") ?? cfg.raw("APIFY_API_TOKEN");
-  if (!token) throw new Error('APIFY_TOKEN not set');
+async function runApifyActor<T>(actorId: string, input: any) {
+  const token = cfg.raw("APIFY_API_TOKEN");
+  if (!token) throw new Error('APIFY_API_TOKEN not set');
+
+  const payload = input;
 
   const runResponse = await fetchWithRetry(
     `${APIFY_BASE}/acts/${actorId}/runs?token=${token}&waitForFinish=120`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ input })
+      body: JSON.stringify(payload)
     },
     `apify-${actorId}`
   );
@@ -167,13 +219,17 @@ function extractUrlsFromPosts(posts: RedditPost[]) {
 
 function filterProductComments(items: RedditPost[], productName: string) {
   const lowerProduct = productName.toLowerCase();
-  const brand = lowerProduct.split(' ')[0];
+  const keywords = lowerProduct.split(/\s+/).filter((w) => w.length > 2);
 
   return items.filter((i) => {
+    const title = (i.title || '').toLowerCase();
     const text = (i.body || i.selftext || '').toLowerCase();
+    const combined = `${title} ${text}`;
     const author = (i.author || '').toLowerCase();
-    const mentions = text.includes(lowerProduct) || text.includes(brand);
-    const isBrandAccount = author.includes(brand);
+
+    const mentions = keywords.some((keyword) => combined.includes(keyword));
+    const isBrandAccount = keywords.some((keyword) => author.includes(keyword));
+
     return mentions && !isBrandAccount;
   });
 }
@@ -182,37 +238,29 @@ function filterProblemComments(items: RedditPost[]) {
   const postMap = new Map<string, { post: RedditPost | null; comments: RedditPost[] }>();
 
   items.forEach((item) => {
-    const d = item;
-    if (d.kind === 'post') {
-      if (!postMap.has(d.id || '')) {
-        postMap.set(d.id || '', { post: d, comments: [] });
+    if (item.kind === 'post') {
+      if (!postMap.has(item.id || '')) {
+        postMap.set(item.id || '', { post: item, comments: [] });
       }
-    } else if (d.kind === 'comment') {
-      const key = d.postId || d.id || '';
+    } else if (item.kind === 'comment') {
+      const key = item.postId || item.id || '';
       if (!postMap.has(key)) {
         postMap.set(key, { post: null, comments: [] });
       }
-      postMap.get(key)?.comments.push(d);
+      postMap.get(key)?.comments.push(item);
     }
   });
 
   return Array.from(postMap.values())
-    .filter((p) => p.post && p.comments.length > 0)
-    .map((p) => {
-      const painComments = p.comments.filter((c) => {
-        const text = (c.body || '').toLowerCase();
-        const wordCount = text.split(' ').length;
-        if (wordCount < 30) return false;
-        return /tried everything|years|months|nothing work|desperate|given up|can't take|tired of|frustrated|help|struggle|worse|failed|stopped working/i.test(text);
-      });
-
-      return {
-        post: p.post,
-        comments: painComments.sort((a, b) => (b.score || 0) - (a.score || 0)).slice(0, 20),
-        commentCount: painComments.length
-      };
-    })
-    .filter((p) => p.comments.length > 0);
+    .filter((p) => p.post)
+    .map((p) => ({
+      post: p.post,
+      comments: p.comments
+        .filter((c) => (c.body || '').length > 20)
+        .sort((a, b) => (b.score || 0) - (a.score || 0))
+        .slice(0, 50),
+      commentCount: p.comments.length
+    }));
 }
 
 function scoreReview(text: string) {
@@ -248,42 +296,72 @@ function processReviews(reviews: AmazonReview[], minScore: number) {
     .sort((a, b) => b.cinematicScore - a.cinematicScore);
 }
 
-async function fetchApifyAmazonReviews(asin: string, starFilter: 'five_star' | 'four_star' | 'one_star', maxPages = 10) {
+async function fetchApifyAmazonReviews(asin: string) {
   if (!asin) return [] as AmazonReview[];
-  const input = { input: [{ asin, domainCode: 'com', sortBy: 'helpful', maxPages, filterByStar: starFilter }] };
-  return runApifyActor<AmazonReview>('ZebkvH3nVOrafqr5T', input);
+  const amazonInput = {
+    asin,
+    domainCode: 'com',
+    sortBy: 'recent',
+    maxPages: 5,
+    filterByStar: 'all_stars',
+    filterByKeyword: '',
+    reviewerType: 'all_reviews',
+    formatType: 'current_format',
+    mediaType: 'all_contents'
+  };
+  console.log('=== FETCHING AMAZON REVIEWS ===');
+  console.log('ASIN:', asin);
+  console.log('Input:', JSON.stringify(amazonInput, null, 2));
+  console.log('Calling Amazon actor...');
+  const amazonData = await runApifyActor<AmazonReview>('ZebkvH3nVOrafqr5T', amazonInput);
+  console.log('Amazon actor returned:', amazonData.length, 'reviews');
+  return amazonData;
 }
 
-async function fetchApifyReddit(options: {
-  queries: string[];
-  subreddits?: string[];
-  maxPostsPerQuery?: number;
-  timeRange?: 'week' | 'month' | 'year' | 'all';
-  scrapeComments?: boolean;
-}) {
-  const { queries, subreddits, maxPostsPerQuery, timeRange, scrapeComments } = options;
-  
-  if (!queries || queries.length === 0) return [] as RedditPost[];
-  
-  const input = {
-    // Search Queries (required)
-    queries,
-    sort: 'relevance',
-    timeRange: timeRange || 'month',
-    
-    // Limits
-    maxPostsPerQuery: maxPostsPerQuery || 50,
-    maxCommentsPerPost: 100,
-    
-    // Options
-    scrapeComments: scrapeComments !== undefined ? scrapeComments : true,
-    includeNsfw: false,
-    
-    // Optional subreddit targeting
-    ...(subreddits && subreddits.length > 0 && { subreddits }),
-  };
-  
-  return runApifyActor<RedditPost>('TwqHBuZZPHJxiQrTU', input);
+async function fetchLocalReddit(input: RedditScraperRequest) {
+  if (!input || (!input.subredditName && !input.searchQuery)) {
+    return { posts: [], comments: [], meta: { total_posts: 0, total_comments: 0 } } as RedditScraperResponse;
+  }
+
+  const baseUrl = process.env.REDDIT_SCRAPER_URL?.trim();
+  if (!baseUrl) {
+    throw new Error('REDDIT_SCRAPER_URL not set');
+  }
+
+  const controller = new AbortController();
+  const timeoutMs = 120000;
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const url = `${baseUrl.replace(/\/+$/, "")}/scrape`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+      signal: controller.signal,
+    });
+
+    const rawText = await res.text();
+    if (!res.ok) {
+      console.log("[reddit-scraper] error response:", rawText);
+      throw new Error(`Reddit scraper error (${res.status})`);
+    }
+
+    const data = (rawText ? JSON.parse(rawText) : {}) as RedditScraperResponse;
+    console.log("[reddit-scraper] response:", JSON.stringify(data));
+    return data;
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(`Reddit scraper timed out after ${timeoutMs}ms`);
+    }
+    if (error instanceof Error && error.message.startsWith("Reddit scraper error")) {
+      throw error;
+    }
+    const url = process.env.REDDIT_SCRAPER_URL?.trim() || "(unset)";
+    throw new Error(`Reddit scraper not available at ${url}`);
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 function dedupeRows(rows: ResearchRowInput[]) {
@@ -323,32 +401,56 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
     redditKeywords,
     redditSubreddits,
     maxPosts,
+    maxCommentsPerPost,
     timeRange,
     scrapeComments,
   } = params;
 
-    await updateJobStatus(jobId, JobStatus.RUNNING);
-
   try {
-    if (!productName || !productProblemSolved || !productAmazonAsin) {
-      throw new Error('productName, productProblemSolved, productAmazonAsin required');
+    if (!productName || !productProblemSolved) {
+      throw new Error('productName, productProblemSolved required');
     }
 
-    // Build combined search queries: product name + problem + optional extra keywords
-    const queries = [
-      productName,
-      productProblemSolved,
-      ...(redditKeywords || [])
-    ].filter(Boolean);
+    const effectiveMaxPosts = typeof maxPosts === "number" ? maxPosts : 50;
+    const effectiveMaxCommentsPerPost =
+      typeof maxCommentsPerPost === "number" ? maxCommentsPerPost : 50;
 
-    // Single Reddit scrape with all queries combined
-    const redditData = await fetchApifyReddit({
-      queries,
-      subreddits: redditSubreddits,
-      maxPostsPerQuery: maxPosts,
-      timeRange,
-      scrapeComments,
-    });
+    const redditInput: RedditScraperRequest = {
+      subredditName: redditSubreddits?.[0] || undefined,
+      maxPosts: effectiveMaxPosts,
+      ...(typeof scrapeComments === "boolean" && { scrapeComments }),
+      maxCommentsPerPost: effectiveMaxCommentsPerPost,
+      searchQuery: productName,
+    };
+
+    const redditResponse = await fetchLocalReddit(redditInput);
+
+    const redditPosts: RedditPost[] = (redditResponse.posts || []).map((post) => ({
+      kind: "post",
+      id: post.id,
+      title: post.title,
+      author: post.author,
+      subreddit: post.subreddit,
+      score: post.upvotes ?? 0,
+      url: post.url,
+      permalink: post.permalink,
+      selftext: post.selftext,
+      createdAt: post.created_utc ? new Date(post.created_utc * 1000) : undefined,
+    }));
+
+    const redditComments: RedditPost[] = (redditResponse.comments || []).map((comment) => ({
+      kind: "comment",
+      id: comment.id,
+      postId: comment.post_id,
+      author: comment.author,
+      body: comment.body,
+      score: comment.upvotes ?? 0,
+      parentId: comment.parent_id ?? null,
+      depth: comment.depth,
+      createdAt: comment.created_utc ? new Date(comment.created_utc * 1000) : undefined,
+    }));
+
+    const redditData = [...redditPosts, ...redditComments];
     
     // Split results for filtering (use all data for both)
     const productDetails = redditData;
@@ -357,12 +459,25 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
     const filteredProductComments = filterProductComments(productDetails, productName);
     const filteredProblemComments = filterProblemComments(problemDetails);
 
-    const [product5Star, product4Star, competitor1, competitor2] = await Promise.all([
-      fetchApifyAmazonReviews(productAmazonAsin, 'five_star', 10),
-      fetchApifyAmazonReviews(productAmazonAsin, 'four_star', 15),
-      competitor1AmazonAsin ? fetchApifyAmazonReviews(competitor1AmazonAsin, 'one_star', 10) : Promise.resolve([]),
-      competitor2AmazonAsin ? fetchApifyAmazonReviews(competitor2AmazonAsin, 'one_star', 10) : Promise.resolve([])
-    ]);
+    let productAll: AmazonReview[] = [];
+    let competitor1All: AmazonReview[] = [];
+    let competitor2All: AmazonReview[] = [];
+
+    if (productAmazonAsin) {
+      [productAll, competitor1All, competitor2All] = await Promise.all([
+        fetchApifyAmazonReviews(productAmazonAsin),
+        competitor1AmazonAsin ? fetchApifyAmazonReviews(competitor1AmazonAsin) : Promise.resolve([]),
+        competitor2AmazonAsin ? fetchApifyAmazonReviews(competitor2AmazonAsin) : Promise.resolve([])
+      ]);
+    }
+
+    const filterByRating = (reviews: AmazonReview[], ratingTarget: number) =>
+      reviews.filter((r) => Number(r.rating) === ratingTarget);
+
+    const product5Star = filterByRating(productAll, 5);
+    const product4Star = filterByRating(productAll, 4);
+    const competitor1 = filterByRating(competitor1All, 1);
+    const competitor2 = filterByRating(competitor2All, 1);
 
     const processed5Star = processReviews(product5Star, 4);
     const processed4Star = processReviews(product4Star, 4);
@@ -374,8 +489,10 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
         projectId,
         jobId,
         source: 'REDDIT_PRODUCT' as any,
-        content: item.body || item.selftext || '',
+        type: 'post',
+        content: item.title || item.body || item.selftext || '',
         metadata: {
+          title: item.title,
           author: item.author,
           subreddit: item.subreddit,
           score: item.score,
@@ -388,6 +505,7 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
           projectId,
           jobId,
           source: 'REDDIT_PROBLEM' as any,
+          type: 'comment',
           content: comment.body || '',
           metadata: {
             postTitle: item.post?.title,
@@ -401,6 +519,7 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
         projectId,
         jobId,
         source: ResearchSource.AMAZON,
+        type: 'review',
         content: r.text,
         metadata: { date: r.date, wordCount: r.wordCount, amazonKind: 'product_5_star', rating: r.rating, verified: r.verified, indexLabel: `${idx + 1}` }
       })),
@@ -408,6 +527,7 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
         projectId,
         jobId,
         source: ResearchSource.AMAZON,
+        type: 'review',
         content: r.text,
         metadata: { date: r.date, wordCount: r.wordCount, amazonKind: 'product_4_star', rating: r.rating, verified: r.verified, indexLabel: `${idx + 1}` }
       })),
@@ -415,6 +535,7 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
         projectId,
         jobId,
         source: ResearchSource.AMAZON,
+        type: 'review',
         content: r.text,
         metadata: { date: r.date, wordCount: r.wordCount, amazonKind: 'competitor_1', rating: r.rating, verified: r.verified, indexLabel: `${idx + 1}` }
       })),
@@ -422,6 +543,7 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
         projectId,
         jobId,
         source: ResearchSource.AMAZON,
+        type: 'review',
         content: r.text,
         metadata: { date: r.date, wordCount: r.wordCount, amazonKind: 'competitor_2', rating: r.rating, verified: r.verified, indexLabel: `${idx + 1}` }
       }))
@@ -436,15 +558,28 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
       return tx.researchRow.findMany({ where: { jobId }, orderBy: { createdAt: 'desc' } });
     });
 
-    if (dedupedRows.length < MIN_RESEARCH_ROWS) {
-      throw new Error(`Only ${dedupedRows.length} rows (min: ${MIN_RESEARCH_ROWS})`);
-    }
+    const redditMeta = redditResponse.meta ?? {};
+    const totalPosts =
+      typeof redditMeta.total_posts === "number"
+        ? redditMeta.total_posts
+        : redditResponse.posts?.length ?? 0;
+    const totalComments =
+      typeof redditMeta.total_comments === "number"
+        ? redditMeta.total_comments
+        : redditResponse.comments?.length ?? 0;
 
     await updateJobStatus(jobId, JobStatus.COMPLETED);
     await prisma.job.update({
       where: { id: jobId },
       data: {
-        resultSummary: `${dedupedRows.length} research rows collected`
+        resultSummary: {
+          rowsCollected: dedupedRows.length,
+          reddit: {
+            total_posts: totalPosts,
+            total_comments: totalComments,
+            meta: redditMeta
+          }
+        }
       }
     });
 
