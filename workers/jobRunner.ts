@@ -133,7 +133,15 @@ function envMissing(keys: string[]) {
   });
 }
 
-async function rollbackJobQuotaIfNeeded(jobId: string, projectId: string, payload: JsonObject) {
+async function rollbackJobQuotaIfNeeded({
+  jobId,
+  projectId,
+  payload,
+}: {
+  jobId: string;
+  projectId: string;
+  payload: JsonObject;
+}) {
   const reservation = payload?.quotaReservation;
   if (!reservation || typeof reservation !== "object") return;
 
@@ -157,7 +165,15 @@ async function rollbackJobQuotaIfNeeded(jobId: string, projectId: string, payloa
   }
 }
 
-async function markCompleted(jobId: string, result: any, summary?: string) {
+async function markCompleted({
+  jobId,
+  result,
+  summary,
+}: {
+  jobId: string;
+  result: any;
+  summary?: string;
+}) {
   const existing = await prisma.job.findUnique({
     where: { id: jobId },
     select: { payload: true, resultSummary: true, status: true },
@@ -175,7 +191,7 @@ async function markCompleted(jobId: string, result: any, summary?: string) {
   await prisma.job.update({ where: { id: jobId }, data });
 }
 
-async function markFailed(jobId: string, err: unknown) {
+async function markFailed({ jobId, error }: { jobId: string; error: unknown }) {
   const existing = await prisma.job.findUnique({
     where: { id: jobId },
     select: { payload: true, resultSummary: true, status: true },
@@ -183,12 +199,12 @@ async function markFailed(jobId: string, err: unknown) {
   if (!existing) return;
 
   const payload = asObject(existing.payload);
-  let errMsg = String((err as any)?.message ?? err);
+  let errMsg = String((error as any)?.message ?? error);
   let transient = false;
   let provider: string | null = null;
   let rawSnippet: string | null = null;
 
-  const asAny: any = err as any;
+  const asAny: any = error as any;
   const looksExternal =
     asAny &&
     (asAny.name === "ExternalServiceError" ||
@@ -256,11 +272,11 @@ async function handleProviderConfig(jobId: string, provider: string, requiredEnv
 
   const reason = `${provider} not configured`;
   if (cfg.raw("CI") === "true") {
-    await markCompleted(jobId, { ok: true, skipped: true, reason }, `Skipped: ${reason}`);
+    await markCompleted({ jobId, result: { ok: true, skipped: true, reason }, summary: `Skipped: ${reason}` });
     return { ok: false as const, skipped: true as const };
   }
 
-  await markFailed(jobId, reason);
+  await markFailed({ jobId, error: reason });
   return { ok: false as const, skipped: false as const };
 }
 
@@ -334,8 +350,11 @@ async function runJob(
 
         if (!apifyToken) {
           writeLog("SKIPPING: Apify not configured");
-          await rollbackJobQuotaIfNeeded(jobId, job.projectId, payload);
-          await markCompleted(jobId, { ok: true, skipped: true, reason: "Apify not configured" });
+          await rollbackJobQuotaIfNeeded({ jobId, projectId: job.projectId, payload });
+          await markCompleted({
+            jobId,
+            result: { ok: true, skipped: true, reason: "Apify not configured" },
+          });
           return;
         }
 
@@ -364,11 +383,12 @@ async function runJob(
           Boolean(productProblemSolved && String(productProblemSolved).trim());
 
         if (!hasAmazonAsin && !hasRedditKeywords && !hasNameAndProblem) {
-          await rollbackJobQuotaIfNeeded(jobId, job.projectId, payload);
-          await markFailed(
+          await rollbackJobQuotaIfNeeded({ jobId, projectId: job.projectId, payload });
+          await markFailed({
             jobId,
-            "Invalid payload: provide productAmazonAsin, redditKeywords, or productName+productProblemSolved"
-          );
+            error:
+              "Invalid payload: provide productAmazonAsin, redditKeywords, or productName+productProblemSolved",
+          });
           return;
         }
 
@@ -388,7 +408,10 @@ async function runJob(
           scrapeComments,
         });
 
-        await markCompleted(jobId, { ok: true, rows: Array.isArray(result) ? result.length : null });
+        await markCompleted({
+          jobId,
+          result: { ok: true, rows: Array.isArray(result) ? result.length : null },
+        });
         return;
       }
 
@@ -403,7 +426,7 @@ async function runJob(
 
         const { industryCode } = payload;
         if (!industryCode) {
-          await markFailed(jobId, "Invalid payload: missing industryCode");
+          await markFailed({ jobId, error: "Invalid payload: missing industryCode" });
           return;
         }
 
@@ -413,14 +436,21 @@ async function runJob(
           jobId,
         });
 
-        await markCompleted(jobId, { ok: true, apify: result.apify, ads: result.ads }, `Ads: ${result.apify.itemCount}`);
+        await markCompleted({
+          jobId,
+          result: { ok: true, apify: result.apify, ads: result.ads },
+          summary: `Ads: ${result.apify.itemCount}`,
+        });
         return;
       }
 
       case JobType.PATTERN_ANALYSIS: {
         const { customerResearchJobId, adPerformanceJobId } = payload;
         if (!customerResearchJobId || !adPerformanceJobId) {
-          await markFailed(jobId, "Invalid payload: missing customerResearchJobId or adPerformanceJobId");
+          await markFailed({
+            jobId,
+            error: "Invalid payload: missing customerResearchJobId or adPerformanceJobId",
+          });
           return;
         }
 
@@ -432,7 +462,11 @@ async function runJob(
           adPerformanceJobId: String(adPerformanceJobId),
         });
 
-        await markCompleted(jobId, result, `Patterns: ${result.patterns.topHooks.length} hooks`);
+        await markCompleted({
+          jobId,
+          result,
+          summary: `Patterns: ${result.patterns.topHooks.length} hooks`,
+        });
         return;
       }
 
@@ -442,12 +476,12 @@ async function runJob(
 
         const fresh = await prisma.job.findUnique({ where: { id: jobId } });
         if (!fresh) {
-          await markFailed(jobId, "Job not found after claim");
+          await markFailed({ jobId, error: "Job not found after claim" });
           return;
         }
 
         const result = await startScriptGenerationJob(job.projectId, fresh);
-        await markCompleted(jobId, { ok: true, ...result });
+        await markCompleted({ jobId, result: { ok: true, ...result } });
         return;
       }
 
@@ -473,15 +507,18 @@ async function runJob(
             },
           });
 
-          await markCompleted(jobId, {
-            ok: true,
-            storyboardId: storyboard.id,
-            scriptId: scriptId || null,
+          await markCompleted({
+            jobId,
+            result: {
+              ok: true,
+              storyboardId: storyboard.id,
+              scriptId: scriptId || null,
+            },
           });
         } catch (e: any) {
           const msg = String(e?.message ?? e ?? "Unknown error");
-          await rollbackJobQuotaIfNeeded(jobId, job.projectId, payload);
-          await markFailed(jobId, e);
+          await rollbackJobQuotaIfNeeded({ jobId, projectId: job.projectId, payload });
+          await markFailed({ jobId, error: e });
           await appendResultSummary(jobId, `Storyboard generation failed: ${msg}`);
         }
         return;
@@ -490,7 +527,7 @@ async function runJob(
       case JobType.VIDEO_PROMPT_GENERATION: {
         const storyboardId = String(payload?.storyboardId ?? "").trim();
         if (!storyboardId) {
-          await markFailed(jobId, "Invalid payload: missing storyboardId");
+          await markFailed({ jobId, error: "Invalid payload: missing storyboardId" });
           return;
         }
 
@@ -499,16 +536,16 @@ async function runJob(
           select: { id: true, scriptId: true },
         });
         if (!storyboard?.id) {
-          await markFailed(jobId, `Storyboard not found for id=${storyboardId}`);
+          await markFailed({ jobId, error: `Storyboard not found for id=${storyboardId}` });
           return;
         }
 
         const result = await startVideoPromptGenerationJob({ storyboardId, jobId });
-        await markCompleted(
+        await markCompleted({
           jobId,
           result,
-          `Video prompts generated: ${result.processed}/${result.sceneCount} scenes`,
-        );
+          summary: `Video prompts generated: ${result.processed}/${result.sceneCount} scenes`,
+        });
 
         const chainType = String((payload as any)?.chainNext?.type ?? "");
         const rootKey = String(job.idempotencyKey ?? (payload as any)?.idempotencyKey ?? "").trim();
@@ -546,7 +583,7 @@ async function runJob(
         const force = Boolean(payload?.force);
         if (!storyboardId) {
           const msg = "Invalid payload: missing storyboardId";
-          await markFailed(jobId, msg);
+          await markFailed({ jobId, error: msg });
           await appendResultSummary(jobId, `Video images failed: ${msg}`);
           return;
         }
@@ -558,7 +595,7 @@ async function runJob(
         });
         if (!storyboard?.id) {
           const msg = `Storyboard not found for id=${storyboardId}`;
-          await markFailed(jobId, msg);
+          await markFailed({ jobId, error: msg });
           await appendResultSummary(jobId, `Video images failed: ${msg}`);
           return;
         }
@@ -567,11 +604,11 @@ async function runJob(
           await runWithMaxRuntime("VIDEO_IMAGE_GENERATION", async () => {
             await runVideoImageGenerationJob({ jobId });
           });
-          await markCompleted(jobId, { ok: true });
+          await markCompleted({ jobId, result: { ok: true } });
         } catch (e: any) {
           const msg = String(e?.message ?? e ?? "Unknown error");
-          await rollbackJobQuotaIfNeeded(jobId, job.projectId, payload);
-          await markFailed(jobId, e);
+          await rollbackJobQuotaIfNeeded({ jobId, projectId: job.projectId, payload });
+          await markFailed({ jobId, error: e });
           await appendResultSummary(jobId, `Video images failed: ${msg}`);
         }
         return;
@@ -589,7 +626,7 @@ async function runJob(
         const storyboardId = String(payload?.storyboardId ?? "").trim();
         if (!storyboardId) {
           const msg = "Invalid payload: missing storyboardId";
-          await markFailed(jobId, msg);
+          await markFailed({ jobId, error: msg });
           await appendResultSummary(jobId, `Video generation failed: ${msg}`);
           return;
         }
@@ -602,11 +639,11 @@ async function runJob(
             : firstUrl
               ? `Video generated: ${firstUrl}${result.videoUrls.length > 1 ? ` (+${result.videoUrls.length - 1} more)` : ""}`
               : "Video generation completed";
-          await markCompleted(jobId, result, summary);
+          await markCompleted({ jobId, result, summary });
         } catch (e: any) {
           const msg = String(e?.message ?? e ?? "Unknown error");
-          await rollbackJobQuotaIfNeeded(jobId, job.projectId, payload);
-          await markFailed(jobId, e);
+          await rollbackJobQuotaIfNeeded({ jobId, projectId: job.projectId, payload });
+          await markFailed({ jobId, error: e });
           await appendResultSummary(jobId, `Video generation failed: ${msg}`);
         }
         return;
@@ -615,7 +652,7 @@ async function runJob(
       case 'PRODUCT_DATA_COLLECTION' as any: {
         const { productName, productUrl, competitors } = payload;
         if (!productName || !productUrl) {
-          await markFailed(jobId, "Invalid payload: missing productName or productUrl");
+          await markFailed({ jobId, error: "Invalid payload: missing productName or productUrl" });
           return;
         }
 
@@ -627,7 +664,11 @@ async function runJob(
           competitors: competitors || [],
         });
 
-        await markCompleted(jobId, result, `Product data collected: ${result.competitorsAnalyzed} competitors`);
+        await markCompleted({
+          jobId,
+          result,
+          summary: `Product data collected: ${result.competitorsAnalyzed} competitors`,
+        });
         return;
       }
 
@@ -640,19 +681,19 @@ async function runJob(
           runId,
         });
 
-        await markCompleted(jobId, result, `Product analysis completed`);
+        await markCompleted({ jobId, result, summary: "Product analysis completed" });
         return;
       }
 
       default: {
-        await markFailed(jobId, "Not implemented");
+        await markFailed({ jobId, error: "Not implemented" });
         return;
       }
     }
   } catch (e: any) {
     try {
-      await rollbackJobQuotaIfNeeded(jobId, job.projectId, payload);
-      await markFailed(jobId, e);
+      await rollbackJobQuotaIfNeeded({ jobId, projectId: job.projectId, payload });
+      await markFailed({ jobId, error: e });
     } catch (updateErr) {
       console.error("[jobRunner] failed to persist job failure", { jobId, updateErr });
     }
