@@ -1120,8 +1120,16 @@ function CustomerResearchModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.productName || !formData.productProblemSolved) {
-      alert("Please fill in all required fields");
+    const hasAmazonAsin = formData.productAmazonAsin?.trim();
+    const hasRedditData = formData.productName?.trim() || formData.productProblemSolved?.trim();
+
+    if (!hasAmazonAsin && !hasRedditData) {
+      alert("Please provide either an Amazon ASIN or Product Name/Problem for Reddit scraping");
+      return;
+    }
+
+    if (hasRedditData && (!formData.productName || !formData.productProblemSolved)) {
+      alert("Product Name and Problem are required for Reddit scraping");
       return;
     }
     onSubmit(formData);
@@ -1206,7 +1214,7 @@ function CustomerResearchModal({
             <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-slate-300 mb-2">
-                Product Name <span className="text-red-400">*</span>
+                Product Name <span className="text-slate-500">(required for Reddit)</span>
               </label>
               <input
                 type="text"
@@ -1214,13 +1222,12 @@ function CustomerResearchModal({
                 onChange={(e) => setFormData({ ...formData, productName: e.target.value })}
                 className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 placeholder="e.g., Wireless Headphones"
-                required
               />
             </div>
 
             <div>
               <label className="block text-sm font-medium text-slate-300 mb-2">
-                Product Problem Solved <span className="text-red-400">*</span>
+                Product Problem Solved <span className="text-slate-500">(required for Reddit)</span>
               </label>
               <textarea
                 value={formData.productProblemSolved}
@@ -1228,7 +1235,6 @@ function CustomerResearchModal({
                 className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 placeholder="e.g., Provides noise cancellation for focus"
                 rows={3}
-                required
               />
             </div>
 

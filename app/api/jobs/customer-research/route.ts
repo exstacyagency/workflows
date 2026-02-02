@@ -17,8 +17,8 @@ import { randomUUID } from 'crypto';
 export const runtime = 'nodejs';
 
 const CustomerResearchSchema = ProjectJobSchema.extend({
-  productName: z.string().min(1, 'productName is required'),
-  productProblemSolved: z.string().min(1, 'productProblemSolved is required'),
+  productName: z.string().optional(),
+  productProblemSolved: z.string().optional(),
   productAmazonAsin: z.string().optional(),
   competitor1AmazonAsin: z.string().optional(),
   competitor2AmazonAsin: z.string().optional(),
@@ -67,6 +67,21 @@ export async function POST(req: NextRequest) {
       scrapeComments,
     } = parsed.data;
     projectId = parsedProjectId;
+
+    const hasAmazonAsin = Boolean(productAmazonAsin?.trim());
+    const hasRedditData = Boolean(productName?.trim() || productProblemSolved?.trim());
+    if (!hasAmazonAsin && !hasRedditData) {
+      return NextResponse.json(
+        { error: "Provide either Amazon ASIN or Product Name/Problem for Reddit scraping" },
+        { status: 400 }
+      );
+    }
+    if (hasRedditData && (!productName?.trim() || !productProblemSolved?.trim())) {
+      return NextResponse.json(
+        { error: "Product Name and Problem are required for Reddit scraping" },
+        { status: 400 }
+      );
+    }
 
     const deny = await requireProjectOwner404(projectId);
     if (deny) return deny;

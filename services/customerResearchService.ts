@@ -9,9 +9,9 @@ import { toB64Snippet, truncate } from "@/lib/utils/debugSnippet";
 export type RunCustomerResearchParams = {
   projectId: string;
   jobId: string;
-  productName: string;
-  productProblemSolved: string;
-  productAmazonAsin: string;
+  productName?: string;
+  productProblemSolved?: string;
+  productAmazonAsin?: string;
   competitor1AmazonAsin?: string;
   competitor2AmazonAsin?: string;
   // Reddit search parameters
@@ -407,57 +407,70 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
   } = params;
 
   try {
-    if (!productName || !productProblemSolved) {
-      throw new Error('productName, productProblemSolved required');
+    const normalizedProductName = productName?.trim() || '';
+    const normalizedProductProblem = productProblemSolved?.trim() || '';
+    const hasAmazonAsin = Boolean(productAmazonAsin?.trim());
+    const hasRedditData = Boolean(normalizedProductName && normalizedProductProblem);
+
+    if (!hasAmazonAsin && !hasRedditData) {
+      throw new Error('Must provide either Amazon ASIN or Product Name/Problem for research');
     }
+
+    const effectiveProductName =
+      normalizedProductName || (productAmazonAsin ? `Product-${productAmazonAsin}` : 'Product');
 
     const effectiveMaxPosts = typeof maxPosts === "number" ? maxPosts : 50;
     const effectiveMaxCommentsPerPost =
       typeof maxCommentsPerPost === "number" ? maxCommentsPerPost : 50;
 
-    const redditInput: RedditScraperRequest = {
-      subredditName: redditSubreddits?.[0] || undefined,
-      maxPosts: effectiveMaxPosts,
-      ...(typeof scrapeComments === "boolean" && { scrapeComments }),
-      maxCommentsPerPost: effectiveMaxCommentsPerPost,
-      searchQuery: productName,
-    };
+    let redditResponse: RedditScraperResponse = { posts: [], comments: [], meta: {} };
+    let filteredProductComments: RedditPost[] = [];
+    let filteredProblemComments: ReturnType<typeof filterProblemComments> = [];
 
-    const redditResponse = await fetchLocalReddit(redditInput);
+    if (hasRedditData) {
+      const redditInput: RedditScraperRequest = {
+        subredditName: redditSubreddits?.[0] || undefined,
+        maxPosts: effectiveMaxPosts,
+        ...(typeof scrapeComments === "boolean" && { scrapeComments }),
+        maxCommentsPerPost: effectiveMaxCommentsPerPost,
+        searchQuery: normalizedProductName,
+      };
 
-    const redditPosts: RedditPost[] = (redditResponse.posts || []).map((post) => ({
-      kind: "post",
-      id: post.id,
-      title: post.title,
-      author: post.author,
-      subreddit: post.subreddit,
-      score: post.upvotes ?? 0,
-      url: post.url,
-      permalink: post.permalink,
-      selftext: post.selftext,
-      createdAt: post.created_utc ? new Date(post.created_utc * 1000) : undefined,
-    }));
+      redditResponse = await fetchLocalReddit(redditInput);
 
-    const redditComments: RedditPost[] = (redditResponse.comments || []).map((comment) => ({
-      kind: "comment",
-      id: comment.id,
-      postId: comment.post_id,
-      author: comment.author,
-      body: comment.body,
-      score: comment.upvotes ?? 0,
-      parentId: comment.parent_id ?? null,
-      depth: comment.depth,
-      createdAt: comment.created_utc ? new Date(comment.created_utc * 1000) : undefined,
-    }));
+      const redditPosts: RedditPost[] = (redditResponse.posts || []).map((post) => ({
+        kind: "post",
+        id: post.id,
+        title: post.title,
+        author: post.author,
+        subreddit: post.subreddit,
+        score: post.upvotes ?? 0,
+        url: post.url,
+        permalink: post.permalink,
+        selftext: post.selftext,
+        createdAt: post.created_utc ? new Date(post.created_utc * 1000) : undefined,
+      }));
 
-    const redditData = [...redditPosts, ...redditComments];
-    
-    // Split results for filtering (use all data for both)
-    const productDetails = redditData;
-    const problemDetails = redditData;
+      const redditComments: RedditPost[] = (redditResponse.comments || []).map((comment) => ({
+        kind: "comment",
+        id: comment.id,
+        postId: comment.post_id,
+        author: comment.author,
+        body: comment.body,
+        score: comment.upvotes ?? 0,
+        parentId: comment.parent_id ?? null,
+        depth: comment.depth,
+        createdAt: comment.created_utc ? new Date(comment.created_utc * 1000) : undefined,
+      }));
 
-    const filteredProductComments = filterProductComments(productDetails, productName);
-    const filteredProblemComments = filterProblemComments(problemDetails);
+      const redditData = [...redditPosts, ...redditComments];
+
+      const productDetails = redditData;
+      const problemDetails = redditData;
+
+      filteredProductComments = filterProductComments(productDetails, effectiveProductName);
+      filteredProblemComments = filterProblemComments(problemDetails);
+    }
 
     let productAll: AmazonReview[] = [];
     let competitor1All: AmazonReview[] = [];
