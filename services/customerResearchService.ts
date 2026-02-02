@@ -5,6 +5,7 @@ import { updateJobStatus } from '@/lib/jobs/updateJobStatus';
 import { getBreaker } from '@/lib/circuitBreaker';
 import { ExternalServiceError } from "@/lib/externalServiceError";
 import { toB64Snippet, truncate } from "@/lib/utils/debugSnippet";
+import { apifyClient } from "@/lib/apify";
 
 export type RunCustomerResearchParams = {
   projectId: string;
@@ -46,6 +47,18 @@ type AmazonReview = {
   rating?: number;
   verified?: boolean;
   date?: string;
+};
+
+type AmazonInput = {
+  asin: string;
+  domainCode: "com";
+  sortBy: "recent";
+  maxPages: number;
+  filterByStar: "four_star" | "one_star";
+  filterByKeyword: "";
+  reviewerType: "all_reviews";
+  formatType: "current_format";
+  mediaType: "all_contents";
 };
 
 type RedditScraperRequest = {
@@ -154,24 +167,20 @@ async function fetchWithRetry(url: string, init: RequestInit | undefined, label:
 }
 
 async function runApifyActor<T>(actorId: string, input: any) {
-  const token = cfg.raw("APIFY_API_TOKEN");
-  if (!token) throw new Error('APIFY_API_TOKEN not set');
+  const runData = await apifyClient.actor(actorId).call({ input });
+  if (Array.isArray(runData)) {
+    return runData as T[];
+  }
+  if (Array.isArray((runData as any)?.items)) {
+    return (runData as any).items as T[];
+  }
 
-  const payload = input;
-
-  const runResponse = await fetchWithRetry(
-    `${APIFY_BASE}/acts/${actorId}/runs?token=${token}&waitForFinish=120`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    },
-    `apify-${actorId}`
-  );
-
-  const runData = await runResponse.json();
-  const datasetId: string | undefined = runData?.data?.defaultDatasetId;
+  const datasetId: string | undefined =
+    (runData as any)?.defaultDatasetId ?? (runData as any)?.data?.defaultDatasetId;
   if (!datasetId) throw new Error('Apify run failed - no datasetId');
+
+  const token = cfg.raw("APIFY_API_TOKEN");
+  if (!token) throw new Error("APIFY_API_TOKEN not set");
 
   const datasetRes = await fetchWithRetry(
     `${APIFY_BASE}/datasets/${datasetId}/items?clean=true&token=${token}`,
@@ -263,58 +272,28 @@ function filterProblemComments(items: RedditPost[]) {
     }));
 }
 
-function scoreReview(text: string) {
-  if (!text || text.length < 150) return 0;
+// Shared Amazon review params (canonical)
+const buildAmazonInput = (asin: string, starFilter: "four_star" | "one_star"): AmazonInput => ({
+  asin,
+  domainCode: "com",
+  sortBy: "recent",
+  maxPages: 1,
+  filterByStar: starFilter,
+  filterByKeyword: "",
+  reviewerType: "all_reviews",
+  formatType: "current_format",
+  mediaType: "all_contents",
+});
 
-  let score = 0;
-  if (/\b(I am|I feel|I finally|I can now|I'm not|I've become|used to be|no longer)\b/i.test(text)) score += 3;
-  if (/\b(husband|wife|friend|coworker|stranger|asked|said|noticed|commented|told me|people)\b/i.test(text)) score += 3;
-  if (/\b(avoid|hide|can't|couldn't|stopped|used to|never|afraid|embarrassed|ashamed)\b/i.test(text)) score += 2;
-  if (/\b(wedding|photo|mirror|date|interview|event|job|party|vacation)\b/i.test(text)) score += 2;
-  if (/\b(after|before|now|finally|weeks|months|years)\b/i.test(text)) score += 1;
-  if (text.length > 400) score += 1;
-  if (text.length > 800) score += 1;
-  return score;
-}
-
-function processReviews(reviews: AmazonReview[], minScore: number) {
-  return reviews
-    .filter((r) => r.reviewText || r.text)
-    .map((r) => {
-      const text = (r.reviewText || r.text || '').trim();
-      const cinematicScore = scoreReview(text);
-      return {
-        text,
-        rating: r.rating,
-        verified: r.verified || false,
-        date: r.date,
-        cinematicScore,
-        wordCount: text.split(' ').length
-      };
-    })
-    .filter((r) => r.cinematicScore >= minScore)
-    .sort((a, b) => b.cinematicScore - a.cinematicScore);
-}
-
-async function fetchApifyAmazonReviews(asin: string) {
-  if (!asin) return [] as AmazonReview[];
-  const amazonInput = {
-    asin,
-    domainCode: 'com',
-    sortBy: 'recent',
-    maxPages: 5,
-    filterByStar: 'all_stars',
-    filterByKeyword: '',
-    reviewerType: 'all_reviews',
-    formatType: 'current_format',
-    mediaType: 'all_contents'
-  };
-  console.log('=== FETCHING AMAZON REVIEWS ===');
-  console.log('ASIN:', asin);
-  console.log('Input:', JSON.stringify(amazonInput, null, 2));
-  console.log('Calling Amazon actor...');
-  const amazonData = await runApifyActor<AmazonReview>('ZebkvH3nVOrafqr5T', amazonInput);
-  console.log('Amazon actor returned:', amazonData.length, 'reviews');
+async function fetchApifyAmazonReviews(inputs: AmazonInput[]) {
+  if (inputs.length === 0) {
+    throw new Error("No Amazon ASIN inputs provided");
+  }
+  const apifyInput = { input: inputs };
+  if (!Array.isArray(apifyInput.input)) {
+    throw new Error("Apify Amazon input must be array");
+  }
+  const amazonData = await runApifyActor<AmazonReview>('ZebkvH3nVOrafqr5T', apifyInput);
   return amazonData;
 }
 
@@ -476,26 +455,55 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
     let competitor1All: AmazonReview[] = [];
     let competitor2All: AmazonReview[] = [];
 
-    if (productAmazonAsin) {
-      [productAll, competitor1All, competitor2All] = await Promise.all([
-        fetchApifyAmazonReviews(productAmazonAsin),
-        competitor1AmazonAsin ? fetchApifyAmazonReviews(competitor1AmazonAsin) : Promise.resolve([]),
-        competitor2AmazonAsin ? fetchApifyAmazonReviews(competitor2AmazonAsin) : Promise.resolve([])
-      ]);
+    const productAsin = productAmazonAsin?.trim();
+    const competitor1Asin = competitor1AmazonAsin?.trim();
+    const competitor2Asin = competitor2AmazonAsin?.trim();
+
+    const amazonInputs = [
+      productAsin && buildAmazonInput(productAsin, "four_star"),
+      competitor1Asin && buildAmazonInput(competitor1Asin, "one_star"),
+      competitor2Asin && buildAmazonInput(competitor2Asin, "one_star"),
+    ].filter((input): input is AmazonInput => Boolean(input));
+
+    if (amazonInputs.length > 0) {
+      if (!amazonInputs.every((x) => x && typeof x === "object")) {
+        throw new Error("Invalid amazonInputs");
+      }
+      const amazonData = await fetchApifyAmazonReviews(amazonInputs);
+
+      if (amazonInputs.length === 1) {
+        if (productAsin) {
+          productAll = amazonData;
+        } else if (competitor1Asin) {
+          competitor1All = amazonData;
+        } else if (competitor2Asin) {
+          competitor2All = amazonData;
+        }
+      } else {
+        const byAsin = new Map<string, AmazonReview[]>();
+        for (const review of amazonData) {
+          const asin = String((review as any).asin || (review as any).productAsin || "").trim();
+          if (!asin) continue;
+          const list = byAsin.get(asin) || [];
+          list.push(review);
+          byAsin.set(asin, list);
+        }
+
+        if (productAsin) productAll = byAsin.get(productAsin) || [];
+        if (competitor1Asin) competitor1All = byAsin.get(competitor1Asin) || [];
+        if (competitor2Asin) competitor2All = byAsin.get(competitor2Asin) || [];
+
+        if (amazonData.length > 0 && byAsin.size === 0) {
+          if (productAsin) {
+            productAll = amazonData;
+          } else if (competitor1Asin) {
+            competitor1All = amazonData;
+          } else if (competitor2Asin) {
+            competitor2All = amazonData;
+          }
+        }
+      }
     }
-
-    const filterByRating = (reviews: AmazonReview[], ratingTarget: number) =>
-      reviews.filter((r) => Number(r.rating) === ratingTarget);
-
-    const product5Star = filterByRating(productAll, 5);
-    const product4Star = filterByRating(productAll, 4);
-    const competitor1 = filterByRating(competitor1All, 1);
-    const competitor2 = filterByRating(competitor2All, 1);
-
-    const processed5Star = processReviews(product5Star, 4);
-    const processed4Star = processReviews(product4Star, 4);
-    const processedCompetitor1 = processReviews(competitor1, 2);
-    const processedCompetitor2 = processReviews(competitor2, 2);
 
     const rows: ResearchRowInput[] = [
       ...filteredProductComments.map((item, idx) => ({
@@ -527,48 +535,35 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
             sourceUrl: comment.permalink || item.post?.permalink,
           },
         }))
-      ),
-      ...processed5Star.map((r, idx) => ({
-        projectId,
-        jobId,
-        source: ResearchSource.AMAZON,
-        type: 'review',
-        content: r.text,
-        metadata: { date: r.date, wordCount: r.wordCount, amazonKind: 'product_5_star', rating: r.rating, verified: r.verified, indexLabel: `${idx + 1}` }
-      })),
-      ...processed4Star.map((r, idx) => ({
-        projectId,
-        jobId,
-        source: ResearchSource.AMAZON,
-        type: 'review',
-        content: r.text,
-        metadata: { date: r.date, wordCount: r.wordCount, amazonKind: 'product_4_star', rating: r.rating, verified: r.verified, indexLabel: `${idx + 1}` }
-      })),
-      ...processedCompetitor1.map((r, idx) => ({
-        projectId,
-        jobId,
-        source: ResearchSource.AMAZON,
-        type: 'review',
-        content: r.text,
-        metadata: { date: r.date, wordCount: r.wordCount, amazonKind: 'competitor_1', rating: r.rating, verified: r.verified, indexLabel: `${idx + 1}` }
-      })),
-      ...processedCompetitor2.map((r, idx) => ({
-        projectId,
-        jobId,
-        source: ResearchSource.AMAZON,
-        type: 'review',
-        content: r.text,
-        metadata: { date: r.date, wordCount: r.wordCount, amazonKind: 'competitor_2', rating: r.rating, verified: r.verified, indexLabel: `${idx + 1}` }
-      }))
+      )
     ];
 
     const dedupedRows = dedupeRows(rows);
 
-    const storedRows = await prisma.$transaction(async (tx) => {
-      if (dedupedRows.length > 0) {
-        await tx.researchRow.createMany({ data: dedupedRows });
-      }
-      return tx.researchRow.findMany({ where: { jobId }, orderBy: { createdAt: 'desc' } });
+    if (dedupedRows.length > 0) {
+      await prisma.researchRow.createMany({ data: dedupedRows });
+    }
+
+    await prisma.researchRow.createMany({
+      data: productAll.map((r) => ({
+        projectId,
+        jobId,
+        source: ResearchSource.AMAZON,
+        type: "review",
+        content: r.text ?? r.reviewText ?? "",
+        metadata: {
+          rating: r.rating ?? null,
+          verified: r.verified ?? null,
+          asin: productAsin ?? null,
+          scrapedAt: new Date().toISOString(),
+          raw: r,
+        },
+      })),
+    });
+
+    const storedRows = await prisma.researchRow.findMany({
+      where: { jobId },
+      orderBy: { createdAt: 'desc' },
     });
 
     const redditMeta = redditResponse.meta ?? {};
@@ -586,12 +581,17 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
       where: { id: jobId },
       data: {
         resultSummary: {
-          rowsCollected: dedupedRows.length,
+          rowsCollected: dedupedRows.length + productAll.length,
           reddit: {
             total_posts: totalPosts,
             total_comments: totalComments,
             meta: redditMeta
-          }
+          },
+          amazon: {
+            productTotal: productAll.length,
+            competitor1Total: competitor1All.length,
+            competitor2Total: competitor2All.length,
+          },
         }
       }
     });
