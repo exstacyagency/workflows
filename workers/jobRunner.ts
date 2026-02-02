@@ -1,5 +1,13 @@
+import fs from "node:fs";
+import path from "node:path";
 import dotenv from "dotenv";
-dotenv.config();
+
+const cwd = process.cwd();
+const envLocal = path.join(cwd, ".env.local");
+const env = path.join(cwd, ".env");
+
+if (fs.existsSync(envLocal)) dotenv.config({ path: envLocal });
+if (fs.existsSync(env)) dotenv.config({ path: env });
 
 import { assertRuntimeMode } from "../lib/jobRuntimeMode";
 import { logError } from "@/lib/logger";
@@ -347,9 +355,20 @@ async function runJob(
           scrapeComments,
         } = payload;
 
-        if (!productName || !productProblemSolved) {
+        const hasAmazonAsin = Boolean(productAmazonAsin && String(productAmazonAsin).trim());
+        const hasRedditKeywords =
+          Array.isArray(redditKeywords) && redditKeywords.some((k: any) => String(k).trim().length > 0);
+
+        const hasNameAndProblem =
+          Boolean(productName && String(productName).trim()) &&
+          Boolean(productProblemSolved && String(productProblemSolved).trim());
+
+        if (!hasAmazonAsin && !hasRedditKeywords && !hasNameAndProblem) {
           await rollbackJobQuotaIfNeeded(jobId, job.projectId, payload);
-          await markFailed(jobId, "Invalid payload: missing required customer research fields");
+          await markFailed(
+            jobId,
+            "Invalid payload: provide productAmazonAsin, redditKeywords, or productName+productProblemSolved"
+          );
           return;
         }
 
