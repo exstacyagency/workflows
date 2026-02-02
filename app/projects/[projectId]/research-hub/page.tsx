@@ -21,6 +21,7 @@ interface Job {
   status: JobStatus;
   error?: string;
   result?: any;
+  resultSummary?: any;
   metadata?: any;
   payload?: any;
   createdAt: string;
@@ -60,6 +61,7 @@ interface CustomerResearchFormData {
   redditKeywords: string;
   redditSubreddits?: string;
   maxPosts: number;
+  maxCommentsPerPost: number;
   timeRange: 'week' | 'month' | 'year' | 'all';
   scrapeComments: boolean;
 }
@@ -362,6 +364,19 @@ export default function ResearchHubPage() {
     return `${minutes}m ${seconds}s`;
   };
 
+  const getRowsCollected = (summary: Job["resultSummary"]) => {
+    if (!summary) return undefined;
+    if (typeof summary === "object" && "rowsCollected" in summary) {
+      const value = (summary as any).rowsCollected;
+      return typeof value === "number" ? value : undefined;
+    }
+    if (typeof summary === "string") {
+      const match = summary.match(/(\d+)\s+rows/i);
+      return match ? Number(match[1]) : undefined;
+    }
+    return undefined;
+  };
+
   // Check if step can run
   const canRun = (step: ResearchStep, track: ResearchTrack): boolean => {
     if (step.status === "RUNNING" || step.status === "PENDING") return false;
@@ -461,6 +476,7 @@ export default function ResearchHubPage() {
       redditKeywords: formData.redditKeywords.split(',').map(k => k.trim()).filter(Boolean),
       ...(formData.redditSubreddits && { redditSubreddits: formData.redditSubreddits.split(',').map(s => s.trim()).filter(Boolean) }),
       maxPosts: formData.maxPosts,
+      maxCommentsPerPost: formData.maxCommentsPerPost,
       timeRange: formData.timeRange,
       scrapeComments: formData.scrapeComments,
     };
@@ -559,16 +575,6 @@ export default function ResearchHubPage() {
       console.error("Failed to start research jobs:", error);
       toast.error(error.message || "Failed to start some research jobs");
     }
-  };
-
-  // Spinner component
-  const Spinner = () => {
-    return (
-      <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
-      </svg>
-    );
   };
 
   // Status badge
@@ -752,6 +758,10 @@ export default function ResearchHubPage() {
                   {track.steps.map((step, idx) => {
                     const locked = !canRun(step, track);
                     const isRunning = runningStep === step.id;
+                    const rowsCollected =
+                      step.jobType === "CUSTOMER_RESEARCH"
+                        ? getRowsCollected(step.lastJob?.resultSummary)
+                        : undefined;
 
                     return (
                       <div
@@ -773,16 +783,6 @@ export default function ResearchHubPage() {
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                               </svg>
                               <span className="text-sm font-medium">Just completed!</span>
-                            </div>
-                          )}
-
-                          {/* Running Indicator */}
-                          {step.status === "RUNNING" && step.lastJob && (
-                            <div className="mt-3 flex items-center gap-2 text-sky-400">
-                              <Spinner />
-                              <span className="text-xs">
-                                Processing... ({getElapsedTime(step.lastJob.createdAt)})
-                              </span>
                             </div>
                           )}
 
@@ -815,6 +815,16 @@ export default function ResearchHubPage() {
                               >
                                 View Results
                               </button>
+                              {step.jobType === "CUSTOMER_RESEARCH" && (
+                                <Link
+                                  href={`/projects/${projectId}/research/data/${step.lastJob!.id}`}
+                                  className="text-sky-400 hover:text-sky-300 text-xs underline"
+                                >
+                                  {typeof rowsCollected === "number"
+                                    ? `View Raw Data (${rowsCollected} rows)`
+                                    : "View Raw Data"}
+                                </Link>
+                              )}
                               <button
                                 onClick={() => {
                                   const url = currentRunId 
@@ -834,7 +844,6 @@ export default function ResearchHubPage() {
                               disabled={isRunning}
                               className="px-4 py-2 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm flex items-center gap-2"
                             >
-                              {isRunning && <Spinner />}
                               Re-run
                             </button>
                           ) : (
@@ -848,7 +857,6 @@ export default function ResearchHubPage() {
                                     : `bg-${track.color}-500 hover:bg-${track.color}-400 text-white`
                                 }`}
                               >
-                                {isRunning && <Spinner />}
                                 {isRunning ? "Starting..." : locked ? "🔒 Locked" : "Run"}
                               </button>
                               {/* Upload button for collection steps */}
@@ -994,13 +1002,14 @@ function CustomerResearchModal({
     redditKeywords: "",
     redditSubreddits: "",
     maxPosts: 50,
+    maxCommentsPerPost: 50,
     timeRange: 'month',
     scrapeComments: true,
   });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.productName || !formData.productProblemSolved || !formData.productAmazonAsin) {
+    if (!formData.productName || !formData.productProblemSolved) {
       alert("Please fill in all required fields");
       return;
     }
@@ -1047,7 +1056,7 @@ function CustomerResearchModal({
 
             <div>
               <label className="block text-sm font-medium text-slate-300 mb-2">
-                Amazon ASIN <span className="text-red-400">*</span>
+                Amazon ASIN <span className="text-slate-500">(optional)</span>
               </label>
               <input
                 type="text"
@@ -1055,7 +1064,6 @@ function CustomerResearchModal({
                 onChange={(e) => setFormData({ ...formData, productAmazonAsin: e.target.value })}
                 className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 placeholder="e.g., B07XYZ1234"
-                required
               />
             </div>
 
@@ -1121,38 +1129,20 @@ function CustomerResearchModal({
                   <p className="text-xs text-slate-500 mt-1">Leave empty to search all subreddits</p>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-2">
-                      Max Posts
-                    </label>
-                    <select
-                      value={formData.maxPosts}
-                      onChange={(e) => setFormData({ ...formData, maxPosts: Number(e.target.value) })}
-                      className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    >
-                      <option value={25}>25 posts</option>
-                      <option value={50}>50 posts</option>
-                      <option value={100}>100 posts</option>
-                      <option value={200}>200 posts</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-2">
-                      Time Range
-                    </label>
-                    <select
-                      value={formData.timeRange}
-                      onChange={(e) => setFormData({ ...formData, timeRange: e.target.value as 'week' | 'month' | 'year' | 'all' })}
-                      className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    >
-                      <option value="week">Past Week</option>
-                      <option value="month">Past Month</option>
-                      <option value="year">Past Year</option>
-                      <option value="all">All Time</option>
-                    </select>
-                  </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                    Time Range
+                  </label>
+                  <select
+                    value={formData.timeRange}
+                    onChange={(e) => setFormData({ ...formData, timeRange: e.target.value as 'week' | 'month' | 'year' | 'all' })}
+                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  >
+                    <option value="week">Past Week</option>
+                    <option value="month">Past Month</option>
+                    <option value="year">Past Year</option>
+                    <option value="all">All Time</option>
+                  </select>
                 </div>
 
                 <div>
@@ -1166,6 +1156,40 @@ function CustomerResearchModal({
                     <span className="text-sm text-slate-300">Scrape comments from posts</span>
                   </label>
                   <p className="text-xs text-slate-500 mt-1 ml-6">Recommended for deeper insights</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                      Max Posts
+                    </label>
+                    <input
+                      type="number"
+                      name="maxPosts"
+                      value={formData.maxPosts}
+                      min={10}
+                      max={1000}
+                      onChange={(e) => setFormData({ ...formData, maxPosts: Number(e.target.value) })}
+                      className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-slate-200"
+                    />
+                    <p className="text-xs text-slate-500 mt-1">Recommended: 50-200</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                      Max Comments Per Post
+                    </label>
+                    <input
+                      type="number"
+                      name="maxCommentsPerPost"
+                      value={formData.maxCommentsPerPost}
+                      min={0}
+                      max={500}
+                      onChange={(e) => setFormData({ ...formData, maxCommentsPerPost: Number(e.target.value) })}
+                      className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-slate-200"
+                    />
+                    <p className="text-xs text-slate-500 mt-1">0 = no comments, Recommended: 50-100</p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1744,7 +1768,7 @@ function RunAllResearchModal({
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   <div>
                     <label className="block text-sm font-medium text-slate-300 mb-2">
-                      Amazon ASIN <span className="text-red-400">*</span>
+                      Amazon ASIN <span className="text-slate-500">(optional)</span>
                     </label>
                     <input
                       type="text"
@@ -1752,7 +1776,6 @@ function RunAllResearchModal({
                       onChange={(e) => setFormData({ ...formData, productAmazonAsin: e.target.value })}
                       className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                       placeholder="B07XYZ1234"
-                      required
                     />
                   </div>
                   <div>
