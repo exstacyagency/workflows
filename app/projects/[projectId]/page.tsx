@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { PipelineStatusDb } from '@/components/PipelineStatusDb';
 import { ScriptMediaPreview, type ScriptMedia } from '@/components/ScriptMediaPreview';
+import { getJobTypeLabel } from '@/lib/jobLabels';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -225,7 +226,7 @@ export default async function ProjectDashboardPage({ params }: Params) {
               {recentJobs.map(job => (
                 <div key={job.id} className="rounded-lg border border-slate-800 bg-slate-950/70 px-4 py-3">
                   <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm font-medium text-slate-50">{job.type.replace(/_/g, ' ')}</p>
+                    <p className="text-sm font-medium text-slate-50">{getJobTypeLabel(job.type)}</p>
                     {statusBadge(
                       job.status === JobStatus.RUNNING
                         ? 'running'

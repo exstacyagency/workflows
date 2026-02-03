@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 
 interface ResearchRow {
@@ -16,8 +16,10 @@ interface ResearchRow {
 export default function ResearchDataPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const projectId = params.projectId as string;
   const jobId = params.jobId as string;
+  const runId = searchParams.get('runId');
 
   const [rows, setRows] = useState<ResearchRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -28,14 +30,25 @@ export default function ResearchDataPage() {
   const [typeFilter, setTypeFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
 
+  useEffect(() => {
+    console.log('[RawData] params', { projectId, jobId, runId });
+  }, [projectId, jobId, runId]);
+
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
       const offset = (page - 1) * rowsPerPage;
-      const response = await fetch(
-        `/api/projects/${projectId}/research?jobId=${jobId}&limit=${rowsPerPage}&offset=${offset}`
-      );
+      const runParam = runId ? `&runId=${runId}` : '';
+      const url = `/api/projects/${projectId}/research?jobId=${jobId}&limit=${rowsPerPage}&offset=${offset}${runParam}`;
+      console.log('[RawData] fetching', { url, page, rowsPerPage, offset, runId });
+      const response = await fetch(url);
+      console.log('[RawData] response', { status: response.status, ok: response.ok });
       const data = await response.json();
+      console.log('[RawData] data', {
+        rows: data?.rows?.length ?? 0,
+        total: data?.total ?? 0,
+        keys: Object.keys(data || {}),
+      });
       setRows(data.rows || []);
       setTotalCount(data.total || 0);
     } catch (error) {
@@ -43,7 +56,7 @@ export default function ResearchDataPage() {
     } finally {
       setLoading(false);
     }
-  }, [jobId, page, projectId, rowsPerPage]);
+  }, [jobId, page, projectId, rowsPerPage, runId]);
 
   useEffect(() => {
     loadData();
@@ -65,6 +78,27 @@ export default function ResearchDataPage() {
 
   const totalPages = Math.max(1, Math.ceil(totalCount / rowsPerPage));
   const filtersActive = sourceFilter !== 'all' || typeFilter !== 'all' || searchQuery;
+
+  const formatDateTime = (date: string) =>
+    new Date(date).toLocaleString('en-US', {
+      month: 'numeric',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    });
+
+  const getDisplayType = (row: ResearchRow) => {
+    if (row.source === "LOCAL_BUSINESS" || row.type === "UPLOADED" || row.type === "document") {
+      return "uploaded";
+    }
+    if (row.source === "AMAZON" || row.type === "review") {
+      return "review";
+    }
+    if (row.type) return row.type;
+    return "unknown";
+  };
 
   async function handleExport() {
     const response = await fetch(`/api/projects/${projectId}/research/export?jobId=${jobId}`);
@@ -90,7 +124,9 @@ export default function ResearchDataPage() {
             </Link>
             <h1 className="text-2xl font-bold">Raw Research Data</h1>
             <p className="text-sm text-slate-400 mt-1">
-              Job: {jobId.substring(0, 8)} | {totalCount} total rows
+              Job: {jobId.substring(0, 8)}
+              {runId ? ` | Run: ${runId.substring(0, 8)}` : ""}
+              {` | ${totalCount} total rows`}
             </p>
           </div>
           <button
@@ -176,7 +212,7 @@ export default function ResearchDataPage() {
                     >
                       <td className="p-3">
                         <span className="px-2 py-1 bg-slate-700 rounded text-xs">
-                          {row.type || 'unknown'}
+                          {getDisplayType(row)}
                         </span>
                       </td>
                       <td className="p-3 text-slate-400 text-xs">
@@ -190,7 +226,7 @@ export default function ResearchDataPage() {
                         {(row.metadata as any)?.score || 0}
                       </td>
                       <td className="p-3 text-slate-400 text-xs">
-                        {new Date(row.createdAt).toLocaleDateString()}
+                        {formatDateTime(row.createdAt)}
                       </td>
                     </tr>
                   ))}
