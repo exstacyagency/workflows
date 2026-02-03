@@ -50,6 +50,7 @@ export async function GET(
         type: true,
         status: true,
         error: true,
+        resultSummary: true,
         payload: true,
         createdAt: true,
         updatedAt: true,

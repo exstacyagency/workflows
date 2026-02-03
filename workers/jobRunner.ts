@@ -1,3 +1,14 @@
+import fs from "node:fs";
+import path from "node:path";
+import dotenv from "dotenv";
+
+const cwd = process.cwd();
+const envLocal = path.join(cwd, ".env.local");
+const env = path.join(cwd, ".env");
+
+if (fs.existsSync(envLocal)) dotenv.config({ path: envLocal });
+if (fs.existsSync(env)) dotenv.config({ path: env });
+
 import { assertRuntimeMode } from "../lib/jobRuntimeMode";
 import { logError } from "@/lib/logger";
 import { JobStatus, JobType } from "@prisma/client";
@@ -16,7 +27,6 @@ import { cfg } from "@/lib/config";
 // ...existing code...
 // ...existing code...
 // ...existing code...
-import { loadDotEnvFileIfPresent } from "@/lib/config/dotenv";
 // ...existing code...
 import { runCustomerResearch } from "../services/customerResearchService.ts";
 import { runAdRawCollection } from "../lib/adRawCollectionService.ts";
@@ -31,9 +41,8 @@ import prisma from "../lib/prisma.ts";
 import { rollbackQuota } from "../lib/billing/usage.ts";
 import { updateJobStatus } from "@/lib/jobs/updateJobStatus";
 
-if (cfg.raw("NODE_ENV") !== "production") {
-  loadDotEnvFileIfPresent(".env.local");
-  loadDotEnvFileIfPresent(".env");
+function writeLog(line: string) {
+  process.stdout.write(`${line}\n`);
 }
 
 type PipelineContext = {
@@ -59,9 +68,9 @@ function getRuntimeMode() {
     : "dev";
 }
 const runtimeMode = getRuntimeMode();
-console.log(`[BOOT] Runtime mode: ${runtimeMode}`);
+writeLog(`[BOOT] Runtime mode: ${runtimeMode}`);
 if (pipelineContext.mode === "alpha") {
-  console.log("[PIPELINE] Running in ALPHA mode");
+  writeLog("[PIPELINE] Running in ALPHA mode");
 }
 if (pipelineContext.mode === "alpha" && process.env.NODE_ENV === "production") {
   throw new Error("INVALID CONFIG: MODE=alpha cannot run with NODE_ENV=production");
@@ -124,7 +133,15 @@ function envMissing(keys: string[]) {
   });
 }
 
-async function rollbackJobQuotaIfNeeded(jobId: string, projectId: string, payload: JsonObject) {
+async function rollbackJobQuotaIfNeeded({
+  jobId,
+  projectId,
+  payload,
+}: {
+  jobId: string;
+  projectId: string;
+  payload: JsonObject;
+}) {
   const reservation = payload?.quotaReservation;
   if (!reservation || typeof reservation !== "object") return;
 
@@ -148,7 +165,15 @@ async function rollbackJobQuotaIfNeeded(jobId: string, projectId: string, payloa
   }
 }
 
-async function markCompleted(jobId: string, result: any, summary?: string) {
+async function markCompleted({
+  jobId,
+  result,
+  summary,
+}: {
+  jobId: string;
+  result: any;
+  summary?: string;
+}) {
   const existing = await prisma.job.findUnique({
     where: { id: jobId },
     select: { payload: true, resultSummary: true, status: true },
@@ -166,7 +191,7 @@ async function markCompleted(jobId: string, result: any, summary?: string) {
   await prisma.job.update({ where: { id: jobId }, data });
 }
 
-async function markFailed(jobId: string, err: unknown) {
+async function markFailed({ jobId, error }: { jobId: string; error: unknown }) {
   const existing = await prisma.job.findUnique({
     where: { id: jobId },
     select: { payload: true, resultSummary: true, status: true },
@@ -174,12 +199,12 @@ async function markFailed(jobId: string, err: unknown) {
   if (!existing) return;
 
   const payload = asObject(existing.payload);
-  let errMsg = String((err as any)?.message ?? err);
+  let errMsg = String((error as any)?.message ?? error);
   let transient = false;
   let provider: string | null = null;
   let rawSnippet: string | null = null;
 
-  const asAny: any = err as any;
+  const asAny: any = error as any;
   const looksExternal =
     asAny &&
     (asAny.name === "ExternalServiceError" ||
@@ -247,11 +272,11 @@ async function handleProviderConfig(jobId: string, provider: string, requiredEnv
 
   const reason = `${provider} not configured`;
   if (cfg.raw("CI") === "true") {
-    await markCompleted(jobId, { ok: true, skipped: true, reason }, `Skipped: ${reason}`);
+    await markCompleted({ jobId, result: { ok: true, skipped: true, reason }, summary: `Skipped: ${reason}` });
     return { ok: false as const, skipped: true as const };
   }
 
-  await markFailed(jobId, reason);
+  await markFailed({ jobId, error: reason });
   return { ok: false as const, skipped: false as const };
 }
 
@@ -315,13 +340,25 @@ async function runJob(
   try {
     switch (job.type) {
       case JobType.CUSTOMER_RESEARCH: {
-        const apifyToken = cfg.raw("APIFY_TOKEN") ?? cfg.raw("APIFY_API_TOKEN");
-        const hasApifyToken = !!apifyToken;
-        if (!hasApifyToken) {
-          await rollbackJobQuotaIfNeeded(jobId, job.projectId, payload);
-          await markCompleted(jobId, { ok: true, skipped: true, reason: "Apify not configured" });
+        writeLog("=== CUSTOMER_RESEARCH JOB ===");
+        writeLog("Checking Apify token...");
+        writeLog("process.env.APIFY_API_TOKEN:", process.env.APIFY_API_TOKEN ? "exists" : "missing");
+
+        const apifyToken = cfg.raw("APIFY_API_TOKEN");
+        writeLog("cfg.raw result:", apifyToken ? "found token" : "NO TOKEN");
+        writeLog("hasApifyToken:", !!apifyToken);
+
+        if (!apifyToken) {
+          writeLog("SKIPPING: Apify not configured");
+          await rollbackJobQuotaIfNeeded({ jobId, projectId: job.projectId, payload });
+          await markCompleted({
+            jobId,
+            result: { ok: true, skipped: true, reason: "Apify not configured" },
+          });
           return;
         }
+
+        writeLog("Proceeding with research...");
 
         const {
           productName,
@@ -329,11 +366,29 @@ async function runJob(
           productAmazonAsin,
           competitor1AmazonAsin,
           competitor2AmazonAsin,
+          redditKeywords,
+          redditSubreddits,
+          maxPosts,
+          maxCommentsPerPost,
+          timeRange,
+          scrapeComments,
         } = payload;
 
-        if (!productName || !productProblemSolved || !productAmazonAsin) {
-          await rollbackJobQuotaIfNeeded(jobId, job.projectId, payload);
-          await markFailed(jobId, "Invalid payload: missing required customer research fields");
+        const hasAmazonAsin = Boolean(productAmazonAsin && String(productAmazonAsin).trim());
+        const hasRedditKeywords =
+          Array.isArray(redditKeywords) && redditKeywords.some((k: any) => String(k).trim().length > 0);
+
+        const hasNameAndProblem =
+          Boolean(productName && String(productName).trim()) &&
+          Boolean(productProblemSolved && String(productProblemSolved).trim());
+
+        if (!hasAmazonAsin && !hasRedditKeywords && !hasNameAndProblem) {
+          await rollbackJobQuotaIfNeeded({ jobId, projectId: job.projectId, payload });
+          await markFailed({
+            jobId,
+            error:
+              "Invalid payload: provide productAmazonAsin, redditKeywords, or productName+productProblemSolved",
+          });
           return;
         }
 
@@ -345,9 +400,18 @@ async function runJob(
           productAmazonAsin,
           competitor1AmazonAsin,
           competitor2AmazonAsin,
+          redditKeywords,
+          redditSubreddits,
+          maxPosts,
+          maxCommentsPerPost,
+          timeRange,
+          scrapeComments,
         });
 
-        await markCompleted(jobId, { ok: true, rows: Array.isArray(result) ? result.length : null });
+        await markCompleted({
+          jobId,
+          result: { ok: true, rows: Array.isArray(result) ? result.length : null },
+        });
         return;
       }
 
@@ -362,7 +426,7 @@ async function runJob(
 
         const { industryCode } = payload;
         if (!industryCode) {
-          await markFailed(jobId, "Invalid payload: missing industryCode");
+          await markFailed({ jobId, error: "Invalid payload: missing industryCode" });
           return;
         }
 
@@ -372,14 +436,21 @@ async function runJob(
           jobId,
         });
 
-        await markCompleted(jobId, { ok: true, apify: result.apify, ads: result.ads }, `Ads: ${result.apify.itemCount}`);
+        await markCompleted({
+          jobId,
+          result: { ok: true, apify: result.apify, ads: result.ads },
+          summary: `Ads: ${result.apify.itemCount}`,
+        });
         return;
       }
 
       case JobType.PATTERN_ANALYSIS: {
         const { customerResearchJobId, adPerformanceJobId } = payload;
         if (!customerResearchJobId || !adPerformanceJobId) {
-          await markFailed(jobId, "Invalid payload: missing customerResearchJobId or adPerformanceJobId");
+          await markFailed({
+            jobId,
+            error: "Invalid payload: missing customerResearchJobId or adPerformanceJobId",
+          });
           return;
         }
 
@@ -391,7 +462,11 @@ async function runJob(
           adPerformanceJobId: String(adPerformanceJobId),
         });
 
-        await markCompleted(jobId, result, `Patterns: ${result.patterns.topHooks.length} hooks`);
+        await markCompleted({
+          jobId,
+          result,
+          summary: `Patterns: ${result.patterns.topHooks.length} hooks`,
+        });
         return;
       }
 
@@ -401,12 +476,12 @@ async function runJob(
 
         const fresh = await prisma.job.findUnique({ where: { id: jobId } });
         if (!fresh) {
-          await markFailed(jobId, "Job not found after claim");
+          await markFailed({ jobId, error: "Job not found after claim" });
           return;
         }
 
         const result = await startScriptGenerationJob(job.projectId, fresh);
-        await markCompleted(jobId, { ok: true, ...result });
+        await markCompleted({ jobId, result: { ok: true, ...result } });
         return;
       }
 
@@ -432,15 +507,18 @@ async function runJob(
             },
           });
 
-          await markCompleted(jobId, {
-            ok: true,
-            storyboardId: storyboard.id,
-            scriptId: scriptId || null,
+          await markCompleted({
+            jobId,
+            result: {
+              ok: true,
+              storyboardId: storyboard.id,
+              scriptId: scriptId || null,
+            },
           });
         } catch (e: any) {
           const msg = String(e?.message ?? e ?? "Unknown error");
-          await rollbackJobQuotaIfNeeded(jobId, job.projectId, payload);
-          await markFailed(jobId, e);
+          await rollbackJobQuotaIfNeeded({ jobId, projectId: job.projectId, payload });
+          await markFailed({ jobId, error: e });
           await appendResultSummary(jobId, `Storyboard generation failed: ${msg}`);
         }
         return;
@@ -449,7 +527,7 @@ async function runJob(
       case JobType.VIDEO_PROMPT_GENERATION: {
         const storyboardId = String(payload?.storyboardId ?? "").trim();
         if (!storyboardId) {
-          await markFailed(jobId, "Invalid payload: missing storyboardId");
+          await markFailed({ jobId, error: "Invalid payload: missing storyboardId" });
           return;
         }
 
@@ -458,16 +536,16 @@ async function runJob(
           select: { id: true, scriptId: true },
         });
         if (!storyboard?.id) {
-          await markFailed(jobId, `Storyboard not found for id=${storyboardId}`);
+          await markFailed({ jobId, error: `Storyboard not found for id=${storyboardId}` });
           return;
         }
 
         const result = await startVideoPromptGenerationJob({ storyboardId, jobId });
-        await markCompleted(
+        await markCompleted({
           jobId,
           result,
-          `Video prompts generated: ${result.processed}/${result.sceneCount} scenes`,
-        );
+          summary: `Video prompts generated: ${result.processed}/${result.sceneCount} scenes`,
+        });
 
         const chainType = String((payload as any)?.chainNext?.type ?? "");
         const rootKey = String(job.idempotencyKey ?? (payload as any)?.idempotencyKey ?? "").trim();
@@ -505,7 +583,7 @@ async function runJob(
         const force = Boolean(payload?.force);
         if (!storyboardId) {
           const msg = "Invalid payload: missing storyboardId";
-          await markFailed(jobId, msg);
+          await markFailed({ jobId, error: msg });
           await appendResultSummary(jobId, `Video images failed: ${msg}`);
           return;
         }
@@ -517,7 +595,7 @@ async function runJob(
         });
         if (!storyboard?.id) {
           const msg = `Storyboard not found for id=${storyboardId}`;
-          await markFailed(jobId, msg);
+          await markFailed({ jobId, error: msg });
           await appendResultSummary(jobId, `Video images failed: ${msg}`);
           return;
         }
@@ -526,11 +604,11 @@ async function runJob(
           await runWithMaxRuntime("VIDEO_IMAGE_GENERATION", async () => {
             await runVideoImageGenerationJob({ jobId });
           });
-          await markCompleted(jobId, { ok: true });
+          await markCompleted({ jobId, result: { ok: true } });
         } catch (e: any) {
           const msg = String(e?.message ?? e ?? "Unknown error");
-          await rollbackJobQuotaIfNeeded(jobId, job.projectId, payload);
-          await markFailed(jobId, e);
+          await rollbackJobQuotaIfNeeded({ jobId, projectId: job.projectId, payload });
+          await markFailed({ jobId, error: e });
           await appendResultSummary(jobId, `Video images failed: ${msg}`);
         }
         return;
@@ -548,7 +626,7 @@ async function runJob(
         const storyboardId = String(payload?.storyboardId ?? "").trim();
         if (!storyboardId) {
           const msg = "Invalid payload: missing storyboardId";
-          await markFailed(jobId, msg);
+          await markFailed({ jobId, error: msg });
           await appendResultSummary(jobId, `Video generation failed: ${msg}`);
           return;
         }
@@ -561,11 +639,11 @@ async function runJob(
             : firstUrl
               ? `Video generated: ${firstUrl}${result.videoUrls.length > 1 ? ` (+${result.videoUrls.length - 1} more)` : ""}`
               : "Video generation completed";
-          await markCompleted(jobId, result, summary);
+          await markCompleted({ jobId, result, summary });
         } catch (e: any) {
           const msg = String(e?.message ?? e ?? "Unknown error");
-          await rollbackJobQuotaIfNeeded(jobId, job.projectId, payload);
-          await markFailed(jobId, e);
+          await rollbackJobQuotaIfNeeded({ jobId, projectId: job.projectId, payload });
+          await markFailed({ jobId, error: e });
           await appendResultSummary(jobId, `Video generation failed: ${msg}`);
         }
         return;
@@ -574,7 +652,7 @@ async function runJob(
       case 'PRODUCT_DATA_COLLECTION' as any: {
         const { productName, productUrl, competitors } = payload;
         if (!productName || !productUrl) {
-          await markFailed(jobId, "Invalid payload: missing productName or productUrl");
+          await markFailed({ jobId, error: "Invalid payload: missing productName or productUrl" });
           return;
         }
 
@@ -586,7 +664,11 @@ async function runJob(
           competitors: competitors || [],
         });
 
-        await markCompleted(jobId, result, `Product data collected: ${result.competitorsAnalyzed} competitors`);
+        await markCompleted({
+          jobId,
+          result,
+          summary: `Product data collected: ${result.competitorsAnalyzed} competitors`,
+        });
         return;
       }
 
@@ -599,19 +681,19 @@ async function runJob(
           runId,
         });
 
-        await markCompleted(jobId, result, `Product analysis completed`);
+        await markCompleted({ jobId, result, summary: "Product analysis completed" });
         return;
       }
 
       default: {
-        await markFailed(jobId, "Not implemented");
+        await markFailed({ jobId, error: "Not implemented" });
         return;
       }
     }
   } catch (e: any) {
     try {
-      await rollbackJobQuotaIfNeeded(jobId, job.projectId, payload);
-      await markFailed(jobId, e);
+      await rollbackJobQuotaIfNeeded({ jobId, projectId: job.projectId, payload });
+      await markFailed({ jobId, error: e });
     } catch (updateErr) {
       console.error("[jobRunner] failed to persist job failure", { jobId, updateErr });
     }
@@ -619,19 +701,38 @@ async function runJob(
 }
 
 async function loop() {
-  console.log(`[jobRunner] start poll=${POLL_MS}ms runOnce=${RUN_ONCE} mode=${pipelineContext.mode}`);
+  writeLog(`[jobRunner] start poll=${POLL_MS}ms runOnce=${RUN_ONCE} mode=${pipelineContext.mode}`);
 
   while (true) {
+    writeLog("[WORKER] Polling for jobs...");
     let job: Awaited<ReturnType<typeof claimNextJob>> | null = null;
     try {
       job = await claimNextJob();
       if (!job) {
+        writeLog("[WORKER] No jobs to claim");
+        const allPending = await prisma.job.findMany({
+          where: { status: "PENDING" },
+          take: 5,
+          select: {
+            id: true,
+            type: true,
+            status: true,
+            payload: true,
+            createdAt: true,
+          },
+        });
+        writeLog("[WORKER] PENDING jobs in database:", JSON.stringify(allPending, null, 2));
         if (RUN_ONCE) return;
         await sleep(POLL_MS);
         continue;
       }
 
+      writeLog("[WORKER] Claimed job:", job.id, "Type:", job.type);
       await runJob(job, pipelineContext);
+      writeLog("[WORKER] Finished job:", job.id);
+      if (!RUN_ONCE) {
+        await sleep(POLL_MS);
+      }
     } catch (e) {
       logError("job.failed", e, {
         jobId: job?.id ?? null,
@@ -645,6 +746,25 @@ async function loop() {
   }
 }
 
+const STARTUP_DELAY_MS = 10_000;
+const STARTUP_POST_ENV_DELAY_MS = 5_000;
+
+async function startWorker() {
+  writeLog("=== WORKER STARTING ===");
+  writeLog("Waiting 10 seconds before checking environment...");
+  await new Promise((resolve) => setTimeout(resolve, STARTUP_DELAY_MS));
+
+  writeLog("=== WORKER ENV CHECK ===");
+  writeLog("APIFY_API_TOKEN:", process.env.APIFY_API_TOKEN ? "✓ Present" : "✗ Missing");
+  writeLog("ANTHROPIC_API_KEY:", process.env.ANTHROPIC_API_KEY ? "✓ Present" : "✗ Missing");
+  writeLog("NODE_ENV:", process.env.NODE_ENV);
+  writeLog("========================");
+  writeLog("Starting job polling in 5 seconds...");
+  await new Promise((resolve) => setTimeout(resolve, STARTUP_POST_ENV_DELAY_MS));
+
+  await loop();
+}
+
 process.on("unhandledRejection", (reason) => {
   console.error("[jobRunner] unhandledRejection", reason);
 });
@@ -652,7 +772,7 @@ process.on("uncaughtException", (err) => {
   console.error("[jobRunner] uncaughtException", err);
 });
 
-loop()
+startWorker()
   .catch((e) => {
     console.error("[jobRunner] fatal", e);
     process.exitCode = 1;

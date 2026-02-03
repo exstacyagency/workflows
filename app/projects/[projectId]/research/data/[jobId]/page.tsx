@@ -57,6 +57,7 @@ export default function ResearchDataPage() {
         return false;
       }
     }
+    if (sourceFilter !== 'all' && row.source !== sourceFilter) return false;
     if (typeFilter !== 'all' && row.type !== typeFilter) return false;
     if (searchQuery && !row.content.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     return true;
@@ -112,6 +113,8 @@ export default function ResearchDataPage() {
             <option value="reddit">Reddit</option>
             <option value="amazon">Amazon</option>
             <option value="uploaded">Uploaded</option>
+            <option value="REDDIT_PRODUCT">Reddit Product</option>
+            <option value="REDDIT_PROBLEM">Reddit Problem</option>
           </select>
 
           <select
@@ -181,6 +184,7 @@ export default function ResearchDataPage() {
                           ? row.metadata?.source || "UPLOADED"
                           : row.source}
                       </td>
+                      <td className="p-3 text-slate-400 text-xs">{row.source}</td>
                       <td className="p-3">{row.content}</td>
                       <td className="p-3 text-slate-400">
                         {(row.metadata as any)?.score || 0}

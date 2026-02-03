@@ -90,6 +90,7 @@ export default function AllResearchDataPage() {
         return false;
       }
     }
+    if (sourceFilter !== 'all' && row.source !== sourceFilter) return false;
     if (typeFilter !== 'all' && row.type !== typeFilter) return false;
     if (searchQuery && !row.content.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     return true;
@@ -163,6 +164,9 @@ export default function AllResearchDataPage() {
             <option value="reddit">Reddit</option>
             <option value="amazon">Amazon</option>
             <option value="uploaded">Uploaded</option>
+            <option value="REDDIT_PRODUCT">Reddit Product</option>
+            <option value="REDDIT_PROBLEM">Reddit Problem</option>
+            <option value="LOCAL_BUSINESS">Uploaded</option>
           </select>
 
           <select
@@ -173,8 +177,7 @@ export default function AllResearchDataPage() {
             <option value="all">All Types</option>
             <option value="post">Posts</option>
             <option value="comment">Comments</option>
-            <option value="review">Reviews</option>
-            <option value="UPLOADED">Uploaded</option>
+            <option value="document">Documents</option>
           </select>
 
           <input
@@ -218,11 +221,7 @@ export default function AllResearchDataPage() {
                           {row.type || 'unknown'}
                         </span>
                       </td>
-                      <td className="p-3 text-slate-400 text-xs">
-                        {row.source === "LOCAL_BUSINESS"
-                          ? row.metadata?.source || "UPLOADED"
-                          : row.source}
-                      </td>
+                      <td className="p-3 text-slate-400 text-xs">{row.source}</td>
                       <td className="p-3">
                         {row.content.substring(0, 200)}
                         {row.content.length > 200 && '...'}
