@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import toast, { Toaster } from "react-hot-toast";
+import { getJobTypeLabel } from "@/lib/jobLabels";
 
 // Types
 type JobStatus = "NOT_STARTED" | "PENDING" | "RUNNING" | "COMPLETED" | "FAILED";
@@ -59,10 +60,9 @@ interface CustomerResearchFormData {
   competitor2Asin?: string;
   // Reddit search parameters
   redditKeywords: string;
-  redditSubreddits?: string;
   maxPosts: number;
   maxCommentsPerPost: number;
-  timeRange: 'week' | 'month' | 'year' | 'all';
+  timeRange: 'hour' | 'day' | 'week' | 'month' | 'year' | 'all';
   scrapeComments: boolean;
 }
 
@@ -99,7 +99,6 @@ export default function ResearchHubPage() {
   const [previousJobs, setPreviousJobs] = useState<Job[]>([]);
   const [runningStep, setRunningStep] = useState<string | null>(null);
   const [currentRunId, setCurrentRunId] = useState<string | null>(null);
-  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [recentlyCompleted, setRecentlyCompleted] = useState<Set<string>>(new Set());
   const [selectedProduct, setSelectedProduct] = useState<string | null>(selectedProductFromUrl);
   const [products, setProducts] = useState<string[]>([]);
@@ -109,6 +108,7 @@ export default function ResearchHubPage() {
   const [uploadOnly, setUploadOnly] = useState(false);
   const selectedProductRef = useRef<string | null>(selectedProduct);
   const hasInitializedProductsRef = useRef(false);
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
 
   // Modal states
   const [activeStepModal, setActiveStepModal] = useState<string | null>(null);
@@ -119,6 +119,70 @@ export default function ResearchHubPage() {
   useEffect(() => {
     selectedProductRef.current = selectedProduct;
   }, [selectedProduct]);
+
+  const runGroups = jobs.reduce<Record<string, { runId: string; createdAt: string; jobs: Job[] }>>(
+    (acc, job) => {
+      const runId = job.runId || "unknown";
+      if (!acc[runId]) {
+        acc[runId] = {
+          runId,
+          createdAt: job.createdAt,
+          jobs: [],
+        };
+      }
+      acc[runId].jobs.push(job);
+      if (new Date(job.createdAt).getTime() < new Date(acc[runId].createdAt).getTime()) {
+        acc[runId].createdAt = job.createdAt;
+      }
+      return acc;
+    },
+    {}
+  );
+
+  const sortedRuns = Object.values(runGroups)
+    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+    .map((run, index) => ({
+      ...run,
+      runNumber: index + 1,
+    }))
+    .reverse();
+
+  const selectedRun = selectedRunId ? sortedRuns.find((run) => run.runId === selectedRunId) : null;
+
+  const selectedRunCustomerJob = selectedRun
+    ? selectedRun.jobs
+        .filter((j) => j.type === "CUSTOMER_RESEARCH" && j.status === "COMPLETED")
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]
+    : null;
+
+  const getStatusIcon = (status: JobStatus) => {
+    const icons: Record<JobStatus, string> = {
+      COMPLETED: "✓",
+      FAILED: "✕",
+      RUNNING: "⏳",
+      PENDING: "○",
+      NOT_STARTED: "○",
+    };
+    return icons[status] || "";
+  };
+
+  const getLastJobStatus = (runJobs: Job[]) => {
+    const sorted = [...runJobs].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+    const lastJob = sorted.find((j) => j.status !== "PENDING");
+    if (!lastJob) return "Not started";
+    return `${getJobTypeLabel(lastJob.type)} ${getStatusIcon(lastJob.status)}`;
+  };
+
+  const formatRunDate = (dateString: string) =>
+    new Date(dateString).toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
 
   const loadJobs = useCallback(async (forceProduct?: string) => {
     console.log('[loadJobs] Starting job fetch...', { projectId, forceProduct, timestamp: new Date().toISOString() });
@@ -162,7 +226,6 @@ export default function ResearchHubPage() {
         setPreviousJobs(prevJobs);
         return filteredJobs || [];
       });
-      setLastRefresh(new Date());
       console.log('[loadJobs] Jobs filtered:', { product: productToFilter, filteredCount: filteredJobs.length });
     } catch (error) {
       console.error('[loadJobs] Error:', error);
@@ -178,21 +241,18 @@ export default function ResearchHubPage() {
     }
   }, [loadJobs, projectId]);
 
-  // Auto-refresh jobs every 30 seconds
+  // Auto-refresh jobs every 5 seconds only while jobs are running
   useEffect(() => {
     if (!projectId || pauseAutoRefresh) return;
-    
-    console.log('[Auto-refresh] Setting up interval for projectId:', projectId);
+    const hasRunningJob = jobs.some((j) => j.status === "RUNNING");
+    if (!hasRunningJob) return;
+
     const interval = setInterval(() => {
-      console.log('[Auto-refresh] Triggering loadJobs...');
       loadJobs();
-    }, 30000);
-    
-    return () => {
-      console.log('[Auto-refresh] Cleaning up interval');
-      clearInterval(interval);
-    };
-  }, [loadJobs, pauseAutoRefresh, projectId]);
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [jobs, loadJobs, pauseAutoRefresh, projectId]);
 
   // Detect job completions and show celebration
   useEffect(() => {
@@ -205,7 +265,7 @@ export default function ResearchHubPage() {
     
     newCompletions.forEach(job => {
       setRecentlyCompleted(prev => new Set(prev).add(job.id));
-      toast.success(`${job.type.replace(/_/g, ' ')} completed!`, {
+      toast.success(`${getJobTypeLabel(job.type)} completed!`, {
         duration: 3000,
         icon: '🎉',
       });
@@ -225,14 +285,14 @@ export default function ResearchHubPage() {
   const tracks: ResearchTrack[] = [
     {
       key: "customer",
-      label: "Customer Research",
+        label: "Customer Research",
       description: "Understand your target customers",
       color: "emerald",
       enabled: true,
       steps: [
         {
           id: "customer-research",
-          label: "Collect Customer Data",
+          label: "Customer Collection",
           description: "Gather Reddit discussions and Amazon reviews",
           jobType: "CUSTOMER_RESEARCH",
           endpoint: "/api/jobs/customer-research",
@@ -240,7 +300,7 @@ export default function ResearchHubPage() {
         },
         {
           id: "customer-analysis",
-          label: "Analyze Customer Insights",
+          label: "Customer Analysis",
           description: "Generate customer avatars and pain points",
           jobType: "CUSTOMER_ANALYSIS",
           endpoint: "/api/jobs/customer-analysis",
@@ -251,14 +311,14 @@ export default function ResearchHubPage() {
     },
     {
       key: "ad",
-      label: "Ad Research",
+      label: "Ad Collection",
       description: "Analyze successful ad patterns",
       color: "sky",
       enabled: true,
       steps: [
         {
           id: "ad-collection",
-          label: "Collect Ads",
+          label: "Ad Collection",
           description: "Gather raw ads from your industry",
           jobType: "AD_PERFORMANCE",
           endpoint: "/api/jobs/ad-collection",
@@ -275,7 +335,7 @@ export default function ResearchHubPage() {
         },
         {
           id: "pattern-analysis",
-          label: "Analyze Patterns",
+          label: "Ad Analysis",
           description: "Identify winning ad patterns",
           jobType: "PATTERN_ANALYSIS",
           endpoint: "/api/jobs/pattern-analysis",
@@ -286,14 +346,14 @@ export default function ResearchHubPage() {
     },
     {
       key: "product",
-      label: "Product Research",
+      label: "Product Collection",
       description: "Deep dive into your product features",
       color: "violet",
       enabled: true,
       steps: [
         {
           id: "product-collection",
-          label: "Collect Product Data",
+          label: "Product Collection",
           description: "Gather product information and features",
           jobType: "PRODUCT_DATA_COLLECTION",
           endpoint: "/api/jobs/product-data-collection",
@@ -301,7 +361,7 @@ export default function ResearchHubPage() {
         },
         {
           id: "product-analysis",
-          label: "Analyze Product",
+          label: "Product Analysis",
           description: "Generate product insights",
           jobType: "PRODUCT_ANALYSIS",
           endpoint: "/api/jobs/product-analysis",
@@ -376,9 +436,6 @@ export default function ResearchHubPage() {
     .filter((job) => job.type === "CUSTOMER_RESEARCH" && job.status === "COMPLETED")
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
 
-  // Get unique runs
-  const runs = Array.from(new Set(jobs.map(j => j.runId).filter(Boolean)));
-
   // Get run status based on jobs with specific runId
   const getRunStatus = (runId: string) => {
     const runJobs = jobs.filter(j => j.runId === runId);
@@ -419,6 +476,20 @@ export default function ResearchHubPage() {
     }
     return undefined;
   };
+
+  const formatDateTime = (dateString: string) =>
+    new Date(dateString).toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+
+  const latestJob = jobs.length
+    ? jobs.reduce((latest, job) =>
+        new Date(job.createdAt).getTime() > new Date(latest.createdAt).getTime() ? job : latest
+      )
+    : null;
 
   // Check if step can run
   const canRun = (step: ResearchStep, track: ResearchTrack): boolean => {
@@ -508,6 +579,27 @@ export default function ResearchHubPage() {
     }
   };
 
+  const cancelJob = async (jobId: string) => {
+    if (!confirm("Are you sure you want to cancel this job?")) return;
+
+    try {
+      const response = await fetch(`/api/jobs/${jobId}/cancel`, {
+        method: "POST",
+      });
+
+      if (response.ok) {
+        toast.success("Job cancelled");
+        loadJobs();
+        return;
+      }
+
+      const data = await response.json().catch(() => ({}));
+      toast.error(data?.error || "Failed to cancel job");
+    } catch (error) {
+      toast.error("Error cancelling job");
+    }
+  };
+
   // Handle modal submissions
   const handleCustomerResearchSubmit = async (formData: CustomerResearchFormData) => {
     if (!pendingStep) return;
@@ -520,7 +612,6 @@ export default function ResearchHubPage() {
       ...(formData.competitor2Asin && { competitor2AmazonAsin: formData.competitor2Asin }),
       // Reddit search parameters
       redditKeywords: formData.redditKeywords.split(',').map(k => k.trim()).filter(Boolean),
-      ...(formData.redditSubreddits && { redditSubreddits: formData.redditSubreddits.split(',').map(s => s.trim()).filter(Boolean) }),
       maxPosts: formData.maxPosts,
       maxCommentsPerPost: formData.maxCommentsPerPost,
       timeRange: formData.timeRange,
@@ -705,15 +796,17 @@ export default function ResearchHubPage() {
               <p className="text-slate-400">
                 Build a comprehensive understanding of your customers, ads, and product
               </p>
-              {lastRefresh && (
+              {latestJob ? (
                 <div className="flex items-center gap-2 text-xs text-slate-500">
                   <span className="relative flex h-2 w-2">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                     <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                   </span>
-                  <span>
-                    Updated {Math.floor((new Date().getTime() - lastRefresh.getTime()) / 1000)}s ago
-                  </span>
+                  <span>Last run: {formatDateTime(latestJob.createdAt)}</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 text-xs text-slate-500">
+                  <span>No runs yet</span>
                 </div>
               )}
             </div>
@@ -757,46 +850,60 @@ export default function ResearchHubPage() {
                     </option>
                   ))}
                 </select>
-                <span className="text-xs text-slate-500">
-                  ({jobs.length} runs for this product)
-                </span>
               </div>
             ) : (
               <p className="text-sm text-slate-400 mb-3">No product research runs yet</p>
             )}
             <select
-              value={currentRunId || ''}
-              onChange={(e) => setCurrentRunId(e.target.value || null)}
-              className='px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500'
+              value={selectedRunId || "no-active"}
+              onChange={(e) => {
+                const value = e.target.value === "no-active" ? null : e.target.value;
+                setSelectedRunId(value);
+                setCurrentRunId(value);
+              }}
+              className="px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500"
             >
-              <option value=''>No active run</option>
-              {runs.map(runId => {
-                if (!runId) return null;
-                const runJobs = jobs.filter(j => j.runId === runId);
-                const firstJob = runJobs[0];
-                if (!firstJob) return null;
-                
-                const date = new Date(firstJob.createdAt);
-                const today = new Date();
-                const yesterday = new Date(today);
-                yesterday.setDate(yesterday.getDate() - 1);
-                
-                let label;
-                if (date.toDateString() === today.toDateString()) {
-                  label = `Today - ${date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
-                } else if (date.toDateString() === yesterday.toDateString()) {
-                  label = `Yesterday - ${date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
-                } else {
-                  label = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-                }
-                
-                return (
-                  <option key={runId} value={runId}>
-                    {label}
-                  </option>
-                );
-              })}
+              <option value="no-active">No active run</option>
+              {sortedRuns.map((run) => (
+                <option key={run.runId} value={run.runId}>
+                  Run #{run.runNumber} - Last: {getLastJobStatus(run.jobs)} - {formatRunDate(run.createdAt)}
+                </option>
+              ))}
             </select>
+            {selectedRun && (
+              <div className="mt-3 text-sm text-slate-400">
+                <div className="mt-2 text-slate-400">Jobs in this run:</div>
+                <div className="mt-2 space-y-1">
+                  {selectedRun.jobs
+                    .slice()
+                    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+                    .map((job) => {
+                      const statusIcon =
+                        job.status === "COMPLETED"
+                          ? "✓"
+                          : job.status === "FAILED"
+                            ? "✕"
+                            : job.status === "RUNNING"
+                              ? "●"
+                              : "○";
+                      return (
+                        <div key={job.id} className="flex items-center gap-2">
+                          <span className="text-slate-300">{statusIcon}</span>
+                          <span>{getJobTypeLabel(job.type)}</span>
+                          <span className="text-xs text-slate-500">
+                            {job.status === "COMPLETED"
+                              ? new Date(job.createdAt).toLocaleTimeString("en-US", {
+                                  hour: "numeric",
+                                  minute: "2-digit",
+                                })
+                              : job.status.toLowerCase()}
+                          </span>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+            )}
           </div>
           <button
             onClick={() => setShowRunAllModal(true)}
@@ -899,33 +1006,23 @@ export default function ResearchHubPage() {
                           {step.jobType === "CUSTOMER_RESEARCH" ? (
                             customerResearchJob && (
                             <div className="flex flex-col gap-1">
-                              <button
-                                onClick={() => router.push(`/projects/${projectId}/research-hub/results/${customerResearchJob.id}`)}
-                                className="text-sky-400 hover:text-sky-300 text-xs underline"
-                              >
-                                View Results
-                              </button>
                               <>
-                                <Link
-                                  href={`/projects/${projectId}/research/data/${customerResearchJob.id}`}
-                                  className="text-sky-400 hover:text-sky-300 text-xs underline"
-                                >
-                                  {typeof rowsCollected === "number"
-                                    ? `View Raw Data (${rowsCollected} rows)`
-                                    : "View Raw Data"}
-                                </Link>
-                                <button
-                                  onClick={() => {
-                                    setUploadJobId(customerResearchJob.id);
-                                    setCustomerModalTab("upload");
-                                    setUploadOnly(true);
-                                    setPendingStep({ step, trackKey: track.key });
-                                    setActiveStepModal(step.id);
-                                  }}
-                                  className="text-sky-400 hover:text-sky-300 text-xs underline"
-                                >
-                                  Upload More Data
-                                </button>
+                                {selectedRunCustomerJob ? (
+                                  <Link
+                                    href={`/projects/${projectId}/research/data/${selectedRunCustomerJob.id}?runId=${selectedRun.runId}`}
+                                    className="inline-block px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-xs"
+                                  >
+                                    View Raw Data
+                                  </Link>
+                                ) : (
+                                  <button
+                                    disabled
+                                    className="px-4 py-2 bg-gray-600 text-gray-400 rounded opacity-50 cursor-not-allowed text-xs"
+                                    title={!selectedRun ? "Select a run first" : "Customer Collection must be completed"}
+                                  >
+                                    View Raw Data
+                                  </button>
+                                )}
                               </>
                               <button
                                 onClick={() => {
@@ -943,12 +1040,6 @@ export default function ResearchHubPage() {
                           ) : (
                           step.status === "COMPLETED" && step.lastJob && (
                             <div className="flex flex-col gap-1">
-                              <button
-                                onClick={() => router.push(`/projects/${projectId}/research-hub/results/${step.lastJob!.id}`)}
-                                className="text-sky-400 hover:text-sky-300 text-xs underline"
-                              >
-                                View Results
-                              </button>
                               <button
                                 onClick={() => {
                                   const url = currentRunId 
@@ -968,7 +1059,7 @@ export default function ResearchHubPage() {
                               disabled={isRunning}
                               className="px-4 py-2 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm flex items-center gap-2"
                             >
-                              Re-run
+                              {step.jobType === "CUSTOMER_RESEARCH" ? "Collect Data" : "Re-run"}
                             </button>
                           ) : (
                             <>
@@ -981,9 +1072,23 @@ export default function ResearchHubPage() {
                                     : `bg-${track.color}-500 hover:bg-${track.color}-400 text-white`
                                 }`}
                               >
-                                {isRunning ? "Starting..." : locked ? "🔒 Locked" : "Run"}
+                                {isRunning
+                                  ? "Starting..."
+                                  : locked
+                                    ? "🔒 Locked"
+                                    : step.jobType === "CUSTOMER_RESEARCH"
+                                      ? "Collect Data"
+                                      : "Run"}
                               </button>
                             </>
+                          )}
+                          {step.status === "RUNNING" && step.lastJob && (
+                            <button
+                              onClick={() => cancelJob(step.lastJob!.id)}
+                              className="px-2 py-1 text-xs text-red-400 hover:text-red-300"
+                            >
+                              Cancel
+                            </button>
                           )}
                         </div>
 
@@ -1130,7 +1235,6 @@ function CustomerResearchModal({
     competitor1Asin: "",
     competitor2Asin: "",
     redditKeywords: "",
-    redditSubreddits: "",
     maxPosts: 50,
     maxCommentsPerPost: 50,
     timeRange: 'month',
@@ -1203,7 +1307,7 @@ function CustomerResearchModal({
       <div className="bg-slate-900 rounded-lg border border-slate-700 max-w-lg w-full max-h-[90vh] overflow-y-auto">
         <div className="p-6">
           <h2 className="text-xl font-bold text-white mb-2">
-            {uploadOnly ? "Upload Research Data" : "Collect Customer Data"}
+            {uploadOnly ? "Upload Research Data" : "Collect Customer Inputs"}
           </h2>
           <p className="text-sm text-slate-400 mb-6">
             {uploadOnly
@@ -1329,27 +1433,20 @@ function CustomerResearchModal({
 
                 <div>
                   <label className="block text-sm font-medium text-slate-300 mb-2">
-                    Target Subreddits <span className="text-slate-500">(optional)</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.redditSubreddits || ''}
-                    onChange={(e) => setFormData({ ...formData, redditSubreddits: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    placeholder="headphones, audiophile, BuyItForLife"
-                  />
-                  <p className="text-xs text-slate-500 mt-1">Leave empty to search all subreddits</p>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
                     Time Range
                   </label>
                   <select
                     value={formData.timeRange}
-                    onChange={(e) => setFormData({ ...formData, timeRange: e.target.value as 'week' | 'month' | 'year' | 'all' })}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        timeRange: e.target.value as 'hour' | 'day' | 'week' | 'month' | 'year' | 'all',
+                      })
+                    }
                     className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   >
+                    <option value="hour">Past Hour</option>
+                    <option value="day">Past Day</option>
                     <option value="week">Past Week</option>
                     <option value="month">Past Month</option>
                     <option value="year">Past Year</option>
@@ -1742,9 +1839,9 @@ function RunAllResearchModal({
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Customer Research Section */}
+            {/* Customer Collection Section */}
             <div className="border-t border-slate-700 pt-4">
-              <h3 className="text-lg font-semibold text-emerald-400 mb-3">Customer Research</h3>
+              <h3 className="text-lg font-semibold text-emerald-400 mb-3">Customer Collection</h3>
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-300 mb-2">
@@ -1815,9 +1912,9 @@ function RunAllResearchModal({
               </div>
             </div>
 
-            {/* Ad Research Section */}
+            {/* Ad Collection Section */}
             <div className="border-t border-slate-700 pt-4">
-              <h3 className="text-lg font-semibold text-sky-400 mb-3">Ad Research</h3>
+              <h3 className="text-lg font-semibold text-sky-400 mb-3">Ad Collection</h3>
               <div>
                 <label className="block text-sm font-medium text-slate-300 mb-2">
                   Industry Code <span className="text-red-400">*</span>
@@ -1833,9 +1930,9 @@ function RunAllResearchModal({
               </div>
             </div>
 
-            {/* Product Research Section */}
+            {/* Product Collection Section */}
             <div className="border-t border-slate-700 pt-4">
-              <h3 className="text-lg font-semibold text-violet-400 mb-3">Product Research</h3>
+              <h3 className="text-lg font-semibold text-violet-400 mb-3">Product Collection</h3>
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-300 mb-2">

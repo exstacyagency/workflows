@@ -72,4 +72,4 @@ queue.process(async (job) => {
   }
 });
 
-console.log(`[Worker] Customer Research worker started`);
+console.log(`[Worker] Customer Collection worker started`);

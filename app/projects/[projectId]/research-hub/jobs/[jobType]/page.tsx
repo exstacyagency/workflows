@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import Link from "next/link";
+import { getJobTypeLabel } from "@/lib/jobLabels";
 
 // Types
 type JobStatus = "NOT_STARTED" | "PENDING" | "RUNNING" | "COMPLETED" | "FAILED";
@@ -30,11 +31,11 @@ interface JobGroup {
   runLabel: string;
   color: string;
   jobs: Job[];
+  runNumber?: number;
 }
 
 export default function JobListPage() {
   const params = useParams();
-  const router = useRouter();
   const projectId = params?.projectId as string;
   const jobType = params?.jobType as string;
 
@@ -66,18 +67,6 @@ export default function JobListPage() {
     }
   };
 
-  const getJobTypeLabel = (type: string): string => {
-    const labels: Record<string, string> = {
-      CUSTOMER_RESEARCH: "Customer Research",
-      CUSTOMER_ANALYSIS: "Customer Analysis",
-      AD_PERFORMANCE: "Ad Performance",
-      PATTERN_ANALYSIS: "Pattern Analysis",
-      PRODUCT_DATA_COLLECTION: "Product Data Collection",
-      PRODUCT_ANALYSIS: "Product Analysis",
-    };
-    return labels[type] || type;
-  };
-
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleString();
   };
@@ -96,17 +85,32 @@ export default function JobListPage() {
     return `${seconds}s`;
   };
 
-  // Group jobs by runId
-  const groupedJobs: JobGroup[] = [];
-  const runIdMap = new Map<string | null, Job[]>();
+  const runGroups = jobs.reduce<Record<string, { runId: string; createdAt: string; jobs: Job[] }>>(
+    (acc, job) => {
+      const runId = job.runId || "unknown";
+      if (!acc[runId]) {
+        acc[runId] = {
+          runId,
+          createdAt: job.createdAt,
+          jobs: [],
+        };
+      }
+      acc[runId].jobs.push(job);
+      if (new Date(job.createdAt).getTime() < new Date(acc[runId].createdAt).getTime()) {
+        acc[runId].createdAt = job.createdAt;
+      }
+      return acc;
+    },
+    {}
+  );
 
-  jobs.forEach((job) => {
-    const runId = job.runId || null;
-    if (!runIdMap.has(runId)) {
-      runIdMap.set(runId, []);
-    }
-    runIdMap.get(runId)!.push(job);
-  });
+  const sortedRuns = Object.values(runGroups)
+    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+    .map((run, index) => ({
+      ...run,
+      runNumber: index + 1,
+    }))
+    .reverse();
 
   // Generate colors for each run
   const colors = [
@@ -118,29 +122,13 @@ export default function JobListPage() {
     "bg-cyan-500/10 border-cyan-500/30",
   ];
 
-  let colorIndex = 0;
-  runIdMap.forEach((jobs, runId) => {
-    const firstJob = jobs[0];
-    const runLabel = runId 
-      ? `Run ${runId.slice(0, 8)}... (${formatDate(firstJob.createdAt).split(',')[0]})`
-      : `Individual Jobs`;
-    
-    groupedJobs.push({
-      runId,
-      runLabel,
-      color: colors[colorIndex % colors.length],
-      jobs: jobs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
-    });
-    
-    colorIndex++;
-  });
-
-  // Sort groups by most recent job
-  groupedJobs.sort((a, b) => {
-    const aTime = new Date(a.jobs[0].createdAt).getTime();
-    const bTime = new Date(b.jobs[0].createdAt).getTime();
-    return bTime - aTime;
-  });
+  const groupedJobs: JobGroup[] = sortedRuns.map((run, index) => ({
+    runId: run.runId === "unknown" ? null : run.runId,
+    runLabel: `Run #${run.runNumber} (${formatDate(run.createdAt).split(",")[0]})`,
+    color: colors[index % colors.length],
+    jobs: run.jobs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+    runNumber: run.runNumber,
+  }));
 
   const StatusBadge = ({ status }: { status: JobStatus }) => {
     const colors = {
@@ -226,9 +214,6 @@ export default function JobListPage() {
                   <thead className="bg-slate-800/50">
                     <tr>
                       <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
-                        Job ID
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
                         Created
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
@@ -248,9 +233,6 @@ export default function JobListPage() {
                         key={job.id}
                         className="hover:bg-slate-800/50 transition-colors"
                       >
-                        <td className="px-4 py-3 text-sm font-mono text-slate-300">
-                          {job.id.slice(0, 8)}...
-                        </td>
                         <td className="px-4 py-3 text-sm text-slate-300">
                           {formatDate(job.createdAt)}
                         </td>
@@ -260,13 +242,19 @@ export default function JobListPage() {
                         <td className="px-4 py-3 text-sm text-slate-400">
                           {formatDuration(job.createdAt, job.updatedAt)}
                         </td>
-                        <td className="px-4 py-3">
-                          <button
-                            onClick={() => router.push(`/projects/${projectId}/research-hub/results/${job.id}`)}
-                            className="text-sky-400 hover:text-sky-300 text-sm underline"
-                          >
-                            View Details →
-                          </button>
+                        <td className="px-4 py-3 text-sm">
+                          {job.status === "COMPLETED" ? (
+                            <Link
+                              href={`/projects/${projectId}/research/data/${job.id}${
+                                job.runId ? `?runId=${job.runId}` : ""
+                              }`}
+                              className="text-sky-400 hover:text-sky-300 text-sm underline"
+                            >
+                              View Data →
+                            </Link>
+                          ) : (
+                            <span className="text-slate-500">—</span>
+                          )}
                         </td>
                       </tr>
                     ))}
