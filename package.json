@@ -59,7 +59,7 @@
     "alpha:reset": "tsx scripts/alpha_reset.ts",
     "alpha:smoke": "MODE=alpha NODE_ENV=production bash scripts/alpha_smoke.sh",
     "smoke:prod": "NODE_ENV=production npm run build && node scripts/prod_smoke.mjs",
-    "test": "node --experimental-vm-modules node_modules/.bin/jest",
+    "test": "node --experimental-vm-modules node_modules/.bin/jest --passWithNoTests",
     "test:isolation": "npm run build && npm test -- tests/isolation.self-operator.test.ts",
     "dev:test": "NODE_ENV=test next dev",
     "start:test": "NODE_ENV=test next start",

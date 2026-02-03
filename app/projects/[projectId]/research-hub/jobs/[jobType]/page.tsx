@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { getJobTypeLabel } from "@/lib/jobLabels";
@@ -43,13 +43,7 @@ export default function JobListPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (projectId && jobType) {
-      loadJobs();
-    }
-  }, [projectId, jobType]);
-
-  const loadJobs = async () => {
+  const loadJobs = useCallback(async () => {
     try {
       const response = await fetch(`/api/projects/${projectId}/jobs?type=${jobType}`);
       const data = await response.json();
@@ -65,7 +59,13 @@ export default function JobListPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [projectId, jobType]);
+
+  useEffect(() => {
+    if (projectId && jobType) {
+      loadJobs();
+    }
+  }, [loadJobs, projectId, jobType]);
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleString();

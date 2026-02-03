@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import toast, { Toaster } from "react-hot-toast";
@@ -122,7 +122,7 @@ export default function ResearchHubPage() {
 
   const runGroups = jobs.reduce<Record<string, { runId: string; createdAt: string; jobs: Job[] }>>(
     (acc, job) => {
-      const runId = job.runId || "unknown";
+      const runId = job.runId ?? job.id;
       if (!acc[runId]) {
         acc[runId] = {
           runId,
@@ -201,11 +201,12 @@ export default function ResearchHubPage() {
         throw new Error('Failed to load jobs');
       }
 
-      const uniqueProducts = [...new Set(
+      const uniqueProductsSet = new Set<string>(
         data.jobs
-          .map((j: any) => j.payload?.productName)
-          .filter(Boolean)
-      )] as string[];
+          .map((j: any) => j.payload?.productName?.trim() || j.payload?.productAmazonAsin?.trim())
+          .filter(Boolean) as string[]
+      );
+      const uniqueProducts = Array.from(uniqueProductsSet);
 
       setProducts(uniqueProducts);
 
@@ -219,7 +220,9 @@ export default function ResearchHubPage() {
       hasInitializedProductsRef.current = true;
 
       const filteredJobs = productToFilter
-        ? data.jobs.filter((j: any) => j.payload?.productName === productToFilter)
+        ? data.jobs.filter((j: any) =>
+            (j.payload?.productName?.trim() || j.payload?.productAmazonAsin?.trim()) === productToFilter
+          )
         : data.jobs;
 
       setJobs((prevJobs) => {
@@ -241,10 +244,14 @@ export default function ResearchHubPage() {
     }
   }, [loadJobs, projectId]);
 
+  const hasRunningJob = useMemo(
+    () => jobs.some((j) => j.status === "RUNNING"),
+    [jobs]
+  );
+
   // Auto-refresh jobs every 5 seconds only while jobs are running
   useEffect(() => {
     if (!projectId || pauseAutoRefresh) return;
-    const hasRunningJob = jobs.some((j) => j.status === "RUNNING");
     if (!hasRunningJob) return;
 
     const interval = setInterval(() => {
@@ -252,7 +259,7 @@ export default function ResearchHubPage() {
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [jobs, loadJobs, pauseAutoRefresh, projectId]);
+  }, [hasRunningJob, loadJobs, pauseAutoRefresh, projectId]);
 
   // Detect job completions and show celebration
   useEffect(() => {
@@ -462,19 +469,6 @@ export default function ResearchHubPage() {
     const minutes = Math.floor(elapsed / 60);
     const seconds = elapsed % 60;
     return `${minutes}m ${seconds}s`;
-  };
-
-  const getRowsCollected = (summary: Job["resultSummary"]) => {
-    if (!summary) return undefined;
-    if (typeof summary === "object" && "rowsCollected" in summary) {
-      const value = (summary as any).rowsCollected;
-      return typeof value === "number" ? value : undefined;
-    }
-    if (typeof summary === "string") {
-      const match = summary.match(/(\d+)\s+rows/i);
-      return match ? Number(match[1]) : undefined;
-    }
-    return undefined;
   };
 
   const formatDateTime = (dateString: string) =>
@@ -954,11 +948,6 @@ export default function ResearchHubPage() {
                     const customerResearchJob = step.jobType === "CUSTOMER_RESEARCH"
                       ? latestCompletedCustomerResearchJob
                       : undefined;
-                    const rowsCollected =
-                      step.jobType === "CUSTOMER_RESEARCH"
-                        ? getRowsCollected(customerResearchJob?.resultSummary)
-                        : undefined;
-
                     return (
                       <div
                         key={step.id}
@@ -1009,7 +998,7 @@ export default function ResearchHubPage() {
                               <>
                                 {selectedRunCustomerJob ? (
                                   <Link
-                                    href={`/projects/${projectId}/research/data/${selectedRunCustomerJob.id}?runId=${selectedRun.runId}`}
+                                    href={`/projects/${projectId}/research/data/${selectedRunCustomerJob.id}?runId=${selectedRunCustomerJob.runId ?? selectedRunCustomerJob.id}`}
                                     className="inline-block px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-xs"
                                   >
                                     View Raw Data
@@ -1157,13 +1146,10 @@ export default function ResearchHubPage() {
                     <div className="mt-2 rounded border border-slate-800 p-2 text-sm text-slate-300">
                       <div className="font-medium text-slate-200">Amazon</div>
                       <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-1">
-                        <div>Product total</div><div className="text-right">{rs.amazon.productTotal ?? 0}</div>
-                        <div>4★ total</div><div className="text-right">{rs.amazon.product4Star ?? 0}</div>
-                        <div>5★ total</div><div className="text-right">{rs.amazon.product5Star ?? 0}</div>
-                        <div>Stored from 4★</div><div className="text-right">{rs.amazon.storedFrom4Star ?? 0}</div>
-                        <div>Stored from 5★</div><div className="text-right">{rs.amazon.storedFrom5Star ?? 0}</div>
-                        <div>Competitor 1 total</div><div className="text-right">{rs.amazon.competitor1Total ?? 0}</div>
-                        <div>Competitor 2 total</div><div className="text-right">{rs.amazon.competitor2Total ?? 0}</div>
+                        <div>Total reviews</div><div className="text-right">{rs.amazon.productTotal ?? 0}</div>
+                        <div>Competitor reviews</div><div className="text-right">
+                          {(rs.amazon.competitor1Total ?? 0) + (rs.amazon.competitor2Total ?? 0)}
+                        </div>
                       </div>
                     </div>
                   )}
@@ -1251,11 +1237,15 @@ function CustomerResearchModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const hasAmazonAsin = formData.productAmazonAsin?.trim();
-    const hasRedditData = formData.productName?.trim() || formData.productProblemSolved?.trim();
+    const hasAmazonAsin =
+      formData.productAmazonAsin?.trim() ||
+      formData.competitor1Asin?.trim() ||
+      formData.competitor2Asin?.trim();
+    const hasRedditData =
+      formData.productName?.trim() && formData.productProblemSolved?.trim();
 
     if (!hasAmazonAsin && !hasRedditData) {
-      alert("Please provide either an Amazon ASIN or Product Name/Problem for Reddit scraping");
+      alert("Provide at least one Amazon ASIN (product or competitor) or valid Reddit inputs");
       return;
     }
 

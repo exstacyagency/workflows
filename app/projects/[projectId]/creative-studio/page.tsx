@@ -2,7 +2,7 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { JobStatus, JobType } from "@prisma/client";
 import toast, { Toaster } from "react-hot-toast";
 
@@ -53,23 +53,7 @@ export default function CreativeStudioPage() {
     message: "No research completed yet",
   });
 
-  useEffect(() => {
-    if (!projectId) return;
-    loadJobs();
-  }, [projectId]);
-
-  // Auto-refresh jobs every 5 seconds
-  useEffect(() => {
-    if (!projectId) return;
-    
-    const interval = setInterval(() => {
-      loadJobs();
-    }, 5000);
-    
-    return () => clearInterval(interval);
-  }, [projectId]);
-
-  async function loadJobs() {
+  const loadJobs = useCallback(async () => {
     try {
       const res = await fetch(`/api/projects/${projectId}/jobs`, {
         cache: "no-store",
@@ -111,7 +95,23 @@ export default function CreativeStudioPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [projectId]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    loadJobs();
+  }, [loadJobs, projectId]);
+
+  // Auto-refresh jobs every 5 seconds
+  useEffect(() => {
+    if (!projectId) return;
+
+    const interval = setInterval(() => {
+      loadJobs();
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [loadJobs, projectId]);
 
   function getJobsForType(type: JobType): Job[] {
     return jobs.filter((j) => j.type === type);
