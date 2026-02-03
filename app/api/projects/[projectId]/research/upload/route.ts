@@ -27,24 +27,51 @@ export async function POST(
       return NextResponse.json({ error: "File and jobId required" }, { status: 400 });
     }
 
+    const filename = file.name || "upload";
+    const ext = filename.split(".").pop()?.toLowerCase() || "";
+    const researchSourceValues = new Set(Object.values(ResearchSource));
+
+    const resolveSourceLabel = (value?: string | null) => {
+      if (value && value.trim()) return value.trim();
+      if (ext === "txt") return filename;
+      return "UPLOADED";
+    };
+
+    const toResearchSource = (label?: string | null) => {
+      if (!label) return ResearchSource.LOCAL_BUSINESS;
+      const trimmed = label.trim();
+      if (!trimmed) return ResearchSource.LOCAL_BUSINESS;
+      const upper = trimmed.toUpperCase();
+      if (researchSourceValues.has(upper as ResearchSource)) {
+        return upper as ResearchSource;
+      }
+      if (researchSourceValues.has(trimmed as ResearchSource)) {
+        return trimmed as ResearchSource;
+      }
+      return ResearchSource.LOCAL_BUSINESS;
+    };
+
     const extractedRows = await extractTextFromFile(file, file.type);
 
-    const rows = extractedRows.map((row, idx) => ({
-      projectId,
-      jobId,
-      source: ResearchSource.LOCAL_BUSINESS,
-      type: "UPLOADED",
-      content: row.text,
-      metadata: {
-        filename: file.name,
-        uploadedAt: new Date().toISOString(),
-        chunkIndex: idx + 1,
-        uploadSource: "USER_UPLOAD",
-        source: row.source ?? "UPLOADED",
-        date: row.date ?? null,
-        ...(row.metadata ?? {}),
-      },
-    }));
+    const rows = extractedRows.map((row, idx) => {
+      const sourceLabel = resolveSourceLabel(row.source);
+      return {
+        projectId,
+        jobId,
+        source: toResearchSource(sourceLabel),
+        type: "UPLOADED",
+        content: row.text,
+        metadata: {
+          filename,
+          uploadedAt: new Date().toISOString(),
+          chunkIndex: idx + 1,
+          uploadSource: "USER_UPLOAD",
+          source: sourceLabel,
+          date: row.date ?? null,
+          ...(row.metadata ?? {}),
+        },
+      };
+    });
 
     if (rows.length > 0) {
       await prisma.researchRow.createMany({
