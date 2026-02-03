@@ -100,18 +100,18 @@ export default function CreativeStudioPage() {
   useEffect(() => {
     if (!projectId) return;
     loadJobs();
-  }, [loadJobs, projectId]);
+  }, [projectId, loadJobs]);
 
   // Auto-refresh jobs every 5 seconds
   useEffect(() => {
     if (!projectId) return;
-
+    
     const interval = setInterval(() => {
       loadJobs();
     }, 5000);
-
+    
     return () => clearInterval(interval);
-  }, [loadJobs, projectId]);
+  }, [projectId, loadJobs]);
 
   function getJobsForType(type: JobType): Job[] {
     return jobs.filter((j) => j.type === type);

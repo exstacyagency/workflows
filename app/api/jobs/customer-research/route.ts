@@ -17,9 +17,9 @@ import { randomUUID } from 'crypto';
 export const runtime = 'nodejs';
 
 const CustomerResearchSchema = ProjectJobSchema.extend({
-  productName: z.string().min(1, 'productName is required'),
-  productProblemSolved: z.string().min(1, 'productProblemSolved is required'),
-  productAmazonAsin: z.string().min(1, 'productAmazonAsin is required'),
+  productName: z.string().optional(),
+  productProblemSolved: z.string().optional(),
+  productAmazonAsin: z.string().optional(),
   competitor1AmazonAsin: z.string().optional(),
   competitor2AmazonAsin: z.string().optional(),
   forceNew: z.boolean().optional().default(false),
@@ -27,6 +27,7 @@ const CustomerResearchSchema = ProjectJobSchema.extend({
   redditKeywords: z.array(z.string()).optional(),
   redditSubreddits: z.array(z.string()).optional(),
   maxPosts: z.number().optional(),
+  maxCommentsPerPost: z.number().optional(),
   timeRange: z.enum(['week', 'month', 'year', 'all']).optional(),
   scrapeComments: z.boolean().optional(),
 });
@@ -61,10 +62,26 @@ export async function POST(req: NextRequest) {
       redditKeywords,
       redditSubreddits,
       maxPosts,
+      maxCommentsPerPost,
       timeRange,
       scrapeComments,
     } = parsed.data;
     projectId = parsedProjectId;
+
+    const hasAmazonAsin = Boolean(productAmazonAsin?.trim());
+    const hasRedditData = Boolean(productName?.trim() || productProblemSolved?.trim());
+    if (!hasAmazonAsin && !hasRedditData) {
+      return NextResponse.json(
+        { error: "Provide either Amazon ASIN or Product Name/Problem for Reddit scraping" },
+        { status: 400 }
+      );
+    }
+    if (hasRedditData && (!productName?.trim() || !productProblemSolved?.trim())) {
+      return NextResponse.json(
+        { error: "Product Name and Problem are required for Reddit scraping" },
+        { status: 400 }
+      );
+    }
 
     const deny = await requireProjectOwner404(projectId);
     if (deny) return deny;
@@ -119,10 +136,15 @@ export async function POST(req: NextRequest) {
       // Reddit search parameters
       ...(redditKeywords && { redditKeywords }),
       ...(redditSubreddits && { redditSubreddits }),
-      ...(maxPosts && { maxPosts }),
+      ...(typeof maxPosts === 'number' && { maxPosts }),
+      ...(typeof maxCommentsPerPost === 'number' && { maxCommentsPerPost }),
       ...(timeRange && { timeRange }),
       ...(typeof scrapeComments === 'boolean' && { scrapeComments }),
     };
+
+    console.log("=== CREATING CUSTOMER RESEARCH JOB ===");
+    console.log("Job status:", securitySweep ? "COMPLETED" : "PENDING");
+    console.log("Security sweep?", securitySweep);
 
     const job = await prisma.job.create({
       data: {
@@ -138,6 +160,9 @@ export async function POST(req: NextRequest) {
       },
     });
     jobId = job.id;
+
+    console.log("Job created:", job.id, "Status:", job.status);
+    console.log("===================================");
 
     if (securitySweep) {
       await prisma.researchRow.createMany({
