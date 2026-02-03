@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { ResearchSource } from "@prisma/client";
+import { requireSession } from "@/lib/auth/requireSession";
+import { requireProjectOwner404 } from "@/lib/auth/requireProjectOwner404";
+import { extractTextFromFile } from "@/services/fileUploadService";
 import { requireSession } from "@/lib/auth/requireSession";
 import { requireProjectOwner404 } from "@/lib/auth/requireProjectOwner404";
 
@@ -25,6 +29,14 @@ export async function POST(
       return NextResponse.json({ error: "File and jobId required" }, { status: 400 });
     }
 
+    const extractedRows = await extractTextFromFile(file, file.type);
+
+    const rows = extractedRows.map((row, idx) => ({
+      projectId,
+      jobId,
+      source: ResearchSource.LOCAL_BUSINESS,
+      type: "UPLOADED",
+      content: row.text,
     const text = await file.text();
     const filename = file.name.toLowerCase();
 
@@ -50,6 +62,9 @@ export async function POST(
         uploadedAt: new Date().toISOString(),
         chunkIndex: idx + 1,
         uploadSource: "USER_UPLOAD",
+        source: row.source ?? "UPLOADED",
+        date: row.date ?? null,
+        ...(row.metadata ?? {}),
       },
     }));
 

@@ -1,0 +1,14 @@
+[
+  {
+    "ticket_id": "12345",
+    "created": "2024-01-10",
+    "subject": "Bluetooth connectivity issues",
+    "message": "My headphones keep disconnecting from my laptop every 10 minutes. Very frustrating during meetings."
+  },
+  {
+    "ticket_id": "12346",
+    "created": "2024-01-12",
+    "subject": "How to update firmware?",
+    "message": "Can't find instructions for updating firmware. App doesn't show any options."
+  }
+]

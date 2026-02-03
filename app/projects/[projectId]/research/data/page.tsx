@@ -83,6 +83,13 @@ export default function AllResearchDataPage() {
   }, [loadData]);
 
   const filteredRows = rows.filter((row) => {
+    if (sourceFilter !== 'all') {
+      if (sourceFilter === 'reddit' && !row.source.startsWith('REDDIT_')) return false;
+      if (sourceFilter === 'amazon' && row.source !== 'AMAZON') return false;
+      if (sourceFilter === 'uploaded' && row.source !== 'LOCAL_BUSINESS' && row.type !== 'UPLOADED') {
+        return false;
+      }
+    }
     if (sourceFilter !== 'all' && row.source !== sourceFilter) return false;
     if (typeFilter !== 'all' && row.type !== typeFilter) return false;
     if (searchQuery && !row.content.toLowerCase().includes(searchQuery.toLowerCase())) return false;
@@ -154,6 +161,9 @@ export default function AllResearchDataPage() {
             className="px-3 py-2 bg-slate-800 border border-slate-700 rounded text-sm"
           >
             <option value="all">All Sources</option>
+            <option value="reddit">Reddit</option>
+            <option value="amazon">Amazon</option>
+            <option value="uploaded">Uploaded</option>
             <option value="REDDIT_PRODUCT">Reddit Product</option>
             <option value="REDDIT_PROBLEM">Reddit Problem</option>
             <option value="LOCAL_BUSINESS">Uploaded</option>

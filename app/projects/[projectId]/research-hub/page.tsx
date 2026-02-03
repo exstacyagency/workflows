@@ -1121,6 +1121,7 @@ function CustomerResearchModal({
   uploadJobId: string | null;
   uploadOnly?: boolean;
 }) {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<"scrape" | "upload">(initialTab);
   const [formData, setFormData] = useState<CustomerResearchFormData>({
     productName: "",
@@ -1188,6 +1189,7 @@ function CustomerResearchModal({
         throw new Error(data.error || "Upload failed");
       }
       toast.success(`Added ${data.rowsAdded} rows from uploaded file`);
+      router.refresh();
       onClose();
     } catch (error: any) {
       toast.error(error.message || "Upload failed");
@@ -1465,6 +1467,9 @@ function CustomerResearchModal({
                   {uploading ? "Uploading..." : "Upload & Add Data"}
                 </button>
               </div>
+              {uploading && (
+                <p className="text-xs text-slate-400 text-right">Processing file...</p>
+              )}
             </form>
           )}
         </div>
