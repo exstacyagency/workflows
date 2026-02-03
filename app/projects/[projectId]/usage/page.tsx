@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 
@@ -37,13 +37,7 @@ export default function UsagePage() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [dateFilter, setDateFilter] = useState<string>("all");
 
-  useEffect(() => {
-    if (projectId) {
-      loadJobs();
-    }
-  }, [projectId]);
-
-  const loadJobs = async () => {
+  const loadJobs = useCallback(async () => {
     try {
       const response = await fetch(`/api/projects/${projectId}/jobs`);
       const data = await response.json();
@@ -61,7 +55,13 @@ export default function UsagePage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [projectId]);
+
+  useEffect(() => {
+    if (projectId) {
+      loadJobs();
+    }
+  }, [loadJobs, projectId]);
 
   // Mock cost calculation (replace with real API costs later)
   const getMockCost = (type: JobType, status: JobStatus): number => {

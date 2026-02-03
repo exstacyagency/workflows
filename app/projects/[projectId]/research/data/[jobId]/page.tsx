@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 
@@ -28,11 +28,7 @@ export default function ResearchDataPage() {
   const [typeFilter, setTypeFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
 
-  useEffect(() => {
-    loadData();
-  }, [jobId, page]);
-
-  async function loadData() {
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
       const offset = (page - 1) * rowsPerPage;
@@ -47,7 +43,11 @@ export default function ResearchDataPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [jobId, page, projectId, rowsPerPage]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const filteredRows = rows.filter((row) => {
     if (sourceFilter !== 'all' && row.source !== sourceFilter) return false;

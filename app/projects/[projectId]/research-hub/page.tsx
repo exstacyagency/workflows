@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import toast, { Toaster } from "react-hot-toast";
@@ -107,6 +107,8 @@ export default function ResearchHubPage() {
   const [customerModalTab, setCustomerModalTab] = useState<"scrape" | "upload">("scrape");
   const [uploadJobId, setUploadJobId] = useState<string | null>(null);
   const [uploadOnly, setUploadOnly] = useState(false);
+  const selectedProductRef = useRef<string | null>(selectedProduct);
+  const hasInitializedProductsRef = useRef(false);
 
   // Modal states
   const [activeStepModal, setActiveStepModal] = useState<string | null>(null);
@@ -114,13 +116,67 @@ export default function ResearchHubPage() {
   const [showNewRunModal, setShowNewRunModal] = useState(false);
   const [showRunAllModal, setShowRunAllModal] = useState(false);
 
+  useEffect(() => {
+    selectedProductRef.current = selectedProduct;
+  }, [selectedProduct]);
+
+  const loadJobs = useCallback(async (forceProduct?: string) => {
+    console.log('[loadJobs] Starting job fetch...', { projectId, forceProduct, timestamp: new Date().toISOString() });
+    setLoading(true);
+    try {
+      const response = await fetch(`/api/projects/${projectId}/jobs`);
+      const data = await response.json();
+
+      console.log('[loadJobs] Fetched jobs:', { 
+        success: data.success, 
+        jobCount: data.jobs?.length,
+        jobs: data.jobs 
+      });
+
+      if (!data.success) {
+        throw new Error('Failed to load jobs');
+      }
+
+      const uniqueProducts = [...new Set(
+        data.jobs
+          .map((j: any) => j.payload?.productName)
+          .filter(Boolean)
+      )] as string[];
+
+      setProducts(uniqueProducts);
+
+      let productToFilter = (forceProduct ?? selectedProductRef.current) || null;
+
+      if (!productToFilter && uniqueProducts.length > 0 && !hasInitializedProductsRef.current) {
+        productToFilter = uniqueProducts[0];
+        setSelectedProduct(productToFilter);
+      }
+
+      hasInitializedProductsRef.current = true;
+
+      const filteredJobs = productToFilter
+        ? data.jobs.filter((j: any) => j.payload?.productName === productToFilter)
+        : data.jobs;
+
+      setJobs((prevJobs) => {
+        setPreviousJobs(prevJobs);
+        return filteredJobs || [];
+      });
+      setLastRefresh(new Date());
+      console.log('[loadJobs] Jobs filtered:', { product: productToFilter, filteredCount: filteredJobs.length });
+    } catch (error) {
+      console.error('[loadJobs] Error:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [projectId]);
+
   // Load jobs on mount
   useEffect(() => {
     if (projectId) {
       loadJobs();
     }
-  }, [projectId]);
-
+  }, [loadJobs, projectId]);
 
   // Auto-refresh jobs every 30 seconds
   useEffect(() => {
@@ -136,7 +192,7 @@ export default function ResearchHubPage() {
       console.log('[Auto-refresh] Cleaning up interval');
       clearInterval(interval);
     };
-  }, [projectId, pauseAutoRefresh]);
+  }, [loadJobs, pauseAutoRefresh, projectId]);
 
   // Detect job completions and show celebration
   useEffect(() => {
@@ -164,53 +220,6 @@ export default function ResearchHubPage() {
       }, 3000);
     });
   }, [jobs, previousJobs]);
-
-  const loadJobs = async (forceProduct?: string) => {
-    console.log('[loadJobs] Starting job fetch...', { projectId, forceProduct, timestamp: new Date().toISOString() });
-    setLoading(true);
-    try {
-      const response = await fetch(`/api/projects/${projectId}/jobs`);
-      const data = await response.json();
-
-      console.log('[loadJobs] Fetched jobs:', { 
-        success: data.success, 
-        jobCount: data.jobs?.length,
-        jobs: data.jobs 
-      });
-
-      if (!data.success) {
-        throw new Error('Failed to load jobs');
-      }
-
-      const uniqueProducts = [...new Set(
-        data.jobs
-          .map((j: any) => j.payload?.productName)
-          .filter(Boolean)
-      )] as string[];
-
-      setProducts(uniqueProducts);
-
-      const productToFilter = forceProduct !== undefined ? forceProduct : selectedProduct;
-
-      if (!productToFilter && uniqueProducts.length > 0 && products.length === 0) {
-        setSelectedProduct(uniqueProducts[0]);
-        return;
-      }
-
-      const filteredJobs = productToFilter
-        ? data.jobs.filter((j: any) => j.payload?.productName === productToFilter)
-        : data.jobs;
-
-      setPreviousJobs(jobs);
-      setJobs(filteredJobs || []);
-      setLastRefresh(new Date());
-      console.log('[loadJobs] Jobs filtered:', { product: productToFilter, filteredCount: filteredJobs.length });
-    } catch (error) {
-      console.error('[loadJobs] Error:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   // Define research tracks
   const tracks: ResearchTrack[] = [
@@ -507,8 +516,8 @@ export default function ResearchHubPage() {
       productName: formData.productName,
       productProblemSolved: formData.productProblemSolved,
       productAmazonAsin: formData.productAmazonAsin,
-      ...(formData.competitor1Asin && { competitor1Asin: formData.competitor1Asin }),
-      ...(formData.competitor2Asin && { competitor2Asin: formData.competitor2Asin }),
+      ...(formData.competitor1Asin && { competitor1AmazonAsin: formData.competitor1Asin }),
+      ...(formData.competitor2Asin && { competitor2AmazonAsin: formData.competitor2Asin }),
       // Reddit search parameters
       redditKeywords: formData.redditKeywords.split(',').map(k => k.trim()).filter(Boolean),
       ...(formData.redditSubreddits && { redditSubreddits: formData.redditSubreddits.split(',').map(s => s.trim()).filter(Boolean) }),
@@ -568,8 +577,8 @@ export default function ResearchHubPage() {
         productName: formData.productName,
         productProblemSolved: formData.productProblemSolved,
         productAmazonAsin: formData.productAmazonAsin,
-        ...(formData.competitor1Asin && { competitor1Asin: formData.competitor1Asin }),
-        ...(formData.competitor2Asin && { competitor2Asin: formData.competitor2Asin }),
+        ...(formData.competitor1Asin && { competitor1AmazonAsin: formData.competitor1Asin }),
+        ...(formData.competitor2Asin && { competitor2AmazonAsin: formData.competitor2Asin }),
       };
       
       await fetch('/api/jobs/customer-research', {
@@ -1032,22 +1041,39 @@ export default function ResearchHubPage() {
       <div className="mt-8 border-t border-slate-800 pt-6">
         <h2 className="text-lg font-semibold text-slate-200 mb-4">Recent Jobs</h2>
         <div className="space-y-2">
-          {jobs.slice(0, 10).map(job => (
-            <div key={job.id} className="flex items-center justify-between p-3 rounded-lg bg-slate-900/50 border border-slate-800">
-              <div className="flex-1">
-                <div className="text-sm font-medium text-slate-200">{job.type}</div>
-                <div className="text-xs text-slate-500">{new Date(job.createdAt).toLocaleString()}</div>
+          {jobs.slice(0, 10).map(job => {
+            const rs = job.resultSummary as any;
+            return (
+              <div key={job.id} className="flex items-start justify-between gap-4 p-3 rounded-lg bg-slate-900/50 border border-slate-800">
+                <div className="flex-1">
+                  <div className="text-sm font-medium text-slate-200">{job.type}</div>
+                  <div className="text-xs text-slate-500">{new Date(job.createdAt).toLocaleString()}</div>
+                  {rs?.amazon && (
+                    <div className="mt-2 rounded border border-slate-800 p-2 text-sm text-slate-300">
+                      <div className="font-medium text-slate-200">Amazon</div>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-1">
+                        <div>Product total</div><div className="text-right">{rs.amazon.productTotal ?? 0}</div>
+                        <div>4★ total</div><div className="text-right">{rs.amazon.product4Star ?? 0}</div>
+                        <div>5★ total</div><div className="text-right">{rs.amazon.product5Star ?? 0}</div>
+                        <div>Stored from 4★</div><div className="text-right">{rs.amazon.storedFrom4Star ?? 0}</div>
+                        <div>Stored from 5★</div><div className="text-right">{rs.amazon.storedFrom5Star ?? 0}</div>
+                        <div>Competitor 1 total</div><div className="text-right">{rs.amazon.competitor1Total ?? 0}</div>
+                        <div>Competitor 2 total</div><div className="text-right">{rs.amazon.competitor2Total ?? 0}</div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <div className={`px-2 py-1 rounded text-xs ${
+                  job.status === 'COMPLETED' ? 'bg-emerald-500/10 text-emerald-400' :
+                  job.status === 'FAILED' ? 'bg-red-500/10 text-red-400' :
+                  job.status === 'RUNNING' ? 'bg-sky-500/10 text-sky-400' :
+                  'bg-slate-500/10 text-slate-400'
+                }`}>
+                  {job.status}
+                </div>
               </div>
-              <div className={`px-2 py-1 rounded text-xs ${
-                job.status === 'COMPLETED' ? 'bg-emerald-500/10 text-emerald-400' :
-                job.status === 'FAILED' ? 'bg-red-500/10 text-red-400' :
-                job.status === 'RUNNING' ? 'bg-sky-500/10 text-sky-400' :
-                'bg-slate-500/10 text-slate-400'
-              }`}>
-                {job.status}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
@@ -1055,7 +1081,7 @@ export default function ResearchHubPage() {
       <div className="mt-8 p-6 rounded-lg bg-slate-900/50 border border-slate-800">
         <h3 className="text-lg font-bold text-white mb-2">Ready for Production?</h3>
         <p className="text-sm text-slate-400 mb-4">
-          Once you've completed your research, head to the Creative Studio to generate
+          Once you&apos;ve completed your research, head to the Creative Studio to generate
           ad scripts and videos.
         </p>
         <div className="flex gap-3">
