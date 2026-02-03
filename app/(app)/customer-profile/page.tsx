@@ -362,7 +362,7 @@ export default function CustomerProfilePage() {
                 href={adResearchHref}
                 className="inline-flex items-center justify-center rounded-md bg-sky-500 hover:bg-sky-400 px-4 py-2 text-sm font-medium text-white"
               >
-                Continue to Ad Research
+                Continue to Ad Collection
               </Link>
               <Link
                 href={scriptHref}
