@@ -4,6 +4,8 @@ import { ResearchSource } from "@prisma/client";
 import { requireSession } from "@/lib/auth/requireSession";
 import { requireProjectOwner404 } from "@/lib/auth/requireProjectOwner404";
 import { extractTextFromFile } from "@/services/fileUploadService";
+import { requireSession } from "@/lib/auth/requireSession";
+import { requireProjectOwner404 } from "@/lib/auth/requireProjectOwner404";
 
 export async function POST(
   req: NextRequest,
@@ -35,6 +37,26 @@ export async function POST(
       source: ResearchSource.LOCAL_BUSINESS,
       type: "UPLOADED",
       content: row.text,
+    const text = await file.text();
+    const filename = file.name.toLowerCase();
+
+    let chunks: string[] = [];
+    if (filename.endsWith(".csv")) {
+      const lines = text.split("\n").map((line) => line.trim()).filter(Boolean);
+      chunks = lines.slice(1);
+    } else {
+      chunks = text
+        .split(/\n\n|\r\n\r\n/)
+        .map((chunk) => chunk.trim())
+        .filter((chunk) => chunk.length > 20);
+    }
+
+    const rows = chunks.map((chunk, idx) => ({
+      projectId,
+      jobId,
+      source: "LOCAL_BUSINESS",
+      type: "document",
+      content: chunk,
       metadata: {
         filename: file.name,
         uploadedAt: new Date().toISOString(),

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -42,13 +42,7 @@ export default function JobListPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (projectId && jobType) {
-      loadJobs();
-    }
-  }, [projectId, jobType]);
-
-  const loadJobs = async () => {
+  const loadJobs = useCallback(async () => {
     try {
       const response = await fetch(`/api/projects/${projectId}/jobs?type=${jobType}`);
       const data = await response.json();
@@ -64,7 +58,13 @@ export default function JobListPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [jobType, projectId]);
+
+  useEffect(() => {
+    if (projectId && jobType) {
+      loadJobs();
+    }
+  }, [jobType, loadJobs, projectId]);
 
   const getJobTypeLabel = (type: string): string => {
     const labels: Record<string, string> = {

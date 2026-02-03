@@ -177,6 +177,7 @@ model ResearchRow {
   projectId String
   jobId     String?
   source    ResearchSource
+  type      String?
   content   String
   metadata  Json?
   createdAt DateTime       @default(now())

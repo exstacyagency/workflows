@@ -15,17 +15,58 @@ export async function GET(req: NextRequest, { params }: { params: { projectId: s
   }
   const deny = await requireProjectOwner404(projectId);
   if (deny) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  const project = await prisma.project.findUnique({ where: { id: projectId } });
-  if (!project) {
-    return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+  const { searchParams } = new URL(req.url);
+  const jobId = searchParams.get('jobId');
+  const product = searchParams.get('product');
+  const limitParam = searchParams.get('limit');
+  const offsetParam = searchParams.get('offset');
+  const parsedLimit = limitParam ? Number.parseInt(limitParam, 10) : 100;
+  const parsedOffset = offsetParam ? Number.parseInt(offsetParam, 10) : 0;
+  const limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.min(parsedLimit, 500) : 100;
+  const offset = Number.isFinite(parsedOffset) && parsedOffset >= 0 ? parsedOffset : 0;
+
+  const where: any = { projectId };
+  if (jobId) {
+    where.jobId = jobId;
+  } else if (product) {
+    const productJobs = await prisma.job.findMany({
+      where: {
+        projectId,
+        type: 'CUSTOMER_RESEARCH',
+        payload: {
+          path: ['productName'],
+          equals: product,
+        },
+      },
+      select: { id: true },
+    });
+
+    const jobIds = productJobs.map((job) => job.id);
+    if (jobIds.length > 0) {
+      where.jobId = { in: jobIds };
+    } else {
+      return NextResponse.json({ rows: [], total: 0 });
+    }
   }
-  const researchRows = await prisma.researchRow.findMany({
-    where: { projectId },
-    orderBy: [{ source: 'asc' }, { createdAt: 'desc' }]
-  });
-  const grouped = researchRows.reduce<Record<string, typeof researchRows>>((acc, row) => {
-    acc[row.source] = acc[row.source] ? [...acc[row.source], row] : [row];
-    return acc;
-  }, {});
-  return NextResponse.json({ project, researchRows, grouped });
+
+  const [rows, total] = await Promise.all([
+    prisma.researchRow.findMany({
+      where,
+      take: limit,
+      skip: offset,
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        jobId: true,
+        type: true,
+        source: true,
+        content: true,
+        metadata: true,
+        createdAt: true
+      }
+    }),
+    prisma.researchRow.count({ where })
+  ]);
+
+  return NextResponse.json({ rows, total });
 }

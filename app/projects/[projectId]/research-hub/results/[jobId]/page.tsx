@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -35,13 +35,7 @@ export default function JobResultsPage() {
   const [job, setJob] = useState<Job | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (projectId && jobId) {
-      loadJob();
-    }
-  }, [projectId, jobId]);
-
-  const loadJob = async () => {
+  const loadJob = useCallback(async () => {
     try {
       const response = await fetch(`/api/projects/${projectId}/jobs/${jobId}`);
       const data = await response.json();
@@ -57,7 +51,13 @@ export default function JobResultsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [jobId, projectId]);
+
+  useEffect(() => {
+    if (projectId && jobId) {
+      loadJob();
+    }
+  }, [jobId, loadJob, projectId]);
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleString();
