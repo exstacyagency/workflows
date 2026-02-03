@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 
@@ -37,15 +37,7 @@ export default function AllResearchDataPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const rowsPerPage = 100;
 
-  useEffect(() => {
-    loadJobs();
-  }, [projectId, productFromUrl]);
-
-  useEffect(() => {
-    loadData();
-  }, [projectId, page, selectedJob]);
-
-  async function loadJobs() {
+  const loadJobs = useCallback(async () => {
     try {
       const response = await fetch(`/api/projects/${projectId}/jobs`);
       const data = await response.json();
@@ -61,9 +53,9 @@ export default function AllResearchDataPage() {
     } catch (error) {
       console.error('Failed to load jobs:', error);
     }
-  }
+  }, [projectId, productFromUrl]);
 
-  async function loadData() {
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
       const offset = (page - 1) * rowsPerPage;
@@ -80,7 +72,15 @@ export default function AllResearchDataPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [page, productFromUrl, projectId, rowsPerPage, selectedJob]);
+
+  useEffect(() => {
+    loadJobs();
+  }, [loadJobs]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const filteredRows = rows.filter((row) => {
     if (sourceFilter !== 'all' && row.source !== sourceFilter) return false;
