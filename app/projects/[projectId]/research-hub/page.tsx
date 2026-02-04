@@ -120,32 +120,38 @@ export default function ResearchHubPage() {
     selectedProductRef.current = selectedProduct;
   }, [selectedProduct]);
 
-  const runGroups = jobs.reduce<Record<string, { runId: string; createdAt: string; jobs: Job[] }>>(
-    (acc, job) => {
-      const runId = job.runId ?? job.id;
-      if (!acc[runId]) {
-        acc[runId] = {
-          runId,
-          createdAt: job.createdAt,
-          jobs: [],
-        };
-      }
-      acc[runId].jobs.push(job);
-      if (new Date(job.createdAt).getTime() < new Date(acc[runId].createdAt).getTime()) {
-        acc[runId].createdAt = job.createdAt;
-      }
-      return acc;
-    },
-    {}
-  );
+  const runGroups = jobs
+    .filter((job) => job.type === "CUSTOMER_RESEARCH" || job.type === "CUSTOMER_ANALYSIS")
+    .reduce<Record<string, { runId: string; createdAt: string; jobs: Job[] }>>(
+      (acc, job) => {
+        const runId = job.runId ?? job.id;
+        if (!acc[runId]) {
+          acc[runId] = {
+            runId,
+            createdAt: job.createdAt,
+            jobs: [],
+          };
+        }
+        acc[runId].jobs.push(job);
+        if (new Date(job.createdAt).getTime() > new Date(acc[runId].createdAt).getTime()) {
+          acc[runId].createdAt = job.createdAt;
+        }
+        return acc;
+      },
+      {}
+    );
 
-  const sortedRuns = Object.values(runGroups)
+  const runGroupsList = Object.values(runGroups);
+  const runGroupsWithNumbers = runGroupsList
     .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
     .map((run, index) => ({
       ...run,
       runNumber: index + 1,
-    }))
-    .reverse();
+    }));
+
+  const sortedRuns = runGroupsWithNumbers.sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
 
   const selectedRun = selectedRunId ? sortedRuns.find((run) => run.runId === selectedRunId) : null;
 
@@ -493,8 +499,11 @@ export default function ResearchHubPage() {
 
     // Special handling for customer-analysis: check if ANY completed customer research exists
     if (step.id === "customer-analysis") {
-      const hasCompletedResearch = jobs.some(
-        (j) => j.type === "CUSTOMER_RESEARCH" && j.status === "COMPLETED"
+      const hasCompletedResearch = Boolean(currentRunId) && jobs.some(
+        (j) =>
+          j.type === "CUSTOMER_RESEARCH" &&
+          j.status === "COMPLETED" &&
+          j.runId === currentRunId
       );
       return hasCompletedResearch;
     }
@@ -944,6 +953,15 @@ export default function ResearchHubPage() {
                 <div className="space-y-4">
                   {track.steps.map((step, idx) => {
                     const locked = !canRun(step, track);
+                    const hasCollectedDataForRun = Boolean(currentRunId) && jobs.some(
+                      (job) =>
+                        job.type === "CUSTOMER_RESEARCH" &&
+                        job.status === "COMPLETED" &&
+                        job.runId === currentRunId
+                    );
+                    const analysisRunning = jobs.some(
+                      (job) => job.type === "CUSTOMER_ANALYSIS" && job.status === "RUNNING"
+                    );
                     const isRunning = runningStep === step.id;
                     const customerResearchJob = step.jobType === "CUSTOMER_RESEARCH"
                       ? latestCompletedCustomerResearchJob
@@ -960,6 +978,9 @@ export default function ResearchHubPage() {
                           </h3>
                           <p className="text-xs text-slate-400 mb-2">{step.description}</p>
                           {step.status !== "NOT_STARTED" && <StatusBadge status={step.status} />}
+                          {step.jobType === "CUSTOMER_ANALYSIS" && analysisRunning && (
+                            <div className="mt-2 text-xs text-slate-400">Analysis in progress...</div>
+                          )}
 
                           {/* Success Celebration */}
                           {step.status === "COMPLETED" && step.lastJob && recentlyCompleted.has(step.lastJob.id) && (
@@ -1026,6 +1047,25 @@ export default function ResearchHubPage() {
                               </button>
                             </div>
                             )
+                          ) : step.jobType === "CUSTOMER_ANALYSIS" ? (
+                            <div className="flex flex-col gap-1">
+                              {step.status === "COMPLETED" && step.lastJob ? (
+                                <Link
+                                  href={`/projects/${projectId}/research-hub/analysis/data/${step.lastJob.id}`}
+                                  className="inline-block px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-xs"
+                                >
+                                  View Raw Data
+                                </Link>
+                              ) : (
+                                <button
+                                  disabled
+                                  className="px-4 py-2 bg-gray-600 text-gray-400 rounded opacity-50 cursor-not-allowed text-xs"
+                                  title="Customer Analysis must be completed"
+                                >
+                                  View Raw Data
+                                </button>
+                              )}
+                            </div>
                           ) : (
                           step.status === "COMPLETED" && step.lastJob && (
                             <div className="flex flex-col gap-1">
@@ -1048,15 +1088,34 @@ export default function ResearchHubPage() {
                               disabled={isRunning}
                               className="px-4 py-2 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm flex items-center gap-2"
                             >
-                              {step.jobType === "CUSTOMER_RESEARCH" ? "Collect Data" : "Re-run"}
+                              {step.jobType === "CUSTOMER_RESEARCH"
+                                ? "Collect Data"
+                                : step.jobType === "CUSTOMER_ANALYSIS"
+                                  ? "Re-run Analysis"
+                                  : "Re-run"}
                             </button>
                           ) : (
                             <>
                               <button
                                 onClick={() => runStep(step, track.key)}
-                                disabled={locked || isRunning}
+                                disabled={
+                                  locked ||
+                                  isRunning ||
+                                  (step.jobType === "CUSTOMER_ANALYSIS" && !hasCollectedDataForRun) ||
+                                  (step.jobType === "CUSTOMER_ANALYSIS" && analysisRunning)
+                                }
+                                title={
+                                  step.jobType === "CUSTOMER_ANALYSIS" && !hasCollectedDataForRun
+                                    ? "Collect data first"
+                                    : step.jobType === "CUSTOMER_ANALYSIS" && analysisRunning
+                                      ? "Analysis in progress..."
+                                      : undefined
+                                }
                                 className={`px-4 py-2 rounded text-sm font-medium flex items-center gap-2 ${
-                                  locked || isRunning
+                                  locked ||
+                                  isRunning ||
+                                  (step.jobType === "CUSTOMER_ANALYSIS" && !hasCollectedDataForRun) ||
+                                  (step.jobType === "CUSTOMER_ANALYSIS" && analysisRunning)
                                     ? "bg-slate-800 text-slate-600 cursor-not-allowed"
                                     : `bg-${track.color}-500 hover:bg-${track.color}-400 text-white`
                                 }`}
@@ -1067,9 +1126,23 @@ export default function ResearchHubPage() {
                                     ? "🔒 Locked"
                                     : step.jobType === "CUSTOMER_RESEARCH"
                                       ? "Collect Data"
-                                      : "Run"}
+                                      : step.jobType === "CUSTOMER_ANALYSIS"
+                                        ? analysisRunning
+                                          ? "Running..."
+                                          : "Run Analysis"
+                                        : "Run"}
                               </button>
                             </>
+                          )}
+                          {step.jobType === "CUSTOMER_ANALYSIS" && (
+                            <button
+                              onClick={() =>
+                                router.push(`/projects/${projectId}/research-hub/jobs/customer-analysis`)
+                              }
+                              className="px-4 py-2 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm"
+                            >
+                              View Run History
+                            </button>
                           )}
                           {step.status === "RUNNING" && step.lastJob && (
                             <button

@@ -86,7 +86,7 @@ export default function AllResearchDataPage() {
     if (sourceFilter !== 'all') {
       if (sourceFilter === 'reddit' && !row.source.startsWith('REDDIT_')) return false;
       if (sourceFilter === 'amazon' && row.source !== 'AMAZON') return false;
-      if (sourceFilter === 'uploaded' && row.source !== 'LOCAL_BUSINESS' && row.type !== 'UPLOADED') {
+      if (sourceFilter === 'uploaded' && row.source !== 'UPLOADED' && row.type !== 'UPLOADED') {
         return false;
       }
     }
@@ -166,7 +166,7 @@ export default function AllResearchDataPage() {
             <option value="uploaded">Uploaded</option>
             <option value="REDDIT_PRODUCT">Reddit Product</option>
             <option value="REDDIT_PROBLEM">Reddit Problem</option>
-            <option value="LOCAL_BUSINESS">Uploaded</option>
+            <option value="UPLOADED">Uploaded</option>
           </select>
 
           <select
@@ -221,7 +221,11 @@ export default function AllResearchDataPage() {
                           {row.type || 'unknown'}
                         </span>
                       </td>
-                      <td className="p-3 text-slate-400 text-xs">{row.source}</td>
+                      <td className="p-3 text-slate-400 text-xs">
+                        {row.source === "UPLOADED"
+                          ? row.metadata?.source || "UPLOADED"
+                          : row.source}
+                      </td>
                       <td className="p-3">
                         {row.content.substring(0, 200)}
                         {row.content.length > 200 && '...'}

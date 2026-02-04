@@ -5,27 +5,18 @@ import { JobType, ResearchSource } from '@prisma/client';
 import { env, requireEnv } from './configGuard.ts';
 
 type CustomerAvatarJSON = {
-  avatar_snapshot?: {
-    age?: number;
-    gender?: string;
-    income?: number;
-    job?: string;
-    location?: string;
-    ethnicity?: string;
-  };
-  top_pains?: { pain?: string; quotes?: string[]; visual?: string }[];
-  goals?: { now?: string[]; future?: string[] };
-  [key: string]: any;
-};
-
-type ProductIntelJSON = {
-  ingredients?: { name: string; concentration: string; function: string; quote: string }[];
-  mechanism?: { process: string; timeline: string; quote: string }[];
-  formulation?: { form: string; properties: string; quote: string }[];
-  dosage?: { amount: string; frequency: string; method: string; quote: string }[];
-  timeline?: { stage: string; duration: string; quote: string }[];
-  vs_competitors?: { competitor: string; mechanism_diff: string; quote: string }[];
-  limitations?: { cannot_do: string; reason: string; quote: string }[];
+  problems?: {
+    issue?: string;
+    market_size?: "large" | "medium" | "small";
+    pain_intensity?: "high" | "medium" | "low";
+    specificity?: "high" | "medium" | "low";
+    quotes?: string[];
+    source?: "product_positive" | "product_reddit" | "competitor" | "market_reddit" | "uploaded";
+  }[];
+  failed_alternatives?: { product?: string; why_failed?: string; quote?: string; source?: "product_positive" | "product_reddit" | "competitor" | "market_reddit" | "uploaded" }[];
+  purchase_blockers?: { blocker?: string; type?: "price" | "trust" | "complexity" | "results" | "other"; quote?: string; source?: "product_positive" | "product_reddit" | "competitor" | "market_reddit" | "uploaded" }[];
+  buy_triggers?: { trigger?: string; evidence_strength?: "strong" | "moderate" | "weak"; quote?: string; source?: "product_positive" | "product_reddit" | "competitor" | "market_reddit" | "uploaded" }[];
+  demographics?: { signal?: string; quote?: string; source?: "product_positive" | "product_reddit" | "competitor" | "market_reddit" | "uploaded" }[];
   [key: string]: any;
 };
 
@@ -48,6 +39,8 @@ type GroupedResearch = {
   redditProblem: string[];
   competitor1: string[];
   competitor2: string[];
+  competitor3: string[];
+  uploadedData: string[];
 };
 
 type ResearchRowForGrouping = {
@@ -68,6 +61,8 @@ function groupResearchRows(
   const redditProblem: string[] = [];
   const competitor1: string[] = [];
   const competitor2: string[] = [];
+  const competitor3: string[] = [];
+  const uploadedData: string[] = [];
 
   for (const row of rows) {
     switch (String(row.source)) {
@@ -76,6 +71,9 @@ function groupResearchRows(
         break;
       case 'REDDIT_PROBLEM':
         redditProblem.push(row.content);
+        break;
+      case 'UPLOADED':
+        uploadedData.push(row.content);
         break;
       case 'AMAZON': {
         const meta = (row.metadata ?? {}) as any;
@@ -95,6 +93,10 @@ function groupResearchRows(
         }
         if (amazonKind === 'competitor_2') {
           competitor2.push(row.content);
+          break;
+        }
+        if (amazonKind === 'competitor_3') {
+          competitor3.push(row.content);
           break;
         }
 
@@ -118,6 +120,8 @@ function groupResearchRows(
     redditProblem,
     competitor1,
     competitor2,
+    competitor3,
+    uploadedData,
   };
 }
 
@@ -134,117 +138,89 @@ function buildCustomerAvatarPrompt(grouped: GroupedResearch): { system: string; 
     redditProblem,
     competitor1,
     competitor2,
+    competitor3,
+    uploadedData,
   } = grouped;
 
-  const competitorAll = [...competitor1, ...competitor2];
+  const prompt = `
+Analyze customer data for ${productName}.
+Problem solved: ${productProblemSolved}
 
-  const prompt = `Extract customer avatar for ${productName}.
+YOUR PRODUCT - WINS (${amazon4.length + amazon5.length} reviews):
+${[...amazon4, ...amazon5].join('\n---\n')}
 
-PRODUCT: ${productName}
-PROBLEM: ${productProblemSolved}
-
-5-STAR REVIEWS (${amazon5.length}):
-${amazon5.join('\n---\n')}
-
-4-STAR REVIEWS (${amazon4.length}):
-${amazon4.join('\n---\n')}
-
-REDDIT PROBLEM (${redditProblem.length}):
-${redditProblem.join('\n---\n')}
-
-REDDIT PRODUCT (${redditProduct.length}):
+YOUR PRODUCT - REDDIT (${redditProduct.length} discussions):
 ${redditProduct.join('\n---\n')}
 
-COMPETITOR 1-STAR (${competitorAll.length}):
-${competitorAll.join('\n---\n')}
+COMPETITOR - FAILURES (${competitor1.length + competitor2.length + competitor3.length} reviews):
+${[...competitor1, ...competitor2, ...competitor3].join('\n---\n')}
 
-Use web search for missing data. Only ${productName}. Cite sources.
+MARKET - FRUSTRATIONS (${redditProblem.length} discussions):
+${redditProblem.join('\n---\n')}
 
-Return this exact JSON:
+UPLOADED - PROPRIETARY (${uploadedData.length} entries):
+${uploadedData.join('\n---\n')}
+
+Scoring:
+- Reddit upvote score = market agreement size, Weigh higher but keep lower scores in mind
+- Emotional language = pain intensity, Weighed higher than non emotional language
+- Specific details (numbers, parts, timeframes) = actionability, Weighed higher than broad descriptions
+
+Return JSON:
 {
-  "avatar_snapshot": {"age": 0, "gender": "", "income": 0, "job": "", "location": "", "ethnicity": ""},
-  "physical_manifestations": {"when_frustrated": "", "body_language": "", "facial_tells": "", "daily_setting": "", "routine_timing": ""},
-  "top_pains": [{"pain": "", "quotes": [], "visual": ""}],
-  "failed_solutions": [{"solution": "", "why_failed": "", "quote": "", "visual_evidence": ""}],
-  "purchase_blockers": [{"fear": "", "quote": "", "physical_tell": ""}],
-  "buy_triggers": [],
-  "goals": {"now": [], "future": []},
-  "psychographics": {"values": "", "decision_pattern": "", "belief": ""},
-  "emotional_journey": {"before": "", "problem_hits": "", "failed_solutions": "", "breaking_point": "", "after_solution": ""},
-  "visual_environment": {"bathroom": "", "lighting": "", "mirror_time": "", "application_setting": ""}
-}`;
-
-  const system = 'Return ONLY valid JSON. Start with {. End with }. No markdown. No text.';
-
-  return { system, prompt };
+  "problems": [
+    {
+      "issue": "",
+      "market_size": "large|medium|small",
+      "pain_intensity": "high|medium|low",
+      "specificity": "high|medium|low",
+      "quotes": [""],
+      "source": "product_positive|product_reddit|competitor|market_reddit|uploaded"
+    }
+  ],
+  "failed_alternatives": [
+    {
+      "product": "",
+      "why_failed": "",
+      "quote": "",
+      "source": "product_positive|product_reddit|competitor|market_reddit|uploaded"
+    }
+  ],
+  "purchase_blockers": [
+    {
+      "blocker": "",
+      "type": "price|trust|complexity|results|other",
+      "quote": "",
+      "source": "product_positive|product_reddit|competitor|market_reddit|uploaded"
+    }
+  ],
+  "buy_triggers": [
+    {
+      "trigger": "",
+      "evidence_strength": "strong|moderate|weak",
+      "quote": "",
+      "source": "product_positive|product_reddit|competitor|market_reddit|uploaded"
+    }
+  ],
+  "demographics": [
+    {
+      "signal": "",
+      "quote": "",
+      "source": "product_positive|product_reddit|competitor|market_reddit|uploaded"
+    }
+  ]
 }
 
-/**
- * Build Product Intelligence prompt from product name (mirrors your n8n Product Intelligence Prompt).
- */
-function buildProductIntelPrompt(productName: string): { system: string; prompt: string } {
-  const prompt = `Extract product mechanism for ${productName}.
-ONLY extract: what product is, what it does, how it works.
-NO customer emotions, pain points, or psychology. Pure product intelligence.
+Rules:
+- Extract only explicit statements
+- market_size = frequency + reddit upvotes
+- pain_intensity = emotional language strength
+- specificity = numbers/parts/cause-effect present
+- Source attribution required
+- Empty array if <3 supporting quotes
+`;
 
-Use web search. Every source must be cited accurately. Only information about ${productName}.
-
-1. ACTIVE INGREDIENTS
-- Ingredient name
-- Concentration (if stated)
-- Function
-Quote: "..."
-
-2. MECHANISM
-- Biological process
-- Pathway
-- Cellular action
-- Timeline
-Quote: "..."
-
-3. FORMULATION
-- Form (cream/serum/gel/powder/capsule)
-- pH (if mentioned)
-- Delivery system
-Quote: "..."
-
-4. DOSAGE PROTOCOL
-- Amount
-- Frequency
-- Duration
-- Method
-Quote: "..."
-
-5. RESULTS TIMELINE
-- Initial: days/weeks
-- Peak: weeks/months
-- Maintenance: ongoing
-Quote: "..."
-
-6. COMPETITIVE MECHANISM
-- Competitor name
-- Mechanism difference
-- Ingredient difference
-Quote: "..."
-
-7. LIMITATIONS
-- Conditions ineffective for
-- Contraindications
-Quote: "..."
-
-Return valid JSON with this EXACT structure:
-{
-  "ingredients": [{"name": "", "concentration": "", "function": "", "quote": ""}],
-  "mechanism": [{"process": "", "timeline": "", "quote": ""}],
-  "formulation": [{"form": "", "properties": "", "quote": ""}],
-  "dosage": [{"amount": "", "frequency": "", "method": "", "quote": ""}],
-  "timeline": [{"stage": "initial|peak|maintenance", "duration": "", "quote": ""}],
-  "vs_competitors": [{"competitor": "", "mechanism_diff": "", "quote": ""}],
-  "limitations": [{"cannot_do": "", "reason": "", "quote": ""}]
-}`;
-
-  const system =
-    'You are a product research analyst. Return ONLY valid JSON. No markdown fences, no preamble, no explanation. Pure JSON object.';
+  const system = 'Return ONLY valid JSON. Start with {. End with }. No markdown. No text.';
 
   return { system, prompt };
 }
@@ -255,7 +231,7 @@ Return valid JSON with this EXACT structure:
 async function callAnthropic(system: string, prompt: string): Promise<string> {
   requireEnv(['ANTHROPIC_API_KEY'], 'ANTHROPIC');
   const apiKey = env('ANTHROPIC_API_KEY')!;
-  const model = cfg.raw("ANTHROPIC_MODEL") ?? 'claude-3-opus-20240229';
+  const model = cfg.raw("ANTHROPIC_MODEL") ?? 'claude-opus-4-5-20251101';
 
   const body = JSON.stringify({
     model,
@@ -353,18 +329,7 @@ async function archiveExistingAvatars(projectId: string) {
   }
 }
 
-async function archiveExistingProductIntel(projectId: string) {
-  const items = await prisma.productIntelligence.findMany({ where: { projectId }, select: { id: true, insights: true } });
-  const now = new Date();
-  for (const it of items) {
-    const insights = (it.insights as any) || {};
-    if (!insights?.archivedAt) {
-      await prisma.productIntelligence.update({ where: { id: it.id }, data: { insights: { ...insights, archivedAt: now } as any } });
-    }
-  }
-}
-
-async function purgeExpiredSnapshots(projectId: string) {
+async function purgeExpiredCustomerAvatars(projectId: string) {
   if (!CUSTOMER_ANALYSIS_RETENTION_DAYS || CUSTOMER_ANALYSIS_RETENTION_DAYS <= 0) {
     return;
   }
@@ -377,15 +342,6 @@ async function purgeExpiredSnapshots(projectId: string) {
   if (toDeleteAvatarIds.length) {
     await prisma.customerAvatar.deleteMany({ where: { id: { in: toDeleteAvatarIds } } });
   }
-
-  const products = await prisma.productIntelligence.findMany({ where: { projectId }, select: { id: true, insights: true } });
-  const toDeleteProductIds = products.filter(p => {
-    const archived = (p.insights as any)?.archivedAt;
-    return archived ? new Date(archived) < cutoff : false;
-  }).map(p => p.id);
-  if (toDeleteProductIds.length) {
-    await prisma.productIntelligence.deleteMany({ where: { id: { in: toDeleteProductIds } } });
-  }
 }
 
 /**
@@ -396,9 +352,14 @@ export async function runCustomerAnalysis(args: {
   productName?: string;
   productProblemSolved?: string;
   jobId?: string;
+  runId?: string;
 }) {
-  const { projectId, jobId } = args;
+  const { projectId, jobId, runId } = args;
   requireEnv(['ANTHROPIC_API_KEY'], 'ANTHROPIC');
+
+  if (!runId) {
+    throw new Error('Customer analysis requires runId in job payload.');
+  }
 
   const { productName, productProblemSolved } = await resolveProductContext(projectId, args.productName, args.productProblemSolved);
 
@@ -407,13 +368,18 @@ export async function runCustomerAnalysis(args: {
   }
 
   const researchRowsRaw = await prisma.researchRow.findMany({
-    where: { projectId },
+    where: { projectId, job: { runId } },
     select: {
       source: true,
       content: true,
       metadata: true,
     },
   });
+
+  const uploadedData = researchRowsRaw
+    .filter((row) => row.source === 'UPLOADED')
+    .map((row) => row.content ?? '')
+    .filter((content) => content.trim().length > 0);
 
   const researchRows = researchRowsRaw.map(r => ({
     source: r.source as any,
@@ -428,20 +394,14 @@ export async function runCustomerAnalysis(args: {
     );
   }
 
-  const grouped = groupResearchRows(researchRows, productName, productProblemSolved);
+  const grouped = {
+    ...groupResearchRows(researchRows, productName, productProblemSolved),
+    uploadedData,
+  };
 
   const avatarPrompt = buildCustomerAvatarPrompt(grouped);
-  const productPrompt = buildProductIntelPrompt(productName);
-
   const avatarText = await callAnthropic(avatarPrompt.system, avatarPrompt.prompt);
   const avatarJson = ensureObject<CustomerAvatarJSON>(parseJsonFromLLM(avatarText), 'Avatar');
-
-  const productText = await callAnthropic(productPrompt.system, productPrompt.prompt);
-  const productJson = ensureObject<ProductIntelJSON>(parseJsonFromLLM(productText), 'Product intelligence');
-
-  const avatarSnapshot = avatarJson.avatar_snapshot ?? {};
-  const topPains = Array.isArray(avatarJson.top_pains) ? avatarJson.top_pains : [];
-  const goalsNow = Array.isArray(avatarJson.goals?.now) ? avatarJson.goals?.now : [];
 
   await archiveExistingAvatars(projectId);
   const avatarRecord = await prisma.customerAvatar.create({
@@ -451,57 +411,30 @@ export async function runCustomerAnalysis(args: {
     },
   });
 
-  const heroIngredient = productJson.ingredients?.[0]?.name ?? null;
-  const heroMechanism = productJson.mechanism?.[0]?.process ?? null;
-  const form = productJson.formulation?.[0]?.form ?? null;
-
-  const initialStage = productJson.timeline?.find(t => t.stage?.toLowerCase().includes('initial'));
-  const peakStage = productJson.timeline?.find(t => t.stage?.toLowerCase().includes('peak'));
-
-  await archiveExistingProductIntel(projectId);
-  const productRecord = await prisma.productIntelligence.create({
-    data: {
-      projectId,
-      insights: productJson as any,
-    },
-  });
-
-  await purgeExpiredSnapshots(projectId);
+  await purgeExpiredCustomerAvatars(projectId);
 
   const personaObj = (avatarRecord.persona as any) || {};
+  const problems = Array.isArray(personaObj?.problems) ? personaObj.problems : [];
+  const buyTriggers = Array.isArray(personaObj?.buy_triggers) ? personaObj.buy_triggers : [];
   const avatarSummary = {
-    age: personaObj?.avatar_snapshot?.age ?? null,
-    gender: personaObj?.avatar_snapshot?.gender ?? null,
-    jobTitle: personaObj?.avatar_snapshot?.job ?? null,
-    location: personaObj?.avatar_snapshot?.location ?? null,
-    primaryPain: (personaObj?.top_pains?.[0]?.pain) ?? null,
-    primaryGoal: (personaObj?.goals?.now?.[0]) ?? null,
-  };
-
-  const insightsObj = (productRecord.insights as any) || {};
-  const productSummary = {
-    heroIngredient: insightsObj?.ingredients?.[0]?.name ?? null,
-    heroMechanism: insightsObj?.mechanism?.[0]?.process ?? null,
-    form: insightsObj?.formulation?.[0]?.form ?? null,
-    initialTimeline: insightsObj?.timeline?.find((t: any) => String(t.stage ?? '').toLowerCase().includes('initial'))?.duration ?? null,
-    peakTimeline: insightsObj?.timeline?.find((t: any) => String(t.stage ?? '').toLowerCase().includes('peak'))?.duration ?? null,
+    primaryPain: problems[0]?.issue ?? null,
+    primaryGoal: buyTriggers[0]?.trigger ?? null,
   };
 
   return {
     avatarId: avatarRecord.id,
-    productIntelligenceId: productRecord.id,
     researchRowCount: researchRows.length,
     productName,
     productProblemSolved,
+    runId,
     summary: {
       avatar: avatarSummary,
-      product: productSummary,
     },
   };
 }
 
 export async function purgeCustomerProfileArchives(projectId: string) {
-  await purgeExpiredSnapshots(projectId);
+  await purgeExpiredCustomerAvatars(projectId);
 }
 async function resolveProductContext(projectId: string, productName?: string, productProblemSolved?: string) {
   let resolvedName = productName?.trim() ?? '';
