@@ -54,7 +54,7 @@ type AmazonInput = {
   domainCode: "com";
   sortBy: "recent";
   maxPages: number;
-  filterByStar: "four_star" | "one_star";
+  filterByStar: "four_star" | "five_star" | "one_star" | "two_star" | "three_star";
   filterByKeyword: "";
   reviewerType: "all_reviews";
   formatType: "current_format";
@@ -273,7 +273,10 @@ function filterProblemComments(items: RedditPost[]) {
 }
 
 // Shared Amazon review params (canonical)
-const buildAmazonInput = (asin: string, starFilter: "four_star" | "one_star"): AmazonInput => ({
+const buildAmazonInput = (
+  asin: string,
+  starFilter: "four_star" | "five_star" | "one_star" | "two_star" | "three_star"
+): AmazonInput => ({
   asin,
   domainCode: "com",
   sortBy: "recent",
@@ -284,6 +287,17 @@ const buildAmazonInput = (asin: string, starFilter: "four_star" | "one_star"): A
   formatType: "current_format",
   mediaType: "all_contents",
 });
+
+function toIsoDate(value: unknown): string | null {
+  if (!value) return null;
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === "number") {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  }
+  const date = new Date(String(value));
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
 
 async function fetchApifyAmazonReviews(inputs: AmazonInput[]) {
   if (inputs.length === 0) {
@@ -452,57 +466,39 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
     }
 
     let productAll: AmazonReview[] = [];
+    let product4Star: AmazonReview[] = [];
+    let product5Star: AmazonReview[] = [];
     let competitor1All: AmazonReview[] = [];
     let competitor2All: AmazonReview[] = [];
+    let competitor1OneStar: AmazonReview[] = [];
+    let competitor1TwoStar: AmazonReview[] = [];
+    let competitor1ThreeStar: AmazonReview[] = [];
+    let competitor2OneStar: AmazonReview[] = [];
+    let competitor2TwoStar: AmazonReview[] = [];
+    let competitor2ThreeStar: AmazonReview[] = [];
 
     const productAsin = productAmazonAsin?.trim();
     const competitor1Asin = competitor1AmazonAsin?.trim();
     const competitor2Asin = competitor2AmazonAsin?.trim();
 
-    const amazonInputs = [
-      productAsin && buildAmazonInput(productAsin, "four_star"),
-      competitor1Asin && buildAmazonInput(competitor1Asin, "one_star"),
-      competitor2Asin && buildAmazonInput(competitor2Asin, "one_star"),
-    ].filter((input): input is AmazonInput => Boolean(input));
+    if (productAsin) {
+      product4Star = await fetchApifyAmazonReviews([buildAmazonInput(productAsin, "four_star")]);
+      product5Star = await fetchApifyAmazonReviews([buildAmazonInput(productAsin, "five_star")]);
+      productAll = [...product4Star, ...product5Star];
+    }
 
-    if (amazonInputs.length > 0) {
-      if (!amazonInputs.every((x) => x && typeof x === "object")) {
-        throw new Error("Invalid amazonInputs");
-      }
-      const amazonData = await fetchApifyAmazonReviews(amazonInputs);
+    if (competitor1Asin) {
+      competitor1OneStar = await fetchApifyAmazonReviews([buildAmazonInput(competitor1Asin, "one_star")]);
+      competitor1TwoStar = await fetchApifyAmazonReviews([buildAmazonInput(competitor1Asin, "two_star")]);
+      competitor1ThreeStar = await fetchApifyAmazonReviews([buildAmazonInput(competitor1Asin, "three_star")]);
+      competitor1All = [...competitor1OneStar, ...competitor1TwoStar, ...competitor1ThreeStar];
+    }
 
-      if (amazonInputs.length === 1) {
-        if (productAsin) {
-          productAll = amazonData;
-        } else if (competitor1Asin) {
-          competitor1All = amazonData;
-        } else if (competitor2Asin) {
-          competitor2All = amazonData;
-        }
-      } else {
-        const byAsin = new Map<string, AmazonReview[]>();
-        for (const review of amazonData) {
-          const asin = String((review as any).asin || (review as any).productAsin || "").trim();
-          if (!asin) continue;
-          const list = byAsin.get(asin) || [];
-          list.push(review);
-          byAsin.set(asin, list);
-        }
-
-        if (productAsin) productAll = byAsin.get(productAsin) || [];
-        if (competitor1Asin) competitor1All = byAsin.get(competitor1Asin) || [];
-        if (competitor2Asin) competitor2All = byAsin.get(competitor2Asin) || [];
-
-        if (amazonData.length > 0 && byAsin.size === 0) {
-          if (productAsin) {
-            productAll = amazonData;
-          } else if (competitor1Asin) {
-            competitor1All = amazonData;
-          } else if (competitor2Asin) {
-            competitor2All = amazonData;
-          }
-        }
-      }
+    if (competitor2Asin) {
+      competitor2OneStar = await fetchApifyAmazonReviews([buildAmazonInput(competitor2Asin, "one_star")]);
+      competitor2TwoStar = await fetchApifyAmazonReviews([buildAmazonInput(competitor2Asin, "two_star")]);
+      competitor2ThreeStar = await fetchApifyAmazonReviews([buildAmazonInput(competitor2Asin, "three_star")]);
+      competitor2All = [...competitor2OneStar, ...competitor2TwoStar, ...competitor2ThreeStar];
     }
 
     const rows: ResearchRowInput[] = [
@@ -519,6 +515,7 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
           score: item.score,
           indexLabel: `${idx + 1}`,
           sourceUrl: item.url || item.permalink,
+          sourceDate: item.createdAt ? item.createdAt.toISOString() : null,
         },
       })),
       ...filteredProblemComments.flatMap((item, idx) =>
@@ -533,6 +530,7 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
             score: comment.score,
             indexLabel: `${idx + 1}.${cidx + 1}`,
             sourceUrl: comment.permalink || item.post?.permalink,
+            sourceDate: comment.createdAt ? comment.createdAt.toISOString() : null,
           },
         }))
       )
@@ -544,8 +542,8 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
       await prisma.researchRow.createMany({ data: dedupedRows });
     }
 
-    await prisma.researchRow.createMany({
-      data: productAll.map((r) => ({
+    const amazonRows: ResearchRowInput[] = [
+      ...product4Star.map((r) => ({
         projectId,
         jobId,
         source: ResearchSource.AMAZON,
@@ -555,11 +553,131 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
           rating: r.rating ?? null,
           verified: r.verified ?? null,
           asin: productAsin ?? null,
+          amazonKind: "product_4_star",
           scrapedAt: new Date().toISOString(),
+          sourceDate: toIsoDate((r as any).date ?? (r as any).reviewDate ?? (r as any).reviewDateTime ?? (r as any).reviewTime),
           raw: r,
         },
       })),
-    });
+      ...product5Star.map((r) => ({
+        projectId,
+        jobId,
+        source: ResearchSource.AMAZON,
+        type: "review",
+        content: r.text ?? r.reviewText ?? "",
+        metadata: {
+          rating: r.rating ?? null,
+          verified: r.verified ?? null,
+          asin: productAsin ?? null,
+          amazonKind: "product_5_star",
+          scrapedAt: new Date().toISOString(),
+          sourceDate: toIsoDate((r as any).date ?? (r as any).reviewDate ?? (r as any).reviewDateTime ?? (r as any).reviewTime),
+          raw: r,
+        },
+      })),
+      ...competitor1OneStar.map((r) => ({
+        projectId,
+        jobId,
+        source: ResearchSource.AMAZON,
+        type: "review",
+        content: r.text ?? r.reviewText ?? "",
+        metadata: {
+          rating: r.rating ?? null,
+          verified: r.verified ?? null,
+          asin: competitor1Asin ?? null,
+          amazonKind: "competitor_1",
+          scrapedAt: new Date().toISOString(),
+          sourceDate: toIsoDate((r as any).date ?? (r as any).reviewDate ?? (r as any).reviewDateTime ?? (r as any).reviewTime),
+          raw: r,
+        },
+      })),
+      ...competitor1TwoStar.map((r) => ({
+        projectId,
+        jobId,
+        source: ResearchSource.AMAZON,
+        type: "review",
+        content: r.text ?? r.reviewText ?? "",
+        metadata: {
+          rating: r.rating ?? null,
+          verified: r.verified ?? null,
+          asin: competitor1Asin ?? null,
+          amazonKind: "competitor_2",
+          scrapedAt: new Date().toISOString(),
+          sourceDate: toIsoDate((r as any).date ?? (r as any).reviewDate ?? (r as any).reviewDateTime ?? (r as any).reviewTime),
+          raw: r,
+        },
+      })),
+      ...competitor1ThreeStar.map((r) => ({
+        projectId,
+        jobId,
+        source: ResearchSource.AMAZON,
+        type: "review",
+        content: r.text ?? r.reviewText ?? "",
+        metadata: {
+          rating: r.rating ?? null,
+          verified: r.verified ?? null,
+          asin: competitor1Asin ?? null,
+          amazonKind: "competitor_3",
+          scrapedAt: new Date().toISOString(),
+          sourceDate: toIsoDate((r as any).date ?? (r as any).reviewDate ?? (r as any).reviewDateTime ?? (r as any).reviewTime),
+          raw: r,
+        },
+      })),
+      ...competitor2OneStar.map((r) => ({
+        projectId,
+        jobId,
+        source: ResearchSource.AMAZON,
+        type: "review",
+        content: r.text ?? r.reviewText ?? "",
+        metadata: {
+          rating: r.rating ?? null,
+          verified: r.verified ?? null,
+          asin: competitor2Asin ?? null,
+          amazonKind: "competitor_1",
+          scrapedAt: new Date().toISOString(),
+          sourceDate: toIsoDate((r as any).date ?? (r as any).reviewDate ?? (r as any).reviewDateTime ?? (r as any).reviewTime),
+          raw: r,
+        },
+      })),
+      ...competitor2TwoStar.map((r) => ({
+        projectId,
+        jobId,
+        source: ResearchSource.AMAZON,
+        type: "review",
+        content: r.text ?? r.reviewText ?? "",
+        metadata: {
+          rating: r.rating ?? null,
+          verified: r.verified ?? null,
+          asin: competitor2Asin ?? null,
+          amazonKind: "competitor_2",
+          scrapedAt: new Date().toISOString(),
+          sourceDate: toIsoDate((r as any).date ?? (r as any).reviewDate ?? (r as any).reviewDateTime ?? (r as any).reviewTime),
+          raw: r,
+        },
+      })),
+      ...competitor2ThreeStar.map((r) => ({
+        projectId,
+        jobId,
+        source: ResearchSource.AMAZON,
+        type: "review",
+        content: r.text ?? r.reviewText ?? "",
+        metadata: {
+          rating: r.rating ?? null,
+          verified: r.verified ?? null,
+          asin: competitor2Asin ?? null,
+          amazonKind: "competitor_3",
+          scrapedAt: new Date().toISOString(),
+          sourceDate: toIsoDate((r as any).date ?? (r as any).reviewDate ?? (r as any).reviewDateTime ?? (r as any).reviewTime),
+          raw: r,
+        },
+      })),
+    ];
+
+    if (amazonRows.length > 0) {
+      await prisma.researchRow.createMany({
+        data: amazonRows,
+      });
+    }
 
     const storedRows = await prisma.researchRow.findMany({
       where: { jobId },
@@ -576,27 +694,46 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
         ? redditMeta.total_comments
         : redditResponse.comments?.length ?? 0;
 
+    const total = dedupedRows.length + amazonRows.length;
+    const redditResults = {
+      total_posts: totalPosts,
+      total_comments: totalComments,
+      meta: redditMeta,
+    };
+
+    const product4StarCount = product4Star.length;
+    const product5StarCount = product5Star.length;
+    const competitor1StarCount = competitor1OneStar.length + competitor2OneStar.length;
+    const competitor2StarCount = competitor1TwoStar.length + competitor2TwoStar.length;
+    const competitor3StarCount = competitor1ThreeStar.length + competitor2ThreeStar.length;
+
     await updateJobStatus(jobId, JobStatus.COMPLETED);
     await prisma.job.update({
       where: { id: jobId },
       data: {
         resultSummary: {
-          rowsCollected: dedupedRows.length + productAll.length,
-          reddit: {
-            total_posts: totalPosts,
-            total_comments: totalComments,
-            meta: redditMeta
-          },
-          amazon: {
-            productTotal: productAll.length,
-            competitor1Total: competitor1All.length,
-            competitor2Total: competitor2All.length,
-          },
+          rowsCollected: total,
+          total_posts: redditResults?.total_posts || 0,
+          total_comments: redditResults?.total_comments || 0,
+          product4Star: product4StarCount,
+          product5Star: product5StarCount,
+          competitor1Star: competitor1StarCount,
+          competitor2Star: competitor2StarCount,
+          competitor3Star: competitor3StarCount,
         }
       }
     });
 
-    return storedRows;
+    return {
+      rowsCollected: total,
+      total_posts: redditResults?.total_posts || 0,
+      total_comments: redditResults?.total_comments || 0,
+      product4Star: product4StarCount,
+      product5Star: product5StarCount,
+      competitor1Star: competitor1StarCount,
+      competitor2Star: competitor2StarCount,
+      competitor3Star: competitor3StarCount,
+    };
   } catch (error) {
     await updateJobStatus(jobId, JobStatus.FAILED);
     await prisma.job.update({

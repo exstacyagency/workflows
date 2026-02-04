@@ -66,7 +66,7 @@ export default function ResearchDataPage() {
     if (sourceFilter !== 'all') {
       if (sourceFilter === 'reddit' && !row.source.startsWith('REDDIT_')) return false;
       if (sourceFilter === 'amazon' && row.source !== 'AMAZON') return false;
-      if (sourceFilter === 'uploaded' && row.source !== 'LOCAL_BUSINESS' && row.type !== 'UPLOADED') {
+      if (sourceFilter === 'uploaded' && row.source !== 'UPLOADED' && row.type !== 'UPLOADED') {
         return false;
       }
     }
@@ -90,7 +90,7 @@ export default function ResearchDataPage() {
     });
 
   const getDisplayType = (row: ResearchRow) => {
-    if (row.source === "LOCAL_BUSINESS" || row.type === "UPLOADED" || row.type === "document") {
+    if (row.source === "UPLOADED" || row.type === "UPLOADED" || row.type === "document") {
       return "uploaded";
     }
     if (row.source === "AMAZON" || row.type === "review") {
@@ -201,7 +201,7 @@ export default function ResearchDataPage() {
                     <th className="text-left p-3 font-medium w-48">Source</th>
                     <th className="text-left p-3 font-medium">Content</th>
                     <th className="text-left p-3 font-medium w-24">Score</th>
-                    <th className="text-left p-3 font-medium w-40">Date</th>
+                    <th className="text-left p-3 font-medium w-40">Scraped</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -216,7 +216,7 @@ export default function ResearchDataPage() {
                         </span>
                       </td>
                       <td className="p-3 text-slate-400 text-xs">
-                        {row.source === "LOCAL_BUSINESS"
+                        {row.source === "UPLOADED"
                           ? row.metadata?.source || "UPLOADED"
                           : row.source}
                       </td>

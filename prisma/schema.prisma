@@ -361,7 +361,7 @@ enum ResearchSource {
   REDDIT_PROBLEM
   AMAZON
   G2
-  LOCAL_BUSINESS
+  UPLOADED
 }
 
 enum JobStatus {
