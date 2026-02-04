@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma, ResearchSource } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { ResearchSource } from "@prisma/client";
-import { requireSession } from "@/lib/auth/requireSession";
-import { requireProjectOwner404 } from "@/lib/auth/requireProjectOwner404";
-import { extractTextFromFile } from "@/services/fileUploadService";
 import { requireSession } from "@/lib/auth/requireSession";
 import { requireProjectOwner404 } from "@/lib/auth/requireProjectOwner404";
 
@@ -22,50 +19,26 @@ export async function POST(
 
   try {
     const formData = await req.formData();
-    const file = formData.get("file") as File | null;
+    const file = formData.get("file") as File;
     const jobId = formData.get("jobId") as string | null;
 
     if (!file || !jobId) {
       return NextResponse.json({ error: "File and jobId required" }, { status: 400 });
     }
 
-    const extractedRows = await extractTextFromFile(file, file.type);
-
-    const rows = extractedRows.map((row, idx) => ({
-      projectId,
-      jobId,
-      source: ResearchSource.LOCAL_BUSINESS,
-      type: "UPLOADED",
-      content: row.text,
+    const filename = file.name;
     const text = await file.text();
-    const filename = file.name.toLowerCase();
+    const lines = text.split("\n");
 
-    let chunks: string[] = [];
-    if (filename.endsWith(".csv")) {
-      const lines = text.split("\n").map((line) => line.trim()).filter(Boolean);
-      chunks = lines.slice(1);
-    } else {
-      chunks = text
-        .split(/\n\n|\r\n\r\n/)
-        .map((chunk) => chunk.trim())
-        .filter((chunk) => chunk.length > 20);
-    }
+    const chunks = lines.map((line) => line.trim()).filter(Boolean);
 
-    const rows = chunks.map((chunk, idx) => ({
+    const rows: Prisma.ResearchRowCreateManyInput[] = chunks.map((chunk, idx) => ({
       projectId,
       jobId,
-      source: "LOCAL_BUSINESS",
-      type: "document",
+      source: ResearchSource.UPLOADED,
+      type: "upload",
       content: chunk,
-      metadata: {
-        filename: file.name,
-        uploadedAt: new Date().toISOString(),
-        chunkIndex: idx + 1,
-        uploadSource: "USER_UPLOAD",
-        source: row.source ?? "UPLOADED",
-        date: row.date ?? null,
-        ...(row.metadata ?? {}),
-      },
+      metadata: {},
     }));
 
     if (rows.length > 0) {
@@ -77,7 +50,7 @@ export async function POST(
     return NextResponse.json({
       success: true,
       rowsAdded: rows.length,
-      filename: file.name,
+      filename,
     });
   } catch (error: any) {
     console.error("Upload error:", error);

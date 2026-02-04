@@ -24,23 +24,24 @@ const COSTS = {
 };
 
 export async function estimateCustomerResearchCost(params: {
-  productAmazonAsin: string;
+  productAmazonAsin?: string;
   competitor1AmazonAsin?: string;
   competitor2AmazonAsin?: string;
 }): Promise<CostEstimate> {
-  const { competitor1AmazonAsin, competitor2AmazonAsin } = params;
+  const { productAmazonAsin, competitor1AmazonAsin, competitor2AmazonAsin } = params;
+  const hasAmazonAsin = Boolean(productAmazonAsin?.trim());
 
   const apifyCalls = 
     2 +
     2 +
-    2 +
+    (hasAmazonAsin ? 2 : 0) +
     (competitor1AmazonAsin ? 1 : 0) +
     (competitor2AmazonAsin ? 1 : 0);
 
   const apifyCost = 
     (2 * COSTS.apify_reddit_search) +
     (2 * COSTS.apify_reddit_scrape) +
-    (2 * COSTS.apify_amazon_reviews) +
+    (hasAmazonAsin ? 2 * COSTS.apify_amazon_reviews : 0) +
     (competitor1AmazonAsin ? COSTS.apify_amazon_reviews : 0) +
     (competitor2AmazonAsin ? COSTS.apify_amazon_reviews : 0);
 

@@ -25,16 +25,25 @@ function splitIntoChunks(text: string) {
     .filter(Boolean);
 }
 
-function coerceRow(text: string, source?: string, date?: string | null, metadata?: Record<string, unknown>) {
+function coerceRow(
+  text: string,
+  source?: string,
+  date?: string | null,
+  metadata?: Record<string, unknown>,
+): ParsedUploadRow | null {
   const normalized = normalizeText(text);
   if (!normalized || normalized.length < MIN_TEXT_LENGTH) return null;
-  return { text: normalized, source, date, metadata };
+  const row: ParsedUploadRow = { text: normalized };
+  if (source !== undefined) row.source = source;
+  if (date !== undefined) row.date = date;
+  if (metadata !== undefined) row.metadata = metadata;
+  return row;
 }
 
 export function parsePlainText(text: string): ParsedUploadRow[] {
   return splitIntoChunks(text)
     .map((chunk) => coerceRow(chunk, "UPLOADED"))
-    .filter((row): row is ParsedUploadRow => Boolean(row));
+    .filter((row): row is ParsedUploadRow => row !== null);
 }
 
 export async function parseCSV(text: string): Promise<ParsedUploadRow[]> {
@@ -61,7 +70,7 @@ export async function parseCSV(text: string): Promise<ParsedUploadRow[]> {
       const date = typeof row.date === "string" ? row.date : null;
       return coerceRow(textValue, source, date, { ...row });
     })
-    .filter((row): row is ParsedUploadRow => Boolean(row));
+    .filter((row): row is ParsedUploadRow => row !== null);
 }
 
 function rowsFromJsonValue(value: unknown): ParsedUploadRow[] {

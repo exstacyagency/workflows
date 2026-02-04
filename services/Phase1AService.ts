@@ -304,7 +304,7 @@ class YelpScraper {
     return reviews
       .filter((r) => r.text || r.reviewText)
       .map((r, idx) => ({
-        source: 'LOCAL_BUSINESS' as any,
+        source: 'UPLOADED' as any,
         content: (r.text || r.reviewText || '').trim(),
         metadata: { date: r.date, author: r.author, platform: 'yelp', indexLabel: `yelp-${idx + 1}` },
         rating: r.rating,
@@ -333,7 +333,7 @@ class GoogleBusinessScraper {
     return reviews
       .filter((r) => r.text || r.reviewText)
       .map((r, idx) => ({
-        source: 'LOCAL_BUSINESS' as any,
+        source: 'UPLOADED' as any,
         content: (r.text || r.reviewText || '').trim(),
         metadata: { date: r.date, author: r.author, platform: 'google', indexLabel: `google-${idx + 1}` },
         rating: r.rating,

@@ -29,6 +29,7 @@ import { cfg } from "@/lib/config";
 // ...existing code...
 // ...existing code...
 import { runCustomerResearch } from "../services/customerResearchService.ts";
+import { runCustomerAnalysis } from "../lib/customerAnalysisService";
 import { runAdRawCollection } from "../lib/adRawCollectionService.ts";
 import { runPatternAnalysis } from "../lib/patternAnalysisService.ts";
 import { startScriptGenerationJob } from "../lib/scriptGenerationService.ts";
@@ -342,11 +343,13 @@ async function runJob(
       case JobType.CUSTOMER_RESEARCH: {
         writeLog("=== CUSTOMER_RESEARCH JOB ===");
         writeLog("Checking Apify token...");
-        writeLog("process.env.APIFY_API_TOKEN:", process.env.APIFY_API_TOKEN ? "exists" : "missing");
+        writeLog(
+          `process.env.APIFY_API_TOKEN: ${process.env.APIFY_API_TOKEN ? "exists" : "missing"}`,
+        );
 
         const apifyToken = cfg.raw("APIFY_API_TOKEN");
-        writeLog("cfg.raw result:", apifyToken ? "found token" : "NO TOKEN");
-        writeLog("hasApifyToken:", !!apifyToken);
+        writeLog(`cfg.raw result: ${apifyToken ? "found token" : "NO TOKEN"}`);
+        writeLog(`hasApifyToken: ${!!apifyToken}`);
 
         if (!apifyToken) {
           writeLog("SKIPPING: Apify not configured");
@@ -412,6 +415,21 @@ async function runJob(
           jobId,
           result: { ok: true, rows: Array.isArray(result) ? result.length : null },
         });
+        return;
+      }
+      case JobType.CUSTOMER_ANALYSIS: {
+        try {
+          const analysisResult = await runCustomerAnalysis({
+            projectId: job.projectId,
+            ...(payload as any),
+          });
+          await markCompleted({
+            jobId,
+            result: analysisResult,
+          });
+        } catch (error) {
+          await markFailed({ jobId, error });
+        }
         return;
       }
 
@@ -721,15 +739,17 @@ async function loop() {
             createdAt: true,
           },
         });
-        writeLog("[WORKER] PENDING jobs in database:", JSON.stringify(allPending, null, 2));
+        writeLog(
+          `[WORKER] PENDING jobs in database: ${JSON.stringify(allPending, null, 2)}`,
+        );
         if (RUN_ONCE) return;
         await sleep(POLL_MS);
         continue;
       }
 
-      writeLog("[WORKER] Claimed job:", job.id, "Type:", job.type);
+      writeLog(`[WORKER] Claimed job: ${job.id} Type: ${job.type}`);
       await runJob(job, pipelineContext);
-      writeLog("[WORKER] Finished job:", job.id);
+      writeLog(`[WORKER] Finished job: ${job.id}`);
       if (!RUN_ONCE) {
         await sleep(POLL_MS);
       }
@@ -755,9 +775,13 @@ async function startWorker() {
   await new Promise((resolve) => setTimeout(resolve, STARTUP_DELAY_MS));
 
   writeLog("=== WORKER ENV CHECK ===");
-  writeLog("APIFY_API_TOKEN:", process.env.APIFY_API_TOKEN ? "✓ Present" : "✗ Missing");
-  writeLog("ANTHROPIC_API_KEY:", process.env.ANTHROPIC_API_KEY ? "✓ Present" : "✗ Missing");
-  writeLog("NODE_ENV:", process.env.NODE_ENV);
+  writeLog(
+    `APIFY_API_TOKEN: ${process.env.APIFY_API_TOKEN ? "✓ Present" : "✗ Missing"}`,
+  );
+  writeLog(
+    `ANTHROPIC_API_KEY: ${process.env.ANTHROPIC_API_KEY ? "✓ Present" : "✗ Missing"}`,
+  );
+  writeLog(`NODE_ENV: ${process.env.NODE_ENV}`);
   writeLog("========================");
   writeLog("Starting job polling in 5 seconds...");
   await new Promise((resolve) => setTimeout(resolve, STARTUP_POST_ENV_DELAY_MS));
