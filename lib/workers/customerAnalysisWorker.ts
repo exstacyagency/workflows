@@ -8,7 +8,7 @@ import { updateJobStatus } from '../jobs/updateJobStatus';
 const queue = getQueue(QueueName.CUSTOMER_ANALYSIS);
 
 queue.process(async (job) => {
-  const { jobId, projectId, productName, productProblemSolved } = job.data;
+  const { jobId, projectId, productName, productProblemSolved, runId } = job.data;
 
   try {
     await updateJobStatus(jobId, JobStatus.RUNNING);
@@ -20,18 +20,15 @@ queue.process(async (job) => {
       jobId,
       productName,
       productProblemSolved,
+      runId,
     });
 
     job.progress(90);
 
     const avatar = result.summary?.avatar;
-    const product = result.summary?.product;
     const parts: string[] = [];
     if (avatar?.primaryPain) {
       parts.push(`Avatar pain: ${avatar.primaryPain}`);
-    }
-    if (product?.heroIngredient) {
-      parts.push(`Hero ingredient: ${product.heroIngredient}`);
     }
     const summary = parts.length
       ? `Customer analysis complete for ${result.productName}. ${parts.join(' | ')}`
@@ -40,7 +37,13 @@ queue.process(async (job) => {
     await updateJobStatus(jobId, JobStatus.COMPLETED);
     await prisma.job.update({
       where: { id: jobId },
-      data: { resultSummary: summary },
+      data: {
+        resultSummary: {
+          summary,
+          avatarId: result.avatarId,
+          runId: result.runId ?? null,
+        },
+      },
     });
 
     job.progress(100);
