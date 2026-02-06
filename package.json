@@ -40,7 +40,7 @@
     "worker": "tsx workers/jobRunner.ts",
     "dev:all": "concurrently \"npm run dev\" \"npm run worker\"",
     "dev:with-env": "bash scripts/run_dev.sh",
-    "build": "prisma generate && next build",
+    "build": "prisma generate && node -e \"const fs=require('fs');fs.rmSync('tsconfig.tsbuildinfo',{force:true});\" && next build",
     "prod:guardrails": "tsx scripts/prod_guardrails.ts",
     "verify:prod-routes": "tsx scripts/verify-prod-routes.ts",
     "verify:prod-guardrails": "bash scripts/verify-prod-guardrails.sh",

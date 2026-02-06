@@ -42,6 +42,7 @@ export async function POST(req: NextRequest) {
     }
     const {
       projectId: parsedProjectId,
+      productId,
       productName,
       productUrl,
       competitors,
@@ -78,6 +79,7 @@ export async function POST(req: NextRequest) {
 
     const initialPayload: any = {
       projectId,
+      ...(productId && { productId }),
       productName,
       productUrl,
       competitors,

@@ -240,12 +240,20 @@ export default function AllResearchDataPage() {
                       </td>
                       <td className="p-3">
                         {row.jobId ? (
-                          <Link
-                            href={`/projects/${projectId}/research/data/${row.jobId}`}
-                            className="text-sky-400 hover:text-sky-300 text-xs underline"
-                          >
-                            View Job
-                          </Link>
+                          <div className="flex flex-col gap-1">
+                            <Link
+                              href={`/projects/${projectId}/research/data/${row.jobId}`}
+                              className="text-sky-400 hover:text-sky-300 text-xs underline"
+                            >
+                              View Job
+                            </Link>
+                            <Link
+                              href={`/projects/${projectId}/research/data/${row.jobId}/inputs`}
+                              className="text-slate-400 hover:text-slate-300 text-xs underline"
+                            >
+                              View Inputs
+                            </Link>
+                          </div>
                         ) : (
                           <span className="text-xs text-slate-500">—</span>
                         )}

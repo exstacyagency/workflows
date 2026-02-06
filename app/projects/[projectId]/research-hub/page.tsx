@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import toast, { Toaster } from "react-hot-toast";
 import { getJobTypeLabel } from "@/lib/jobLabels";
 
 // Types
@@ -31,6 +30,13 @@ interface Job {
   runId?: string | null;
 }
 
+interface ProductOption {
+  id: string;
+  name: string;
+  productProblemSolved?: string | null;
+  amazonAsin?: string | null;
+}
+
 interface ResearchStep {
   id: string;
   label: string;
@@ -53,12 +59,12 @@ interface ResearchTrack {
 
 // Modal form data types
 interface CustomerResearchFormData {
-  productName: string;
   productProblemSolved: string;
   additionalProblems: string;
-  productAmazonAsin: string;
+  mainProductAsin: string;
   competitor1Asin?: string;
   competitor2Asin?: string;
+  competitor3Asin?: string;
   // Reddit search parameters
   searchIntent: string;
   solutionKeywords: string;
@@ -81,9 +87,10 @@ interface ProductCollectionFormData {
 interface RunAllResearchFormData {
   productName: string;
   productProblemSolved: string;
-  productAmazonAsin: string;
+  mainProductAsin: string;
   competitor1Asin?: string;
   competitor2Asin?: string;
+  competitor3Asin?: string;
   industryCode: string;
   productUrl: string;
   competitorUrls: string[];
@@ -93,7 +100,7 @@ export default function ResearchHubPage() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const selectedProductFromUrl = searchParams.get('product');
+  const selectedProductFromUrl = searchParams.get('productId') || searchParams.get('product');
   const projectId = params?.projectId as string;
 
   const [loading, setLoading] = useState(true);
@@ -101,15 +108,14 @@ export default function ResearchHubPage() {
   const [previousJobs, setPreviousJobs] = useState<Job[]>([]);
   const [runningStep, setRunningStep] = useState<string | null>(null);
   const [currentRunId, setCurrentRunId] = useState<string | null>(null);
-  const [recentlyCompleted, setRecentlyCompleted] = useState<Set<string>>(new Set());
-  const [selectedProduct, setSelectedProduct] = useState<string | null>(selectedProductFromUrl);
-  const [products, setProducts] = useState<string[]>([]);
+  const [selectedProductId, setSelectedProductId] = useState<string | null>(selectedProductFromUrl);
+  const [products, setProducts] = useState<ProductOption[]>([]);
   const [pauseAutoRefresh, setPauseAutoRefresh] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [customerModalTab, setCustomerModalTab] = useState<"scrape" | "upload">("scrape");
   const [uploadJobId, setUploadJobId] = useState<string | null>(null);
   const [uploadOnly, setUploadOnly] = useState(false);
-  const selectedProductRef = useRef<string | null>(selectedProduct);
-  const hasInitializedProductsRef = useRef(false);
+  const selectedProductRef = useRef<string | null>(selectedProductId);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
 
   // Modal states
@@ -119,8 +125,14 @@ export default function ResearchHubPage() {
   const [showRunAllModal, setShowRunAllModal] = useState(false);
 
   useEffect(() => {
-    selectedProductRef.current = selectedProduct;
-  }, [selectedProduct]);
+    selectedProductRef.current = selectedProductId;
+  }, [selectedProductId]);
+
+  useEffect(() => {
+    if (!statusMessage) return;
+    const timeout = setTimeout(() => setStatusMessage(null), 4000);
+    return () => clearTimeout(timeout);
+  }, [statusMessage]);
 
   const runGroups = jobs
     .filter((job) => job.type === "CUSTOMER_RESEARCH" || job.type === "CUSTOMER_ANALYSIS")
@@ -207,9 +219,9 @@ export default function ResearchHubPage() {
       hour12: true,
     });
 
-  const loadJobs = useCallback(async (forceProduct?: string, options?: { silent?: boolean }) => {
+  const loadJobs = useCallback(async (forceProductId?: string, options?: { silent?: boolean }) => {
     const silent = options?.silent === true;
-    console.log('[loadJobs] Starting job fetch...', { projectId, forceProduct, timestamp: new Date().toISOString() });
+    console.log('[loadJobs] Starting job fetch...', { projectId, forceProductId, timestamp: new Date().toISOString() });
     if (!silent) setLoading(true);
     try {
       const response = await fetch(`/api/projects/${projectId}/jobs`);
@@ -224,36 +236,16 @@ export default function ResearchHubPage() {
       if (!data.success) {
         throw new Error('Failed to load jobs');
       }
-
-      const uniqueProductsSet = new Set<string>(
-        data.jobs
-          .map((j: any) => j.payload?.productName?.trim() || j.payload?.productAmazonAsin?.trim())
-          .filter(Boolean) as string[]
-      );
-      const uniqueProducts = Array.from(uniqueProductsSet);
-
-      setProducts(uniqueProducts);
-
-      let productToFilter = (forceProduct ?? selectedProductRef.current) || null;
-
-      if (!productToFilter && uniqueProducts.length > 0 && !hasInitializedProductsRef.current) {
-        productToFilter = uniqueProducts[0];
-        setSelectedProduct(productToFilter);
-      }
-
-      hasInitializedProductsRef.current = true;
-
+      const productToFilter = (forceProductId ?? selectedProductRef.current) || null;
       const filteredJobs = productToFilter
-        ? data.jobs.filter((j: any) =>
-            (j.payload?.productName?.trim() || j.payload?.productAmazonAsin?.trim()) === productToFilter
-          )
-        : data.jobs;
+        ? data.jobs.filter((j: any) => String(j.payload?.productId || "") === productToFilter)
+        : [];
 
       setJobs((prevJobs) => {
         setPreviousJobs(prevJobs);
         return filteredJobs || [];
       });
-      console.log('[loadJobs] Jobs filtered:', { product: productToFilter, filteredCount: filteredJobs.length });
+      console.log('[loadJobs] Jobs filtered:', { productId: productToFilter, filteredCount: filteredJobs.length });
     } catch (error) {
       console.error('[loadJobs] Error:', error);
     } finally {
@@ -261,31 +253,73 @@ export default function ResearchHubPage() {
     }
   }, [projectId]);
 
-  // Load jobs on mount
+  const loadProducts = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/projects/${projectId}/products`, { cache: "no-store" });
+      const data = await response.json();
+      if (!response.ok || !data?.success) {
+        throw new Error(data?.error || "Failed to load products");
+      }
+      const productList = Array.isArray(data.products) ? data.products : [];
+      setProducts(productList);
+
+      if (productList.length === 0) {
+        setSelectedProductId(null);
+        return;
+      }
+
+      const selected = selectedProductRef.current;
+      const exists = selected && productList.some((p: ProductOption) => p.id === selected);
+      const defaultProductId = exists ? selected : productList[0].id;
+      if (defaultProductId !== selected) {
+        setSelectedProductId(defaultProductId);
+        const url = new URL(window.location.href);
+        url.searchParams.set('productId', defaultProductId);
+        url.searchParams.delete('product');
+        router.replace(url.pathname + url.search, { scroll: false });
+      }
+    } catch (error) {
+      console.error('[loadProducts] Error:', error);
+      setProducts([]);
+    }
+  }, [projectId, router]);
+
+  // Load products on mount
   useEffect(() => {
     if (projectId) {
-      loadJobs();
+      loadProducts();
     }
-  }, [loadJobs, projectId]);
+  }, [loadProducts, projectId]);
+
+  // Load jobs when selected product changes
+  useEffect(() => {
+    if (projectId) {
+      loadJobs(selectedProductId || undefined);
+    }
+  }, [loadJobs, projectId, selectedProductId]);
 
   const runningJob = useMemo(
     () => jobs.find((j) => j.status === "RUNNING") ?? null,
     [jobs]
   );
   const hasRunningJob = Boolean(runningJob);
+  const selectedProduct = useMemo(
+    () => products.find((product) => product.id === selectedProductId) ?? null,
+    [products, selectedProductId]
+  );
 
   // Auto-refresh jobs every 3 seconds for live status updates
   useEffect(() => {
     if (!projectId || pauseAutoRefresh) return;
 
     const interval = setInterval(() => {
-      loadJobs(undefined, { silent: true });
+      loadJobs(selectedProductId || undefined, { silent: true });
     }, 3000);
 
     return () => clearInterval(interval);
-  }, [loadJobs, pauseAutoRefresh, projectId]);
+  }, [loadJobs, pauseAutoRefresh, projectId, selectedProductId]);
 
-  // Detect job completions and show celebration
+  // Detect job completions and show inline status
   useEffect(() => {
     if (previousJobs.length === 0) return;
 
@@ -295,20 +329,7 @@ export default function ResearchHubPage() {
     );
     
     newCompletions.forEach(job => {
-      setRecentlyCompleted(prev => new Set(prev).add(job.id));
-      toast.success(`${getJobTypeLabel(job.type)} completed!`, {
-        duration: 3000,
-        icon: '🎉',
-      });
-      
-      // Remove from set after 3 seconds
-      setTimeout(() => {
-        setRecentlyCompleted(prev => {
-          const next = new Set(prev);
-          next.delete(job.id);
-          return next;
-        });
-      }, 3000);
+      setStatusMessage(`${getJobTypeLabel(job.type)} completed`);
     });
   }, [jobs, previousJobs]);
 
@@ -534,6 +555,10 @@ export default function ResearchHubPage() {
 
   // Run a step - show modal or execute directly
   const runStep = async (step: ResearchStep, trackKey: string) => {
+    if (!selectedProductId) {
+      setStatusMessage("Create/select a product before running research jobs.");
+      return;
+    }
     if (!canRun(step, updatedTracks.find((t) => t.key === trackKey)!)) return;
 
     // Show modal for steps that need input
@@ -563,7 +588,11 @@ export default function ResearchHubPage() {
     setRunningStep(step.id);
 
     try {
-      let payload: any = { projectId, ...formData };
+      let payload: any = {
+        projectId,
+        ...(selectedProductId ? { productId: selectedProductId } : {}),
+        ...formData,
+      };
 
       // Add step-specific data
       if (step.id === "customer-analysis") {
@@ -576,9 +605,15 @@ export default function ResearchHubPage() {
 
         payload = {
           projectId,
+          ...(selectedProductId ? { productId: selectedProductId } : {}),
           runId: currentRunId,
-          productName: currentRunResearchJob?.payload?.productName,
           productProblemSolved: currentRunResearchJob?.payload?.productProblemSolved,
+          solutionKeywords: Array.isArray(currentRunResearchJob?.payload?.solutionKeywords)
+            ? currentRunResearchJob?.payload?.solutionKeywords
+            : [],
+          additionalProblems: Array.isArray(currentRunResearchJob?.payload?.additionalProblems)
+            ? currentRunResearchJob?.payload?.additionalProblems
+            : [],
         };
       }
 
@@ -602,33 +637,31 @@ export default function ResearchHubPage() {
 
       // Reload jobs to see the new job
       await loadJobs();
-      toast.success("Job started successfully!");
+      setStatusMessage("Job started");
     } catch (error: any) {
       console.error(`Failed to run ${step.label}:`, error);
-      toast.error(error.message || "Failed to start job");
+      setStatusMessage(error.message || "Failed to start job");
     } finally {
       setRunningStep(null);
     }
   };
 
   const cancelJob = async (jobId: string) => {
-    if (!confirm("Are you sure you want to cancel this job?")) return;
-
     try {
       const response = await fetch(`/api/jobs/${jobId}/cancel`, {
         method: "POST",
       });
 
       if (response.ok) {
-        toast.success("Job cancelled");
+        setStatusMessage("Job cancelled");
         loadJobs();
         return;
       }
 
       const data = await response.json().catch(() => ({}));
-      toast.error(data?.error || "Failed to cancel job");
+      setStatusMessage(data?.error || "Failed to cancel job");
     } catch (error) {
-      toast.error("Error cancelling job");
+      setStatusMessage("Error cancelling job");
     }
   };
 
@@ -638,15 +671,16 @@ export default function ResearchHubPage() {
     const normalizedProblem = formData.productProblemSolved.trim();
 
     const payload = {
-      ...(normalizedProblem && { productName: formData.productName }),
       ...(normalizedProblem && { productProblemSolved: normalizedProblem }),
       additionalProblems: formData.additionalProblems
         .split(/[\n,]/)
         .map((problem) => problem.trim())
         .filter(Boolean),
-      productAmazonAsin: formData.productAmazonAsin,
-      ...(formData.competitor1Asin && { competitor1AmazonAsin: formData.competitor1Asin }),
-      ...(formData.competitor2Asin && { competitor2AmazonAsin: formData.competitor2Asin }),
+      // TODO - replace with actual form that collects up to 4 ASINs
+      mainProductAsin: formData.mainProductAsin,
+      ...(formData.competitor1Asin && { competitor1Asin: formData.competitor1Asin }),
+      ...(formData.competitor2Asin && { competitor2Asin: formData.competitor2Asin }),
+      ...(formData.competitor3Asin && { competitor3Asin: formData.competitor3Asin }),
       // Reddit search parameters
       searchIntent: formData.searchIntent.split(',').map(k => k.trim()).filter(Boolean),
       solutionKeywords: formData.solutionKeywords.split(',').map(k => k.trim()).filter(Boolean),
@@ -686,28 +720,34 @@ export default function ResearchHubPage() {
   const handleStartNewRun = () => {
     setCurrentRunId(null);
     setShowNewRunModal(false);
-    toast.success("New research run started!");
+    setStatusMessage("New research run started");
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleRunAllResearch = async (formData: RunAllResearchFormData) => {
+    if (!selectedProductId) {
+      setStatusMessage("Create/select a product before running research jobs.");
+      return;
+    }
     setShowRunAllModal(false);
     
     const runId = crypto.randomUUID();
     setCurrentRunId(runId);
     
-    toast.success("Starting all research jobs...");
+    setStatusMessage("Starting all research jobs...");
     
     try {
       // Start Customer Research
       const customerResearchPayload = {
         projectId,
+        ...(selectedProductId ? { productId: selectedProductId } : {}),
         runId,
-        productName: formData.productName,
         productProblemSolved: formData.productProblemSolved,
-        productAmazonAsin: formData.productAmazonAsin,
-        ...(formData.competitor1Asin && { competitor1AmazonAsin: formData.competitor1Asin }),
-        ...(formData.competitor2Asin && { competitor2AmazonAsin: formData.competitor2Asin }),
+        // TODO - replace with actual form that collects up to 4 ASINs
+        mainProductAsin: formData.mainProductAsin,
+        ...(formData.competitor1Asin && { competitor1Asin: formData.competitor1Asin }),
+        ...(formData.competitor2Asin && { competitor2Asin: formData.competitor2Asin }),
+        ...(formData.competitor3Asin && { competitor3Asin: formData.competitor3Asin }),
       };
       
       await fetch('/api/jobs/customer-research', {
@@ -719,6 +759,7 @@ export default function ResearchHubPage() {
       // Start Ad Collection
       const adCollectionPayload = {
         projectId,
+        ...(selectedProductId ? { productId: selectedProductId } : {}),
         runId,
         industryCode: formData.industryCode,
       };
@@ -732,6 +773,7 @@ export default function ResearchHubPage() {
       // Start Product Data Collection
       const productCollectionPayload = {
         projectId,
+        ...(selectedProductId ? { productId: selectedProductId } : {}),
         runId,
         productName: formData.productName,
         productUrl: formData.productUrl,
@@ -745,10 +787,10 @@ export default function ResearchHubPage() {
       });
       
       await loadJobs();
-      toast.success("All research jobs started successfully!");
+      setStatusMessage("All research jobs started");
     } catch (error: any) {
       console.error("Failed to start research jobs:", error);
-      toast.error(error.message || "Failed to start some research jobs");
+      setStatusMessage(error.message || "Failed to start some research jobs");
     }
   };
 
@@ -828,7 +870,7 @@ export default function ResearchHubPage() {
         <div className="flex items-center justify-between">
           <div className="flex-1">
             <h1 className="text-3xl font-bold text-white mb-2">
-              Research Hub{selectedProduct ? ` - ${selectedProduct}` : ""}
+              Research Hub{selectedProduct ? ` - ${selectedProduct.name}` : ""}
             </h1>
             <div className="flex items-center gap-3">
               <p className="text-slate-400">
@@ -849,9 +891,9 @@ export default function ResearchHubPage() {
               )}
             </div>
           </div>
-          {selectedProduct && (
+          {selectedProductId && (
             <Link
-              href={`/projects/${projectId}/research/data?product=${selectedProduct}`}
+              href={`/projects/${projectId}/research/data?productId=${selectedProductId}`}
               className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded text-sm text-slate-200"
             >
               View All Data
@@ -865,15 +907,14 @@ export default function ResearchHubPage() {
         <div className="flex items-center justify-between">
           <div className="flex-1">
             <p className="text-xs text-slate-500 mb-2">Current Research Run</p>
+            {statusMessage && (
+              <p className="mb-2 text-xs text-slate-300">{statusMessage}</p>
+            )}
             {hasRunningJob && (
               <div className="mb-4 p-4 bg-sky-500/10 border border-sky-500/50 rounded-lg">
                 <div className="flex items-center gap-3">
-                  <svg className="animate-spin h-5 w-5 text-sky-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                  </svg>
                   <div>
-                    <p className="text-sm font-medium text-sky-300">Research in progress...</p>
+                    <p className="text-sm font-medium text-sky-300">RUNNING</p>
                     <p className="text-xs text-slate-400">
                       {runningJob ? getJobTypeLabel(runningJob.type) : "Processing"}
                     </p>
@@ -882,31 +923,46 @@ export default function ResearchHubPage() {
               </div>
             )}
             {products.length > 0 ? (
-              <div className="flex items-center gap-3 mb-3">
-                <label className="text-sm text-slate-400">Product:</label>
+              <div className="mb-3 rounded-lg border border-slate-700 bg-slate-900/70 p-3">
+                <div className="text-xs text-slate-500 mb-1">Current Product</div>
+                <div className="text-sm font-medium text-slate-100 mb-2">
+                  {selectedProduct?.name || "Select a product"}
+                </div>
                 <select
-                  value={selectedProduct || ''}
+                  value={selectedProductId || ''}
                   onChange={(e) => {
-                    const newProduct = e.target.value;
+                    const newProductId = e.target.value;
                     setPauseAutoRefresh(true);
-                    setSelectedProduct(newProduct);
+                    setSelectedProductId(newProductId);
                     const url = new URL(window.location.href);
-                    url.searchParams.set('product', newProduct);
+                    url.searchParams.set('productId', newProductId);
+                    url.searchParams.delete('product');
                     router.replace(url.pathname + url.search, { scroll: false });
-                    loadJobs(newProduct);
+                    loadJobs(newProductId);
                     setTimeout(() => setPauseAutoRefresh(false), 10000);
                   }}
-                  className="px-4 py-2 bg-slate-800 border border-slate-700 rounded text-sm min-w-[200px]"
+                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-sm text-slate-200"
                 >
-                  {products.map(product => (
-                    <option key={product} value={product}>
-                      {product}
+                  {products.map((product) => (
+                    <option key={product.id} value={product.id}>
+                      {product.name}
                     </option>
                   ))}
                 </select>
+                <div className="mt-2 text-xs text-slate-500">
+                  Switching between {products.length} product{products.length === 1 ? "" : "s"}
+                </div>
+                <Link
+                  href={`/projects/${projectId}`}
+                  className="mt-2 inline-block text-xs text-sky-400 hover:text-sky-300"
+                >
+                  ← Manage Products
+                </Link>
               </div>
             ) : (
-              <p className="text-sm text-slate-400 mb-3">No product research runs yet</p>
+              <p className="text-sm text-slate-400 mb-3">
+                No products found. Create one in the project dashboard first.
+              </p>
             )}
             <select
               value={selectedRunId || "no-active"}
@@ -1152,15 +1208,7 @@ export default function ResearchHubPage() {
                                   : "bg-slate-800 hover:bg-slate-700 text-slate-300"
                               }`}
                             >
-                              {isCollecting ? (
-                                <span className="flex items-center gap-2">
-                                  <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                                  </svg>
-                                  Running...
-                                </span>
-                              ) : step.label === "Customer Analysis" ? (
+                              {isCollecting ? "RUNNING" : step.label === "Customer Analysis" ? (
                                 "Re-run Analysis"
                               ) : step.label === "Customer Collection" ? (
                                 "Collect Data"
@@ -1198,15 +1246,7 @@ export default function ResearchHubPage() {
                                     : `bg-${track.color}-500 hover:bg-${track.color}-400 text-white`
                                 }`}
                               >
-                                {isCollecting ? (
-                                  <span className="flex items-center gap-2">
-                                    <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                                    </svg>
-                                    Running...
-                                  </span>
-                                ) : isRunning
+                                {isCollecting ? "RUNNING" : isRunning
                                   ? "Starting..."
                                   : locked
                                     ? "🔒 Locked"
@@ -1340,7 +1380,6 @@ export default function ResearchHubPage() {
         </div>
       </div>
     </div>
-    <Toaster position="top-right" />
     </>
   );
 }
@@ -1364,12 +1403,12 @@ function CustomerResearchModal({
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<"scrape" | "upload">(initialTab);
   const [formData, setFormData] = useState<CustomerResearchFormData>({
-    productName: "Research",
     productProblemSolved: "",
     additionalProblems: "",
-    productAmazonAsin: "",
+    mainProductAsin: "",
     competitor1Asin: "",
     competitor2Asin: "",
+    competitor3Asin: "",
     searchIntent: "",
     solutionKeywords: "",
     maxPosts: 50,
@@ -1379,23 +1418,29 @@ function CustomerResearchModal({
   });
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [uploadMessage, setUploadMessage] = useState<string | null>(null);
 
   useEffect(() => {
     setActiveTab(initialTab);
     setUploadFile(null);
     setUploading(false);
+    setFormError(null);
+    setUploadMessage(null);
   }, [initialTab]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError(null);
     const hasAmazonAsin =
-      formData.productAmazonAsin?.trim() ||
+      formData.mainProductAsin?.trim() ||
       formData.competitor1Asin?.trim() ||
-      formData.competitor2Asin?.trim();
+      formData.competitor2Asin?.trim() ||
+      formData.competitor3Asin?.trim();
     const hasRedditData = formData.productProblemSolved?.trim();
 
     if (!hasAmazonAsin && !hasRedditData) {
-      alert("Provide at least one Amazon ASIN (product or competitor) or valid Reddit inputs");
+      setFormError("Provide at least one Amazon ASIN (product or competitor) or valid Reddit inputs.");
       return;
     }
     onSubmit(formData);
@@ -1403,12 +1448,13 @@ function CustomerResearchModal({
 
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
+    setUploadMessage(null);
     if (!uploadFile) {
-      toast.error("Please select a file");
+      setUploadMessage("Please select a file.");
       return;
     }
     if (!uploadJobId) {
-      toast.error("Missing job reference for upload");
+      setUploadMessage("Missing job reference for upload.");
       return;
     }
 
@@ -1427,11 +1473,11 @@ function CustomerResearchModal({
       if (!response.ok) {
         throw new Error(data.error || "Upload failed");
       }
-      toast.success(`Added ${data.rowsAdded} rows from uploaded file`);
+      setUploadMessage(`Added ${data.rowsAdded} rows from uploaded file.`);
       router.refresh();
       onClose();
     } catch (error: any) {
-      toast.error(error.message || "Upload failed");
+      setUploadMessage(error.message || "Upload failed");
     } finally {
       setUploading(false);
     }
@@ -1449,6 +1495,8 @@ function CustomerResearchModal({
               ? "Add additional research data to your existing collection"
               : "Scrape from Reddit/Amazon or upload your own research data"}
           </p>
+          {formError && <p className="text-sm text-red-400 mb-3">{formError}</p>}
+          {uploadMessage && <p className="text-sm text-slate-300 mb-3">{uploadMessage}</p>}
 
           {!uploadOnly && (
             <div className="flex gap-2 mb-6 border-b border-slate-700">
@@ -1531,8 +1579,8 @@ function CustomerResearchModal({
               </label>
               <input
                 type="text"
-                value={formData.productAmazonAsin}
-                onChange={(e) => setFormData({ ...formData, productAmazonAsin: e.target.value })}
+                value={formData.mainProductAsin}
+                onChange={(e) => setFormData({ ...formData, mainProductAsin: e.target.value })}
                 className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 placeholder="e.g., B07XYZ1234"
               />
@@ -1561,6 +1609,19 @@ function CustomerResearchModal({
                 onChange={(e) => setFormData({ ...formData, competitor2Asin: e.target.value })}
                 className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 placeholder="e.g., B09DEF9012"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-2">
+                Competitor 3 ASIN <span className="text-slate-500">(optional)</span>
+              </label>
+              <input
+                type="text"
+                value={formData.competitor3Asin}
+                onChange={(e) => setFormData({ ...formData, competitor3Asin: e.target.value })}
+                className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                placeholder="e.g., B0GHI3456"
               />
             </div>
 
@@ -1744,11 +1805,13 @@ function AdCollectionModal({
   onClose: () => void;
 }) {
   const [industryCode, setIndustryCode] = useState("");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setErrorMessage(null);
     if (!industryCode) {
-      alert("Please enter an industry code");
+      setErrorMessage("Please enter an industry code.");
       return;
     }
     onSubmit({ industryCode });
@@ -1762,6 +1825,7 @@ function AdCollectionModal({
           <p className="text-sm text-slate-400 mb-6">
             Enter your industry code to collect relevant ads
           </p>
+          {errorMessage && <p className="text-sm text-red-400 mb-3">{errorMessage}</p>}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
@@ -1816,11 +1880,13 @@ function ProductCollectionModal({
     productUrl: "",
     competitorUrls: [""],
   });
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setErrorMessage(null);
     if (!formData.productName || !formData.productUrl) {
-      alert("Please fill in all required fields");
+      setErrorMessage("Please fill in all required fields.");
       return;
     }
     onSubmit(formData);
@@ -1854,6 +1920,7 @@ function ProductCollectionModal({
           <p className="text-sm text-slate-400 mb-6">
             Enter your product details and competitor URLs
           </p>
+          {errorMessage && <p className="text-sm text-red-400 mb-3">{errorMessage}</p>}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
@@ -1952,18 +2019,21 @@ function RunAllResearchModal({
   const [formData, setFormData] = useState<RunAllResearchFormData>({
     productName: "",
     productProblemSolved: "",
-    productAmazonAsin: "",
+    mainProductAsin: "",
     competitor1Asin: "",
     competitor2Asin: "",
+    competitor3Asin: "",
     industryCode: "",
     productUrl: "",
     competitorUrls: [""],
   });
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.productName || !formData.productProblemSolved || !formData.productAmazonAsin || !formData.industryCode || !formData.productUrl) {
-      alert("Please fill in all required fields");
+    setErrorMessage(null);
+    if (!formData.productName || !formData.productProblemSolved || !formData.mainProductAsin || !formData.industryCode || !formData.productUrl) {
+      setErrorMessage("Please fill in all required fields.");
       return;
     }
     onSubmit(formData);
@@ -1997,6 +2067,7 @@ function RunAllResearchModal({
           <p className="text-sm text-slate-400 mb-6">
             Enter all details to start customer, ad, and product research simultaneously
           </p>
+          {errorMessage && <p className="text-sm text-red-400 mb-3">{errorMessage}</p>}
 
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Customer Collection Section */}
@@ -2038,8 +2109,8 @@ function RunAllResearchModal({
                     </label>
                     <input
                       type="text"
-                      value={formData.productAmazonAsin}
-                      onChange={(e) => setFormData({ ...formData, productAmazonAsin: e.target.value })}
+                      value={formData.mainProductAsin}
+                      onChange={(e) => setFormData({ ...formData, mainProductAsin: e.target.value })}
                       className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                       placeholder="B07XYZ1234"
                     />
@@ -2066,6 +2137,18 @@ function RunAllResearchModal({
                       onChange={(e) => setFormData({ ...formData, competitor2Asin: e.target.value })}
                       className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                       placeholder="B09DEF9012"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                      Competitor 3 ASIN
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.competitor3Asin}
+                      onChange={(e) => setFormData({ ...formData, competitor3Asin: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      placeholder="B0GHI3456"
                     />
                   </div>
                 </div>

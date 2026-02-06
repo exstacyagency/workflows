@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 
 interface ResearchRow {
@@ -15,7 +15,6 @@ interface ResearchRow {
 
 export default function ResearchDataPage() {
   const params = useParams();
-  const router = useRouter();
   const searchParams = useSearchParams();
   const projectId = params.projectId as string;
   const jobId = params.jobId as string;
@@ -129,12 +128,20 @@ export default function ResearchDataPage() {
               {` | ${totalCount} total rows`}
             </p>
           </div>
-          <button
-            onClick={handleExport}
-            className="px-4 py-2 bg-sky-600 hover:bg-sky-500 rounded text-sm font-medium"
-          >
-            Export CSV
-          </button>
+          <div className="flex items-center gap-2">
+            <Link
+              href={`/projects/${projectId}/research/data/${jobId}/inputs${runId ? `?runId=${runId}` : ''}`}
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded text-sm font-medium"
+            >
+              View Input Parameters
+            </Link>
+            <button
+              onClick={handleExport}
+              className="px-4 py-2 bg-sky-600 hover:bg-sky-500 rounded text-sm font-medium"
+            >
+              Export CSV
+            </button>
+          </div>
         </div>
       </div>
 

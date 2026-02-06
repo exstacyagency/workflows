@@ -11,11 +11,11 @@ queue.process(async (job) => {
   const {
     jobId,
     projectId,
-    productName,
     productProblemSolved,
-    productAmazonAsin,
-    competitor1AmazonAsin,
-    competitor2AmazonAsin,
+    mainProductAsin,
+    competitor1Asin,
+    competitor2Asin,
+    competitor3Asin,
   } = job.data as any;
 
   try {
@@ -34,11 +34,11 @@ queue.process(async (job) => {
     const result = await runCustomerResearch({
       projectId,
       jobId,
-      productName,
       productProblemSolved,
-      productAmazonAsin,
-      competitor1AmazonAsin,
-      competitor2AmazonAsin,
+      mainProductAsin,
+      competitor1Asin,
+      competitor2Asin,
+      competitor3Asin,
     });
 
     job.progress(90);

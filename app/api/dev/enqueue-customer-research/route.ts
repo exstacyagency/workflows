@@ -11,9 +11,10 @@ type InputBody = {
   projectId?: string;
   productName?: string;
   productProblemSolved?: string;
-  productAmazonAsin?: string;
-  competitor1AmazonAsin?: string;
-  competitor2AmazonAsin?: string;
+  mainProductAsin?: string;
+  competitor1Asin?: string;
+  competitor2Asin?: string;
+  competitor3Asin?: string;
 };
 
 export async function POST(req: NextRequest) {
@@ -34,9 +35,10 @@ export async function POST(req: NextRequest) {
   const projectId = body.projectId ?? "proj_test";
   const productName = body.productName ?? "Test Product";
   const productProblemSolved = body.productProblemSolved ?? "Test problem";
-  const productAmazonAsin = body.productAmazonAsin ?? "B0TESTASIN1";
-  const competitor1AmazonAsin = body.competitor1AmazonAsin;
-  const competitor2AmazonAsin = body.competitor2AmazonAsin;
+  const mainProductAsin = body.mainProductAsin ?? "B0TESTASIN1";
+  const competitor1Asin = body.competitor1Asin;
+  const competitor2Asin = body.competitor2Asin;
+  const competitor3Asin = body.competitor3Asin;
 
   const existing = await prisma.project.findUnique({
     where: { id: projectId },
@@ -72,9 +74,10 @@ export async function POST(req: NextRequest) {
         projectId,
         productName,
         productProblemSolved,
-        productAmazonAsin,
-        competitor1AmazonAsin,
-        competitor2AmazonAsin,
+        mainProductAsin,
+        competitor1Asin,
+        competitor2Asin,
+        competitor3Asin,
       },
     },
     select: { id: true },
@@ -82,4 +85,3 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ ok: true, jobId: job.id, projectId }, { status: 200 });
 }
-
