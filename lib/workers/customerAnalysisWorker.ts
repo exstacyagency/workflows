@@ -49,13 +49,16 @@ queue.process(async (job) => {
     job.progress(100);
 
     return result;
-  } catch (err: any) {
+  } catch (error: any) {
+    console.error('[Customer Analysis Worker] ERROR:', error);
+    console.error('[Customer Analysis Worker] Error stack:', error?.stack);
+    console.error('[Customer Analysis Worker] Error details:', JSON.stringify(error, null, 2));
     await updateJobStatus(jobId, JobStatus.FAILED);
     await prisma.job.update({
       where: { id: jobId },
-      data: { error: err.message },
+      data: { error: error?.message ?? String(error) },
     });
-    throw err;
+    throw new Error(`Anthropic request failed: ${error?.message || error}`);
   }
 });
 

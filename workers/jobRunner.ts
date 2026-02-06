@@ -11,7 +11,7 @@ if (fs.existsSync(env)) dotenv.config({ path: env });
 
 import { assertRuntimeMode } from "../lib/jobRuntimeMode";
 import { logError } from "@/lib/logger";
-import { JobStatus, JobType } from "@prisma/client";
+import { JobStatus, JobType, Prisma } from "@prisma/client";
 import type { RuntimeMode } from "@/lib/jobRuntimeMode";
 import { cfg } from "@/lib/config";
 // ...existing code...
@@ -41,6 +41,12 @@ import { analyzeProductData } from "../lib/productAnalysisService.ts";
 import prisma from "../lib/prisma.ts";
 import { rollbackQuota } from "../lib/billing/usage.ts";
 import { updateJobStatus } from "@/lib/jobs/updateJobStatus";
+
+console.log("=== WORKER ENVIRONMENT CHECK ===");
+console.log("ANTHROPIC_API_KEY present:", !!process.env.ANTHROPIC_API_KEY);
+console.log("ANTHROPIC_API_KEY length:", process.env.ANTHROPIC_API_KEY?.length || 0);
+console.log("NODE_ENV:", process.env.NODE_ENV);
+console.log("================================");
 
 function writeLog(line: string) {
   process.stdout.write(`${line}\n`);
@@ -173,7 +179,7 @@ async function markCompleted({
 }: {
   jobId: string;
   result: any;
-  summary?: string;
+  summary?: Prisma.InputJsonValue;
 }) {
   const existing = await prisma.job.findUnique({
     where: { id: jobId },
@@ -283,6 +289,13 @@ async function handleProviderConfig(jobId: string, provider: string, requiredEnv
 
 async function claimNextJob() {
   const dueBefore = nowMs();
+  const dueBeforeDate = new Date(dueBefore);
+  console.log('[Worker] claimNextJob called');
+  console.log('[Worker] dueBefore:', dueBeforeDate.toISOString());
+  console.log(
+    '[Worker] Looking for jobs with status=PENDING and payload.nextRunAt <=',
+    dueBeforeDate.toISOString(),
+  );
   const claimed = await prisma.$queryRaw<any[]>`
     UPDATE job
     SET "status" = CAST('RUNNING' AS "JobStatus"),
@@ -301,6 +314,9 @@ async function claimNextJob() {
     )
     RETURNING "id", "type", "projectId", "userId", "payload", "idempotencyKey", "status";
   `;
+
+  console.log('[Worker] Raw query result:', claimed);
+  console.log('[Worker] Jobs claimed:', claimed?.length || 0);
 
   const row = claimed[0];
   if (!row?.id) return null;
@@ -329,6 +345,12 @@ async function runJob(
 ) {
   const jobId = job.id;
   const payload = asObject(job.payload);
+  console.log('[Worker] ===== PROCESSING JOB =====');
+  console.log('[Worker] Job ID:', job.id);
+  console.log('[Worker] Job Type:', job.type);
+  console.log('[Worker] Job Status:', job.status);
+  console.log('[Worker] RunId:', (job as any).runId);
+  console.log('[Worker] ===========================');
 
   if (job.status !== JobStatus.RUNNING) {
     throw new Error(`Invalid job state: ${job.status}`);
@@ -337,6 +359,10 @@ async function runJob(
   if (context.mode === "alpha" && process.env.NODE_ENV === "production") {
     throw new Error("INVALID CONFIG: MODE=alpha cannot run with NODE_ENV=production");
   }
+
+  console.log("[BEFORE SWITCH] About to enter switch statement");
+  console.log("[BEFORE SWITCH] job.type:", job.type);
+  console.log("[BEFORE SWITCH] JobType enum:", JobType);
 
   try {
     switch (job.type) {
@@ -370,11 +396,14 @@ async function runJob(
           competitor1AmazonAsin,
           competitor2AmazonAsin,
           redditKeywords,
+          searchIntent,
+          solutionKeywords,
           redditSubreddits,
           maxPosts,
           maxCommentsPerPost,
           timeRange,
           scrapeComments,
+          additionalProblems,
         } = payload;
 
         const hasAmazonAsin = Boolean(productAmazonAsin && String(productAmazonAsin).trim());
@@ -404,11 +433,14 @@ async function runJob(
           competitor1AmazonAsin,
           competitor2AmazonAsin,
           redditKeywords,
+          searchIntent,
+          solutionKeywords,
           redditSubreddits,
           maxPosts,
           maxCommentsPerPost,
           timeRange,
           scrapeComments,
+          additionalProblems,
         });
 
         await markCompleted({
@@ -418,16 +450,29 @@ async function runJob(
         return;
       }
       case JobType.CUSTOMER_ANALYSIS: {
+        console.log("=== CUSTOMER_ANALYSIS JOB START ===");
+        console.log("Job ID:", jobId);
+        console.log("Payload:", JSON.stringify(payload, null, 2));
+
         try {
+          console.log("Calling runCustomerAnalysis...");
           const analysisResult = await runCustomerAnalysis({
             projectId: job.projectId,
             ...(payload as any),
           });
+          console.log("Analysis result:", JSON.stringify(analysisResult, null, 2));
           await markCompleted({
             jobId,
             result: analysisResult,
+            summary: {
+              avatarId: analysisResult?.avatarId ?? null,
+              summary: analysisResult?.summary ?? null,
+            },
           });
         } catch (error) {
+          console.error("=== CUSTOMER_ANALYSIS ERROR ===");
+          console.error("Error:", error);
+          console.error("Stack:", (error as Error).stack);
           await markFailed({ jobId, error });
         }
         return;
@@ -739,6 +784,8 @@ async function loop() {
             createdAt: true,
           },
         });
+        console.log('[Worker] Found jobs:', allPending.length);
+        console.log('[Worker] Job types:', allPending.map(j => j.type));
         writeLog(
           `[WORKER] PENDING jobs in database: ${JSON.stringify(allPending, null, 2)}`,
         );
