@@ -1,6 +1,6 @@
 import { cfg } from "@/lib/config";
 import { prisma } from '@/lib/prisma';
-import { JobStatus, ResearchSource } from '@prisma/client';
+import { JobStatus, ProductType, ResearchSource } from '@prisma/client';
 import { updateJobStatus } from '@/lib/jobs/updateJobStatus';
 import { getBreaker } from '@/lib/circuitBreaker';
 import { ExternalServiceError } from "@/lib/externalServiceError";
@@ -11,11 +11,11 @@ import nodeFetch from "node-fetch";
 export type RunCustomerResearchParams = {
   projectId: string;
   jobId: string;
-  productName?: string;
   productProblemSolved?: string;
-  productAmazonAsin?: string;
-  competitor1AmazonAsin?: string;
-  competitor2AmazonAsin?: string;
+  mainProductAsin?: string;
+  competitor1Asin?: string;
+  competitor2Asin?: string;
+  competitor3Asin?: string;
   // Reddit search parameters
   redditKeywords?: string[];
   searchIntent?: string[];
@@ -49,9 +49,17 @@ type RedditPost = {
 type AmazonReview = {
   reviewText?: string;
   text?: string;
+  title?: string;
+  productName?: string;
+  productTitle?: string;
   rating?: number;
   verified?: boolean;
   date?: string;
+};
+
+type ProductScrapeTarget = {
+  asin: string;
+  type: ProductType;
 };
 
 type AmazonInput = {
@@ -245,21 +253,10 @@ function extractUrlsFromPosts(posts: RedditPost[]) {
     .filter(Boolean) as string[];
 }
 
-function filterProductComments(items: RedditPost[], productName: string) {
-  const lowerProduct = productName.toLowerCase();
-  const keywords = lowerProduct.split(/\s+/).filter((w) => w.length > 2);
-
-  return items.filter((i) => {
-    const title = (i.title || '').toLowerCase();
-    const text = (i.body || i.selftext || '').toLowerCase();
-    const combined = `${title} ${text}`;
-    const author = (i.author || '').toLowerCase();
-
-    const mentions = keywords.some((keyword) => combined.includes(keyword));
-    const isBrandAccount = keywords.some((keyword) => author.includes(keyword));
-
-    return mentions && !isBrandAccount;
-  });
+function filterProductComments(items: RedditPost[]) {
+  return items
+    .filter((item) => item.kind === "post")
+    .filter((item) => (item.title || item.selftext || item.body || "").trim().length > 20);
 }
 
 function filterProblemComments(items: RedditPost[]) {
@@ -307,6 +304,35 @@ const buildAmazonInput = (
   mediaType: "all_contents",
 });
 
+function extractAmazonProductName(review: AmazonReview): string | null {
+  const value =
+    review.productName ??
+    review.productTitle ??
+    review.title ??
+    (review as any)?.product_name ??
+    (review as any)?.name ??
+    null;
+  const normalized = typeof value === "string" ? value.trim() : "";
+  return normalized || null;
+}
+
+function extractAmazonReviewText(review: AmazonReview): string {
+  return String(
+    review.text ??
+      review.reviewText ??
+      (review as any)?.content ??
+      (review as any)?.review ??
+      ""
+  ).trim();
+}
+
+function getStarFiltersForProduct(type: ProductType): AmazonInput["filterByStar"][] {
+  if (type === ProductType.MAIN_PRODUCT) {
+    return ["one_star", "two_star", "three_star", "four_star", "five_star"];
+  }
+  return ["four_star", "five_star"];
+}
+
 function toIsoDate(value: unknown): string | null {
   if (!value) return null;
   if (value instanceof Date) return value.toISOString();
@@ -341,12 +367,9 @@ function extractProblemKeywords(problemSolved: string): string[] {
 }
 
 function buildProblemQuery(
-  productName: string,
   problemSolved: string,
   additionalKeywords: string[] = []
 ): string {
-  // Kept for compatibility with existing call sites; Reddit query is problem-only.
-  void productName;
   const problemKeywords = extractProblemKeywords(problemSolved);
   const allKeywords = [...problemKeywords, ...additionalKeywords]
     .map((keyword) => String(keyword || "").trim())
@@ -362,8 +385,7 @@ function buildProblemQuery(
 function filterQualityPosts(
   posts: RedditScraperPost[],
   maxPosts: number,
-  problemSolved?: string,
-  productName?: string
+  problemSolved?: string
 ): RedditScraperPost[] {
   const NOISE_SUBREDDITS = new Set([
     "memes",
@@ -456,9 +478,6 @@ function filterQualityPosts(
 
   const result = scored.slice(0, maxPosts).map((s) => s.post);
   console.log("[Filter] Final result:", result.length, "posts");
-  if (productName) {
-    console.log("[Filter] Product context:", productName);
-  }
 
   return result;
 }
@@ -548,7 +567,6 @@ function dedupeCommentsById(comments: RedditScraperComment[]): RedditScraperComm
 }
 
 async function fetchLocalReddit(
-  productName: string,
   productProblemSolved: string,
   redditKeywords: string[] = [],
   searchIntent: string[] = [],
@@ -559,7 +577,7 @@ async function fetchLocalReddit(
   maxCommentsPerPost = 50,
   additionalProblems: string[] = []
 ): Promise<RedditScraperResponse> {
-  if (!productName.trim() && !productProblemSolved.trim()) {
+  if (!productProblemSolved.trim()) {
     return { posts: [], comments: [], meta: { total_posts: 0, total_comments: 0 } } as RedditScraperResponse;
   }
 
@@ -694,12 +712,7 @@ async function fetchLocalReddit(
     console.log("[Reddit] Total posts collected:", dedupedPosts.length);
     console.log("[Reddit] Total comments collected:", dedupedComments.length);
 
-    const filteredPosts = filterQualityPosts(
-      dedupedPosts,
-      maxPosts,
-      uniqueProblems.join(" "),
-      productName
-    );
+    const filteredPosts = filterQualityPosts(dedupedPosts, maxPosts, uniqueProblems.join(" "));
     const fallbackProblem = uniqueProblems[0] || productProblemSolved || "";
     const postsWithMetadata = filteredPosts.map((post) => ({
       ...post,
@@ -796,11 +809,11 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
   const { 
     projectId, 
     jobId, 
-    productName, 
     productProblemSolved, 
-    productAmazonAsin, 
-    competitor1AmazonAsin, 
-    competitor2AmazonAsin,
+    mainProductAsin,
+    competitor1Asin,
+    competitor2Asin,
+    competitor3Asin,
     redditKeywords,
     searchIntent,
     solutionKeywords,
@@ -812,17 +825,22 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
   } = params;
 
   try {
-    const normalizedProductName = productName?.trim() || '';
     const normalizedProductProblem = productProblemSolved?.trim() || '';
-    const hasAmazonAsin = Boolean(productAmazonAsin?.trim());
-    const hasRedditData = Boolean(normalizedProductName && normalizedProductProblem);
+    const normalizedMainProductAsin = mainProductAsin?.trim();
+    const normalizedCompetitor1Asin = competitor1Asin?.trim();
+    const normalizedCompetitor2Asin = competitor2Asin?.trim();
+    const normalizedCompetitor3Asin = competitor3Asin?.trim();
+    const hasAmazonAsin = Boolean(
+      normalizedMainProductAsin ||
+        normalizedCompetitor1Asin ||
+        normalizedCompetitor2Asin ||
+        normalizedCompetitor3Asin
+    );
+    const hasRedditData = Boolean(normalizedProductProblem);
 
     if (!hasAmazonAsin && !hasRedditData) {
-      throw new Error('Must provide either Amazon ASIN or Product Name/Problem for research');
+      throw new Error('Must provide either Amazon ASIN or Problem to Research');
     }
-
-    const effectiveProductName =
-      normalizedProductName || (productAmazonAsin ? `Product-${productAmazonAsin}` : 'Product');
 
     const effectiveMaxPosts = typeof maxPosts === "number" ? maxPosts : 50;
     const effectiveMaxCommentsPerPost =
@@ -834,7 +852,6 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
 
     if (hasRedditData) {
       redditResponse = await fetchLocalReddit(
-        effectiveProductName,
         normalizedProductProblem,
         redditKeywords ?? [],
         searchIntent ?? [],
@@ -878,44 +895,56 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
       const productDetails = redditData;
       const problemDetails = redditData;
 
-      filteredProductComments = filterProductComments(productDetails, effectiveProductName);
+      filteredProductComments = filterProductComments(productDetails);
       filteredProblemComments = filterProblemComments(problemDetails);
     }
 
-    let productAll: AmazonReview[] = [];
-    let product4Star: AmazonReview[] = [];
-    let product5Star: AmazonReview[] = [];
-    let competitor1All: AmazonReview[] = [];
-    let competitor2All: AmazonReview[] = [];
-    let competitor1OneStar: AmazonReview[] = [];
-    let competitor1TwoStar: AmazonReview[] = [];
-    let competitor1ThreeStar: AmazonReview[] = [];
-    let competitor2OneStar: AmazonReview[] = [];
-    let competitor2TwoStar: AmazonReview[] = [];
-    let competitor2ThreeStar: AmazonReview[] = [];
+    const productsToScrape = [
+      normalizedMainProductAsin
+        ? { asin: normalizedMainProductAsin, type: ProductType.MAIN_PRODUCT }
+        : null,
+      normalizedCompetitor1Asin
+        ? { asin: normalizedCompetitor1Asin, type: ProductType.COMPETITOR_1 }
+        : null,
+      normalizedCompetitor2Asin
+        ? { asin: normalizedCompetitor2Asin, type: ProductType.COMPETITOR_2 }
+        : null,
+      normalizedCompetitor3Asin
+        ? { asin: normalizedCompetitor3Asin, type: ProductType.COMPETITOR_3 }
+        : null,
+    ].filter(Boolean) as ProductScrapeTarget[];
 
-    const productAsin = productAmazonAsin?.trim();
-    const competitor1Asin = competitor1AmazonAsin?.trim();
-    const competitor2Asin = competitor2AmazonAsin?.trim();
+    const amazonReviewsByType: Record<ProductType, AmazonReview[]> = {
+      [ProductType.MAIN_PRODUCT]: [],
+      [ProductType.COMPETITOR_1]: [],
+      [ProductType.COMPETITOR_2]: [],
+      [ProductType.COMPETITOR_3]: [],
+    };
 
-    if (productAsin) {
-      product4Star = await fetchApifyAmazonReviews([buildAmazonInput(productAsin, "four_star")]);
-      product5Star = await fetchApifyAmazonReviews([buildAmazonInput(productAsin, "five_star")]);
-      productAll = [...product4Star, ...product5Star];
-    }
+    const productNameByType: Record<ProductType, string | null> = {
+      [ProductType.MAIN_PRODUCT]: null,
+      [ProductType.COMPETITOR_1]: null,
+      [ProductType.COMPETITOR_2]: null,
+      [ProductType.COMPETITOR_3]: null,
+    };
 
-    if (competitor1Asin) {
-      competitor1OneStar = await fetchApifyAmazonReviews([buildAmazonInput(competitor1Asin, "one_star")]);
-      competitor1TwoStar = await fetchApifyAmazonReviews([buildAmazonInput(competitor1Asin, "two_star")]);
-      competitor1ThreeStar = await fetchApifyAmazonReviews([buildAmazonInput(competitor1Asin, "three_star")]);
-      competitor1All = [...competitor1OneStar, ...competitor1TwoStar, ...competitor1ThreeStar];
-    }
+    const productAsinByType: Record<ProductType, string | null> = {
+      [ProductType.MAIN_PRODUCT]: normalizedMainProductAsin || null,
+      [ProductType.COMPETITOR_1]: normalizedCompetitor1Asin || null,
+      [ProductType.COMPETITOR_2]: normalizedCompetitor2Asin || null,
+      [ProductType.COMPETITOR_3]: normalizedCompetitor3Asin || null,
+    };
 
-    if (competitor2Asin) {
-      competitor2OneStar = await fetchApifyAmazonReviews([buildAmazonInput(competitor2Asin, "one_star")]);
-      competitor2TwoStar = await fetchApifyAmazonReviews([buildAmazonInput(competitor2Asin, "two_star")]);
-      competitor2ThreeStar = await fetchApifyAmazonReviews([buildAmazonInput(competitor2Asin, "three_star")]);
-      competitor2All = [...competitor2OneStar, ...competitor2TwoStar, ...competitor2ThreeStar];
+    for (const product of productsToScrape) {
+      const starFilters = getStarFiltersForProduct(product.type);
+      for (const starFilter of starFilters) {
+        const reviews = await fetchApifyAmazonReviews([buildAmazonInput(product.asin, starFilter)]);
+        amazonReviewsByType[product.type].push(...reviews);
+        if (!productNameByType[product.type]) {
+          const detectedName = reviews.map(extractAmazonProductName).find(Boolean) || null;
+          productNameByType[product.type] = detectedName;
+        }
+      }
     }
 
     const rows: ResearchRowInput[] = [
@@ -979,136 +1008,35 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
       await prisma.researchRow.createMany({ data: dedupedRows });
     }
 
-    const amazonRows: ResearchRowInput[] = [
-      ...product4Star.map((r) => ({
+    const amazonRows: ResearchRowInput[] = (
+      Object.keys(amazonReviewsByType) as ProductType[]
+    ).flatMap((productType) => {
+      const asin = productAsinByType[productType];
+      const productName = productNameByType[productType];
+      return amazonReviewsByType[productType].map((review) => ({
         projectId,
         jobId,
         source: ResearchSource.AMAZON,
         type: "review",
-        content: r.text ?? r.reviewText ?? "",
+        content: extractAmazonReviewText(review),
         metadata: {
-          rating: r.rating ?? null,
-          verified: r.verified ?? null,
-          asin: productAsin ?? null,
-          amazonKind: "product_4_star",
+          rating: review.rating ?? null,
+          verified: review.verified ?? null,
+          asin: asin ?? null,
+          productType,
+          productAsin: asin ?? null,
+          productName: productName ?? extractAmazonProductName(review),
           scrapedAt: new Date().toISOString(),
-          sourceDate: toIsoDate((r as any).date ?? (r as any).reviewDate ?? (r as any).reviewDateTime ?? (r as any).reviewTime),
-          raw: r,
+          sourceDate: toIsoDate(
+            (review as any).date ??
+              (review as any).reviewDate ??
+              (review as any).reviewDateTime ??
+              (review as any).reviewTime
+          ),
+          raw: review,
         },
-      })),
-      ...product5Star.map((r) => ({
-        projectId,
-        jobId,
-        source: ResearchSource.AMAZON,
-        type: "review",
-        content: r.text ?? r.reviewText ?? "",
-        metadata: {
-          rating: r.rating ?? null,
-          verified: r.verified ?? null,
-          asin: productAsin ?? null,
-          amazonKind: "product_5_star",
-          scrapedAt: new Date().toISOString(),
-          sourceDate: toIsoDate((r as any).date ?? (r as any).reviewDate ?? (r as any).reviewDateTime ?? (r as any).reviewTime),
-          raw: r,
-        },
-      })),
-      ...competitor1OneStar.map((r) => ({
-        projectId,
-        jobId,
-        source: ResearchSource.AMAZON,
-        type: "review",
-        content: r.text ?? r.reviewText ?? "",
-        metadata: {
-          rating: r.rating ?? null,
-          verified: r.verified ?? null,
-          asin: competitor1Asin ?? null,
-          amazonKind: "competitor_1",
-          scrapedAt: new Date().toISOString(),
-          sourceDate: toIsoDate((r as any).date ?? (r as any).reviewDate ?? (r as any).reviewDateTime ?? (r as any).reviewTime),
-          raw: r,
-        },
-      })),
-      ...competitor1TwoStar.map((r) => ({
-        projectId,
-        jobId,
-        source: ResearchSource.AMAZON,
-        type: "review",
-        content: r.text ?? r.reviewText ?? "",
-        metadata: {
-          rating: r.rating ?? null,
-          verified: r.verified ?? null,
-          asin: competitor1Asin ?? null,
-          amazonKind: "competitor_2",
-          scrapedAt: new Date().toISOString(),
-          sourceDate: toIsoDate((r as any).date ?? (r as any).reviewDate ?? (r as any).reviewDateTime ?? (r as any).reviewTime),
-          raw: r,
-        },
-      })),
-      ...competitor1ThreeStar.map((r) => ({
-        projectId,
-        jobId,
-        source: ResearchSource.AMAZON,
-        type: "review",
-        content: r.text ?? r.reviewText ?? "",
-        metadata: {
-          rating: r.rating ?? null,
-          verified: r.verified ?? null,
-          asin: competitor1Asin ?? null,
-          amazonKind: "competitor_3",
-          scrapedAt: new Date().toISOString(),
-          sourceDate: toIsoDate((r as any).date ?? (r as any).reviewDate ?? (r as any).reviewDateTime ?? (r as any).reviewTime),
-          raw: r,
-        },
-      })),
-      ...competitor2OneStar.map((r) => ({
-        projectId,
-        jobId,
-        source: ResearchSource.AMAZON,
-        type: "review",
-        content: r.text ?? r.reviewText ?? "",
-        metadata: {
-          rating: r.rating ?? null,
-          verified: r.verified ?? null,
-          asin: competitor2Asin ?? null,
-          amazonKind: "competitor_1",
-          scrapedAt: new Date().toISOString(),
-          sourceDate: toIsoDate((r as any).date ?? (r as any).reviewDate ?? (r as any).reviewDateTime ?? (r as any).reviewTime),
-          raw: r,
-        },
-      })),
-      ...competitor2TwoStar.map((r) => ({
-        projectId,
-        jobId,
-        source: ResearchSource.AMAZON,
-        type: "review",
-        content: r.text ?? r.reviewText ?? "",
-        metadata: {
-          rating: r.rating ?? null,
-          verified: r.verified ?? null,
-          asin: competitor2Asin ?? null,
-          amazonKind: "competitor_2",
-          scrapedAt: new Date().toISOString(),
-          sourceDate: toIsoDate((r as any).date ?? (r as any).reviewDate ?? (r as any).reviewDateTime ?? (r as any).reviewTime),
-          raw: r,
-        },
-      })),
-      ...competitor2ThreeStar.map((r) => ({
-        projectId,
-        jobId,
-        source: ResearchSource.AMAZON,
-        type: "review",
-        content: r.text ?? r.reviewText ?? "",
-        metadata: {
-          rating: r.rating ?? null,
-          verified: r.verified ?? null,
-          asin: competitor2Asin ?? null,
-          amazonKind: "competitor_3",
-          scrapedAt: new Date().toISOString(),
-          sourceDate: toIsoDate((r as any).date ?? (r as any).reviewDate ?? (r as any).reviewDateTime ?? (r as any).reviewTime),
-          raw: r,
-        },
-      })),
-    ];
+      }));
+    });
 
     if (amazonRows.length > 0) {
       await prisma.researchRow.createMany({
@@ -1116,10 +1044,46 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
       });
     }
 
-    const storedRows = await prisma.researchRow.findMany({
-      where: { jobId },
-      orderBy: { createdAt: 'desc' },
+    const amazonReviewRows = (
+      Object.keys(amazonReviewsByType) as ProductType[]
+    ).flatMap((productType) => {
+      const asin = productAsinByType[productType];
+      const productName = productNameByType[productType];
+      if (!asin) return [];
+      return amazonReviewsByType[productType]
+        .map((review) => ({
+          projectId,
+          jobId,
+          reviewText: extractAmazonReviewText(review),
+          rating: typeof review.rating === "number" ? Math.round(review.rating) : null,
+          verified:
+            typeof review.verified === "boolean"
+              ? review.verified
+              : typeof (review as any)?.isVerified === "boolean"
+                ? (review as any).isVerified
+                : null,
+          reviewDate: toIsoDate(
+            (review as any).date ??
+              (review as any).reviewDate ??
+              (review as any).reviewDateTime ??
+              (review as any).reviewTime
+          ),
+          rawJson: review as any,
+          productType,
+          productAsin: asin,
+          productName: productName ?? extractAmazonProductName(review),
+        }))
+        .filter((row) => row.reviewText.length > 0);
     });
+
+    if (amazonReviewRows.length > 0) {
+      await prisma.amazonReview.createMany({
+        data: amazonReviewRows.map((row) => ({
+          ...row,
+          reviewDate: row.reviewDate ? new Date(row.reviewDate) : null,
+        })),
+      });
+    }
 
     const redditMeta = redditResponse.meta ?? {};
     const totalPosts =
@@ -1138,11 +1102,10 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
       meta: redditMeta,
     };
 
-    const product4StarCount = product4Star.length;
-    const product5StarCount = product5Star.length;
-    const competitor1StarCount = competitor1OneStar.length + competitor2OneStar.length;
-    const competitor2StarCount = competitor1TwoStar.length + competitor2TwoStar.length;
-    const competitor3StarCount = competitor1ThreeStar.length + competitor2ThreeStar.length;
+    const mainProductReviewCount = amazonReviewsByType[ProductType.MAIN_PRODUCT].length;
+    const competitor1ReviewCount = amazonReviewsByType[ProductType.COMPETITOR_1].length;
+    const competitor2ReviewCount = amazonReviewsByType[ProductType.COMPETITOR_2].length;
+    const competitor3ReviewCount = amazonReviewsByType[ProductType.COMPETITOR_3].length;
 
     await updateJobStatus(jobId, JobStatus.COMPLETED);
     await prisma.job.update({
@@ -1152,11 +1115,16 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
           rowsCollected: total,
           total_posts: redditResults?.total_posts || 0,
           total_comments: redditResults?.total_comments || 0,
-          product4Star: product4StarCount,
-          product5Star: product5StarCount,
-          competitor1Star: competitor1StarCount,
-          competitor2Star: competitor2StarCount,
-          competitor3Star: competitor3StarCount,
+          mainProductReviews: mainProductReviewCount,
+          competitor1Reviews: competitor1ReviewCount,
+          competitor2Reviews: competitor2ReviewCount,
+          competitor3Reviews: competitor3ReviewCount,
+          productTypeBreakdown: {
+            MAIN_PRODUCT: mainProductReviewCount,
+            COMPETITOR_1: competitor1ReviewCount,
+            COMPETITOR_2: competitor2ReviewCount,
+            COMPETITOR_3: competitor3ReviewCount,
+          },
         }
       }
     });
@@ -1165,11 +1133,10 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
       rowsCollected: total,
       total_posts: redditResults?.total_posts || 0,
       total_comments: redditResults?.total_comments || 0,
-      product4Star: product4StarCount,
-      product5Star: product5StarCount,
-      competitor1Star: competitor1StarCount,
-      competitor2Star: competitor2StarCount,
-      competitor3Star: competitor3StarCount,
+      mainProductReviews: mainProductReviewCount,
+      competitor1Reviews: competitor1ReviewCount,
+      competitor2Reviews: competitor2ReviewCount,
+      competitor3Reviews: competitor3ReviewCount,
     };
   } catch (error) {
     await updateJobStatus(jobId, JobStatus.FAILED);
