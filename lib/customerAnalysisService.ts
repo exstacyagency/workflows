@@ -63,16 +63,19 @@ function sleep(ms: number) {
 }
 
 type GroupedResearch = {
-  productName: string;
   productProblemSolved: string;
-  amazon5: string[];
-  amazon4: string[];
+  mainProductReviews: string[];
+  competitor1Reviews: string[];
+  competitor2Reviews: string[];
+  competitor3Reviews: string[];
   redditProduct: string[];
   redditProblem: string[];
-  competitor1: string[];
-  competitor2: string[];
-  competitor3: string[];
   uploadedData: string[];
+};
+
+type AnalysisOperatorContext = {
+  solutionKeywords: string[];
+  additionalProblems: string[];
 };
 
 type ResearchRowForGrouping = {
@@ -84,16 +87,14 @@ type ResearchRowForGrouping = {
 
 function groupResearchRows(
   rows: ResearchRowForGrouping[],
-  productName: string,
   productProblemSolved: string
 ): GroupedResearch {
-  const amazon5: string[] = [];
-  const amazon4: string[] = [];
+  const mainProductReviews: string[] = [];
+  const competitor1Reviews: string[] = [];
+  const competitor2Reviews: string[] = [];
+  const competitor3Reviews: string[] = [];
   const rawRedditProduct: Array<{ content: string; upvotes: number }> = [];
   const rawRedditProblem: Array<{ content: string; upvotes: number }> = [];
-  const competitor1: string[] = [];
-  const competitor2: string[] = [];
-  const competitor3: string[] = [];
   const uploadedData: string[] = [];
 
   for (const row of rows) {
@@ -115,34 +116,51 @@ function groupResearchRows(
         break;
       case 'AMAZON': {
         const meta = (row.metadata ?? {}) as any;
+        const productType = String(meta?.productType || '').toUpperCase();
         const amazonKind = typeof meta?.amazonKind === 'string' ? meta.amazonKind : null;
+        const content = row.content || '';
+
+        if (productType === 'MAIN_PRODUCT') {
+          mainProductReviews.push(content);
+          break;
+        }
+        if (productType === 'COMPETITOR_1') {
+          competitor1Reviews.push(content);
+          break;
+        }
+        if (productType === 'COMPETITOR_2') {
+          competitor2Reviews.push(content);
+          break;
+        }
+        if (productType === 'COMPETITOR_3') {
+          competitor3Reviews.push(content);
+          break;
+        }
 
         if (amazonKind === 'product_5_star') {
-          amazon5.push(row.content);
+          mainProductReviews.push(content);
           break;
         }
         if (amazonKind === 'product_4_star') {
-          amazon4.push(row.content);
+          mainProductReviews.push(content);
           break;
         }
         if (amazonKind === 'competitor_1') {
-          competitor1.push(row.content);
+          competitor1Reviews.push(content);
           break;
         }
         if (amazonKind === 'competitor_2') {
-          competitor2.push(row.content);
+          competitor2Reviews.push(content);
           break;
         }
         if (amazonKind === 'competitor_3') {
-          competitor3.push(row.content);
+          competitor3Reviews.push(content);
           break;
         }
 
         const rating = typeof row.rating === 'number' ? row.rating : Number(row.rating);
-        if (!Number.isNaN(rating) && rating >= 5) {
-          amazon5.push(row.content);
-        } else if (!Number.isNaN(rating) && rating >= 4) {
-          amazon4.push(row.content);
+        if (!Number.isNaN(rating)) {
+          mainProductReviews.push(content);
         }
         break;
       }
@@ -162,15 +180,13 @@ function groupResearchRows(
     .map((p) => `[UPVOTES: ${p.upvotes} | TYPE: MARKET_FRUSTRATION]\n${p.content}`);
 
   return {
-    productName,
     productProblemSolved,
-    amazon5,
-    amazon4,
+    mainProductReviews,
+    competitor1Reviews,
+    competitor2Reviews,
+    competitor3Reviews,
     redditProduct,
     redditProblem,
-    competitor1,
-    competitor2,
-    competitor3,
     uploadedData,
   };
 }
@@ -180,42 +196,64 @@ function groupResearchRows(
  */
 function buildCustomerAvatarPrompt(
   grouped: GroupedResearch,
-  researchRowCount: number
+  researchRowCount: number,
+  operatorContext: AnalysisOperatorContext
 ): { system: string; prompt: string } {
   const {
-    productName,
     productProblemSolved,
-    amazon5,
-    amazon4,
+    mainProductReviews,
+    competitor1Reviews,
+    competitor2Reviews,
+    competitor3Reviews,
     redditProduct,
     redditProblem,
-    competitor1,
-    competitor2,
-    competitor3,
     uploadedData,
   } = grouped;
+  const { solutionKeywords, additionalProblems } = operatorContext;
+  const solutionKeywordLines =
+    solutionKeywords.length > 0 ? solutionKeywords.map((value) => `- ${value}`).join('\n') : '(none provided)';
+  const additionalProblemLines =
+    additionalProblems.length > 0 ? additionalProblems.map((value) => `- ${value}`).join('\n') : '(none provided)';
 
   const prompt = `
 MANDATORY FORMAT: Every major field MUST include "supporting_quotes": [] array with 2-5 direct verbatim quotes from the data. If you cannot find direct quotes, mark the field as [INSUFFICIENT DATA] instead of guessing.
 
-Analyze ${researchRowCount} customer data points for ${productName} (solves: ${productProblemSolved}).
+Analyze ${researchRowCount} customer data points for the problem: ${productProblemSolved}.
 
-YOUR PRODUCT - WINS (${amazon4.length + amazon5.length} reviews):
-${[...amazon4, ...amazon5].join('\n---\n')}
+ALTERNATIVE SOLUTIONS - REDDIT (${solutionKeywords.length}):
+${solutionKeywordLines}
 
-YOUR PRODUCT - REDDIT (${redditProduct.length} discussions):
+MARKET FRUSTRATIONS - REDDIT (${redditProblem.length} discussions):
+${redditProblem.join('\n---\n')}
+
+ADDITIONAL PROBLEMS - REDDIT (${additionalProblems.length}):
+${additionalProblemLines}
+
+MAIN PRODUCT REVIEWS (productType = MAIN_PRODUCT) (${mainProductReviews.length} reviews):
+${mainProductReviews.join('\n---\n')}
+
+ALTERNATIVES - REDDIT (${redditProduct.length} discussions):
 ${redditProduct.join('\n---\n')}
 
-COMPETITOR - FAILURES (${competitor1.length + competitor2.length + competitor3.length} reviews):
-${[...competitor1, ...competitor2, ...competitor3].join('\n---\n')}
+COMPETITOR 1 REVIEWS (productType = COMPETITOR_1) (${competitor1Reviews.length} reviews):
+${competitor1Reviews.join('\n---\n')}
 
-MARKET - FRUSTRATIONS (${redditProblem.length} discussions):
-${redditProblem.join('\n---\n')}
+COMPETITOR 2 REVIEWS (productType = COMPETITOR_2) (${competitor2Reviews.length} reviews):
+${competitor2Reviews.join('\n---\n')}
+
+COMPETITOR 3 REVIEWS (productType = COMPETITOR_3) (${competitor3Reviews.length} reviews):
+${competitor3Reviews.join('\n---\n')}
 
 UPLOADED - PROPRIETARY (${uploadedData.length} entries):
 ${uploadedData.join('\n---\n')}
 
 Create ONE customer avatar representing the most common buyer pattern.
+
+ALSO perform competitive analysis using the productType segments above:
+- Main product pain points and complaints
+- What customers love about each competitor
+- Competitive gaps: what is missing from the main product that competitors have
+- Opportunities: problems all products fail to solve
 
 CRITICAL: Every field must be backed by direct quotes. If you can't find 3+ quotes supporting a claim, don't include it.
 
@@ -278,6 +316,8 @@ RULES:
 - NO claims without quotes
 - If VOC phrase isn't verbatim from data, exclude it
 - Hook angles must reference specific customer language patterns
+- Treat operator-provided solution keywords and additional problems as prioritization hints only
+- If a provided keyword/problem is unsupported by quotes, mark it [LOW CONFIDENCE]
 - Minimum 3 quotes per major claim or mark as [LOW CONFIDENCE]
 `;
 
@@ -291,8 +331,7 @@ RULES:
  */
 async function callAnthropic(
   system: string,
-  prompt: string,
-  productName: string
+  prompt: string
 ): Promise<string> {
   try {
     console.log('[Customer Analysis] Checking for ANTHROPIC_API_KEY...');
@@ -324,12 +363,13 @@ async function callAnthropic(
   for (let attempt = 1; attempt <= CUSTOMER_ANALYSIS_LLM_RETRIES; attempt++) {
     try {
       console.log('[Customer Analysis] Retry attempt:', attempt);
+      const messages: Anthropic.MessageParam[] = [{ role: "user", content: prompt }];
       const requestBody = {
         model,
         max_tokens: maxTokens,
         temperature,
         system,
-        messages: [{ role: 'user', content: prompt }],
+        messages,
       };
 
       const body = JSON.stringify(requestBody);
@@ -345,11 +385,11 @@ async function callAnthropic(
       }
 
       const timestamp = new Date().toISOString().replace(/:/g, "-").replace(/\./g, "-");
-      const sanitizedProduct = (productName || "unknown")
+      const sanitizedTopic = "customer-analysis"
         .replace(/[^a-zA-Z0-9]/g, "-")
         .substring(0, 30);
-      const requestPath = path.join(logDir, `request-${sanitizedProduct}-${timestamp}.json`);
-      const responsePath = path.join(logDir, `response-${sanitizedProduct}-${timestamp}.json`);
+      const requestPath = path.join(logDir, `request-${sanitizedTopic}-${timestamp}.json`);
+      const responsePath = path.join(logDir, `response-${sanitizedTopic}-${timestamp}.json`);
 
       writeFileSync(requestPath, JSON.stringify(requestBody, null, 2));
       console.log(`[ANTHROPIC] Request logged to ${requestPath}`);
@@ -466,8 +506,9 @@ async function purgeExpiredCustomerAvatars(projectId: string) {
  */
 export async function runCustomerAnalysis(args: {
   projectId: string;
-  productName?: string;
   productProblemSolved?: string;
+  solutionKeywords?: string[];
+  additionalProblems?: string[];
   jobId?: string;
   runId?: string;
 }) {
@@ -478,10 +519,10 @@ export async function runCustomerAnalysis(args: {
     throw new Error('Customer analysis requires runId in job payload.');
   }
 
-  const { productName, productProblemSolved } = await resolveProductContext(projectId, args.productName, args.productProblemSolved);
+  const { productProblemSolved } = await resolveProblemContext(projectId, args.productProblemSolved);
 
-  if (!productName || !productProblemSolved) {
-    throw new Error('Product name and solved problem are required. Provide them or run Phase 1A to capture offering details.');
+  if (!productProblemSolved) {
+    throw new Error('Problem to Research is required. Provide it or run customer collection first.');
   }
 
   const researchRowsRaw = await prisma.researchRow.findMany({
@@ -512,16 +553,18 @@ export async function runCustomerAnalysis(args: {
   }
 
   const grouped = {
-    ...groupResearchRows(researchRows, productName, productProblemSolved),
+    ...groupResearchRows(researchRows, productProblemSolved),
     uploadedData,
   };
 
-  const avatarPrompt = buildCustomerAvatarPrompt(grouped, researchRows.length);
-  const avatarText = await callAnthropic(
-    avatarPrompt.system,
-    avatarPrompt.prompt,
-    productName
+  const operatorContext = await resolveAnalysisOperatorContext(
+    projectId,
+    runId,
+    args.solutionKeywords,
+    args.additionalProblems
   );
+  const avatarPrompt = buildCustomerAvatarPrompt(grouped, researchRows.length, operatorContext);
+  const avatarText = await callAnthropic(avatarPrompt.system, avatarPrompt.prompt);
   const avatarJson = ensureObject<CustomerAvatarJSON>(parseJsonFromLLM(avatarText), 'Avatar');
 
   await archiveExistingAvatars(projectId);
@@ -545,7 +588,6 @@ export async function runCustomerAnalysis(args: {
     avatarId: avatarRecord.id,
     persona: avatarRecord.persona,
     researchRowCount: researchRows.length,
-    productName,
     productProblemSolved,
     runId,
     summary: {
@@ -557,12 +599,58 @@ export async function runCustomerAnalysis(args: {
 export async function purgeCustomerProfileArchives(projectId: string) {
   await purgeExpiredCustomerAvatars(projectId);
 }
-async function resolveProductContext(projectId: string, productName?: string, productProblemSolved?: string) {
-  let resolvedName = productName?.trim() ?? '';
+
+function normalizeStringArray(values: unknown): string[] {
+  if (!Array.isArray(values)) return [];
+  const normalized = values
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+  return Array.from(new Set(normalized));
+}
+
+async function resolveAnalysisOperatorContext(
+  projectId: string,
+  runId: string,
+  explicitSolutionKeywords?: string[],
+  explicitAdditionalProblems?: string[]
+): Promise<AnalysisOperatorContext> {
+  const normalizedSolutionKeywords = normalizeStringArray(explicitSolutionKeywords);
+  const normalizedAdditionalProblems = normalizeStringArray(explicitAdditionalProblems);
+
+  if (normalizedSolutionKeywords.length > 0 && normalizedAdditionalProblems.length > 0) {
+    return {
+      solutionKeywords: normalizedSolutionKeywords,
+      additionalProblems: normalizedAdditionalProblems,
+    };
+  }
+
+  const runResearchJob = await prisma.job.findFirst({
+    where: {
+      projectId,
+      type: JobType.CUSTOMER_RESEARCH,
+      runId,
+    },
+    orderBy: { createdAt: 'desc' },
+    select: { payload: true },
+  });
+
+  const payload = (runResearchJob?.payload ?? {}) as Record<string, unknown>;
+  const fallbackSolutionKeywords = normalizeStringArray(payload?.solutionKeywords);
+  const fallbackAdditionalProblems = normalizeStringArray(payload?.additionalProblems);
+
+  return {
+    solutionKeywords:
+      normalizedSolutionKeywords.length > 0 ? normalizedSolutionKeywords : fallbackSolutionKeywords,
+    additionalProblems:
+      normalizedAdditionalProblems.length > 0 ? normalizedAdditionalProblems : fallbackAdditionalProblems,
+  };
+}
+
+async function resolveProblemContext(projectId: string, productProblemSolved?: string) {
   let resolvedProblem = productProblemSolved?.trim() ?? '';
 
-  if (resolvedName && resolvedProblem) {
-    return { productName: resolvedName, productProblemSolved: resolvedProblem };
+  if (resolvedProblem) {
+    return { productProblemSolved: resolvedProblem };
   }
 
   const latestResearchJob = await prisma.job.findFirst({
@@ -571,8 +659,7 @@ async function resolveProductContext(projectId: string, productName?: string, pr
   });
 
   const payload = (latestResearchJob?.payload ?? {}) as Record<string, any>;
-  resolvedName = resolvedName || payload?.offeringName || payload?.productName || '';
   resolvedProblem = resolvedProblem || payload?.valueProp || payload?.productProblemSolved || '';
 
-  return { productName: resolvedName, productProblemSolved: resolvedProblem };
+  return { productProblemSolved: resolvedProblem };
 }

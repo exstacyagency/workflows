@@ -390,8 +390,11 @@ async function runJob(
         writeLog("Proceeding with research...");
 
         const {
-          productName,
           productProblemSolved,
+          mainProductAsin,
+          competitor1Asin,
+          competitor2Asin,
+          competitor3Asin,
           productAmazonAsin,
           competitor1AmazonAsin,
           competitor2AmazonAsin,
@@ -406,20 +409,37 @@ async function runJob(
           additionalProblems,
         } = payload;
 
-        const hasAmazonAsin = Boolean(productAmazonAsin && String(productAmazonAsin).trim());
+        const resolvedMainProductAsin = String(mainProductAsin ?? productAmazonAsin ?? "").trim();
+        const resolvedCompetitor1Asin = String(
+          competitor1Asin ?? competitor1AmazonAsin ?? ""
+        ).trim();
+        const resolvedCompetitor2Asin = String(
+          competitor2Asin ?? competitor2AmazonAsin ?? ""
+        ).trim();
+        const resolvedCompetitor3Asin = String(competitor3Asin ?? "").trim();
+        const hasAmazonAsin = Boolean(
+          resolvedMainProductAsin ||
+            resolvedCompetitor1Asin ||
+            resolvedCompetitor2Asin ||
+            resolvedCompetitor3Asin
+        );
         const hasRedditKeywords =
           Array.isArray(redditKeywords) && redditKeywords.some((k: any) => String(k).trim().length > 0);
+        const hasSearchIntent =
+          Array.isArray(searchIntent) && searchIntent.some((k: any) => String(k).trim().length > 0);
+        const hasSolutionKeywords =
+          Array.isArray(solutionKeywords) && solutionKeywords.some((k: any) => String(k).trim().length > 0);
+        const hasAdditionalProblems =
+          Array.isArray(additionalProblems) &&
+          additionalProblems.some((k: any) => String(k).trim().length > 0);
+        const hasProblem = Boolean(productProblemSolved && String(productProblemSolved).trim());
 
-        const hasNameAndProblem =
-          Boolean(productName && String(productName).trim()) &&
-          Boolean(productProblemSolved && String(productProblemSolved).trim());
-
-        if (!hasAmazonAsin && !hasRedditKeywords && !hasNameAndProblem) {
+        if (!hasAmazonAsin && !hasRedditKeywords && !hasSearchIntent && !hasSolutionKeywords && !hasAdditionalProblems && !hasProblem) {
           await rollbackJobQuotaIfNeeded({ jobId, projectId: job.projectId, payload });
           await markFailed({
             jobId,
             error:
-              "Invalid payload: provide productAmazonAsin, redditKeywords, or productName+productProblemSolved",
+              "Invalid payload: provide mainProductAsin/competitorAsin or Reddit problem/search inputs (productProblemSolved, searchIntent, solutionKeywords, additionalProblems, redditKeywords)",
           });
           return;
         }
@@ -427,11 +447,11 @@ async function runJob(
         const result = await runCustomerResearch({
           projectId: job.projectId,
           jobId,
-          productName,
           productProblemSolved,
-          productAmazonAsin,
-          competitor1AmazonAsin,
-          competitor2AmazonAsin,
+          mainProductAsin: resolvedMainProductAsin || undefined,
+          competitor1Asin: resolvedCompetitor1Asin || undefined,
+          competitor2Asin: resolvedCompetitor2Asin || undefined,
+          competitor3Asin: resolvedCompetitor3Asin || undefined,
           redditKeywords,
           searchIntent,
           solutionKeywords,

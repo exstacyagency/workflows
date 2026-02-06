@@ -8,7 +8,14 @@ import { updateJobStatus } from '../jobs/updateJobStatus';
 const queue = getQueue(QueueName.CUSTOMER_ANALYSIS);
 
 queue.process(async (job) => {
-  const { jobId, projectId, productName, productProblemSolved, runId } = job.data;
+  const {
+    jobId,
+    projectId,
+    productProblemSolved,
+    solutionKeywords,
+    additionalProblems,
+    runId,
+  } = job.data;
 
   try {
     await updateJobStatus(jobId, JobStatus.RUNNING);
@@ -18,8 +25,9 @@ queue.process(async (job) => {
     const result = await runCustomerAnalysis({
       projectId,
       jobId,
-      productName,
       productProblemSolved,
+      solutionKeywords,
+      additionalProblems,
       runId,
     });
 
@@ -30,9 +38,10 @@ queue.process(async (job) => {
     if (avatar?.primaryPain) {
       parts.push(`Avatar pain: ${avatar.primaryPain}`);
     }
+    const problemLabel = result.productProblemSolved || "selected problem";
     const summary = parts.length
-      ? `Customer analysis complete for ${result.productName}. ${parts.join(' | ')}`
-      : `Customer analysis complete for ${result.productName}.`;
+      ? `Customer analysis complete for ${problemLabel}. ${parts.join(' | ')}`
+      : `Customer analysis complete for ${problemLabel}.`;
 
     await updateJobStatus(jobId, JobStatus.COMPLETED);
     await prisma.job.update({

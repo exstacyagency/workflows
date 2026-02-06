@@ -5,6 +5,11 @@ export const ProjectJobSchema = z.object({
     .string()
     .min(1, 'projectId is required')
     .max(128, 'projectId too long'),
+  productId: z
+    .string()
+    .min(1, 'productId is required')
+    .max(128, 'productId too long')
+    .optional(),
 });
 
 export const StoryboardJobSchema = z.object({
