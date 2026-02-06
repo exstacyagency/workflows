@@ -51,6 +51,7 @@ model Project {
   auditLogs            AuditLog[]
   characters           Character[]
   customerAvatars      CustomerAvatar[]
+  amazonReviews        AmazonReview[]
   jobs                 Job[]
   productIntelligences ProductIntelligence[]
   user                 User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -138,6 +139,7 @@ model Job {
   runId            String?
   adAssets         AdAsset[]
   adPatternResults AdPatternResult[]
+  amazonReviews    AmazonReview[]
   auditLogs        AuditLog[]
   characters       Character[]
   project          Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -186,6 +188,28 @@ model ResearchRow {
 
   @@index([projectId])
   @@map("research_row")
+}
+
+model AmazonReview {
+  id          String      @id @default(uuid())
+  projectId   String
+  jobId       String?
+  reviewText  String
+  rating      Int?
+  verified    Boolean?
+  reviewDate  DateTime?
+  rawJson     Json?
+  productType ProductType
+  productAsin String
+  productName String?
+  createdAt   DateTime    @default(now())
+  job         Job?        @relation(fields: [jobId], references: [id])
+  project     Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([jobId])
+  @@index([productType])
+  @@map("amazon_review")
 }
 
 model Script {
@@ -354,6 +378,13 @@ enum JobType {
   AD_PERFORMANCE
   PRODUCT_DATA_COLLECTION
   PRODUCT_ANALYSIS
+}
+
+enum ProductType {
+  MAIN_PRODUCT
+  COMPETITOR_1
+  COMPETITOR_2
+  COMPETITOR_3
 }
 
 enum ResearchSource {

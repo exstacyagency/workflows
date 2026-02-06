@@ -16,8 +16,9 @@ import { reserveQuota, rollbackQuota, QuotaExceededError } from '../../../../lib
 import { randomUUID } from 'crypto';
 
 const CustomerAnalysisSchema = ProjectJobSchema.extend({
-  productName: z.string().optional(),
   productProblemSolved: z.string().optional(),
+  solutionKeywords: z.array(z.string()).optional(),
+  additionalProblems: z.array(z.string()).optional(),
   runId: z.string().optional(),
 });
 
@@ -42,7 +43,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { projectId: parsedProjectId, productName, productProblemSolved, runId } = parsed.data;
+    const { projectId: parsedProjectId, runId } = parsed.data;
     projectId = parsedProjectId;
     const auth = await requireProjectOwner(projectId);
     if (auth.error) {
