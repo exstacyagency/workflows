@@ -207,6 +207,7 @@ export default function AllResearchDataPage() {
                   <tr>
                     <th className="text-left p-3 font-medium w-20">Type</th>
                     <th className="text-left p-3 font-medium w-32">Source</th>
+                    <th className="text-left p-3 font-medium w-40">Subreddit</th>
                     <th className="text-left p-3 font-medium">Content</th>
                     <th className="text-left p-3 font-medium w-20">Score</th>
                     <th className="text-left p-3 font-medium w-32">Date</th>
@@ -225,6 +226,9 @@ export default function AllResearchDataPage() {
                         {row.source === "UPLOADED"
                           ? row.metadata?.source || "UPLOADED"
                           : row.source}
+                      </td>
+                      <td className="p-3 text-slate-400 text-xs">
+                        {(row.metadata as any)?.subreddit || "-"}
                       </td>
                       <td className="p-3">
                         {row.content.substring(0, 200)}

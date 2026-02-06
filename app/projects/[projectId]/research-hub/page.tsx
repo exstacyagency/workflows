@@ -55,11 +55,13 @@ interface ResearchTrack {
 interface CustomerResearchFormData {
   productName: string;
   productProblemSolved: string;
+  additionalProblems: string;
   productAmazonAsin: string;
   competitor1Asin?: string;
   competitor2Asin?: string;
   // Reddit search parameters
-  redditKeywords: string;
+  searchIntent: string;
+  solutionKeywords: string;
   maxPosts: number;
   maxCommentsPerPost: number;
   timeRange: 'hour' | 'day' | 'week' | 'month' | 'year' | 'all';
@@ -161,6 +163,21 @@ export default function ResearchHubPage() {
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]
     : null;
 
+  const selectedRunAnalysisJob = selectedRun
+    ? selectedRun.jobs
+        .filter((j) => j.type === "CUSTOMER_ANALYSIS")
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]
+    : null;
+
+  const analysisStatusJob = selectedRunId ? selectedRunAnalysisJob : null;
+
+  const canRunAnalysis = Boolean(selectedRunId) && jobs.some(
+    (j) =>
+      j.runId === selectedRunId &&
+      j.type === "CUSTOMER_RESEARCH" &&
+      j.status === "COMPLETED"
+  );
+
   const getStatusIcon = (status: JobStatus) => {
     const icons: Record<JobStatus, string> = {
       COMPLETED: "✓",
@@ -190,9 +207,10 @@ export default function ResearchHubPage() {
       hour12: true,
     });
 
-  const loadJobs = useCallback(async (forceProduct?: string) => {
+  const loadJobs = useCallback(async (forceProduct?: string, options?: { silent?: boolean }) => {
+    const silent = options?.silent === true;
     console.log('[loadJobs] Starting job fetch...', { projectId, forceProduct, timestamp: new Date().toISOString() });
-    setLoading(true);
+    if (!silent) setLoading(true);
     try {
       const response = await fetch(`/api/projects/${projectId}/jobs`);
       const data = await response.json();
@@ -239,7 +257,7 @@ export default function ResearchHubPage() {
     } catch (error) {
       console.error('[loadJobs] Error:', error);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [projectId]);
 
@@ -250,22 +268,22 @@ export default function ResearchHubPage() {
     }
   }, [loadJobs, projectId]);
 
-  const hasRunningJob = useMemo(
-    () => jobs.some((j) => j.status === "RUNNING"),
+  const runningJob = useMemo(
+    () => jobs.find((j) => j.status === "RUNNING") ?? null,
     [jobs]
   );
+  const hasRunningJob = Boolean(runningJob);
 
-  // Auto-refresh jobs every 5 seconds only while jobs are running
+  // Auto-refresh jobs every 3 seconds for live status updates
   useEffect(() => {
     if (!projectId || pauseAutoRefresh) return;
-    if (!hasRunningJob) return;
 
     const interval = setInterval(() => {
-      loadJobs();
-    }, 5000);
+      loadJobs(undefined, { silent: true });
+    }, 3000);
 
     return () => clearInterval(interval);
-  }, [hasRunningJob, loadJobs, pauseAutoRefresh, projectId]);
+  }, [loadJobs, pauseAutoRefresh, projectId]);
 
   // Detect job completions and show celebration
   useEffect(() => {
@@ -493,6 +511,7 @@ export default function ResearchHubPage() {
 
   // Check if step can run
   const canRun = (step: ResearchStep, track: ResearchTrack): boolean => {
+    if (step.id === "customer-analysis") return true;
     if (step.status === "RUNNING" || step.status === "PENDING") return false;
 
     if (!step.prerequisite) return true;
@@ -548,10 +567,19 @@ export default function ResearchHubPage() {
 
       // Add step-specific data
       if (step.id === "customer-analysis") {
-        // Pass runId if available
-        if (currentRunId) {
-          payload.runId = currentRunId;
-        }
+        const currentRunResearchJob = jobs.find(
+          (j) =>
+            j.runId === currentRunId &&
+            j.type === "CUSTOMER_RESEARCH" &&
+            j.status === "COMPLETED"
+        );
+
+        payload = {
+          projectId,
+          runId: currentRunId,
+          productName: currentRunResearchJob?.payload?.productName,
+          productProblemSolved: currentRunResearchJob?.payload?.productProblemSolved,
+        };
       }
 
       const response = await fetch(step.endpoint, {
@@ -569,6 +597,7 @@ export default function ResearchHubPage() {
       // Store runId from customer research
       if (step.id === "customer-research" && data.runId) {
         setCurrentRunId(data.runId);
+        setSelectedRunId(data.runId);
       }
 
       // Reload jobs to see the new job
@@ -606,15 +635,21 @@ export default function ResearchHubPage() {
   // Handle modal submissions
   const handleCustomerResearchSubmit = async (formData: CustomerResearchFormData) => {
     if (!pendingStep) return;
-    
+    const normalizedProblem = formData.productProblemSolved.trim();
+
     const payload = {
-      productName: formData.productName,
-      productProblemSolved: formData.productProblemSolved,
+      ...(normalizedProblem && { productName: formData.productName }),
+      ...(normalizedProblem && { productProblemSolved: normalizedProblem }),
+      additionalProblems: formData.additionalProblems
+        .split(/[\n,]/)
+        .map((problem) => problem.trim())
+        .filter(Boolean),
       productAmazonAsin: formData.productAmazonAsin,
       ...(formData.competitor1Asin && { competitor1AmazonAsin: formData.competitor1Asin }),
       ...(formData.competitor2Asin && { competitor2AmazonAsin: formData.competitor2Asin }),
       // Reddit search parameters
-      redditKeywords: formData.redditKeywords.split(',').map(k => k.trim()).filter(Boolean),
+      searchIntent: formData.searchIntent.split(',').map(k => k.trim()).filter(Boolean),
+      solutionKeywords: formData.solutionKeywords.split(',').map(k => k.trim()).filter(Boolean),
       maxPosts: formData.maxPosts,
       maxCommentsPerPost: formData.maxCommentsPerPost,
       timeRange: formData.timeRange,
@@ -830,6 +865,22 @@ export default function ResearchHubPage() {
         <div className="flex items-center justify-between">
           <div className="flex-1">
             <p className="text-xs text-slate-500 mb-2">Current Research Run</p>
+            {hasRunningJob && (
+              <div className="mb-4 p-4 bg-sky-500/10 border border-sky-500/50 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <svg className="animate-spin h-5 w-5 text-sky-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  <div>
+                    <p className="text-sm font-medium text-sky-300">Research in progress...</p>
+                    <p className="text-xs text-slate-400">
+                      {runningJob ? getJobTypeLabel(runningJob.type) : "Processing"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
             {products.length > 0 ? (
               <div className="flex items-center gap-3 mb-3">
                 <label className="text-sm text-slate-400">Product:</label>
@@ -953,16 +1004,15 @@ export default function ResearchHubPage() {
                 <div className="space-y-4">
                   {track.steps.map((step, idx) => {
                     const locked = !canRun(step, track);
-                    const hasCollectedDataForRun = Boolean(currentRunId) && jobs.some(
+                    const analysisRunning = Boolean(selectedRunId) && jobs.some(
                       (job) =>
-                        job.type === "CUSTOMER_RESEARCH" &&
-                        job.status === "COMPLETED" &&
-                        job.runId === currentRunId
-                    );
-                    const analysisRunning = jobs.some(
-                      (job) => job.type === "CUSTOMER_ANALYSIS" && job.status === "RUNNING"
+                        job.type === "CUSTOMER_ANALYSIS" &&
+                        job.status === "RUNNING" &&
+                        job.runId === selectedRunId
                     );
                     const isRunning = runningStep === step.id;
+                    const isCustomerCollectionStep = step.label === "Customer Collection";
+                    const isCollecting = isCustomerCollectionStep && (isRunning || hasRunningJob);
                     const customerResearchJob = step.jobType === "CUSTOMER_RESEARCH"
                       ? latestCompletedCustomerResearchJob
                       : undefined;
@@ -977,19 +1027,13 @@ export default function ResearchHubPage() {
                             {step.label}
                           </h3>
                           <p className="text-xs text-slate-400 mb-2">{step.description}</p>
-                          {step.status !== "NOT_STARTED" && <StatusBadge status={step.status} />}
-                          {step.jobType === "CUSTOMER_ANALYSIS" && analysisRunning && (
+                          {step.label === "Customer Analysis"
+                            ? selectedRunId && analysisStatusJob && (
+                                <StatusBadge status={analysisStatusJob.status} />
+                              )
+                            : step.status !== "NOT_STARTED" && <StatusBadge status={step.status} />}
+                          {step.label === "Customer Analysis" && analysisRunning && (
                             <div className="mt-2 text-xs text-slate-400">Analysis in progress...</div>
-                          )}
-
-                          {/* Success Celebration */}
-                          {step.status === "COMPLETED" && step.lastJob && recentlyCompleted.has(step.lastJob.id) && (
-                            <div className="mt-2 flex items-center gap-2 text-emerald-400 animate-bounce">
-                              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                              </svg>
-                              <span className="text-sm font-medium">Just completed!</span>
-                            </div>
                           )}
 
                           {/* Error Display */}
@@ -1047,24 +1091,27 @@ export default function ResearchHubPage() {
                               </button>
                             </div>
                             )
-                          ) : step.jobType === "CUSTOMER_ANALYSIS" ? (
+                          ) : step.label === "Customer Analysis" ? (
                             <div className="flex flex-col gap-1">
-                              {step.status === "COMPLETED" && step.lastJob ? (
+                              {selectedRunId && analysisStatusJob?.status === "COMPLETED" && (
                                 <Link
-                                  href={`/projects/${projectId}/research-hub/analysis/data/${step.lastJob.id}`}
+                                  href={`/projects/${projectId}/research-hub/analysis/data/${analysisStatusJob.id}`}
                                   className="inline-block px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-xs"
                                 >
-                                  View Raw Data
+                                  View Results
                                 </Link>
-                              ) : (
-                                <button
-                                  disabled
-                                  className="px-4 py-2 bg-gray-600 text-gray-400 rounded opacity-50 cursor-not-allowed text-xs"
-                                  title="Customer Analysis must be completed"
-                                >
-                                  View Raw Data
-                                </button>
                               )}
+                              <button
+                                onClick={() => {
+                                  const url = currentRunId
+                                    ? `/projects/${projectId}/research-hub/jobs/customer-analysis?runId=${currentRunId}`
+                                    : `/projects/${projectId}/research-hub/jobs/customer-analysis`;
+                                  router.push(url);
+                                }}
+                                className="text-slate-400 hover:text-slate-300 text-xs underline"
+                              >
+                              {currentRunId ? "View Run History" : "View All History"}
+                              </button>
                             </div>
                           ) : (
                           step.status === "COMPLETED" && step.lastJob && (
@@ -1082,17 +1129,44 @@ export default function ResearchHubPage() {
                               </button>
                             </div>
                           ))}
-                          {step.status === "COMPLETED" ? (
+                          {step.label === "Customer Analysis" ? (
                             <button
                               onClick={() => runStep(step, track.key)}
-                              disabled={isRunning}
-                              className="px-4 py-2 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm flex items-center gap-2"
+                              disabled={!canRunAnalysis || isRunning}
+                              className={`px-4 py-2 rounded text-sm font-medium flex items-center gap-2 ${
+                                !canRunAnalysis || isRunning
+                                  ? "bg-slate-800 text-slate-600 cursor-not-allowed"
+                                  : `bg-${track.color}-500 hover:bg-${track.color}-400 text-white`
+                              }`}
+                              title={!canRunAnalysis ? "Complete Customer Collection first" : undefined}
                             >
-                              {step.jobType === "CUSTOMER_RESEARCH"
-                                ? "Collect Data"
-                                : step.jobType === "CUSTOMER_ANALYSIS"
-                                  ? "Re-run Analysis"
-                                  : "Re-run"}
+                              {isRunning ? "Starting..." : "Run"}
+                            </button>
+                          ) : step.status === "COMPLETED" ? (
+                            <button
+                              onClick={() => runStep(step, track.key)}
+                              disabled={isRunning || isCollecting}
+                              className={`px-4 py-2 rounded text-sm font-medium flex items-center gap-2 ${
+                                isRunning || isCollecting
+                                  ? "bg-slate-700 text-slate-400 cursor-not-allowed"
+                                  : "bg-slate-800 hover:bg-slate-700 text-slate-300"
+                              }`}
+                            >
+                              {isCollecting ? (
+                                <span className="flex items-center gap-2">
+                                  <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                  </svg>
+                                  Running...
+                                </span>
+                              ) : step.label === "Customer Analysis" ? (
+                                "Re-run Analysis"
+                              ) : step.label === "Customer Collection" ? (
+                                "Collect Data"
+                              ) : (
+                                "Re-run"
+                              )}
                             </button>
                           ) : (
                             <>
@@ -1101,48 +1175,50 @@ export default function ResearchHubPage() {
                                 disabled={
                                   locked ||
                                   isRunning ||
-                                  (step.jobType === "CUSTOMER_ANALYSIS" && !hasCollectedDataForRun) ||
-                                  (step.jobType === "CUSTOMER_ANALYSIS" && analysisRunning)
+                                  (isCustomerCollectionStep && hasRunningJob) ||
+                                  (step.label === "Customer Analysis" && !canRunAnalysis) ||
+                                  (step.label === "Customer Analysis" && analysisRunning)
                                 }
                                 title={
-                                  step.jobType === "CUSTOMER_ANALYSIS" && !hasCollectedDataForRun
+                                  isCustomerCollectionStep && hasRunningJob
+                                    ? "Another research job is currently running"
+                                  : step.label === "Customer Analysis" && !canRunAnalysis
                                     ? "Collect data first"
-                                    : step.jobType === "CUSTOMER_ANALYSIS" && analysisRunning
+                                  : step.label === "Customer Analysis" && analysisRunning
                                       ? "Analysis in progress..."
                                       : undefined
                                 }
                                 className={`px-4 py-2 rounded text-sm font-medium flex items-center gap-2 ${
                                   locked ||
                                   isRunning ||
-                                  (step.jobType === "CUSTOMER_ANALYSIS" && !hasCollectedDataForRun) ||
-                                  (step.jobType === "CUSTOMER_ANALYSIS" && analysisRunning)
-                                    ? "bg-slate-800 text-slate-600 cursor-not-allowed"
+                                  (isCustomerCollectionStep && hasRunningJob) ||
+                                  (step.label === "Customer Analysis" && !canRunAnalysis) ||
+                                  (step.label === "Customer Analysis" && analysisRunning)
+                                    ? "bg-slate-700 text-slate-400 cursor-not-allowed"
                                     : `bg-${track.color}-500 hover:bg-${track.color}-400 text-white`
                                 }`}
                               >
-                                {isRunning
+                                {isCollecting ? (
+                                  <span className="flex items-center gap-2">
+                                    <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                    </svg>
+                                    Running...
+                                  </span>
+                                ) : isRunning
                                   ? "Starting..."
                                   : locked
                                     ? "🔒 Locked"
-                                    : step.jobType === "CUSTOMER_RESEARCH"
-                                      ? "Collect Data"
-                                      : step.jobType === "CUSTOMER_ANALYSIS"
-                                        ? analysisRunning
-                                          ? "Running..."
-                                          : "Run Analysis"
-                                        : "Run"}
+                                  : step.label === "Customer Collection"
+                                    ? "Collect Data"
+                                    : step.label === "Customer Analysis"
+                                      ? analysisRunning
+                                        ? "Running..."
+                                        : "Run Analysis"
+                                      : "Run"}
                               </button>
                             </>
-                          )}
-                          {step.jobType === "CUSTOMER_ANALYSIS" && (
-                            <button
-                              onClick={() =>
-                                router.push(`/projects/${projectId}/research-hub/jobs/customer-analysis`)
-                              }
-                              className="px-4 py-2 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm"
-                            >
-                              View Run History
-                            </button>
                           )}
                           {step.status === "RUNNING" && step.lastJob && (
                             <button
@@ -1288,12 +1364,14 @@ function CustomerResearchModal({
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<"scrape" | "upload">(initialTab);
   const [formData, setFormData] = useState<CustomerResearchFormData>({
-    productName: "",
+    productName: "Research",
     productProblemSolved: "",
+    additionalProblems: "",
     productAmazonAsin: "",
     competitor1Asin: "",
     competitor2Asin: "",
-    redditKeywords: "",
+    searchIntent: "",
+    solutionKeywords: "",
     maxPosts: 50,
     maxCommentsPerPost: 50,
     timeRange: 'month',
@@ -1314,16 +1392,10 @@ function CustomerResearchModal({
       formData.productAmazonAsin?.trim() ||
       formData.competitor1Asin?.trim() ||
       formData.competitor2Asin?.trim();
-    const hasRedditData =
-      formData.productName?.trim() && formData.productProblemSolved?.trim();
+    const hasRedditData = formData.productProblemSolved?.trim();
 
     if (!hasAmazonAsin && !hasRedditData) {
       alert("Provide at least one Amazon ASIN (product or competitor) or valid Reddit inputs");
-      return;
-    }
-
-    if (hasRedditData && (!formData.productName || !formData.productProblemSolved)) {
-      alert("Product Name and Problem are required for Reddit scraping");
       return;
     }
     onSubmit(formData);
@@ -1409,20 +1481,7 @@ function CustomerResearchModal({
             <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-slate-300 mb-2">
-                Product Name <span className="text-slate-500">(required for Reddit)</span>
-              </label>
-              <input
-                type="text"
-                value={formData.productName}
-                onChange={(e) => setFormData({ ...formData, productName: e.target.value })}
-                className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                placeholder="e.g., Wireless Headphones"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                Product Problem Solved <span className="text-slate-500">(required for Reddit)</span>
+                Problem to Research <span className="text-slate-500">(required)</span>
               </label>
               <textarea
                 value={formData.productProblemSolved}
@@ -1431,6 +1490,39 @@ function CustomerResearchModal({
                 placeholder="e.g., Provides noise cancellation for focus"
                 rows={3}
               />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-2">
+                Additional Problems <span className="text-slate-500">(optional)</span>
+              </label>
+              <textarea
+                value={formData.additionalProblems}
+                onChange={(e) => setFormData({ ...formData, additionalProblems: e.target.value })}
+                className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                placeholder={"e.g.,\nbreakouts before period\nsensitive skin irritation"}
+                rows={3}
+              />
+              <p className="text-xs text-slate-500 mt-1">One per line or comma-separated</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-2">
+                Solution Keywords (optional)
+                <span className="ml-2 text-xs text-slate-500">
+                  Specific solutions, products, or alternatives to search for
+                </span>
+              </label>
+              <input
+                type="text"
+                value={formData.solutionKeywords}
+                onChange={(e) => setFormData({ ...formData, solutionKeywords: e.target.value })}
+                placeholder="e.g., tretinoin, accutane, birth control"
+                className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+              <p className="mt-1 text-xs text-slate-500">
+                Comma-separated. Search for discussions about specific solutions/alternatives
+              </p>
             </div>
 
             <div>
@@ -1473,25 +1565,30 @@ function CustomerResearchModal({
             </div>
 
             {/* Reddit Search Settings */}
-            <div className="border-t border-slate-700 pt-4 mt-4">
-              <h3 className="text-sm font-semibold text-slate-300 mb-3">Reddit Search Settings</h3>
-              <p className="text-xs text-slate-400 mb-4">
-                Product name and problem will automatically be searched on Reddit. Add extra keywords below if needed.
+            <div className="border-t border-slate-700 pt-6 mt-6">
+              <h3 className="text-lg font-semibold text-slate-200 mb-4">Reddit Search Settings</h3>
+              <p className="text-sm text-slate-400 mb-6">
+                Reddit search is problem-focused. Use optional fields below to control intent, keywords, and alternatives.
               </p>
               
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-300 mb-2">
-                    Additional Reddit Keywords <span className="text-slate-500">(optional)</span>
+                    Search Intent (optional)
+                    <span className="ml-2 text-xs text-slate-500">
+                      What type of discussions to find
+                    </span>
                   </label>
                   <input
                     type="text"
-                    value={formData.redditKeywords}
-                    onChange={(e) => setFormData({ ...formData, redditKeywords: e.target.value })}
+                    value={formData.searchIntent}
+                    onChange={(e) => setFormData({ ...formData, searchIntent: e.target.value })}
+                    placeholder="e.g., routine, help, what worked, recommend, tried everything"
                     className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    placeholder="noise cancelling, ANC, battery life"
                   />
-                  <p className="text-xs text-slate-500 mt-1">Optional - Add extra keywords beyond product name and problem</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Comma-separated phrases. Examples: &quot;routine&quot;, &quot;help&quot;, &quot;what worked&quot;, &quot;tried everything&quot;, &quot;side effects&quot;
+                  </p>
                 </div>
 
                 <div>
