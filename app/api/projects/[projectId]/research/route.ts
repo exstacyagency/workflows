@@ -4,6 +4,9 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/auth/requireSession';
 import { requireProjectOwner404 } from '@/lib/auth/requireProjectOwner404';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function GET(req: NextRequest, { params }: { params: { projectId: string } }) {
   const session = await requireSession(req);
   if (!session) {
@@ -68,5 +71,23 @@ export async function GET(req: NextRequest, { params }: { params: { projectId: s
     prisma.researchRow.count({ where })
   ]);
 
-  return NextResponse.json({ rows, total });
+  const normalizedRows = rows.map((row) => {
+    const metadata = (row.metadata as any) ?? {};
+    return {
+      ...row,
+      productType: metadata.productType ?? metadata.product_type ?? null,
+      productAsin: metadata.productAsin ?? metadata.asin ?? null,
+      rating: metadata.rating ?? null,
+      productName: metadata.productName ?? metadata.product_name ?? null,
+    };
+  });
+
+  return NextResponse.json(
+    { rows: normalizedRows, total },
+    {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+      },
+    }
+  );
 }

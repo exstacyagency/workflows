@@ -4,7 +4,7 @@ import { cfg } from "@/lib/config";
 import { writeFileSync, mkdirSync, existsSync } from "node:fs";
 import path from "node:path";
 import prisma from '@/lib/prisma';
-import { JobType, ResearchSource } from '@prisma/client';
+import { JobType } from '@prisma/client';
 import { env, requireEnv } from './configGuard.ts';
 
 type CustomerAvatarJSON = {
@@ -49,6 +49,28 @@ type CustomerAvatarJSON = {
   };
 };
 
+type CustomerAnalysisJSON = CustomerAvatarJSON & {
+  competitive_analysis?: {
+    main_product_pain_points?: Array<{
+      pain: string;
+      supporting_quotes: string[];
+    }>;
+    competitor_strengths?: Array<{
+      competitor: "COMPETITOR_1" | "COMPETITOR_2" | "COMPETITOR_3";
+      strengths: string[];
+      supporting_quotes: string[];
+    }>;
+    competitive_gaps?: Array<{
+      gap: string;
+      supporting_quotes: string[];
+    }>;
+    market_opportunities?: Array<{
+      opportunity: string;
+      supporting_quotes: string[];
+    }>;
+  };
+};
+
 const CUSTOMER_ANALYSIS_MIN_ROWS = Number(cfg.raw("CUSTOMER_ANALYSIS_MIN_ROWS") ?? 15);
 const CUSTOMER_ANALYSIS_LLM_RETRIES = Math.max(
   1,
@@ -79,7 +101,7 @@ type AnalysisOperatorContext = {
 };
 
 type ResearchRowForGrouping = {
-  source: ResearchSource;
+  source: string;
   content: string;
   rating?: number | null;
   metadata?: any;
@@ -113,6 +135,18 @@ function groupResearchRows(
         break;
       case 'UPLOADED':
         uploadedData.push(row.content);
+        break;
+      case 'AMAZON_MAIN_PRODUCT':
+        mainProductReviews.push(row.content || "");
+        break;
+      case 'AMAZON_COMPETITOR_1':
+        competitor1Reviews.push(row.content || "");
+        break;
+      case 'AMAZON_COMPETITOR_2':
+        competitor2Reviews.push(row.content || "");
+        break;
+      case 'AMAZON_COMPETITOR_3':
+        competitor3Reviews.push(row.content || "");
         break;
       case 'AMAZON': {
         const meta = (row.metadata ?? {}) as any;
@@ -229,27 +263,27 @@ ${redditProblem.join('\n---\n')}
 ADDITIONAL PROBLEMS - REDDIT (${additionalProblems.length}):
 ${additionalProblemLines}
 
-MAIN PRODUCT REVIEWS (productType = MAIN_PRODUCT) (${mainProductReviews.length} reviews):
-${mainProductReviews.join('\n---\n')}
+  MAIN PRODUCT REVIEWS (source = AMAZON_MAIN_PRODUCT) (${mainProductReviews.length} reviews):
+  ${mainProductReviews.join('\n---\n')}
 
 ALTERNATIVES - REDDIT (${redditProduct.length} discussions):
 ${redditProduct.join('\n---\n')}
 
-COMPETITOR 1 REVIEWS (productType = COMPETITOR_1) (${competitor1Reviews.length} reviews):
-${competitor1Reviews.join('\n---\n')}
+  COMPETITOR 1 REVIEWS (source = AMAZON_COMPETITOR_1) (${competitor1Reviews.length} reviews):
+  ${competitor1Reviews.join('\n---\n')}
 
-COMPETITOR 2 REVIEWS (productType = COMPETITOR_2) (${competitor2Reviews.length} reviews):
-${competitor2Reviews.join('\n---\n')}
+  COMPETITOR 2 REVIEWS (source = AMAZON_COMPETITOR_2) (${competitor2Reviews.length} reviews):
+  ${competitor2Reviews.join('\n---\n')}
 
-COMPETITOR 3 REVIEWS (productType = COMPETITOR_3) (${competitor3Reviews.length} reviews):
-${competitor3Reviews.join('\n---\n')}
+  COMPETITOR 3 REVIEWS (source = AMAZON_COMPETITOR_3) (${competitor3Reviews.length} reviews):
+  ${competitor3Reviews.join('\n---\n')}
 
 UPLOADED - PROPRIETARY (${uploadedData.length} entries):
 ${uploadedData.join('\n---\n')}
 
 Create ONE customer avatar representing the most common buyer pattern.
 
-ALSO perform competitive analysis using the productType segments above:
+  ALSO perform competitive analysis using the source segments above:
 - Main product pain points and complaints
 - What customers love about each competitor
 - Competitive gaps: what is missing from the main product that competitors have
@@ -301,6 +335,33 @@ Return JSON:
         "angle": "",
         "based_on_pattern": "explain which quotes/patterns this angle exploits",
         "evidence_quotes": ["direct quotes that support this angle"]
+      }
+    ]
+  },
+  "competitive_analysis": {
+    "main_product_pain_points": [
+      {
+        "pain": "",
+        "supporting_quotes": ["direct quotes from source=AMAZON_MAIN_PRODUCT"]
+      }
+    ],
+    "competitor_strengths": [
+      {
+        "competitor": "COMPETITOR_1|COMPETITOR_2|COMPETITOR_3",
+        "strengths": ["what users praise in competitor reviews"],
+        "supporting_quotes": ["direct quotes from competitor sources"]
+      }
+    ],
+    "competitive_gaps": [
+      {
+        "gap": "what competitor users get that main-product users say is missing",
+        "supporting_quotes": ["direct quote evidence"]
+      }
+    ],
+    "market_opportunities": [
+      {
+        "opportunity": "problem space all products fail to solve",
+        "supporting_quotes": ["direct quote evidence"]
       }
     ]
   }
@@ -525,14 +586,68 @@ export async function runCustomerAnalysis(args: {
     throw new Error('Problem to Research is required. Provide it or run customer collection first.');
   }
 
-  const researchRowsRaw = await prisma.researchRow.findMany({
-    where: { projectId, job: { runId } },
-    select: {
-      source: true,
-      content: true,
-      metadata: true,
-    },
-  });
+  const baseWhere = { projectId, job: { runId } };
+  const [mainProductReviewsRaw, competitorReviewsRaw, legacyAmazonReviewsRaw, contextRowsRaw] = await Promise.all([
+    prisma.researchRow.findMany({
+      where: {
+        ...baseWhere,
+        source: "AMAZON_MAIN_PRODUCT" as any,
+      },
+      select: {
+        source: true,
+        content: true,
+        metadata: true,
+      },
+    }),
+    prisma.researchRow.findMany({
+      where: {
+        ...baseWhere,
+        source: {
+          in: [
+            "AMAZON_COMPETITOR_1",
+            "AMAZON_COMPETITOR_2",
+            "AMAZON_COMPETITOR_3",
+          ] as any,
+        },
+      },
+      select: {
+        source: true,
+        content: true,
+        metadata: true,
+      },
+    }),
+    prisma.researchRow.findMany({
+      where: {
+        ...baseWhere,
+        source: "AMAZON" as any,
+      },
+      select: {
+        source: true,
+        content: true,
+        metadata: true,
+      },
+    }),
+    prisma.researchRow.findMany({
+      where: {
+        ...baseWhere,
+        source: {
+          in: ["REDDIT_PRODUCT", "REDDIT_PROBLEM", "UPLOADED"],
+        },
+      },
+      select: {
+        source: true,
+        content: true,
+        metadata: true,
+      },
+    }),
+  ]);
+
+  const researchRowsRaw = [
+    ...mainProductReviewsRaw,
+    ...competitorReviewsRaw,
+    ...legacyAmazonReviewsRaw,
+    ...contextRowsRaw,
+  ];
 
   const uploadedData = researchRowsRaw
     .filter((row) => row.source === 'UPLOADED')
@@ -565,7 +680,7 @@ export async function runCustomerAnalysis(args: {
   );
   const avatarPrompt = buildCustomerAvatarPrompt(grouped, researchRows.length, operatorContext);
   const avatarText = await callAnthropic(avatarPrompt.system, avatarPrompt.prompt);
-  const avatarJson = ensureObject<CustomerAvatarJSON>(parseJsonFromLLM(avatarText), 'Avatar');
+  const avatarJson = ensureObject<CustomerAnalysisJSON>(parseJsonFromLLM(avatarText), 'Avatar');
 
   await archiveExistingAvatars(projectId);
   const avatarRecord = await prisma.customerAvatar.create({
@@ -574,6 +689,16 @@ export async function runCustomerAnalysis(args: {
       persona: avatarJson as any,
     },
   });
+  try {
+    const competitiveInsightsJson = JSON.stringify(avatarJson.competitive_analysis ?? null);
+    await prisma.$executeRaw`
+      UPDATE "customer_avatar"
+      SET "competitiveInsights" = ${competitiveInsightsJson}::jsonb
+      WHERE "id" = ${avatarRecord.id}
+    `;
+  } catch (error) {
+    console.warn('[Customer Analysis] Failed to persist competitiveInsights column:', error);
+  }
 
   await purgeExpiredCustomerAvatars(projectId);
 
