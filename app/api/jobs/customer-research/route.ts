@@ -212,6 +212,7 @@ export async function POST(req: NextRequest) {
             projectId,
             jobId,
             source: ResearchSource.REDDIT_PRODUCT,
+            type: "post",
             content: "Deterministic placeholder research content.",
             metadata: {
               indexLabel: "golden",

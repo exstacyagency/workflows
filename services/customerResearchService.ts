@@ -36,12 +36,17 @@ type RedditPost = {
   author?: string;
   subreddit?: string;
   score?: number;
+  numComments?: number;
   url?: string;
   permalink?: string;
   title?: string;
   postId?: string;
   parentId?: string | null;
   depth?: number;
+  distinguished?: string | null;
+  stickied?: boolean;
+  edited?: boolean | number;
+  createdUtc?: number;
   createdAt?: Date;
   query_metadata?: RedditQueryMetadata;
 };
@@ -92,6 +97,7 @@ type RedditScraperRequest = {
 };
 
 type RedditScraperPost = {
+  kind?: string;
   id: string;
   title?: string;
   author?: string;
@@ -105,10 +111,14 @@ type RedditScraperPost = {
   permalink?: string;
   is_video?: boolean;
   thumbnail?: string;
+  distinguished?: string | null;
+  stickied?: boolean;
+  edited?: boolean | number;
   query_metadata?: RedditQueryMetadata;
 };
 
 type RedditScraperComment = {
+  kind?: string;
   id: string;
   post_id: string;
   author?: string;
@@ -116,6 +126,12 @@ type RedditScraperComment = {
   upvotes?: number;
   depth?: number;
   parent_id?: string | null;
+  permalink?: string;
+  url?: string;
+  distinguished?: string | null;
+  stickied?: boolean;
+  edited?: boolean | number;
+  subreddit?: string;
   created_utc?: number;
   query_metadata?: RedditQueryMetadata;
 };
@@ -124,9 +140,23 @@ type RedditQueryType = "solution" | "intent" | "keyword" | "problem";
 
 type RedditQueryMetadata = {
   problem: string;
+  problem_keyword: string;
+  solution_keyword: string | null;
   query_type: RedditQueryType;
   query_used: string;
   subreddit: string;
+};
+
+type RedditScraperConfig = {
+  query: string;
+  subreddit?: string;
+  solutionKeyword: string | null;
+  problemKeyword: string;
+  maxPosts: number;
+  scrapeComments: boolean;
+  maxCommentsPerPost: number;
+  timeRange: "week" | "month" | "year" | "all";
+  queryType: RedditQueryType;
 };
 
 type RedditScraperResponse = {
@@ -469,6 +499,39 @@ function buildProblemQuery(
   return allKeywords.join(" ");
 }
 
+function toBigIntTimestamp(value: unknown): bigint | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  return BigInt(Math.trunc(value));
+}
+
+function buildRedditPostContent(item: { title?: string; selftext?: string; body?: string }): string {
+  const title = String(item.title || "").trim();
+  const selftext = String(item.selftext || "").trim();
+  const body = String(item.body || "").trim();
+
+  if (title && selftext && selftext !== "[removed]" && selftext !== "[deleted]") {
+    return `${title}\n\n${selftext}`.trim();
+  }
+
+  if (title) return title;
+  return body;
+}
+
+function classifyPostType(item: {
+  title?: string;
+  selftext?: string;
+  body?: string;
+  parentId?: string | null;
+}): string {
+  const text = `${item.title || ""} ${item.selftext || item.body || ""}`.toLowerCase();
+
+  if (text.includes("?")) return "question";
+  if (/(update|results|cleared|worked|before.*after)/i.test(text)) return "results_update";
+  if (item.parentId && item.parentId.startsWith("t1_")) return "reply";
+
+  return "statement";
+}
+
 function filterQualityPosts(
   posts: RedditScraperPost[],
   maxPosts: number,
@@ -653,6 +716,58 @@ function dedupeCommentsById(comments: RedditScraperComment[]): RedditScraperComm
   return deduped;
 }
 
+async function scrapeRedditWithMetadata(
+  config: RedditScraperConfig,
+  scraperUrl: string
+): Promise<{ posts: RedditScraperPost[]; comments: RedditScraperComment[] }> {
+  const controller = new AbortController();
+  const timeoutMs = 300000;
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const requestBody: RedditScraperRequest = {
+      query: config.query,
+      search_type: config.subreddit ? "subreddit" : "sitewide",
+      subreddit: config.subreddit || undefined,
+      max_posts: config.maxPosts,
+      time_range: config.timeRange,
+      scrape_comments: config.scrapeComments,
+      max_comments_per_post: config.maxCommentsPerPost,
+    };
+
+    const response = await nodeFetch(`${scraperUrl}/scrape`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(requestBody),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => "no error body");
+      throw new Error(`Reddit scrape failed (${response.status}): ${errorText}`);
+    }
+
+    const result = (await response.json()) as RedditScraperResponse;
+    const posts = Array.isArray(result.posts) ? result.posts : [];
+    const comments = Array.isArray(result.comments) ? result.comments : [];
+    const queryMetadata: RedditQueryMetadata = {
+      problem: config.problemKeyword,
+      problem_keyword: config.problemKeyword,
+      solution_keyword: config.solutionKeyword,
+      query_type: config.queryType,
+      query_used: config.query,
+      subreddit: config.subreddit || "sitewide",
+    };
+
+    return {
+      posts: posts.map((post) => ({ ...post, query_metadata: queryMetadata })),
+      comments: comments.map((comment) => ({ ...comment, query_metadata: queryMetadata })),
+    };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 async function fetchLocalReddit(
   productProblemSolved: string,
   redditKeywords: string[] = [],
@@ -736,84 +851,65 @@ async function fetchLocalReddit(
 
       for (const subreddit of discoveredSubs) {
         console.log(`[Reddit] Searching r/${subreddit || "all"} for problem discussions...`);
+        const runQuery = async (
+          query: string,
+          queryType: RedditQueryType,
+          solutionKeyword: string | null
+        ) => {
+          try {
+            const result = await scrapeRedditWithMetadata(
+              {
+                query,
+                subreddit: subreddit || undefined,
+                solutionKeyword,
+                problemKeyword: problem,
+                maxPosts: postsPerSubreddit,
+                scrapeComments,
+                maxCommentsPerPost,
+                timeRange,
+                queryType,
+              },
+              scraperUrl
+            );
+            console.log(
+              `[Reddit] Got ${result.posts.length} posts and ${result.comments.length} comments from r/${subreddit || "all"}`
+            );
+            allPosts.push(...result.posts);
+            allComments.push(...result.comments);
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            console.error(`[Reddit] Error searching r/${subreddit || "all"}:`, message);
+          }
+        };
 
-        // Stage 2: Build query based on operator input (no hardcoded phrases)
-        let query: string;
-        let queryType: RedditQueryType = "problem";
         if (normalizedSolutionKeywords.length > 0) {
-          const keywordIndex = discoveredSubs.indexOf(subreddit) % normalizedSolutionKeywords.length;
-          const solutionKeyword = normalizedSolutionKeywords[keywordIndex];
-          query = `${baseQuery || problem} ${solutionKeyword}`.trim();
-          queryType = "solution";
-          console.log(`[Reddit] Query (solution-focused) for r/${subreddit || "all"}:`, query);
-        } else if (normalizedSearchIntent.length > 0) {
+          for (const solutionKeyword of normalizedSolutionKeywords) {
+            const query = `${baseQuery || problem} ${solutionKeyword}`.trim();
+            console.log(`[Reddit] Query (solution-focused) for r/${subreddit || "all"}:`, query);
+            await runQuery(query, "solution", solutionKeyword);
+          }
+          continue;
+        }
+
+        if (normalizedSearchIntent.length > 0) {
           const intentIndex = discoveredSubs.indexOf(subreddit) % normalizedSearchIntent.length;
           const intentPhrase = normalizedSearchIntent[intentIndex];
-          query = `${baseQuery || problem} ${intentPhrase}`.trim();
-          queryType = "intent";
+          const query = `${baseQuery || problem} ${intentPhrase}`.trim();
           console.log(`[Reddit] Query (intent-focused) for r/${subreddit || "all"}:`, query);
-        } else if (normalizedRedditKeywords.length > 0) {
-          query = `${baseQuery || problem} ${normalizedRedditKeywords.join(" ")}`.trim();
-          queryType = "keyword";
+          await runQuery(query, "intent", null);
+          continue;
+        }
+
+        if (normalizedRedditKeywords.length > 0) {
+          const query = `${baseQuery || problem} ${normalizedRedditKeywords.join(" ")}`.trim();
           console.log(`[Reddit] Query (keyword-focused) for r/${subreddit || "all"}:`, query);
-        } else {
-          query = (baseQuery || problem).trim();
-          queryType = "problem";
-          console.log(`[Reddit] Stage 2 query (problem-only) for r/${subreddit || "all"}:`, query);
+          await runQuery(query, "keyword", null);
+          continue;
         }
 
-        const controller = new AbortController();
-        const timeoutMs = 300000;
-        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-        try {
-          const requestBody: RedditScraperRequest = {
-            query,
-            search_type: subreddit ? "subreddit" : "sitewide",
-            subreddit: subreddit || undefined,
-            max_posts: postsPerSubreddit,
-            time_range: timeRange,
-            scrape_comments: scrapeComments,
-            max_comments_per_post: maxCommentsPerPost,
-          };
-
-          const response = await nodeFetch(`${scraperUrl}/scrape`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(requestBody),
-            signal: controller.signal,
-          });
-
-          clearTimeout(timeoutId);
-
-          if (!response.ok) {
-            const errorText = await response.text().catch(() => "no error body");
-            console.error(
-              `[Reddit] Failed r/${subreddit || "all"} (${response.status}):`,
-              errorText
-            );
-            continue;
-          }
-
-          const result = (await response.json()) as RedditScraperResponse;
-          const posts = Array.isArray(result.posts) ? result.posts : [];
-          const comments = Array.isArray(result.comments) ? result.comments : [];
-          const queryMetadata: RedditQueryMetadata = {
-            problem,
-            query_type: queryType,
-            query_used: query,
-            subreddit: subreddit || "sitewide",
-          };
-          console.log(
-            `[Reddit] Got ${posts.length} posts and ${comments.length} comments from r/${subreddit || "all"}`
-          );
-          allPosts.push(...posts.map((post) => ({ ...post, query_metadata: queryMetadata })));
-          allComments.push(...comments.map((comment) => ({ ...comment, query_metadata: queryMetadata })));
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          console.error(`[Reddit] Error searching r/${subreddit || "all"}:`, message);
-          clearTimeout(timeoutId);
-        }
+        const query = (baseQuery || problem).trim();
+        console.log(`[Reddit] Stage 2 query (problem-only) for r/${subreddit || "all"}:`, query);
+        await runQuery(query, "problem", null);
       }
     }
 
@@ -828,6 +924,8 @@ async function fetchLocalReddit(
       ...post,
       query_metadata: post.query_metadata ?? {
         problem: fallbackProblem,
+        problem_keyword: fallbackProblem,
+        solution_keyword: null,
         query_type: "problem",
         query_used: "",
         subreddit: post.subreddit || "sitewide",
@@ -843,6 +941,8 @@ async function fetchLocalReddit(
         ...comment,
         query_metadata: comment.query_metadata ?? metadataFromPost ?? {
           problem: fallbackProblem,
+          problem_keyword: fallbackProblem,
+          solution_keyword: null,
           query_type: "problem",
           query_used: "",
           subreddit: "sitewide",
@@ -895,9 +995,12 @@ function dedupeRows(rows: ResearchRowInput[]) {
   const normalizedRows: typeof rows = [];
 
   for (const row of rows) {
-    const normalizedContent = row.content.replace(/\s+/g, ' ').trim();
+    const normalizedContent = String(row.content || "").replace(/\s+/g, ' ').trim();
     if (!normalizedContent) continue;
-    const dedupeKey = `${row.source}:${normalizedContent.toLowerCase()}:${(row as any).metadata?.sourceUrl ?? ''}`;
+    const redditId = String((row as any).redditId || "").trim();
+    const dedupeKey = redditId
+      ? `${row.source}:reddit:${redditId}`
+      : `${row.source}:${normalizedContent.toLowerCase()}:${(row as any).metadata?.sourceUrl ?? ''}`;
     if (seen.has(dedupeKey)) continue;
     seen.add(dedupeKey);
     normalizedRows.push({ ...row, content: normalizedContent });
@@ -980,9 +1083,14 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
         author: post.author,
         subreddit: post.subreddit,
         score: post.upvotes ?? post.score ?? 0,
+        numComments: post.num_comments,
         url: post.url,
         permalink: post.permalink,
         selftext: post.selftext,
+        distinguished: post.distinguished ?? null,
+        stickied: post.stickied,
+        edited: post.edited,
+        createdUtc: post.created_utc,
         createdAt: post.created_utc ? new Date(post.created_utc * 1000) : undefined,
         query_metadata: post.query_metadata,
       }));
@@ -992,10 +1100,17 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
         id: comment.id,
         postId: comment.post_id,
         author: comment.author,
+        subreddit: comment.subreddit,
         body: comment.body,
         score: comment.upvotes ?? 0,
         parentId: comment.parent_id ?? null,
         depth: comment.depth,
+        permalink: comment.permalink,
+        url: comment.url,
+        distinguished: comment.distinguished ?? null,
+        stickied: comment.stickied,
+        edited: comment.edited,
+        createdUtc: comment.created_utc,
         createdAt: comment.created_utc ? new Date(comment.created_utc * 1000) : undefined,
         query_metadata: comment.query_metadata,
       }));
@@ -1058,57 +1173,111 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
     }
 
     const rows: ResearchRowInput[] = [
-      ...filteredProductComments.map((item, idx) => ({
-        projectId,
-        jobId,
-        source: 'REDDIT_PRODUCT' as any,
-        type: 'post',
-        content: item.title || item.body || item.selftext || '',
-        metadata: {
-          title: item.title,
-          author: item.author,
-          subreddit: item.subreddit,
-          score: item.score,
-          indexLabel: `${idx + 1}`,
-          sourceUrl: item.url || item.permalink,
-          url: item.url || item.permalink,
-          sourceDate: item.createdAt ? item.createdAt.toISOString() : null,
-          query_type: item.query_metadata?.query_type || "unknown",
-          query_used: item.query_metadata?.query_used || "",
-          search_problem: item.query_metadata?.problem || normalizedProductProblem || null,
-        },
-      })),
-      ...filteredProblemComments.flatMap((item, idx) =>
-        item.comments.map((comment, cidx) => ({
+      ...filteredProductComments.map((item, idx) => {
+        const queryMetadata = item.query_metadata;
+        const problemKeyword =
+          queryMetadata?.problem_keyword ||
+          queryMetadata?.problem ||
+          normalizedProductProblem ||
+          null;
+        const solutionKeyword = queryMetadata?.solution_keyword || null;
+
+        return {
           projectId,
           jobId,
-          source: 'REDDIT_PROBLEM' as any,
-          type: 'comment',
-          content: comment.body || '',
+          source: 'REDDIT_PRODUCT' as any,
+          type: 'post',
+          content: buildRedditPostContent(item),
+          subreddit: item.subreddit ?? null,
+          redditId: item.id ?? null,
+          redditParentId: null,
+          redditCreatedUtc: toBigIntTimestamp(item.createdUtc),
+          searchQueryUsed: queryMetadata?.query_used || null,
+          solutionKeyword,
+          problemKeyword,
           metadata: {
-            postTitle: item.post?.title,
-            author: comment.author,
-            subreddit: item.post?.subreddit ?? null,
-            score: comment.score,
-            indexLabel: `${idx + 1}.${cidx + 1}`,
-            sourceUrl: comment.permalink || item.post?.permalink,
-            url: comment.permalink || item.post?.permalink,
-            sourceDate: comment.createdAt ? comment.createdAt.toISOString() : null,
-            query_type:
-              comment.query_metadata?.query_type ||
-              item.post?.query_metadata?.query_type ||
-              "unknown",
-            query_used:
-              comment.query_metadata?.query_used ||
-              item.post?.query_metadata?.query_used ||
-              "",
-            search_problem:
-              comment.query_metadata?.problem ||
-              item.post?.query_metadata?.problem ||
-              normalizedProductProblem ||
-              null,
+            title: item.title,
+            author: item.author,
+            subreddit: item.subreddit,
+            score: item.score,
+            num_comments: item.numComments ?? null,
+            indexLabel: `${idx + 1}`,
+            sourceUrl: item.url || item.permalink,
+            url: item.url || item.permalink,
+            sourceDate: item.createdAt ? item.createdAt.toISOString() : null,
+            search_query: queryMetadata?.query_used || null,
+            solution_keyword: solutionKeyword,
+            problem_keyword: problemKeyword,
+            query_type: queryMetadata?.query_type || "unknown",
+            query_used: queryMetadata?.query_used || "",
+            search_problem: problemKeyword,
+            is_top_level_comment: false,
+            post_type: classifyPostType(item),
+            raw_reddit_data: {
+              author: item.author,
+              permalink: item.permalink,
+              url: item.url,
+              distinguished: item.distinguished ?? null,
+              stickied: item.stickied ?? null,
+              edited: item.edited ?? null,
+            },
           },
-        }))
+        };
+      }),
+      ...filteredProblemComments.flatMap((item, idx) =>
+        item.comments.map((comment, cidx) => {
+          const queryMetadata = comment.query_metadata ?? item.post?.query_metadata;
+          const problemKeyword =
+            queryMetadata?.problem_keyword ||
+            queryMetadata?.problem ||
+            normalizedProductProblem ||
+            null;
+          const solutionKeyword = queryMetadata?.solution_keyword || null;
+          const sourceUrl = comment.permalink || item.post?.permalink;
+          const sourceSubreddit = comment.subreddit ?? item.post?.subreddit ?? null;
+          const isTopLevelComment = Boolean(comment.parentId?.startsWith("t3_"));
+
+          return {
+            projectId,
+            jobId,
+            source: 'REDDIT_PROBLEM' as any,
+            type: 'comment',
+            content: comment.body || '',
+            subreddit: sourceSubreddit,
+            redditId: comment.id ?? null,
+            redditParentId: comment.parentId ?? null,
+            redditCreatedUtc: toBigIntTimestamp(comment.createdUtc),
+            searchQueryUsed: queryMetadata?.query_used || null,
+            solutionKeyword,
+            problemKeyword,
+            metadata: {
+              postTitle: item.post?.title,
+              author: comment.author,
+              subreddit: sourceSubreddit,
+              score: comment.score,
+              indexLabel: `${idx + 1}.${cidx + 1}`,
+              sourceUrl,
+              url: sourceUrl,
+              sourceDate: comment.createdAt ? comment.createdAt.toISOString() : null,
+              search_query: queryMetadata?.query_used || null,
+              solution_keyword: solutionKeyword,
+              problem_keyword: problemKeyword,
+              query_type: queryMetadata?.query_type || "unknown",
+              query_used: queryMetadata?.query_used || "",
+              search_problem: problemKeyword,
+              is_top_level_comment: isTopLevelComment,
+              post_type: classifyPostType(comment),
+              raw_reddit_data: {
+                author: comment.author,
+                permalink: comment.permalink,
+                url: comment.url,
+                distinguished: comment.distinguished ?? null,
+                stickied: comment.stickied ?? null,
+                edited: comment.edited ?? null,
+              },
+            },
+          };
+        })
       )
     ];
 
