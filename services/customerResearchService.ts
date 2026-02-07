@@ -1,6 +1,6 @@
 import { cfg } from "@/lib/config";
 import { prisma } from '@/lib/prisma';
-import { JobStatus, ProductType } from '@prisma/client';
+import { JobStatus, ProductType, ResearchSource } from '@prisma/client';
 import { updateJobStatus } from '@/lib/jobs/updateJobStatus';
 import { getBreaker } from '@/lib/circuitBreaker';
 import { ExternalServiceError } from "@/lib/externalServiceError";
@@ -424,14 +424,6 @@ function parseAmazonRating(review: AmazonReview): number | null {
   }
 
   return null;
-}
-
-function getAmazonResearchSource(productType: ProductType): string {
-  if (productType === ProductType.MAIN_PRODUCT) return "AMAZON_MAIN_PRODUCT";
-  if (productType === ProductType.COMPETITOR_1) return "AMAZON_COMPETITOR_1";
-  if (productType === ProductType.COMPETITOR_2) return "AMAZON_COMPETITOR_2";
-  if (productType === ProductType.COMPETITOR_3) return "AMAZON_COMPETITOR_3";
-  return "AMAZON";
 }
 
 function getStarFiltersForProduct(type: ProductType): AmazonStarFilter[] {
@@ -1380,7 +1372,16 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
         const reviewText = extractAmazonReviewText(review);
         const normalizedRating = parseAmazonRating(review);
         const normalizedProductName = productName ?? extractAmazonProductName(review);
-        const amazonSource = getAmazonResearchSource(productType);
+        const amazonSource =
+          productType === ProductType.MAIN_PRODUCT
+            ? ResearchSource.AMAZON_MAIN_PRODUCT
+            : productType === ProductType.COMPETITOR_1
+              ? ResearchSource.AMAZON_COMPETITOR_1
+              : productType === ProductType.COMPETITOR_2
+                ? ResearchSource.AMAZON_COMPETITOR_2
+                : productType === ProductType.COMPETITOR_3
+                  ? ResearchSource.AMAZON_COMPETITOR_3
+                  : ResearchSource.AMAZON;
 
         return {
           projectId,

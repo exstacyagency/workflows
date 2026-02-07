@@ -55,9 +55,9 @@ type CustomerAnalysisJSON = CustomerAvatarJSON & {
       pain: string;
       supporting_quotes: string[];
     }>;
-    competitor_strengths?: Array<{
+    competitor_weaknesses?: Array<{
       competitor: "COMPETITOR_1" | "COMPETITOR_2" | "COMPETITOR_3";
-      strengths: string[];
+      weaknesses: string[];
       supporting_quotes: string[];
     }>;
     competitive_gaps?: Array<{
@@ -248,6 +248,8 @@ function buildCustomerAvatarPrompt(
     solutionKeywords.length > 0 ? solutionKeywords.map((value) => `- ${value}`).join('\n') : '(none provided)';
   const additionalProblemLines =
     additionalProblems.length > 0 ? additionalProblems.map((value) => `- ${value}`).join('\n') : '(none provided)';
+  const totalCompetitorReviews =
+    competitor1Reviews.length + competitor2Reviews.length + competitor3Reviews.length;
 
   const prompt = `
 MANDATORY FORMAT: Every major field MUST include "supporting_quotes": [] array with 2-5 direct verbatim quotes from the data. If you cannot find direct quotes, mark the field as [INSUFFICIENT DATA] instead of guessing.
@@ -263,29 +265,42 @@ ${redditProblem.join('\n---\n')}
 ADDITIONAL PROBLEMS - REDDIT (${additionalProblems.length}):
 ${additionalProblemLines}
 
-  MAIN PRODUCT REVIEWS (source = AMAZON_MAIN_PRODUCT) (${mainProductReviews.length} reviews):
-  ${mainProductReviews.join('\n---\n')}
-
 ALTERNATIVES - REDDIT (${redditProduct.length} discussions):
 ${redditProduct.join('\n---\n')}
 
-  COMPETITOR 1 REVIEWS (source = AMAZON_COMPETITOR_1) (${competitor1Reviews.length} reviews):
-  ${competitor1Reviews.join('\n---\n')}
+COMPETITOR PRODUCT FAILURES - AMAZON REVIEWS (${totalCompetitorReviews} reviews):
+These are competitor product reviews and should be treated as failure/pain evidence for positioning.
+Competitor sources are intentionally low-star (1-3 stars) to surface what does NOT work.
 
-  COMPETITOR 2 REVIEWS (source = AMAZON_COMPETITOR_2) (${competitor2Reviews.length} reviews):
-  ${competitor2Reviews.join('\n---\n')}
+COMPETITOR 1 REVIEWS (source = AMAZON_COMPETITOR_1) (low-star failures) (${competitor1Reviews.length} reviews):
+${competitor1Reviews.join('\n---\n')}
 
-  COMPETITOR 3 REVIEWS (source = AMAZON_COMPETITOR_3) (${competitor3Reviews.length} reviews):
-  ${competitor3Reviews.join('\n---\n')}
+COMPETITOR 2 REVIEWS (source = AMAZON_COMPETITOR_2) (low-star failures) (${competitor2Reviews.length} reviews):
+${competitor2Reviews.join('\n---\n')}
+
+COMPETITOR 3 REVIEWS (source = AMAZON_COMPETITOR_3) (low-star failures) (${competitor3Reviews.length} reviews):
+${competitor3Reviews.join('\n---\n')}
+
+MAIN PRODUCT SUCCESS - AMAZON REVIEWS (${mainProductReviews.length} reviews):
+These are main-product high-star (4-5 stars) success signals showing what works for buyers.
+
+MAIN PRODUCT REVIEWS (source = AMAZON_MAIN_PRODUCT) (high-star successes):
+${mainProductReviews.join('\n---\n')}
 
 UPLOADED - PROPRIETARY (${uploadedData.length} entries):
 ${uploadedData.join('\n---\n')}
 
 Create ONE customer avatar representing the most common buyer pattern.
 
-  ALSO perform competitive analysis using the source segments above:
+ALSO perform competitive analysis using the source segments above:
+- Use COMPETITOR blocks as failure data (what breaks, disappoints, or causes churn).
+- Use MAIN PRODUCT block as success data (what delivers outcomes and trust).
+- COMPETITOR REVIEWS are low-star ratings showing product failures. Do NOT list positive attributes.
+- Extract failures, complaints, and reasons for low ratings from competitor reviews.
+- Focus on specific failure modes: ineffectiveness, side effects, quality issues, compliance/usability problems.
+- MAIN PRODUCT REVIEWS are high-star ratings showing what works. Use these to contrast against competitor failures.
 - Main product pain points and complaints
-- What customers love about each competitor
+- What fails in each competitor and why customers rate them poorly
 - Competitive gaps: what is missing from the main product that competitors have
 - Opportunities: problems all products fail to solve
 
@@ -345,10 +360,10 @@ Return JSON:
         "supporting_quotes": ["direct quotes from source=AMAZON_MAIN_PRODUCT"]
       }
     ],
-    "competitor_strengths": [
+    "competitor_weaknesses": [
       {
         "competitor": "COMPETITOR_1|COMPETITOR_2|COMPETITOR_3",
-        "strengths": ["what users praise in competitor reviews"],
+        "weaknesses": ["specific failures from low-star competitor reviews"],
         "supporting_quotes": ["direct quotes from competitor sources"]
       }
     ],
@@ -393,7 +408,11 @@ RULES:
 async function callAnthropic(
   system: string,
   prompt: string
-): Promise<string> {
+): Promise<{
+  content: string;
+  requestPath: string;
+  responsePath: string;
+}> {
   try {
     console.log('[Customer Analysis] Checking for ANTHROPIC_API_KEY...');
     requireEnv(['ANTHROPIC_API_KEY'], 'ANTHROPIC');
@@ -474,7 +493,11 @@ async function callAnthropic(
         throw new Error('Anthropic response missing content');
       }
       console.log('[Customer Analysis] API call succeeded');
-      return content as string;
+      return {
+        content: content as string,
+        requestPath,
+        responsePath,
+      };
     } catch (error) {
       console.error('[Customer Analysis] Anthropic API Error:', error);
       const err = error as any;
@@ -586,46 +609,120 @@ export async function runCustomerAnalysis(args: {
     throw new Error('Problem to Research is required. Provide it or run customer collection first.');
   }
 
+  console.log('[Analysis Debug] Querying research data...');
+  const [mainProductReviews, competitorReviews] = await Promise.all([
+    prisma.researchRow.findMany({
+      where: {
+        projectId,
+        source: { in: ['AMAZON_MAIN_PRODUCT'] as any },
+      },
+      select: { content: true },
+    }),
+    prisma.researchRow.findMany({
+      where: {
+        projectId,
+        source: {
+          in: ['AMAZON_COMPETITOR_1', 'AMAZON_COMPETITOR_2', 'AMAZON_COMPETITOR_3'] as any,
+        },
+      },
+      select: { content: true },
+    }),
+  ]);
+  console.log('[Analysis Debug] Main product reviews:', mainProductReviews.length);
+  console.log('[Analysis Debug] Competitor reviews:', competitorReviews.length);
+  console.log(
+    '[Analysis Debug] Sample main review:',
+    mainProductReviews[0]?.content?.substring(0, 100),
+  );
+  console.log(
+    '[Analysis Debug] Sample competitor review:',
+    competitorReviews[0]?.content?.substring(0, 100),
+  );
+
   const baseWhere = { projectId, job: { runId } };
-  const [mainProductReviewsRaw, competitorReviewsRaw, legacyAmazonReviewsRaw, contextRowsRaw] = await Promise.all([
+  const runResearchJob = await prisma.job.findFirst({
+    where: {
+      projectId,
+      type: JobType.CUSTOMER_RESEARCH,
+      runId,
+    },
+    orderBy: { createdAt: 'desc' },
+    select: { payload: true },
+  });
+  const runPayload = (runResearchJob?.payload ?? {}) as Record<string, unknown>;
+  const competitor1Asin = String(runPayload.competitor1Asin ?? '').trim();
+  const competitor2Asin = String(runPayload.competitor2Asin ?? '').trim();
+  const competitor3Asin = String(runPayload.competitor3Asin ?? '').trim();
+
+  const researchRowSelect = {
+    source: true,
+    content: true,
+    metadata: true,
+  } as const;
+
+  const [
+    mainProductReviewsRaw,
+    competitorReviewsBySource,
+    legacyAmazonReviewsRaw,
+    contextRowsRaw,
+  ] = await Promise.all([
     prisma.researchRow.findMany({
       where: {
         ...baseWhere,
         source: "AMAZON_MAIN_PRODUCT" as any,
       },
-      select: {
-        source: true,
-        content: true,
-        metadata: true,
-      },
+      select: researchRowSelect,
+    }).catch((error) => {
+      console.warn('[Customer Analysis] Failed to load main product reviews:', error);
+      return [];
     }),
-    prisma.researchRow.findMany({
-      where: {
-        ...baseWhere,
-        source: {
-          in: [
-            "AMAZON_COMPETITOR_1",
-            "AMAZON_COMPETITOR_2",
-            "AMAZON_COMPETITOR_3",
-          ] as any,
-        },
-      },
-      select: {
-        source: true,
-        content: true,
-        metadata: true,
-      },
-    }),
+    Promise.all([
+      competitor1Asin
+        ? prisma.researchRow.findMany({
+            where: {
+              ...baseWhere,
+              source: "AMAZON_COMPETITOR_1" as any,
+            },
+            select: researchRowSelect,
+          }).catch((error) => {
+            console.warn('[Customer Analysis] Failed to load competitor 1 reviews:', error);
+            return [];
+          })
+        : Promise.resolve([]),
+      competitor2Asin
+        ? prisma.researchRow.findMany({
+            where: {
+              ...baseWhere,
+              source: "AMAZON_COMPETITOR_2" as any,
+            },
+            select: researchRowSelect,
+          }).catch((error) => {
+            console.warn('[Customer Analysis] Failed to load competitor 2 reviews:', error);
+            return [];
+          })
+        : Promise.resolve([]),
+      competitor3Asin
+        ? prisma.researchRow.findMany({
+            where: {
+              ...baseWhere,
+              source: "AMAZON_COMPETITOR_3" as any,
+            },
+            select: researchRowSelect,
+          }).catch((error) => {
+            console.warn('[Customer Analysis] Failed to load competitor 3 reviews:', error);
+            return [];
+          })
+        : Promise.resolve([]),
+    ]),
     prisma.researchRow.findMany({
       where: {
         ...baseWhere,
         source: "AMAZON" as any,
       },
-      select: {
-        source: true,
-        content: true,
-        metadata: true,
-      },
+      select: researchRowSelect,
+    }).catch((error) => {
+      console.warn('[Customer Analysis] Failed to load legacy Amazon reviews:', error);
+      return [];
     }),
     prisma.researchRow.findMany({
       where: {
@@ -634,13 +731,16 @@ export async function runCustomerAnalysis(args: {
           in: ["REDDIT_PRODUCT", "REDDIT_PROBLEM", "UPLOADED"],
         },
       },
-      select: {
-        source: true,
-        content: true,
-        metadata: true,
-      },
+      select: researchRowSelect,
+    }).catch((error) => {
+      console.warn('[Customer Analysis] Failed to load context rows:', error);
+      return [];
     }),
   ]);
+
+  const competitorReviewsRaw = competitorReviewsBySource
+    .filter((rows) => rows.length > 0)
+    .flat();
 
   const researchRowsRaw = [
     ...mainProductReviewsRaw,
@@ -648,6 +748,18 @@ export async function runCustomerAnalysis(args: {
     ...legacyAmazonReviewsRaw,
     ...contextRowsRaw,
   ];
+  const competitorReviewRowsRaw = competitorReviewsRaw;
+
+  console.log('[Analysis Debug] Main product review count:', mainProductReviewsRaw.length);
+  console.log('[Analysis Debug] Competitor review count:', competitorReviewRowsRaw.length);
+  console.log(
+    '[Analysis Debug] Sample main product review:',
+    (mainProductReviewsRaw[0]?.content ?? '').substring(0, 100),
+  );
+  console.log(
+    '[Analysis Debug] Sample competitor review:',
+    (competitorReviewRowsRaw[0]?.content ?? '').substring(0, 100),
+  );
 
   const uploadedData = researchRowsRaw
     .filter((row) => row.source === 'UPLOADED')
@@ -679,7 +791,16 @@ export async function runCustomerAnalysis(args: {
     args.additionalProblems
   );
   const avatarPrompt = buildCustomerAvatarPrompt(grouped, researchRows.length, operatorContext);
-  const avatarText = await callAnthropic(avatarPrompt.system, avatarPrompt.prompt);
+  console.log(
+    '[Analysis Debug] Building prompt with',
+    mainProductReviews.length,
+    'main +',
+    competitorReviews.length,
+    'competitor reviews'
+  );
+  console.log('[Analysis Debug] Prompt preview (first 1000 chars):', avatarPrompt.prompt.substring(0, 1000));
+  const anthropicResult = await callAnthropic(avatarPrompt.system, avatarPrompt.prompt);
+  const avatarText = anthropicResult.content;
   const avatarJson = ensureObject<CustomerAnalysisJSON>(parseJsonFromLLM(avatarText), 'Avatar');
 
   await archiveExistingAvatars(projectId);
@@ -717,6 +838,10 @@ export async function runCustomerAnalysis(args: {
     runId,
     summary: {
       avatar: avatarSummary,
+    },
+    analysisInput: {
+      anthropicRequestLogPath: anthropicResult.requestPath,
+      anthropicResponseLogPath: anthropicResult.responsePath,
     },
   };
 }
