@@ -10,6 +10,10 @@ interface ResearchRow {
   type: string | null;
   source: string;
   content: string;
+  productType?: string | null;
+  productAsin?: string | null;
+  rating?: number | null;
+  productName?: string | null;
   metadata: any;
   createdAt: string;
 }
@@ -62,7 +66,8 @@ export default function AllResearchDataPage() {
       const jobParam = selectedJob !== 'all' ? `&jobId=${selectedJob}` : '';
       const productParam = productFromUrl && selectedJob === 'all' ? `&product=${productFromUrl}` : '';
       const response = await fetch(
-        `/api/projects/${projectId}/research?limit=${rowsPerPage}&offset=${offset}${jobParam}${productParam}`
+        `/api/projects/${projectId}/research?limit=${rowsPerPage}&offset=${offset}${jobParam}${productParam}`,
+        { cache: 'no-store' }
       );
       const data = await response.json();
       setRows(data.rows || []);
@@ -85,12 +90,12 @@ export default function AllResearchDataPage() {
   const filteredRows = rows.filter((row) => {
     if (sourceFilter !== 'all') {
       if (sourceFilter === 'reddit' && !row.source.startsWith('REDDIT_')) return false;
-      if (sourceFilter === 'amazon' && row.source !== 'AMAZON') return false;
+      if (sourceFilter === 'amazon' && !row.source.startsWith('AMAZON')) return false;
       if (sourceFilter === 'uploaded' && row.source !== 'UPLOADED' && row.type !== 'UPLOADED') {
         return false;
       }
+      if (!['reddit', 'amazon', 'uploaded'].includes(sourceFilter) && row.source !== sourceFilter) return false;
     }
-    if (sourceFilter !== 'all' && row.source !== sourceFilter) return false;
     if (typeFilter !== 'all' && row.type !== typeFilter) return false;
     if (searchQuery && !row.content.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     return true;
@@ -98,7 +103,9 @@ export default function AllResearchDataPage() {
 
   async function handleExport() {
     const jobParam = selectedJob !== 'all' ? `?jobId=${selectedJob}` : '';
-    const response = await fetch(`/api/projects/${projectId}/research/export${jobParam}`);
+    const response = await fetch(`/api/projects/${projectId}/research/export${jobParam}`, {
+      cache: 'no-store',
+    });
     const blob = await response.blob();
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
