@@ -51,6 +51,7 @@ queue.process(async (job) => {
           summary,
           avatarId: result.avatarId,
           runId: result.runId ?? null,
+          analysisInput: (result as any).analysisInput ?? null,
         },
       },
     });
