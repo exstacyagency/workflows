@@ -444,7 +444,7 @@ function getStarFiltersForProduct(type: ProductType): AmazonStarFilter[] {
     type === ProductType.COMPETITOR_2 ||
     type === ProductType.COMPETITOR_3
   ) {
-    return ["one_star", "two_star"];
+    return ["one_star", "two_star", "three_star"];
   }
 
   return [];
@@ -556,7 +556,7 @@ function filterQualityPosts(
     }
 
     const postScore = post.score ?? post.upvotes ?? 0;
-    if (postScore < 5 || (post.num_comments ?? 0) < 3) {
+    if (postScore < 50 || (post.num_comments ?? 0) < 3) {
       return false;
     }
 
@@ -851,15 +851,22 @@ async function fetchLocalReddit(
 
       for (const subreddit of discoveredSubs) {
         console.log(`[Reddit] Searching r/${subreddit || "all"} for problem discussions...`);
+        const executedQueries = new Set<string>();
         const runQuery = async (
           query: string,
           queryType: RedditQueryType,
           solutionKeyword: string | null
         ) => {
+          const normalizedQuery = query.trim();
+          if (!normalizedQuery) return;
+          const dedupeKey = normalizedQuery.toLowerCase();
+          if (executedQueries.has(dedupeKey)) return;
+          executedQueries.add(dedupeKey);
+
           try {
             const result = await scrapeRedditWithMetadata(
               {
-                query,
+                query: normalizedQuery,
                 subreddit: subreddit || undefined,
                 solutionKeyword,
                 problemKeyword: problem,
@@ -883,10 +890,24 @@ async function fetchLocalReddit(
         };
 
         if (normalizedSolutionKeywords.length > 0) {
+          const problemOnlyQuery = (baseQuery || problem).trim();
+          console.log(`[Reddit] Query (problem-only) for r/${subreddit || "all"}:`, problemOnlyQuery);
+          await runQuery(problemOnlyQuery, "problem", null);
+
           for (const solutionKeyword of normalizedSolutionKeywords) {
-            const query = `${baseQuery || problem} ${solutionKeyword}`.trim();
-            console.log(`[Reddit] Query (solution-focused) for r/${subreddit || "all"}:`, query);
-            await runQuery(query, "solution", solutionKeyword);
+            const solutionOnlyQuery = solutionKeyword.trim();
+            console.log(
+              `[Reddit] Query (solution-only) for r/${subreddit || "all"}:`,
+              solutionOnlyQuery
+            );
+            await runQuery(solutionOnlyQuery, "solution", solutionKeyword);
+
+            const combinedQuery = `${problemOnlyQuery} ${solutionKeyword}`.trim();
+            console.log(
+              `[Reddit] Query (problem+solution) for r/${subreddit || "all"}:`,
+              combinedQuery
+            );
+            await runQuery(combinedQuery, "solution", solutionKeyword);
           }
           continue;
         }
@@ -1224,17 +1245,78 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
           },
         };
       }),
-      ...filteredProblemComments.flatMap((item, idx) =>
-        item.comments.map((comment, cidx) => {
-          const queryMetadata = comment.query_metadata ?? item.post?.query_metadata;
+      ...filteredProblemComments.flatMap((item, idx) => {
+        const post = item.post;
+        if (!post) return [];
+
+        const postQueryMetadata = post.query_metadata;
+        const postProblemKeyword =
+          postQueryMetadata?.problem_keyword ||
+          postQueryMetadata?.problem ||
+          normalizedProductProblem ||
+          null;
+        const postSolutionKeyword = postQueryMetadata?.solution_keyword || null;
+        const postSourceUrl = post.url || post.permalink;
+        const postScore = Number(post.score ?? 0) || 0;
+        if (postScore < 50) return [];
+
+        const postRow: ResearchRowInput = {
+          projectId,
+          jobId,
+          source: 'REDDIT_PROBLEM' as any,
+          type: 'post',
+          content: buildRedditPostContent(post),
+          subreddit: post.subreddit ?? null,
+          redditId: post.id ?? null,
+          redditParentId: null,
+          redditCreatedUtc: toBigIntTimestamp(post.createdUtc),
+          searchQueryUsed: postQueryMetadata?.query_used || null,
+          solutionKeyword: postSolutionKeyword,
+          problemKeyword: postProblemKeyword,
+          metadata: {
+            title: post.title,
+            author: post.author,
+            subreddit: post.subreddit,
+            score: post.score ?? null,
+            num_comments: post.numComments ?? null,
+            indexLabel: `${idx + 1}.0`,
+            sourceUrl: postSourceUrl,
+            url: postSourceUrl,
+            sourceDate: post.createdAt ? post.createdAt.toISOString() : null,
+            search_query: postQueryMetadata?.query_used || null,
+            solution_keyword: postSolutionKeyword,
+            problem_keyword: postProblemKeyword,
+            query_type: postQueryMetadata?.query_type || "unknown",
+            query_used: postQueryMetadata?.query_used || "",
+            search_problem: postProblemKeyword,
+            is_top_level_comment: false,
+            post_type: classifyPostType(post),
+            raw_reddit_data: {
+              author: post.author,
+              permalink: post.permalink,
+              url: post.url,
+              distinguished: post.distinguished ?? null,
+              stickied: post.stickied ?? null,
+              edited: post.edited ?? null,
+            },
+          },
+        };
+
+        const commentRows = item.comments.flatMap((comment, cidx) => {
+          const commentScore = Number(comment.score ?? 0) || 0;
+          if (postScore < 20 && commentScore < 20) {
+            return [];
+          }
+
+          const queryMetadata = comment.query_metadata ?? postQueryMetadata;
           const problemKeyword =
             queryMetadata?.problem_keyword ||
             queryMetadata?.problem ||
             normalizedProductProblem ||
             null;
           const solutionKeyword = queryMetadata?.solution_keyword || null;
-          const sourceUrl = comment.permalink || item.post?.permalink;
-          const sourceSubreddit = comment.subreddit ?? item.post?.subreddit ?? null;
+          const sourceUrl = comment.permalink || post.permalink;
+          const sourceSubreddit = comment.subreddit ?? post.subreddit ?? null;
           const isTopLevelComment = Boolean(comment.parentId?.startsWith("t3_"));
 
           return {
@@ -1251,7 +1333,7 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
             solutionKeyword,
             problemKeyword,
             metadata: {
-              postTitle: item.post?.title,
+              postTitle: post.title,
               author: comment.author,
               subreddit: sourceSubreddit,
               score: comment.score,
@@ -1277,8 +1359,10 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
               },
             },
           };
-        })
-      )
+        });
+
+        return [postRow, ...commentRows];
+      })
     ];
 
     const dedupedRows = dedupeRows(rows);
