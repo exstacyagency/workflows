@@ -9,6 +9,10 @@ interface ResearchRow {
   type: string | null;
   source: string;
   content: string;
+  productType?: string | null;
+  productAsin?: string | null;
+  rating?: number | null;
+  productName?: string | null;
   metadata: any;
   createdAt: string;
 }
@@ -40,7 +44,7 @@ export default function ResearchDataPage() {
       const runParam = runId ? `&runId=${runId}` : '';
       const url = `/api/projects/${projectId}/research?jobId=${jobId}&limit=${rowsPerPage}&offset=${offset}${runParam}`;
       console.log('[RawData] fetching', { url, page, rowsPerPage, offset, runId });
-      const response = await fetch(url);
+      const response = await fetch(url, { cache: 'no-store' });
       console.log('[RawData] response', { status: response.status, ok: response.ok });
       const data = await response.json();
       console.log('[RawData] data', {
@@ -64,12 +68,12 @@ export default function ResearchDataPage() {
   const filteredRows = rows.filter((row) => {
     if (sourceFilter !== 'all') {
       if (sourceFilter === 'reddit' && !row.source.startsWith('REDDIT_')) return false;
-      if (sourceFilter === 'amazon' && row.source !== 'AMAZON') return false;
+      if (sourceFilter === 'amazon' && !row.source.startsWith('AMAZON')) return false;
       if (sourceFilter === 'uploaded' && row.source !== 'UPLOADED' && row.type !== 'UPLOADED') {
         return false;
       }
+      if (!['reddit', 'amazon', 'uploaded'].includes(sourceFilter) && row.source !== sourceFilter) return false;
     }
-    if (sourceFilter !== 'all' && row.source !== sourceFilter) return false;
     if (typeFilter !== 'all' && row.type !== typeFilter) return false;
     if (searchQuery && !row.content.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     return true;
@@ -92,7 +96,7 @@ export default function ResearchDataPage() {
     if (row.source === "UPLOADED" || row.type === "UPLOADED" || row.type === "document") {
       return "uploaded";
     }
-    if (row.source === "AMAZON" || row.type === "review") {
+    if (row.source.startsWith("AMAZON") || row.type === "review") {
       return "review";
     }
     if (row.type) return row.type;
@@ -100,7 +104,9 @@ export default function ResearchDataPage() {
   };
 
   async function handleExport() {
-    const response = await fetch(`/api/projects/${projectId}/research/export?jobId=${jobId}`);
+    const response = await fetch(`/api/projects/${projectId}/research/export?jobId=${jobId}`, {
+      cache: 'no-store',
+    });
     const blob = await response.blob();
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -227,7 +233,6 @@ export default function ResearchDataPage() {
                           ? row.metadata?.source || "UPLOADED"
                           : row.source}
                       </td>
-                      <td className="p-3 text-slate-400 text-xs">{row.source}</td>
                       <td className="p-3">{row.content}</td>
                       <td className="p-3 text-slate-400">
                         {(row.metadata as any)?.score || 0}
