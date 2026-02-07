@@ -1,6 +1,6 @@
 import { cfg } from "@/lib/config";
 import { prisma } from '@/lib/prisma';
-import { JobStatus, ProductType, ResearchSource } from '@prisma/client';
+import { JobStatus, ProductType } from '@prisma/client';
 import { updateJobStatus } from '@/lib/jobs/updateJobStatus';
 import { getBreaker } from '@/lib/circuitBreaker';
 import { ExternalServiceError } from "@/lib/externalServiceError";
@@ -52,7 +52,7 @@ type AmazonReview = {
   title?: string;
   productName?: string;
   productTitle?: string;
-  rating?: number;
+  rating?: number | string;
   verified?: boolean;
   date?: string;
 };
@@ -62,12 +62,19 @@ type ProductScrapeTarget = {
   type: ProductType;
 };
 
+type AmazonStarFilter =
+  | "one_star"
+  | "two_star"
+  | "three_star"
+  | "four_star"
+  | "five_star";
+
 type AmazonInput = {
   asin: string;
   domainCode: "com";
   sortBy: "recent";
   maxPages: number;
-  filterByStar: "four_star" | "five_star" | "one_star" | "two_star" | "three_star";
+  filterByStar: AmazonStarFilter;
   filterByKeyword: "";
   reviewerType: "all_reviews";
   formatType: "current_format";
@@ -132,6 +139,11 @@ type RedditScraperResponse = {
     scraped_at?: string;
     [key: string]: unknown;
   };
+};
+
+type SubredditDiscoveryResult = {
+  discoveredSubreddits: string[];
+  subredditCounts: Record<string, number>;
 };
 
 type ArrayElement<T> = T extends (infer U)[] ? U : T;
@@ -289,15 +301,60 @@ function filterProblemComments(items: RedditPost[]) {
 }
 
 // Shared Amazon review params (canonical)
+function normalizeAmazonStarFilter(starFilter: unknown): AmazonStarFilter {
+  if (typeof starFilter === "number" && Number.isFinite(starFilter)) {
+    const rounded = Math.round(starFilter);
+    if (rounded === 1) return "one_star";
+    if (rounded === 2) return "two_star";
+    if (rounded === 3) return "three_star";
+    if (rounded === 4) return "four_star";
+    if (rounded === 5) return "five_star";
+  }
+
+  const normalized = String(starFilter ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+
+  const mappings: Record<string, AmazonStarFilter> = {
+    "1": "one_star",
+    "1_star": "one_star",
+    one: "one_star",
+    one_star: "one_star",
+    "2": "two_star",
+    "2_star": "two_star",
+    two: "two_star",
+    two_star: "two_star",
+    "3": "three_star",
+    "3_star": "three_star",
+    three: "three_star",
+    three_star: "three_star",
+    "4": "four_star",
+    "4_star": "four_star",
+    four: "four_star",
+    four_star: "four_star",
+    "5": "five_star",
+    "5_star": "five_star",
+    five: "five_star",
+    five_star: "five_star",
+  };
+
+  const canonical = mappings[normalized];
+  if (!canonical) {
+    throw new Error(`Unsupported Amazon star filter: ${String(starFilter)}`);
+  }
+  return canonical;
+}
+
 const buildAmazonInput = (
   asin: string,
-  starFilter: "four_star" | "five_star" | "one_star" | "two_star" | "three_star"
+  starFilter: AmazonStarFilter | string | number
 ): AmazonInput => ({
   asin,
   domainCode: "com",
   sortBy: "recent",
   maxPages: 1,
-  filterByStar: starFilter,
+  filterByStar: normalizeAmazonStarFilter(starFilter),
   filterByKeyword: "",
   reviewerType: "all_reviews",
   formatType: "current_format",
@@ -326,11 +383,41 @@ function extractAmazonReviewText(review: AmazonReview): string {
   ).trim();
 }
 
-function getStarFiltersForProduct(type: ProductType): AmazonInput["filterByStar"][] {
-  if (type === ProductType.MAIN_PRODUCT) {
-    return ["one_star", "two_star", "three_star", "four_star", "five_star"];
+function parseAmazonRating(review: AmazonReview): number | null {
+  if (typeof review.rating === "string") {
+    const parsed = parseFloat(review.rating.match(/[\d.]+/)?.[0] || "0");
+    return Number.isFinite(parsed) ? parsed : null;
   }
-  return ["four_star", "five_star"];
+
+  if (typeof review.rating === "number" && Number.isFinite(review.rating)) {
+    return review.rating;
+  }
+
+  return null;
+}
+
+function getAmazonResearchSource(productType: ProductType): string {
+  if (productType === ProductType.MAIN_PRODUCT) return "AMAZON_MAIN_PRODUCT";
+  if (productType === ProductType.COMPETITOR_1) return "AMAZON_COMPETITOR_1";
+  if (productType === ProductType.COMPETITOR_2) return "AMAZON_COMPETITOR_2";
+  if (productType === ProductType.COMPETITOR_3) return "AMAZON_COMPETITOR_3";
+  return "AMAZON";
+}
+
+function getStarFiltersForProduct(type: ProductType): AmazonStarFilter[] {
+  if (type === ProductType.MAIN_PRODUCT) {
+    return ["four_star", "five_star"];
+  }
+
+  if (
+    type === ProductType.COMPETITOR_1 ||
+    type === ProductType.COMPETITOR_2 ||
+    type === ProductType.COMPETITOR_3
+  ) {
+    return ["one_star", "two_star"];
+  }
+
+  return [];
 }
 
 function toIsoDate(value: unknown): string | null {
@@ -485,8 +572,8 @@ function filterQualityPosts(
 async function discoverRelevantSubreddits(
   problemSolved: string,
   scraperUrl: string,
-  minPosts = 5
-): Promise<string[]> {
+  minPosts = 1
+): Promise<SubredditDiscoveryResult> {
   console.log("[Reddit Discovery] Starting subreddit discovery for:", problemSolved);
 
   const discoveryQuery = problemSolved;
@@ -507,7 +594,7 @@ async function discoverRelevantSubreddits(
 
     if (!response.ok) {
       console.error("[Reddit Discovery] Failed:", response.status);
-      return [];
+      return { discoveredSubreddits: [], subredditCounts: {} };
     }
 
     const result = (await response.json()) as RedditScraperResponse;
@@ -525,22 +612,22 @@ async function discoverRelevantSubreddits(
       {} as Record<string, number>
     );
 
-    const relevantSubs = Object.entries(subredditCounts)
+    const discoveredSubreddits = Object.entries(subredditCounts)
       .filter(([, count]) => count >= minPosts)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 10)
       .map(([subreddit]) => subreddit);
 
-    console.log("[Reddit Discovery] Discovered subreddits:", relevantSubs);
+    console.log("[Reddit Discovery] Discovered subreddits:", discoveredSubreddits);
     console.log(
       "[Reddit Discovery] Post counts:",
-      relevantSubs.map((subreddit) => `${subreddit}: ${subredditCounts[subreddit]}`).join(", ")
+      discoveredSubreddits.map((subreddit) => `${subreddit}: ${subredditCounts[subreddit]}`).join(", ")
     );
 
-    return relevantSubs;
+    return { discoveredSubreddits, subredditCounts };
   } catch (error) {
     console.error("[Reddit Discovery] Error:", error);
-    return [];
+    return { discoveredSubreddits: [], subredditCounts: {} };
   }
 }
 
@@ -611,7 +698,30 @@ async function fetchLocalReddit(
     for (const problem of uniqueProblems) {
       console.log(`[Reddit] Researching problem: ${problem}`);
 
-      let discoveredSubs = await discoverRelevantSubreddits(problem, scraperUrl, 5);
+      const {
+        discoveredSubreddits,
+        subredditCounts,
+      } = await discoverRelevantSubreddits(problem, scraperUrl, 1);
+
+      // Filter out low-relevance subreddits before deep search.
+      const minPostsThreshold = 3;
+      let discoveredSubs = discoveredSubreddits.filter(
+        (subreddit) => (subredditCounts[subreddit] || 0) >= minPostsThreshold
+      );
+
+      if (discoveredSubreddits.length > 0) {
+        console.log(
+          "[Reddit] Discovery counts:",
+          discoveredSubreddits
+            .map((subreddit) => `${subreddit}: ${subredditCounts[subreddit] || 0}`)
+            .join(", ")
+        );
+        console.log(
+          `[Reddit] Relevant subreddits (>= ${minPostsThreshold} posts):`,
+          discoveredSubs
+        );
+      }
+
       if (discoveredSubs.length === 0) {
         console.log("[Reddit] No subreddits discovered, falling back to sitewide search");
         discoveredSubs = [""];
@@ -1013,35 +1123,74 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
     ).flatMap((productType) => {
       const asin = productAsinByType[productType];
       const productName = productNameByType[productType];
-      return amazonReviewsByType[productType].map((review) => ({
-        projectId,
-        jobId,
-        source: ResearchSource.AMAZON,
-        type: "review",
-        content: extractAmazonReviewText(review),
-        metadata: {
-          rating: review.rating ?? null,
-          verified: review.verified ?? null,
-          asin: asin ?? null,
-          productType,
-          productAsin: asin ?? null,
-          productName: productName ?? extractAmazonProductName(review),
-          scrapedAt: new Date().toISOString(),
-          sourceDate: toIsoDate(
-            (review as any).date ??
-              (review as any).reviewDate ??
-              (review as any).reviewDateTime ??
-              (review as any).reviewTime
-          ),
-          raw: review,
-        },
-      }));
+      return amazonReviewsByType[productType].map((review) => {
+        const reviewText = extractAmazonReviewText(review);
+        const normalizedRating = parseAmazonRating(review);
+        const normalizedProductName = productName ?? extractAmazonProductName(review);
+        const amazonSource = getAmazonResearchSource(productType);
+
+        return {
+          projectId,
+          jobId,
+          source: amazonSource as any,
+          type: "review",
+          content: reviewText,
+          metadata: {
+            rating: normalizedRating ?? null,
+            verified: review.verified ?? null,
+            asin: asin ?? null,
+            productType,
+            productAsin: asin ?? null,
+            productName: normalizedProductName,
+            scrapedAt: new Date().toISOString(),
+            sourceDate: toIsoDate(
+              (review as any).date ??
+                (review as any).reviewDate ??
+                (review as any).reviewDateTime ??
+                (review as any).reviewTime
+            ),
+            raw: review,
+          },
+        };
+      });
     });
 
     if (amazonRows.length > 0) {
       await prisma.researchRow.createMany({
         data: amazonRows,
       });
+
+      // Denormalize Amazon categorization fields onto research_row for UI/CSV consumers.
+      await prisma.$executeRaw`
+        UPDATE "research_row"
+        SET
+          "source" = CASE
+            WHEN COALESCE("metadata"->>'productType', '') = 'MAIN_PRODUCT' THEN 'AMAZON_MAIN_PRODUCT'::"ResearchSource"
+            WHEN COALESCE("metadata"->>'productType', '') = 'COMPETITOR_1' THEN 'AMAZON_COMPETITOR_1'::"ResearchSource"
+            WHEN COALESCE("metadata"->>'productType', '') = 'COMPETITOR_2' THEN 'AMAZON_COMPETITOR_2'::"ResearchSource"
+            WHEN COALESCE("metadata"->>'productType', '') = 'COMPETITOR_3' THEN 'AMAZON_COMPETITOR_3'::"ResearchSource"
+            ELSE 'AMAZON'::"ResearchSource"
+          END,
+          "productType" = CASE
+            WHEN COALESCE("metadata"->>'productType', '') = '' THEN NULL
+            ELSE ("metadata"->>'productType')::"ProductType"
+          END,
+          "productAsin" = NULLIF("metadata"->>'productAsin', ''),
+          "rating" = CASE
+            WHEN COALESCE("metadata"->>'rating', '') = '' THEN NULL
+            ELSE ROUND(("metadata"->>'rating')::numeric)::int
+          END,
+          "productName" = NULLIF("metadata"->>'productName', '')
+        WHERE "projectId" = ${projectId}
+          AND "jobId" = ${jobId}
+          AND "source" IN (
+            'AMAZON'::"ResearchSource",
+            'AMAZON_MAIN_PRODUCT'::"ResearchSource",
+            'AMAZON_COMPETITOR_1'::"ResearchSource",
+            'AMAZON_COMPETITOR_2'::"ResearchSource",
+            'AMAZON_COMPETITOR_3'::"ResearchSource"
+          )
+      `;
     }
 
     const amazonReviewRows = (
@@ -1055,7 +1204,7 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
           projectId,
           jobId,
           reviewText: extractAmazonReviewText(review),
-          rating: typeof review.rating === "number" ? Math.round(review.rating) : null,
+          rating: parseAmazonRating(review),
           verified:
             typeof review.verified === "boolean"
               ? review.verified
