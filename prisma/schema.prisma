@@ -179,19 +179,39 @@ model ResearchRow {
   projectId String
   jobId     String?
   source    ResearchSource
-  type      String?
-  content   String
+  type      String
+  content   String         @db.Text
+
+  // Existing metadata
+  metadata  Json?          @db.JsonB
+
+  // Existing Amazon denormalized fields
   productType ProductType?
   productAsin String?
   rating    Int?
   productName String?
-  metadata  Json?
+
+  // Reddit metadata for filtering, aggregation, and thread reconstruction
+  subreddit        String?
+  redditId         String?
+  redditParentId   String?
+  redditCreatedUtc BigInt?
+  searchQueryUsed  String?
+  solutionKeyword  String?
+  problemKeyword   String?
+
   createdAt DateTime       @default(now())
-  job       Job?           @relation(fields: [jobId], references: [id])
+  updatedAt DateTime       @updatedAt
+  job       Job?           @relation(fields: [jobId], references: [id], onDelete: SetNull)
   project   Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
+  @@index([jobId])
+  @@index([source])
   @@index([productType])
+  @@index([subreddit])
+  @@index([solutionKeyword])
+  @@index([redditCreatedUtc])
   @@map("research_row")
 }
 
