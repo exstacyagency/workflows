@@ -33,7 +33,7 @@ import { runCustomerResearch } from "@/services/customerResearchService";
 
 describe("customerResearchService", () => {
   beforeEach(() => {
-    process.env.NODE_ENV = "development";
+    Object.assign(process.env, { NODE_ENV: "development" });
     jest.clearAllMocks();
   });
 

@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { projectId: parsedProjectId, runId } = parsed.data;
+    const { projectId: parsedProjectId, runId, productId } = parsed.data;
     projectId = parsedProjectId;
     const auth = await requireProjectOwner(projectId);
     if (auth.error) {
@@ -155,7 +155,11 @@ export async function POST(req: NextRequest) {
           status: JobStatus.PENDING,
           idempotencyKey,
           runId: effectiveRunId,
-          payload: { customerResearchJobId: customerResearchJob.id, adPerformanceJobId: adTranscriptsJob.id },
+          payload: {
+            ...(productId ? { productId } : {}),
+            customerResearchJobId: customerResearchJob.id,
+            adPerformanceJobId: adTranscriptsJob.id,
+          },
           resultSummary: "Skipped: SECURITY_SWEEP",
           error: Prisma.JsonNull,
         },
@@ -194,7 +198,12 @@ export async function POST(req: NextRequest) {
         status: JobStatus.PENDING,
         idempotencyKey,
         runId: effectiveRunId,
-        payload: { customerResearchJobId: customerResearchJob.id, adPerformanceJobId: adTranscriptsJob.id, idempotencyKey },
+        payload: {
+          ...(productId ? { productId } : {}),
+          customerResearchJobId: customerResearchJob.id,
+          adPerformanceJobId: adTranscriptsJob.id,
+          idempotencyKey,
+        },
       },
     });
     jobId = job.id;

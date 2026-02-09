@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import { getJobTypeLabel } from "@/lib/jobLabels";
 
 type JobType =
   | "CUSTOMER_RESEARCH"
@@ -112,18 +113,6 @@ export default function UsagePage() {
     acc[j.type] = (acc[j.type] || 0) + (j.actualCost || 0);
     return acc;
   }, {} as JobTypeBreakdown);
-
-  const getJobTypeLabel = (type: string): string => {
-    const labels: Record<string, string> = {
-      CUSTOMER_RESEARCH: "Customer Research",
-      CUSTOMER_ANALYSIS: "Customer Analysis",
-      AD_PERFORMANCE: "Ad Performance",
-      PATTERN_ANALYSIS: "Pattern Analysis",
-      PRODUCT_DATA_COLLECTION: "Product Data Collection",
-      PRODUCT_ANALYSIS: "Product Analysis",
-    };
-    return labels[type] || type;
-  };
 
   const formatCost = (cost: number): string => {
     return `$${cost.toFixed(2)}`;

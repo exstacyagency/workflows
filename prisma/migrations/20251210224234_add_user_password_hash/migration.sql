@@ -7,7 +7,7 @@
 */
 -- AlterEnum
 BEGIN;
-CREATE TYPE "ResearchSource_new" AS ENUM ('REDDIT_PRODUCT', 'REDDIT_PROBLEM', 'AMAZON', 'G2', 'LOCAL_BUSINESS');
+CREATE TYPE "ResearchSource_new" AS ENUM ('REDDIT_PRODUCT', 'REDDIT_PROBLEM', 'AMAZON', 'G2', 'UPLOADED');
 ALTER TABLE "ResearchRow" ALTER COLUMN "source" TYPE "ResearchSource_new" USING ("source"::text::"ResearchSource_new");
 ALTER TYPE "ResearchSource" RENAME TO "ResearchSource_old";
 ALTER TYPE "ResearchSource_new" RENAME TO "ResearchSource";
