@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { PipelineStatusDb } from '@/components/PipelineStatusDb';
 import { ScriptMediaPreview, type ScriptMedia } from '@/components/ScriptMediaPreview';
+import { getJobTypeLabel } from '@/lib/jobLabels';
+import { ProjectProductsPanel } from '@/components/ProjectProductsPanel';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -32,6 +34,31 @@ const dateFormatter = new Intl.DateTimeFormat('en-US', {
 });
 
 type Params = { params: { projectId: string } };
+type ProductListItem = {
+  id: string;
+  name: string;
+  productProblemSolved: string | null;
+  amazonAsin: string | null;
+  createdAt: Date;
+};
+
+async function ensureProductsTable() {
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "product" (
+      "id" text PRIMARY KEY,
+      "project_id" text NOT NULL REFERENCES "project"("id") ON DELETE CASCADE,
+      "name" text NOT NULL,
+      "product_problem_solved" text,
+      "amazon_asin" text,
+      "created_at" timestamptz NOT NULL DEFAULT now(),
+      "updated_at" timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT "product_project_name_unique" UNIQUE ("project_id", "name")
+    );
+  `);
+  await prisma.$executeRawUnsafe(
+    `CREATE INDEX IF NOT EXISTS "product_project_id_idx" ON "product" ("project_id");`
+  );
+}
 
 export default async function ProjectDashboardPage({ params }: Params) {
   const projectId = params.projectId;
@@ -73,6 +100,20 @@ export default async function ProjectDashboardPage({ params }: Params) {
     notFound();
   }
 
+  await ensureProductsTable();
+
+  const products = await prisma.$queryRaw<ProductListItem[]>`
+    SELECT
+      "id",
+      "name",
+      "product_problem_solved" AS "productProblemSolved",
+      "amazon_asin" AS "amazonAsin",
+      "created_at" AS "createdAt"
+    FROM "product"
+    WHERE "project_id" = ${projectId}
+    ORDER BY "created_at" DESC
+  `;
+
   const recentJobs = project.jobs;
   const recentResearch = project.researchRows;
   const latestAvatar = project.customerAvatars[0] ?? null;
@@ -87,6 +128,8 @@ export default async function ProjectDashboardPage({ params }: Params) {
     upscaledVideoUrl: script.upscaledVideoUrl,
     wordCount: script.wordCount,
   }));
+  const hasProducts = products.length > 0;
+  const defaultProductId = products[0]?.id ?? null;
 
   const stats = [
     { label: 'Total Jobs', value: project._count.jobs.toString() },
@@ -112,14 +155,24 @@ export default async function ProjectDashboardPage({ params }: Params) {
         <div className="flex flex-col gap-2 md:items-end">
           <div className="flex flex-col gap-2 md:flex-row md:justify-end">
             <Link
-              href={`/projects/${project.id}/research-hub`}
-              className="inline-flex items-center justify-center rounded-md bg-sky-500 hover:bg-sky-400 px-4 py-2 text-sm font-medium text-white"
+              href={hasProducts ? `/projects/${project.id}/research-hub?productId=${defaultProductId}` : '#'}
+              className={`inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium ${
+                hasProducts
+                  ? 'bg-sky-500 hover:bg-sky-400 text-white'
+                  : 'bg-slate-800 text-slate-500 cursor-not-allowed pointer-events-none'
+              }`}
+              aria-disabled={!hasProducts}
             >
               Research Hub
             </Link>
             <Link
-              href={`/projects/${project.id}/creative-studio`}
-              className="inline-flex items-center justify-center rounded-md border border-slate-700 bg-slate-950/60 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-900"
+              href={hasProducts ? `/projects/${project.id}/creative-studio?productId=${defaultProductId}` : '#'}
+              className={`inline-flex items-center justify-center rounded-md border px-4 py-2 text-sm font-medium ${
+                hasProducts
+                  ? 'border-slate-700 bg-slate-950/60 text-slate-200 hover:bg-slate-900'
+                  : 'border-slate-800 bg-slate-900 text-slate-500 cursor-not-allowed pointer-events-none'
+              }`}
+              aria-disabled={!hasProducts}
             >
               Creative Studio
             </Link>
@@ -131,7 +184,9 @@ export default async function ProjectDashboardPage({ params }: Params) {
             </Link>
           </div>
           <p className="text-xs text-slate-400 max-w-xs text-center md:text-right">
-            Research Hub: Gather insights. Creative Studio: Generate videos.
+            {hasProducts
+              ? 'Research Hub: Gather insights. Creative Studio: Generate videos.'
+              : 'Create a product below to unlock Research Hub and Creative Studio.'}
           </p>
         </div>
       </section>
@@ -144,6 +199,15 @@ export default async function ProjectDashboardPage({ params }: Params) {
           </div>
         ))}
       </section>
+
+      <ProjectProductsPanel
+        projectId={projectId}
+        initialProducts={products.map((product) => ({
+          id: product.id,
+          name: product.name,
+          createdAt: product.createdAt.toISOString(),
+        }))}
+      />
 
       <section className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-5 space-y-3">
@@ -225,7 +289,7 @@ export default async function ProjectDashboardPage({ params }: Params) {
               {recentJobs.map(job => (
                 <div key={job.id} className="rounded-lg border border-slate-800 bg-slate-950/70 px-4 py-3">
                   <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm font-medium text-slate-50">{job.type.replace(/_/g, ' ')}</p>
+                    <p className="text-sm font-medium text-slate-50">{getJobTypeLabel(job.type)}</p>
                     {statusBadge(
                       job.status === JobStatus.RUNNING
                         ? 'running'

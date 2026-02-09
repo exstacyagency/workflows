@@ -60,6 +60,59 @@ type ScriptJSON = {
   [key: string]: any;
 };
 
+type StructuredProductIntelRow = {
+  id: string;
+  projectId: string;
+  jobId: string;
+  url: string;
+  productName: string;
+  tagline: string | null;
+  keyFeatures: string[];
+  ingredientsOrSpecs: string[];
+  price: string | null;
+  keyClaims: string[];
+  targetAudience: string | null;
+  usp: string | null;
+  rawHtml: string | null;
+  createdAt: Date;
+};
+
+async function loadStructuredProductIntel(projectId: string): Promise<StructuredProductIntelRow | null> {
+  try {
+    const rows = await prisma.$queryRaw<StructuredProductIntelRow[]>`
+      SELECT
+        "id",
+        "projectId",
+        "jobId",
+        "url",
+        "productName",
+        "tagline",
+        "keyFeatures",
+        "ingredientsOrSpecs",
+        "price",
+        "keyClaims",
+        "targetAudience",
+        "usp",
+        "rawHtml",
+        "createdAt"
+      FROM "product_intel"
+      WHERE "projectId" = ${projectId}
+      ORDER BY "createdAt" DESC
+      LIMIT 1
+    `;
+    return rows[0] ?? null;
+  } catch (error) {
+    const message = String((error as any)?.message ?? "");
+    if (
+      message.includes('relation "product_intel" does not exist') ||
+      (message.includes('column "') && message.includes('" does not exist'))
+    ) {
+      return null;
+    }
+    throw error;
+  }
+}
+
 function getAnthropicHeaders(apiKey: string) {
   return {
     'x-api-key': apiKey,
@@ -232,7 +285,12 @@ function buildScriptPrompt(args: {
   const blockerFear = firstBlocker?.fear || 'wasting money';
   const blockerQuote = firstBlocker?.quote || '';
 
-  const mechanismProcess = productIntel?.mechanism?.[0]?.process || 'addresses root cause';
+  const mechanismProcess =
+    productIntel?.mechanism?.[0]?.process ||
+    productIntel?.usp ||
+    productIntel?.tagline ||
+    (Array.isArray(productIntel?.keyClaims) ? productIntel.keyClaims[0] : undefined) ||
+    'addresses root cause';
 
   const system = 'Generate 32-second commercial script. ONLY valid JSON. No markdown.';
 
@@ -371,7 +429,9 @@ export async function runScriptGeneration(args: { projectId: string; jobId?: str
     orderBy: { createdAt: 'desc' },
   });
 
-  const productIntel = await prisma.productIntelligence.findFirst({
+  const productIntelPrimary = await loadStructuredProductIntel(projectId);
+
+  const legacyProductIntel = await prisma.productIntelligence.findFirst({
     where: { projectId },
     orderBy: { createdAt: 'desc' },
   });
@@ -383,7 +443,7 @@ export async function runScriptGeneration(args: { projectId: string; jobId?: str
 
   const missingDeps: string[] = [];
   if (!avatar) missingDeps.push('avatar');
-  if (!productIntel) missingDeps.push('product_intelligence');
+  if (!productIntelPrimary && !legacyProductIntel) missingDeps.push('product_intelligence');
   if (!patternResult) missingDeps.push('pattern_result');
 
   if (missingDeps.length > 0) {
@@ -408,10 +468,25 @@ export async function runScriptGeneration(args: { projectId: string; jobId?: str
     throw new Error('No patterns found in pattern brain for this project.');
   }
 
+  const productIntelPayload = productIntelPrimary
+    ? {
+        productName: productIntelPrimary.productName || project.name,
+        url: productIntelPrimary.url,
+        tagline: productIntelPrimary.tagline,
+        ingredientsOrSpecs: productIntelPrimary.ingredientsOrSpecs,
+        usp: productIntelPrimary.usp,
+        keyFeatures: productIntelPrimary.keyFeatures,
+        keyClaims: productIntelPrimary.keyClaims,
+        targetAudience: productIntelPrimary.targetAudience,
+        price: productIntelPrimary.price,
+        rawHtml: productIntelPrimary.rawHtml,
+      }
+    : (legacyProductIntel?.insights as any) ?? {};
+
   const { system, prompt } = buildScriptPrompt({
     productName: project.name,
     avatar: (avatar?.persona as any) ?? {},
-    productIntel: (productIntel?.insights as any) ?? {},
+    productIntel: productIntelPayload,
     patterns,
     antiPatterns,
     stackingRules,

@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ResearchSource } from "@prisma/client";
+import { Prisma, ResearchSource } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/requireSession";
 import { requireProjectOwner404 } from "@/lib/auth/requireProjectOwner404";
-import { extractTextFromFile } from "@/services/fileUploadService";
 
 export async function POST(
   req: NextRequest,
@@ -24,32 +23,26 @@ export async function POST(
 
   try {
     const formData = await req.formData();
-    const file = formData.get("file");
-    const jobIdValue = formData.get("jobId");
+    const file = formData.get("file") as File;
+    const jobId = formData.get("jobId") as string | null;
 
     if (!(file instanceof File) || typeof jobIdValue !== "string" || !jobIdValue.trim()) {
       return NextResponse.json({ error: "File and jobId required" }, { status: 400 });
     }
 
-    const jobId = jobIdValue.trim();
-    const extractedRows = await extractTextFromFile(file, file.type);
-    const uploadedAt = new Date().toISOString();
+    const filename = file.name;
+    const text = await file.text();
+    const lines = text.split("\n");
 
-    const rows = extractedRows.map((row, idx) => ({
+    const chunks = lines.map((line) => line.trim()).filter(Boolean);
+
+    const rows: Prisma.ResearchRowCreateManyInput[] = chunks.map((chunk, idx) => ({
       projectId,
       jobId,
-      source: ResearchSource.LOCAL_BUSINESS,
-      type: "UPLOADED",
-      content: row.text,
-      metadata: {
-        filename: file.name,
-        uploadedAt,
-        chunkIndex: idx + 1,
-        uploadSource: "USER_UPLOAD",
-        source: row.source ?? "UPLOADED",
-        date: row.date ?? null,
-        ...(row.metadata ?? {}),
-      },
+      source: ResearchSource.UPLOADED,
+      type: "upload",
+      content: chunk,
+      metadata: {},
     }));
 
     if (rows.length > 0) {
@@ -59,7 +52,7 @@ export async function POST(
     return NextResponse.json({
       success: true,
       rowsAdded: rows.length,
-      filename: file.name,
+      filename,
     });
   } catch (error: any) {
     console.error("Upload error:", error);

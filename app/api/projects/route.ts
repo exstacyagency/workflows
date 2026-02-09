@@ -1,12 +1,13 @@
 import { randomBytes } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
-import { requireSession } from '@/lib/auth/requireSession';
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 import { db } from '@/lib/db';
 import { cfg } from '@/lib/config';
 
 export async function GET(req: NextRequest) {
   try {
-    const session = await requireSession(req);
+    const session = await getServerSession(authOptions);
     let userId = "";
     
     if (!session) {
@@ -45,7 +46,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await requireSession(req);
+    const session = await getServerSession(authOptions);
     let userId = "";
     
     if (!session) {
@@ -76,6 +77,16 @@ export async function POST(req: NextRequest) {
     
     while (attempt < maxAttempts) {
       try {
+        console.log('[POST /api/projects] userId:', userId);
+        const userExists = await db.user.findUnique({ where: { id: userId } });
+        console.log('[POST /api/projects] user exists:', !!userExists);
+        if (!userExists) {
+          return NextResponse.json(
+            { error: `User ${userId} not found in database` },
+            { status: 400 }
+          );
+        }
+
         const project = await db.project.create({
           data: {
             name: attempt === 0 ? projectName : `${projectName} (${attempt})`,

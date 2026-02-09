@@ -41,7 +41,6 @@ export default function CustomerProfilePage() {
   const router = useRouter();
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState('');
-  const [productName, setProductName] = useState('');
   const [productProblem, setProductProblem] = useState('');
   const [loading, setLoading] = useState(false);
   const [avatar, setAvatar] = useState<CustomerAvatar | null>(null);
@@ -57,7 +56,7 @@ export default function CustomerProfilePage() {
   useEffect(() => {
     async function loadProjects() {
       try {
-        const res = await fetch('/api/projects');
+        const res = await fetch('/api/projects', { credentials: 'include' });
         if (!res.ok) {
           throw new Error('Failed to load projects');
         }
@@ -95,8 +94,8 @@ export default function CustomerProfilePage() {
   async function loadSnapshots(projectId: string) {
     try {
       const [avatarsRes, intelRes] = await Promise.all([
-        fetch(`/api/projects/${projectId}/customer-avatar?view=all`),
-        fetch(`/api/projects/${projectId}/product-intelligence?view=all`),
+        fetch(`/api/projects/${projectId}/customer-avatar?view=all`, { credentials: 'include' }),
+        fetch(`/api/projects/${projectId}/product-intelligence?view=all`, { credentials: 'include' }),
       ]);
 
       if (avatarsRes.ok) {
@@ -141,11 +140,12 @@ export default function CustomerProfilePage() {
 
     const options: RequestInit =
       action === 'delete'
-        ? { method: 'DELETE' }
+        ? { method: 'DELETE', credentials: 'include' }
         : {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ action: action === 'restore' ? 'restore' : 'archive' }),
+            credentials: 'include',
           };
 
     try {
@@ -179,9 +179,6 @@ export default function CustomerProfilePage() {
       const payload: Record<string, string> = {
         projectId: selectedProjectId,
       };
-      if (productName.trim()) {
-        payload.productName = productName.trim();
-      }
       if (productProblem.trim()) {
         payload.productProblemSolved = productProblem.trim();
       }
@@ -190,6 +187,7 @@ export default function CustomerProfilePage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
+        credentials: 'include',
       });
 
       if (!res.ok) {
@@ -235,7 +233,7 @@ export default function CustomerProfilePage() {
         type === 'avatar'
           ? `/api/projects/${selectedProjectId}/customer-avatar?download=1${idParam}`
           : `/api/projects/${selectedProjectId}/product-intelligence?download=1${idParam}`;
-      const res = await fetch(endpoint);
+      const res = await fetch(endpoint, { credentials: 'include' });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error || 'Download failed.');
@@ -280,7 +278,7 @@ export default function CustomerProfilePage() {
 
         {/* Controls */}
         <section className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-4">
             <div className="space-y-2">
               <label className="text-sm font-medium text-slate-200">
                 Project
@@ -297,18 +295,6 @@ export default function CustomerProfilePage() {
                   </option>
                 ))}
               </select>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-200">
-                Product name <span className="text-slate-500 text-xs">(optional if provided in Phase 1A)</span>
-              </label>
-              <input
-                className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm"
-                value={productName}
-                onChange={e => setProductName(e.target.value)}
-                placeholder="e.g. ClearGlow Acne Serum"
-              />
             </div>
           </div>
 
@@ -344,8 +330,8 @@ export default function CustomerProfilePage() {
           )}
 
           <p className="text-xs text-slate-500">
-            Note: this requires Phase 1A research rows and valid Anthropic credentials. Leave the product fields blank to reuse the offering
-            info captured during customer research.
+            Note: this requires Phase 1A research rows and valid Anthropic credentials. Leave the problem field blank to reuse the value captured
+            during customer research.
           </p>
         </section>
 
@@ -362,7 +348,7 @@ export default function CustomerProfilePage() {
                 href={adResearchHref}
                 className="inline-flex items-center justify-center rounded-md bg-sky-500 hover:bg-sky-400 px-4 py-2 text-sm font-medium text-white"
               >
-                Continue to Ad Research
+                Continue to Ad Collection
               </Link>
               <Link
                 href={scriptHref}
