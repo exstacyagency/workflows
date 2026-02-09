@@ -5,6 +5,11 @@ import { getToken } from "next-auth/jwt";
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
+  // Skip auth routes completely
+  if (pathname.startsWith("/api/auth/")) {
+    return NextResponse.next();
+  }
+
   // Allow test bootstrap in beta/test/dev
   if (pathname.startsWith("/api/test/")) {
     const mode =
