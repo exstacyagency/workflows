@@ -45,19 +45,23 @@ function toStringArray(value: unknown): string[] {
 }
 
 function buildPrompt(url: string): string {
-  return `Use web_fetch to get the product page at ${url}, then extract:
+  return `Fetch the product page at ${url} and extract product information.
 
-Return ONLY valid JSON (no markdown):
+Use the web_fetch tool to get the page content, then analyze it and return product details.
+
+Return your response as valid JSON only (no markdown, no explanation):
 {
-  "product_name": "",
-  "tagline": "",
-  "key_features": [],
-  "ingredients_or_specs": [],
-  "price": "",
-  "key_claims": [],
-  "target_audience": "",
-  "usp": ""
-}`;
+  "product_name": "exact product name",
+  "tagline": "main headline or tagline",
+  "key_features": ["feature 1", "feature 2", "feature 3"],
+  "ingredients_or_specs": ["ingredient 1", "spec 1"],
+  "price": "$XX.XX or price range",
+  "key_claims": ["marketing claim 1", "claim 2"],
+  "target_audience": "who this is for",
+  "usp": "unique selling proposition"
+}
+
+Focus on marketing copy and positioning, not just technical specs. Extract the actual marketing language used on the page.`;
 }
 
 export async function extractProductIntel(url: string): Promise<ExtractedProductIntel> {
@@ -81,17 +85,27 @@ export async function extractProductIntel(url: string): Promise<ExtractedProduct
     ],
   });
 
-  const textContent = message.content.find((c) => c.type === "text");
-  if (!textContent || textContent.type !== "text") {
+  const textBlocks = message.content.filter((c) => c.type === "text");
+  const lastText = textBlocks[textBlocks.length - 1];
+
+  if (!lastText || lastText.type !== "text") {
     throw new Error("No text response from Claude");
   }
 
-  const jsonMatch = textContent.text.match(/\{[\s\S]*\}/);
+  const jsonMatch = lastText.text.match(/\{[\s\S]*\}/);
   if (!jsonMatch) {
-    throw new Error("No JSON in response");
+    throw new Error(`No JSON found in response. Got: ${lastText.text.substring(0, 200)}`);
   }
 
-  const parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
+  } catch (err) {
+    console.error("[Product Intel] Failed to parse JSON:", jsonMatch[0]);
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`Failed to parse Claude response as JSON: ${message}`);
+  }
+
   const productName = cleanText(parsed.product_name);
   if (!productName) {
     throw new Error("Extraction failed: product_name was empty");
