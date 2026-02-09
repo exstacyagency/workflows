@@ -53,6 +53,7 @@ model Project {
   customerAvatars      CustomerAvatar[]
   amazonReviews        AmazonReview[]
   jobs                 Job[]
+  productIntels        ProductIntel[]
   productIntelligences ProductIntelligence[]
   user                 User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   researchRows         ResearchRow[]
@@ -142,6 +143,7 @@ model Job {
   amazonReviews    AmazonReview[]
   auditLogs        AuditLog[]
   characters       Character[]
+  productIntels    ProductIntel[]
   project          Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
   researchRows     ResearchRow[]
   scripts          Script[]
@@ -365,6 +367,29 @@ model ProductIntelligence {
 
   @@index([projectId])
   @@map("product_intelligence")
+}
+
+model ProductIntel {
+  id                String   @id @default(cuid())
+  projectId         String
+  jobId             String
+  url               String
+  productName       String
+  tagline           String?
+  keyFeatures       String[]
+  ingredientsOrSpecs String[]
+  price             String?
+  keyClaims         String[]
+  targetAudience    String?
+  usp               String?
+  rawHtml           String?  @db.Text
+  createdAt         DateTime @default(now())
+  project           Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  job               Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([jobId])
+  @@map("product_intel")
 }
 
 model Subscription {
