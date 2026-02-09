@@ -22,7 +22,7 @@ export const authOptions: NextAuthOptions = {
         httpOnly: true,
         sameSite: "lax",
         path: "/",
-        secure: false,
+        secure: isProd, // 🔥 CHANGE THIS - was hardcoded to false!
       },
     },
   },
