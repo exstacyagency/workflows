@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
 import { ResearchSource } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/requireSession";
 import { requireProjectOwner404 } from "@/lib/auth/requireProjectOwner404";
 import { extractTextFromFile } from "@/services/fileUploadService";
-import { requireSession } from "@/lib/auth/requireSession";
-import { requireProjectOwner404 } from "@/lib/auth/requireProjectOwner404";
 
 export async function POST(
   req: NextRequest,
@@ -17,19 +15,25 @@ export async function POST(
   }
 
   const { projectId } = params;
+  if (!projectId) {
+    return NextResponse.json({ error: "projectId is required" }, { status: 400 });
+  }
+
   const deny = await requireProjectOwner404(projectId);
-  if (deny) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (deny) return deny;
 
   try {
     const formData = await req.formData();
-    const file = formData.get("file") as File | null;
-    const jobId = formData.get("jobId") as string | null;
+    const file = formData.get("file");
+    const jobIdValue = formData.get("jobId");
 
-    if (!file || !jobId) {
+    if (!(file instanceof File) || typeof jobIdValue !== "string" || !jobIdValue.trim()) {
       return NextResponse.json({ error: "File and jobId required" }, { status: 400 });
     }
 
+    const jobId = jobIdValue.trim();
     const extractedRows = await extractTextFromFile(file, file.type);
+    const uploadedAt = new Date().toISOString();
 
     const rows = extractedRows.map((row, idx) => ({
       projectId,
@@ -37,29 +41,9 @@ export async function POST(
       source: ResearchSource.LOCAL_BUSINESS,
       type: "UPLOADED",
       content: row.text,
-    const text = await file.text();
-    const filename = file.name.toLowerCase();
-
-    let chunks: string[] = [];
-    if (filename.endsWith(".csv")) {
-      const lines = text.split("\n").map((line) => line.trim()).filter(Boolean);
-      chunks = lines.slice(1);
-    } else {
-      chunks = text
-        .split(/\n\n|\r\n\r\n/)
-        .map((chunk) => chunk.trim())
-        .filter((chunk) => chunk.length > 20);
-    }
-
-    const rows = chunks.map((chunk, idx) => ({
-      projectId,
-      jobId,
-      source: "LOCAL_BUSINESS",
-      type: "document",
-      content: chunk,
       metadata: {
         filename: file.name,
-        uploadedAt: new Date().toISOString(),
+        uploadedAt,
         chunkIndex: idx + 1,
         uploadSource: "USER_UPLOAD",
         source: row.source ?? "UPLOADED",
@@ -69,9 +53,7 @@ export async function POST(
     }));
 
     if (rows.length > 0) {
-      await prisma.researchRow.createMany({
-        data: rows,
-      });
+      await prisma.researchRow.createMany({ data: rows });
     }
 
     return NextResponse.json({
@@ -82,7 +64,7 @@ export async function POST(
   } catch (error: any) {
     console.error("Upload error:", error);
     return NextResponse.json(
-      { error: error.message || "Upload failed" },
+      { error: error?.message || "Upload failed" },
       { status: 500 }
     );
   }
