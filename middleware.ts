@@ -4,9 +4,12 @@ import { getToken } from "next-auth/jwt";
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
+  const isPublicAuthRoute =
+    pathname === "/auth/signin" ||
+    pathname === "/auth/signup" ||
+    pathname.startsWith("/api/auth/");
 
-  // Skip auth routes
-  if (pathname.startsWith("/api/auth/")) {
+  if (isPublicAuthRoute) {
     return NextResponse.next();
   }
 
@@ -37,10 +40,7 @@ export async function middleware(req: NextRequest) {
   });
 
   if (!token) {
-    if (pathname.startsWith("/api/")) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-    const signInUrl = new URL("/api/auth/signin", req.url);
+    const signInUrl = new URL("/auth/signin", req.url);
     signInUrl.searchParams.set("callbackUrl", pathname);
     return NextResponse.redirect(signInUrl);
   }
@@ -49,9 +49,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: [
-    "/projects/:path*",
-    "/api/jobs/:path*",
-    "/api/test/:path*",
-  ],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml).*)"],
 };
