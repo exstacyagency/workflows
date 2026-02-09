@@ -34,3 +34,4 @@ scripts/check_no_prod_debug.sh
 e2e/golden/output/
 /tmp/golden-output/
 logs/anthropic/
+.vercel

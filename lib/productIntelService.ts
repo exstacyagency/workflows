@@ -223,8 +223,8 @@ async function extractWithClaude(html: string, url: string): Promise<Record<stri
 
 export async function extractProductIntel(url: string): Promise<ExtractedProductIntel> {
   console.log("[Product Intel] Fetching URL:", url);
-  console.log("[Product Intel] Environment:", process.env.NODE_ENV);
-  console.log("[Product Intel] Running in:", process.env.VERCEL ? "Vercel" : "Local");
+  console.log("[Product Intel] Environment:", cfg.raw("NODE_ENV"));
+  console.log("[Product Intel] Running in:", cfg.raw("VERCEL") ? "Vercel" : "Local");
 
   const normalizedUrl = new URL(url).toString();
   const html = await fetchProductHtml(normalizedUrl);
