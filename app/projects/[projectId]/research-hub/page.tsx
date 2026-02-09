@@ -79,9 +79,7 @@ interface AdCollectionFormData {
 }
 
 interface ProductCollectionFormData {
-  productName: string;
-  productUrl: string;
-  competitorUrls: string[];
+  mainProductUrl: string;
 }
 
 interface RunAllResearchFormData {
@@ -399,25 +397,16 @@ export default function ResearchHubPage() {
     {
       key: "product",
       label: "Product Collection",
-      description: "Deep dive into your product features",
+      description: "Scrape and structure product page data",
       color: "violet",
       enabled: true,
       steps: [
         {
           id: "product-collection",
           label: "Product Collection",
-          description: "Gather product information and features",
+          description: "Scrapes and structures product page data",
           jobType: "PRODUCT_DATA_COLLECTION",
-          endpoint: "/api/jobs/product-data-collection",
-          status: "NOT_STARTED",
-        },
-        {
-          id: "product-analysis",
-          label: "Product Analysis",
-          description: "Generate product insights",
-          jobType: "PRODUCT_ANALYSIS",
-          endpoint: "/api/jobs/product-analysis",
-          prerequisite: "product-collection",
+          endpoint: "/api/jobs/product-collection",
           status: "NOT_STARTED",
         },
       ],
@@ -707,9 +696,7 @@ export default function ResearchHubPage() {
     if (!pendingStep) return;
     
     const payload = {
-      productName: formData.productName,
-      productUrl: formData.productUrl,
-      competitorUrls: formData.competitorUrls.filter(url => url.trim() !== ''),
+      mainProductUrl: formData.mainProductUrl,
     };
 
     setActiveStepModal(null);
@@ -775,12 +762,10 @@ export default function ResearchHubPage() {
         projectId,
         ...(selectedProductId ? { productId: selectedProductId } : {}),
         runId,
-        productName: formData.productName,
-        productUrl: formData.productUrl,
-        competitorUrls: formData.competitorUrls.filter(url => url.trim() !== ''),
+        mainProductUrl: formData.productUrl,
       };
       
-      await fetch('/api/jobs/product-data-collection', {
+      await fetch('/api/jobs/product-collection', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(productCollectionPayload),
@@ -1876,40 +1861,18 @@ function ProductCollectionModal({
   onClose: () => void;
 }) {
   const [formData, setFormData] = useState<ProductCollectionFormData>({
-    productName: "",
-    productUrl: "",
-    competitorUrls: [""],
+    mainProductUrl: "",
   });
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
-    if (!formData.productName || !formData.productUrl) {
-      setErrorMessage("Please fill in all required fields.");
+    if (!formData.mainProductUrl) {
+      setErrorMessage("Please enter a valid product URL.");
       return;
     }
     onSubmit(formData);
-  };
-
-  const addCompetitorUrl = () => {
-    setFormData({
-      ...formData,
-      competitorUrls: [...formData.competitorUrls, ""],
-    });
-  };
-
-  const removeCompetitorUrl = (index: number) => {
-    setFormData({
-      ...formData,
-      competitorUrls: formData.competitorUrls.filter((_, i) => i !== index),
-    });
-  };
-
-  const updateCompetitorUrl = (index: number, value: string) => {
-    const newUrls = [...formData.competitorUrls];
-    newUrls[index] = value;
-    setFormData({ ...formData, competitorUrls: newUrls });
   };
 
   return (
@@ -1917,73 +1880,22 @@ function ProductCollectionModal({
       <div className="bg-slate-900 rounded-lg border border-slate-700 max-w-lg w-full max-h-[90vh] overflow-y-auto">
         <div className="p-6">
           <h2 className="text-xl font-bold text-white mb-2">Product Information</h2>
-          <p className="text-sm text-slate-400 mb-6">
-            Enter your product details and competitor URLs
-          </p>
+          <p className="text-sm text-slate-400 mb-6">Enter your main product page URL.</p>
           {errorMessage && <p className="text-sm text-red-400 mb-3">{errorMessage}</p>}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-slate-300 mb-2">
-                Product Name <span className="text-red-400">*</span>
-              </label>
-              <input
-                type="text"
-                value={formData.productName}
-                onChange={(e) => setFormData({ ...formData, productName: e.target.value })}
-                className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500"
-                placeholder="e.g., Smart Watch Pro"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                Product URL <span className="text-red-400">*</span>
+                Main Product URL <span className="text-red-400">*</span>
               </label>
               <input
                 type="url"
-                value={formData.productUrl}
-                onChange={(e) => setFormData({ ...formData, productUrl: e.target.value })}
+                value={formData.mainProductUrl}
+                onChange={(e) => setFormData({ ...formData, mainProductUrl: e.target.value })}
                 className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500"
                 placeholder="https://example.com/product"
                 required
               />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                Competitor URLs <span className="text-slate-500">(optional)</span>
-              </label>
-              <div className="space-y-2">
-                {formData.competitorUrls.map((url, index) => (
-                  <div key={index} className="flex gap-2">
-                    <input
-                      type="url"
-                      value={url}
-                      onChange={(e) => updateCompetitorUrl(index, e.target.value)}
-                      className="flex-1 px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500"
-                      placeholder="https://competitor.com/product"
-                    />
-                    {formData.competitorUrls.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => removeCompetitorUrl(index)}
-                        className="px-3 py-2 rounded bg-red-500/20 hover:bg-red-500/30 text-red-400"
-                      >
-                        ✕
-                      </button>
-                    )}
-                  </div>
-                ))}
-                <button
-                  type="button"
-                  onClick={addCompetitorUrl}
-                  className="text-sm text-violet-400 hover:text-violet-300"
-                >
-                  + Add another competitor URL
-                </button>
-              </div>
             </div>
 
             <div className="flex gap-3 pt-4">
