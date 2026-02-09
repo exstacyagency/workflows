@@ -11,7 +11,7 @@ if (fs.existsSync(env)) dotenv.config({ path: env });
 
 import { assertRuntimeMode } from "../lib/jobRuntimeMode";
 import { logError } from "@/lib/logger";
-import { JobStatus, JobType } from "@prisma/client";
+import { JobStatus, JobType, Prisma } from "@prisma/client";
 import type { RuntimeMode } from "@/lib/jobRuntimeMode";
 import { cfg } from "@/lib/config";
 // ...existing code...
@@ -29,17 +29,24 @@ import { cfg } from "@/lib/config";
 // ...existing code...
 // ...existing code...
 import { runCustomerResearch } from "../services/customerResearchService.ts";
+import { runCustomerAnalysis } from "../lib/customerAnalysisService";
 import { runAdRawCollection } from "../lib/adRawCollectionService.ts";
 import { runPatternAnalysis } from "../lib/patternAnalysisService.ts";
 import { startScriptGenerationJob } from "../lib/scriptGenerationService.ts";
 import { startVideoPromptGenerationJob } from "../lib/videoPromptGenerationService.ts";
 import { runVideoImageGenerationJob } from "../lib/videoImageGenerationService.ts";
 import { runVideoGenerationJob } from "../lib/videoGenerationService.ts";
-import { collectProductData } from "../lib/productDataCollectionService.ts";
 import { analyzeProductData } from "../lib/productAnalysisService.ts";
+import { runProductCollectionWorker } from "../lib/workers/productCollectionWorker";
 import prisma from "../lib/prisma.ts";
 import { rollbackQuota } from "../lib/billing/usage.ts";
 import { updateJobStatus } from "@/lib/jobs/updateJobStatus";
+
+console.log("=== WORKER ENVIRONMENT CHECK ===");
+console.log("ANTHROPIC_API_KEY present:", !!process.env.ANTHROPIC_API_KEY);
+console.log("ANTHROPIC_API_KEY length:", process.env.ANTHROPIC_API_KEY?.length || 0);
+console.log("NODE_ENV:", process.env.NODE_ENV);
+console.log("================================");
 
 function writeLog(line: string) {
   process.stdout.write(`${line}\n`);
@@ -172,7 +179,7 @@ async function markCompleted({
 }: {
   jobId: string;
   result: any;
-  summary?: string;
+  summary?: Prisma.InputJsonValue;
 }) {
   const existing = await prisma.job.findUnique({
     where: { id: jobId },
@@ -282,6 +289,13 @@ async function handleProviderConfig(jobId: string, provider: string, requiredEnv
 
 async function claimNextJob() {
   const dueBefore = nowMs();
+  const dueBeforeDate = new Date(dueBefore);
+  console.log('[Worker] claimNextJob called');
+  console.log('[Worker] dueBefore:', dueBeforeDate.toISOString());
+  console.log(
+    '[Worker] Looking for jobs with status=PENDING and payload.nextRunAt <=',
+    dueBeforeDate.toISOString(),
+  );
   const claimed = await prisma.$queryRaw<any[]>`
     UPDATE job
     SET "status" = CAST('RUNNING' AS "JobStatus"),
@@ -300,6 +314,9 @@ async function claimNextJob() {
     )
     RETURNING "id", "type", "projectId", "userId", "payload", "idempotencyKey", "status";
   `;
+
+  console.log('[Worker] Raw query result:', claimed);
+  console.log('[Worker] Jobs claimed:', claimed?.length || 0);
 
   const row = claimed[0];
   if (!row?.id) return null;
@@ -328,6 +345,12 @@ async function runJob(
 ) {
   const jobId = job.id;
   const payload = asObject(job.payload);
+  console.log('[Worker] ===== PROCESSING JOB =====');
+  console.log('[Worker] Job ID:', job.id);
+  console.log('[Worker] Job Type:', job.type);
+  console.log('[Worker] Job Status:', job.status);
+  console.log('[Worker] RunId:', (job as any).runId);
+  console.log('[Worker] ===========================');
 
   if (job.status !== JobStatus.RUNNING) {
     throw new Error(`Invalid job state: ${job.status}`);
@@ -337,16 +360,22 @@ async function runJob(
     throw new Error("INVALID CONFIG: MODE=alpha cannot run with NODE_ENV=production");
   }
 
+  console.log("[BEFORE SWITCH] About to enter switch statement");
+  console.log("[BEFORE SWITCH] job.type:", job.type);
+  console.log("[BEFORE SWITCH] JobType enum:", JobType);
+
   try {
     switch (job.type) {
       case JobType.CUSTOMER_RESEARCH: {
         writeLog("=== CUSTOMER_RESEARCH JOB ===");
         writeLog("Checking Apify token...");
-        writeLog("process.env.APIFY_API_TOKEN:", process.env.APIFY_API_TOKEN ? "exists" : "missing");
+        writeLog(
+          `process.env.APIFY_API_TOKEN: ${process.env.APIFY_API_TOKEN ? "exists" : "missing"}`,
+        );
 
         const apifyToken = cfg.raw("APIFY_API_TOKEN");
-        writeLog("cfg.raw result:", apifyToken ? "found token" : "NO TOKEN");
-        writeLog("hasApifyToken:", !!apifyToken);
+        writeLog(`cfg.raw result: ${apifyToken ? "found token" : "NO TOKEN"}`);
+        writeLog(`hasApifyToken: ${!!apifyToken}`);
 
         if (!apifyToken) {
           writeLog("SKIPPING: Apify not configured");
@@ -361,33 +390,56 @@ async function runJob(
         writeLog("Proceeding with research...");
 
         const {
-          productName,
           productProblemSolved,
+          mainProductAsin,
+          competitor1Asin,
+          competitor2Asin,
+          competitor3Asin,
           productAmazonAsin,
           competitor1AmazonAsin,
           competitor2AmazonAsin,
           redditKeywords,
+          searchIntent,
+          solutionKeywords,
           redditSubreddits,
           maxPosts,
           maxCommentsPerPost,
           timeRange,
           scrapeComments,
+          additionalProblems,
         } = payload;
 
-        const hasAmazonAsin = Boolean(productAmazonAsin && String(productAmazonAsin).trim());
+        const resolvedMainProductAsin = String(mainProductAsin ?? productAmazonAsin ?? "").trim();
+        const resolvedCompetitor1Asin = String(
+          competitor1Asin ?? competitor1AmazonAsin ?? ""
+        ).trim();
+        const resolvedCompetitor2Asin = String(
+          competitor2Asin ?? competitor2AmazonAsin ?? ""
+        ).trim();
+        const resolvedCompetitor3Asin = String(competitor3Asin ?? "").trim();
+        const hasAmazonAsin = Boolean(
+          resolvedMainProductAsin ||
+            resolvedCompetitor1Asin ||
+            resolvedCompetitor2Asin ||
+            resolvedCompetitor3Asin
+        );
         const hasRedditKeywords =
           Array.isArray(redditKeywords) && redditKeywords.some((k: any) => String(k).trim().length > 0);
+        const hasSearchIntent =
+          Array.isArray(searchIntent) && searchIntent.some((k: any) => String(k).trim().length > 0);
+        const hasSolutionKeywords =
+          Array.isArray(solutionKeywords) && solutionKeywords.some((k: any) => String(k).trim().length > 0);
+        const hasAdditionalProblems =
+          Array.isArray(additionalProblems) &&
+          additionalProblems.some((k: any) => String(k).trim().length > 0);
+        const hasProblem = Boolean(productProblemSolved && String(productProblemSolved).trim());
 
-        const hasNameAndProblem =
-          Boolean(productName && String(productName).trim()) &&
-          Boolean(productProblemSolved && String(productProblemSolved).trim());
-
-        if (!hasAmazonAsin && !hasRedditKeywords && !hasNameAndProblem) {
+        if (!hasAmazonAsin && !hasRedditKeywords && !hasSearchIntent && !hasSolutionKeywords && !hasAdditionalProblems && !hasProblem) {
           await rollbackJobQuotaIfNeeded({ jobId, projectId: job.projectId, payload });
           await markFailed({
             jobId,
             error:
-              "Invalid payload: provide productAmazonAsin, redditKeywords, or productName+productProblemSolved",
+              "Invalid payload: provide mainProductAsin/competitorAsin or Reddit problem/search inputs (productProblemSolved, searchIntent, solutionKeywords, additionalProblems, redditKeywords)",
           });
           return;
         }
@@ -395,23 +447,54 @@ async function runJob(
         const result = await runCustomerResearch({
           projectId: job.projectId,
           jobId,
-          productName,
           productProblemSolved,
-          productAmazonAsin,
-          competitor1AmazonAsin,
-          competitor2AmazonAsin,
+          mainProductAsin: resolvedMainProductAsin || undefined,
+          competitor1Asin: resolvedCompetitor1Asin || undefined,
+          competitor2Asin: resolvedCompetitor2Asin || undefined,
+          competitor3Asin: resolvedCompetitor3Asin || undefined,
           redditKeywords,
+          searchIntent,
+          solutionKeywords,
           redditSubreddits,
           maxPosts,
           maxCommentsPerPost,
           timeRange,
           scrapeComments,
+          additionalProblems,
         });
 
         await markCompleted({
           jobId,
           result: { ok: true, rows: Array.isArray(result) ? result.length : null },
         });
+        return;
+      }
+      case JobType.CUSTOMER_ANALYSIS: {
+        console.log("=== CUSTOMER_ANALYSIS JOB START ===");
+        console.log("Job ID:", jobId);
+        console.log("Payload:", JSON.stringify(payload, null, 2));
+
+        try {
+          console.log("Calling runCustomerAnalysis...");
+          const analysisResult = await runCustomerAnalysis({
+            projectId: job.projectId,
+            ...(payload as any),
+          });
+          console.log("Analysis result:", JSON.stringify(analysisResult, null, 2));
+          await markCompleted({
+            jobId,
+            result: analysisResult,
+            summary: {
+              avatarId: analysisResult?.avatarId ?? null,
+              summary: analysisResult?.summary ?? null,
+            },
+          });
+        } catch (error) {
+          console.error("=== CUSTOMER_ANALYSIS ERROR ===");
+          console.error("Error:", error);
+          console.error("Stack:", (error as Error).stack);
+          await markFailed({ jobId, error });
+        }
         return;
       }
 
@@ -649,30 +732,22 @@ async function runJob(
         return;
       }
 
-      case 'PRODUCT_DATA_COLLECTION' as any: {
-        const { productName, productUrl, competitors } = payload;
-        if (!productName || !productUrl) {
-          await markFailed({ jobId, error: "Invalid payload: missing productName or productUrl" });
-          return;
-        }
-
-        const result = await collectProductData({
+      case JobType.PRODUCT_DATA_COLLECTION: {
+        const result = await runProductCollectionWorker({
           projectId: job.projectId,
           jobId,
-          productName,
-          productUrl,
-          competitors: competitors || [],
+          payload,
         });
 
         await markCompleted({
           jobId,
           result,
-          summary: `Product data collected: ${result.competitorsAnalyzed} competitors`,
+          summary: `Product intel extracted: ${result.productName}`,
         });
         return;
       }
 
-      case 'PRODUCT_ANALYSIS' as any: {
+      case JobType.PRODUCT_ANALYSIS: {
         const { runId } = payload;
 
         const result = await analyzeProductData({
@@ -721,15 +796,19 @@ async function loop() {
             createdAt: true,
           },
         });
-        writeLog("[WORKER] PENDING jobs in database:", JSON.stringify(allPending, null, 2));
+        console.log('[Worker] Found jobs:', allPending.length);
+        console.log('[Worker] Job types:', allPending.map(j => j.type));
+        writeLog(
+          `[WORKER] PENDING jobs in database: ${JSON.stringify(allPending, null, 2)}`,
+        );
         if (RUN_ONCE) return;
         await sleep(POLL_MS);
         continue;
       }
 
-      writeLog("[WORKER] Claimed job:", job.id, "Type:", job.type);
+      writeLog(`[WORKER] Claimed job: ${job.id} Type: ${job.type}`);
       await runJob(job, pipelineContext);
-      writeLog("[WORKER] Finished job:", job.id);
+      writeLog(`[WORKER] Finished job: ${job.id}`);
       if (!RUN_ONCE) {
         await sleep(POLL_MS);
       }
@@ -755,9 +834,13 @@ async function startWorker() {
   await new Promise((resolve) => setTimeout(resolve, STARTUP_DELAY_MS));
 
   writeLog("=== WORKER ENV CHECK ===");
-  writeLog("APIFY_API_TOKEN:", process.env.APIFY_API_TOKEN ? "✓ Present" : "✗ Missing");
-  writeLog("ANTHROPIC_API_KEY:", process.env.ANTHROPIC_API_KEY ? "✓ Present" : "✗ Missing");
-  writeLog("NODE_ENV:", process.env.NODE_ENV);
+  writeLog(
+    `APIFY_API_TOKEN: ${process.env.APIFY_API_TOKEN ? "✓ Present" : "✗ Missing"}`,
+  );
+  writeLog(
+    `ANTHROPIC_API_KEY: ${process.env.ANTHROPIC_API_KEY ? "✓ Present" : "✗ Missing"}`,
+  );
+  writeLog(`NODE_ENV: ${process.env.NODE_ENV}`);
   writeLog("========================");
   writeLog("Starting job polling in 5 seconds...");
   await new Promise((resolve) => setTimeout(resolve, STARTUP_POST_ENV_DELAY_MS));

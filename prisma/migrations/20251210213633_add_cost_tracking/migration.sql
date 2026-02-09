@@ -14,7 +14,7 @@
 
 ALTER TYPE "ResearchSource" ADD VALUE 'AMAZON';
 ALTER TYPE "ResearchSource" ADD VALUE 'G2';
-ALTER TYPE "ResearchSource" ADD VALUE 'LOCAL_BUSINESS';
+ALTER TYPE "ResearchSource" ADD VALUE 'UPLOADED';
 
 -- AlterTable
 ALTER TABLE "Job" ADD COLUMN     "actualCost" DOUBLE PRECISION,

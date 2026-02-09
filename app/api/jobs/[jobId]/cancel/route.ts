@@ -1,57 +1,40 @@
+// app/api/jobs/[jobId]/cancel/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { getSessionUserId } from "@/lib/getSessionUserId";
-import { prisma } from "@/lib/prisma";
+import { requireSession } from "@/lib/auth/requireSession";
+import { prisma } from "@/lib/db";
+import { JobStatus } from "@prisma/client";
 
 export async function POST(
-  request: NextRequest,
+  req: NextRequest,
   { params }: { params: { jobId: string } }
 ) {
-  try {
-    const userId = await getSessionUserId();
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+  const session = await requireSession(req);
 
-    const { jobId } = params;
-
-    // Verify job ownership
-    const existingJob = await prisma.job.findFirst({
-      where: {
-        id: jobId,
-        userId: userId,
-      },
-    });
-
-    if (!existingJob) {
-      return NextResponse.json(
-        { error: "Job not found or access denied" },
-        { status: 404 }
-      );
-    }
-
-    // Only allow cancelling running or pending jobs
-    if (existingJob.status !== "RUNNING" && existingJob.status !== "PENDING") {
-      return NextResponse.json(
-        { error: "Can only cancel running or pending jobs" },
-        { status: 400 }
-      );
-    }
-
-    // Update job to failed with cancellation message
-    const job = await prisma.job.update({
-      where: { id: jobId },
-      data: {
-        status: "FAILED",
-        error: JSON.stringify({ message: "Cancelled by user" }),
-      },
-    });
-
-    return NextResponse.json({ success: true, job });
-  } catch (error) {
-    console.error("Error cancelling job:", error);
-    return NextResponse.json(
-      { error: "Failed to cancel job" },
-      { status: 500 }
-    );
+  if (!session || !session.user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const job = await prisma.job.findUnique({
+    where: {
+      id_userId: {
+        id: params.jobId,
+        userId: session.user.id,
+      },
+    },
+  });
+
+  if (!job) {
+    return NextResponse.json({ error: "Not Found" }, { status: 404 });
+  }
+
+  await prisma.job.update({
+    where: { id: params.jobId },
+    data: {
+      status: JobStatus.FAILED,
+      error: "Job cancelled by user",
+      updatedAt: new Date(),
+    },
+  });
+
+  return NextResponse.json({ success: true });
 }

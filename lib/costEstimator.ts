@@ -24,25 +24,37 @@ const COSTS = {
 };
 
 export async function estimateCustomerResearchCost(params: {
-  productAmazonAsin: string;
-  competitor1AmazonAsin?: string;
-  competitor2AmazonAsin?: string;
+  mainProductAsin?: string;
+  competitor1Asin?: string;
+  competitor2Asin?: string;
+  competitor3Asin?: string;
 }): Promise<CostEstimate> {
-  const { competitor1AmazonAsin, competitor2AmazonAsin } = params;
+  const {
+    mainProductAsin,
+    competitor1Asin,
+    competitor2Asin,
+    competitor3Asin,
+  } = params;
+  const hasMainProductAsin = Boolean(mainProductAsin?.trim());
+  const hasCompetitor1 = Boolean(competitor1Asin?.trim());
+  const hasCompetitor2 = Boolean(competitor2Asin?.trim());
+  const hasCompetitor3 = Boolean(competitor3Asin?.trim());
 
   const apifyCalls = 
     2 +
     2 +
-    2 +
-    (competitor1AmazonAsin ? 1 : 0) +
-    (competitor2AmazonAsin ? 1 : 0);
+    (hasMainProductAsin ? 5 : 0) +
+    (hasCompetitor1 ? 2 : 0) +
+    (hasCompetitor2 ? 2 : 0) +
+    (hasCompetitor3 ? 2 : 0);
 
   const apifyCost = 
     (2 * COSTS.apify_reddit_search) +
     (2 * COSTS.apify_reddit_scrape) +
-    (2 * COSTS.apify_amazon_reviews) +
-    (competitor1AmazonAsin ? COSTS.apify_amazon_reviews : 0) +
-    (competitor2AmazonAsin ? COSTS.apify_amazon_reviews : 0);
+    (hasMainProductAsin ? 5 * COSTS.apify_amazon_reviews : 0) +
+    (hasCompetitor1 ? 2 * COSTS.apify_amazon_reviews : 0) +
+    (hasCompetitor2 ? 2 * COSTS.apify_amazon_reviews : 0) +
+    (hasCompetitor3 ? 2 * COSTS.apify_amazon_reviews : 0);
 
   return {
     apifyCalls,

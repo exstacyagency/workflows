@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { projectId: parsedProjectId, runId } = parsed.data;
+    const { projectId: parsedProjectId, runId, productId } = parsed.data;
     projectId = parsedProjectId;
 
     const auth = await requireProjectOwner(projectId);
@@ -186,6 +186,7 @@ export async function POST(req: NextRequest) {
         runId: effectiveRunId,
         payload: {
           projectId,
+          ...(productId ? { productId } : {}),
           kind: "ad_transcript_collection",
           idempotencyKey,
         },

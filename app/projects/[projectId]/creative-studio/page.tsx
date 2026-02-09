@@ -1,10 +1,11 @@
 // app/projects/[projectId]/creative-studio/page.tsx
 "use client";
 
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { JobStatus, JobType } from "@prisma/client";
 import toast, { Toaster } from "react-hot-toast";
+import Link from "next/link";
 
 type Job = {
   id: string;
@@ -14,6 +15,13 @@ type Job = {
   updatedAt: string;
   resultSummary?: string | null;
   error?: string | null;
+};
+
+type ProductOption = {
+  id: string;
+  name: string;
+  productProblemSolved?: string | null;
+  amazonAsin?: string | null;
 };
 
 type ProductionStep = {
@@ -38,11 +46,15 @@ type ResearchQuality = {
 export default function CreativeStudioPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const projectId = params?.projectId as string;
+  const selectedProductIdFromUrl = searchParams.get("productId") || searchParams.get("product");
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [products, setProducts] = useState<ProductOption[]>([]);
+  const [selectedProductId, setSelectedProductId] = useState<string | null>(selectedProductIdFromUrl);
   const [submitting, setSubmitting] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [researchQuality, setResearchQuality] = useState<ResearchQuality>({
@@ -53,24 +65,27 @@ export default function CreativeStudioPage() {
     message: "No research completed yet",
   });
 
-  const loadJobs = useCallback(async () => {
+  const loadJobs = useCallback(async (productId?: string | null) => {
     try {
       const res = await fetch(`/api/projects/${projectId}/jobs`, {
         cache: "no-store",
       });
       if (!res.ok) throw new Error("Failed to load jobs");
       const data = await res.json();
-      const loadedJobs = data.jobs || [];
-      setJobs(loadedJobs);
+      const loadedJobs = Array.isArray(data.jobs) ? data.jobs : [];
+      const filteredJobs = productId
+        ? loadedJobs.filter((j: any) => String(j?.payload?.productId || "") === productId)
+        : [];
+      setJobs(filteredJobs);
       setLastRefresh(new Date());
       
       // Calculate research quality
-      const customer = loadedJobs.some(
+      const customer = filteredJobs.some(
         (j: Job) =>
           j.type === JobType.CUSTOMER_ANALYSIS && j.status === JobStatus.COMPLETED
       );
       const product = false; // Will enable when product research is implemented
-      const ad = loadedJobs.some(
+      const ad = filteredJobs.some(
         (j: Job) =>
           j.type === JobType.PATTERN_ANALYSIS && j.status === JobStatus.COMPLETED
       );
@@ -97,21 +112,60 @@ export default function CreativeStudioPage() {
     }
   }, [projectId]);
 
+  const loadProducts = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/projects/${projectId}/products`, {
+        cache: "no-store",
+      });
+      const data = await response.json();
+      if (!response.ok || !data?.success) {
+        throw new Error(data?.error || "Failed to load products");
+      }
+      const productList = Array.isArray(data.products) ? data.products : [];
+      setProducts(productList);
+
+      if (productList.length === 0) {
+        setSelectedProductId(null);
+        return;
+      }
+
+      const hasSelected =
+        selectedProductIdFromUrl && productList.some((p: ProductOption) => p.id === selectedProductIdFromUrl);
+      const nextSelected = hasSelected ? selectedProductIdFromUrl : productList[0].id;
+      setSelectedProductId(nextSelected);
+      if (!hasSelected) {
+        const url = new URL(window.location.href);
+        url.searchParams.set("productId", nextSelected);
+        url.searchParams.delete("product");
+        router.replace(url.pathname + url.search, { scroll: false });
+      }
+    } catch (err: any) {
+      setError(err.message || "Failed to load products");
+      setProducts([]);
+      setSelectedProductId(null);
+    }
+  }, [projectId, router, selectedProductIdFromUrl]);
+
   useEffect(() => {
     if (!projectId) return;
-    loadJobs();
-  }, [projectId, loadJobs]);
+    loadProducts();
+  }, [projectId, loadProducts]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    loadJobs(selectedProductId);
+  }, [projectId, loadJobs, selectedProductId]);
 
   // Auto-refresh jobs every 5 seconds
   useEffect(() => {
     if (!projectId) return;
     
     const interval = setInterval(() => {
-      loadJobs();
+      loadJobs(selectedProductId);
     }, 5000);
     
     return () => clearInterval(interval);
-  }, [projectId, loadJobs]);
+  }, [projectId, loadJobs, selectedProductId]);
 
   function getJobsForType(type: JobType): Job[] {
     return jobs.filter((j) => j.type === type);
@@ -210,13 +264,17 @@ export default function CreativeStudioPage() {
 
   async function runStep(step: ProductionStep) {
     if (!step.canRun || step.locked) return;
+    if (!selectedProductId) {
+      setError("Select or create a product first.");
+      return;
+    }
 
     setSubmitting(step.key);
     setError(null);
 
     try {
       let endpoint = "";
-      let payload: any = { projectId };
+      let payload: any = { projectId, productId: selectedProductId };
 
       // Map steps to their API endpoints
       const endpointMap: Record<string, string> = {
@@ -250,7 +308,7 @@ export default function CreativeStudioPage() {
       console.log("[Creative] Job created:", data.jobId);
 
       // Reload jobs
-      await loadJobs();
+      await loadJobs(selectedProductId);
       toast.success("Job started successfully!");
     } catch (err: any) {
       setError(err.message);
@@ -305,6 +363,8 @@ export default function CreativeStudioPage() {
     );
   }
 
+  const selectedProduct = products.find((p) => p.id === selectedProductId) ?? null;
+
   return (
     <div className="px-6 py-6 space-y-6 max-w-4xl">
       {/* Header */}
@@ -328,6 +388,41 @@ export default function CreativeStudioPage() {
                 </div>
               )}
             </div>
+            {products.length > 0 && (
+              <div className="mt-3 rounded-lg border border-slate-700 bg-slate-900/70 p-3 max-w-sm">
+                <div className="text-xs text-slate-500 mb-1">Current Product</div>
+                <div className="text-sm font-medium text-slate-100 mb-2">
+                  {selectedProduct ? selectedProduct.name : "Select a product"}
+                </div>
+                <select
+                  value={selectedProductId || ""}
+                  onChange={(e) => {
+                    const nextProductId = e.target.value;
+                    setSelectedProductId(nextProductId);
+                    const url = new URL(window.location.href);
+                    url.searchParams.set("productId", nextProductId);
+                    url.searchParams.delete("product");
+                    router.replace(url.pathname + url.search, { scroll: false });
+                  }}
+                  className="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-300"
+                >
+                  {products.map((product) => (
+                    <option key={product.id} value={product.id}>
+                      {product.name}
+                    </option>
+                  ))}
+                </select>
+                <div className="mt-2 text-xs text-slate-500">
+                  Switching between {products.length} product{products.length === 1 ? "" : "s"}
+                </div>
+                <Link
+                  href={`/projects/${projectId}`}
+                  className="mt-2 inline-block text-xs text-sky-400 hover:text-sky-300"
+                >
+                  ← Manage Products
+                </Link>
+              </div>
+            )}
           </div>
           <div className="text-right">
             <div className="text-3xl font-bold text-slate-50">
@@ -372,7 +467,13 @@ export default function CreativeStudioPage() {
 
         {researchQuality.score < 100 && (
           <button
-            onClick={() => router.push(`/projects/${projectId}/research-hub`)}
+            onClick={() =>
+              router.push(
+                selectedProductId
+                  ? `/projects/${projectId}/research-hub?productId=${selectedProductId}`
+                  : `/projects/${projectId}/research-hub`
+              )
+            }
             className="mt-3 text-xs text-sky-400 hover:text-sky-300 underline"
           >
             Add more research →

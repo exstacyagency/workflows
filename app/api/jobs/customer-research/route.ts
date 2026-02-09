@@ -17,14 +17,21 @@ import { randomUUID } from 'crypto';
 export const runtime = 'nodejs';
 
 const CustomerResearchSchema = ProjectJobSchema.extend({
-  productName: z.string().optional(),
   productProblemSolved: z.string().optional(),
+  mainProductAsin: z.string().optional(),
+  competitor1Asin: z.string().optional(),
+  competitor2Asin: z.string().optional(),
+  competitor3Asin: z.string().optional(),
+  // Backward compatibility aliases
   productAmazonAsin: z.string().optional(),
   competitor1AmazonAsin: z.string().optional(),
   competitor2AmazonAsin: z.string().optional(),
   forceNew: z.boolean().optional().default(false),
   // Reddit search parameters
   redditKeywords: z.array(z.string()).optional(),
+  searchIntent: z.array(z.string()).optional(),
+  solutionKeywords: z.array(z.string()).optional(),
+  additionalProblems: z.array(z.string()).optional(),
   redditSubreddits: z.array(z.string()).optional(),
   maxPosts: z.number().optional(),
   maxCommentsPerPost: z.number().optional(),
@@ -53,13 +60,20 @@ export async function POST(req: NextRequest) {
     }
     const {
       projectId: parsedProjectId,
-      productName,
+      productId,
       productProblemSolved,
+      mainProductAsin,
+      competitor1Asin,
+      competitor2Asin,
+      competitor3Asin,
       productAmazonAsin,
       competitor1AmazonAsin,
       competitor2AmazonAsin,
       forceNew,
       redditKeywords,
+      searchIntent,
+      solutionKeywords,
+      additionalProblems,
       redditSubreddits,
       maxPosts,
       maxCommentsPerPost,
@@ -68,17 +82,39 @@ export async function POST(req: NextRequest) {
     } = parsed.data;
     projectId = parsedProjectId;
 
-    const hasAmazonAsin = Boolean(productAmazonAsin?.trim());
-    const hasRedditData = Boolean(productName?.trim() || productProblemSolved?.trim());
-    if (!hasAmazonAsin && !hasRedditData) {
+    const resolvedMainProductAsin = (mainProductAsin || productAmazonAsin || '').trim() || undefined;
+    const resolvedCompetitor1Asin =
+      (competitor1Asin || competitor1AmazonAsin || '').trim() || undefined;
+    const resolvedCompetitor2Asin =
+      (competitor2Asin || competitor2AmazonAsin || '').trim() || undefined;
+    const resolvedCompetitor3Asin = (competitor3Asin || '').trim() || undefined;
+    const hasAmazonAsin = Boolean(
+      resolvedMainProductAsin ||
+        resolvedCompetitor1Asin ||
+        resolvedCompetitor2Asin ||
+        resolvedCompetitor3Asin
+    );
+    const hasRedditParams =
+      Boolean(productProblemSolved?.trim()) ||
+      Boolean(redditKeywords?.length) ||
+      Boolean(searchIntent?.length) ||
+      Boolean(solutionKeywords?.length) ||
+      Boolean(additionalProblems?.length) ||
+      Boolean(redditSubreddits?.length) ||
+      typeof maxPosts === "number" ||
+      typeof maxCommentsPerPost === "number" ||
+      Boolean(timeRange) ||
+      typeof scrapeComments === "boolean";
+    const hasRedditData = Boolean(productProblemSolved?.trim());
+    if (hasRedditParams && !productProblemSolved?.trim()) {
       return NextResponse.json(
-        { error: "Provide either Amazon ASIN or Product Name/Problem for Reddit scraping" },
+        { error: "Problem to Research is required for Reddit scraping" },
         { status: 400 }
       );
     }
-    if (hasRedditData && (!productName?.trim() || !productProblemSolved?.trim())) {
+    if (!hasAmazonAsin && !hasRedditData) {
       return NextResponse.json(
-        { error: "Product Name and Problem are required for Reddit scraping" },
+        { error: "Provide either Amazon ASIN or Problem to Research for Reddit scraping" },
         { status: 400 }
       );
     }
@@ -103,9 +139,10 @@ export async function POST(req: NextRequest) {
     const costEstimate = securitySweep
       ? { totalCost: 0 }
       : await estimateCustomerResearchCost({
-          productAmazonAsin,
-          competitor1AmazonAsin,
-          competitor2AmazonAsin,
+          mainProductAsin: resolvedMainProductAsin,
+          competitor1Asin: resolvedCompetitor1Asin,
+          competitor2Asin: resolvedCompetitor2Asin,
+          competitor3Asin: resolvedCompetitor3Asin,
         });
 
     // REMOVED: Budget check (lines 84-95)
@@ -124,17 +161,21 @@ export async function POST(req: NextRequest) {
 
     const initialPayload: any = {
       projectId,
-      productName,
+      ...(productId && { productId }),
       productProblemSolved,
-      productAmazonAsin,
-      competitor1AmazonAsin,
-      competitor2AmazonAsin,
+      mainProductAsin: resolvedMainProductAsin,
+      competitor1Asin: resolvedCompetitor1Asin,
+      competitor2Asin: resolvedCompetitor2Asin,
+      competitor3Asin: resolvedCompetitor3Asin,
       estimatedCost: costEstimate.totalCost ?? 0,
       idempotencyKey,
       skipped: securitySweep,
       reason: securitySweep ? "SECURITY_SWEEP" : null,
       // Reddit search parameters
       ...(redditKeywords && { redditKeywords }),
+      ...(searchIntent && { searchIntent }),
+      ...(solutionKeywords && { solutionKeywords }),
+      ...(additionalProblems && { additionalProblems }),
       ...(redditSubreddits && { redditSubreddits }),
       ...(typeof maxPosts === 'number' && { maxPosts }),
       ...(typeof maxCommentsPerPost === 'number' && { maxCommentsPerPost }),
@@ -171,6 +212,7 @@ export async function POST(req: NextRequest) {
             projectId,
             jobId,
             source: ResearchSource.REDDIT_PRODUCT,
+            type: "post",
             content: "Deterministic placeholder research content.",
             metadata: {
               indexLabel: "golden",

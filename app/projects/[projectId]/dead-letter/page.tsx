@@ -21,7 +21,7 @@ function getRecommendation(errorText: string | null | undefined) {
   const msg = (errorText ?? "").toLowerCase();
 
   if (msg.includes("missing dependencies")) {
-    return "Run: Customer Avatar → Product Intelligence → Pattern Analysis (then retry Script Generation).";
+    return "Run: Customer Avatar → Product Intelligence → Ad Analysis (then retry Script Generation).";
   }
 
   if (msg.includes("redis_url missing") || msg.includes("redis not configured")) {

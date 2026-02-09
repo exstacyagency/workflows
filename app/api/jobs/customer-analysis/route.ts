@@ -16,8 +16,9 @@ import { reserveQuota, rollbackQuota, QuotaExceededError } from '../../../../lib
 import { randomUUID } from 'crypto';
 
 const CustomerAnalysisSchema = ProjectJobSchema.extend({
-  productName: z.string().optional(),
   productProblemSolved: z.string().optional(),
+  solutionKeywords: z.array(z.string()).optional(),
+  additionalProblems: z.array(z.string()).optional(),
   runId: z.string().optional(),
 });
 
@@ -42,7 +43,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { projectId: parsedProjectId, productName, productProblemSolved, runId } = parsed.data;
+    const { projectId: parsedProjectId, runId } = parsed.data;
     projectId = parsedProjectId;
     const auth = await requireProjectOwner(projectId);
     if (auth.error) {
@@ -96,6 +97,7 @@ export async function POST(req: NextRequest) {
     }
 
     const idempotencyKey = randomUUID();
+    const payload = { ...parsed.data, runId: effectiveRunId, idempotencyKey };
 
     try {
       await reserveQuota(userId, planId, 'researchQueries', 1);
@@ -118,7 +120,7 @@ export async function POST(req: NextRequest) {
           type: JobType.CUSTOMER_ANALYSIS,
           status: JobStatus.PENDING,
           idempotencyKey,
-          payload: parsed.data,
+          payload,
           resultSummary: "Skipped: SECURITY_SWEEP",
           error: Prisma.JsonNull,
         },
@@ -157,7 +159,7 @@ export async function POST(req: NextRequest) {
         status: JobStatus.PENDING,
         idempotencyKey,
         runId: effectiveRunId,
-        payload: { ...parsed.data, idempotencyKey },
+        payload,
       },
     });
     jobId = job.id;

@@ -51,7 +51,9 @@ model Project {
   auditLogs            AuditLog[]
   characters           Character[]
   customerAvatars      CustomerAvatar[]
+  amazonReviews        AmazonReview[]
   jobs                 Job[]
+  productIntels        ProductIntel[]
   productIntelligences ProductIntelligence[]
   user                 User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   researchRows         ResearchRow[]
@@ -138,8 +140,10 @@ model Job {
   runId            String?
   adAssets         AdAsset[]
   adPatternResults AdPatternResult[]
+  amazonReviews    AmazonReview[]
   auditLogs        AuditLog[]
   characters       Character[]
+  productIntels    ProductIntel[]
   project          Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
   researchRows     ResearchRow[]
   scripts          Script[]
@@ -177,15 +181,62 @@ model ResearchRow {
   projectId String
   jobId     String?
   source    ResearchSource
-  type      String?
-  content   String
-  metadata  Json?
+  type      String
+  content   String         @db.Text
+
+  // Existing metadata
+  metadata  Json?          @db.JsonB
+
+  // Existing Amazon denormalized fields
+  productType ProductType?
+  productAsin String?
+  rating    Int?
+  productName String?
+
+  // Reddit metadata for filtering, aggregation, and thread reconstruction
+  subreddit        String?
+  redditId         String?
+  redditParentId   String?
+  redditCreatedUtc BigInt?
+  searchQueryUsed  String?
+  solutionKeyword  String?
+  problemKeyword   String?
+
   createdAt DateTime       @default(now())
-  job       Job?           @relation(fields: [jobId], references: [id])
+  updatedAt DateTime       @updatedAt
+  job       Job?           @relation(fields: [jobId], references: [id], onDelete: SetNull)
   project   Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
+  @@index([jobId])
+  @@index([source])
+  @@index([productType])
+  @@index([subreddit])
+  @@index([solutionKeyword])
+  @@index([redditCreatedUtc])
   @@map("research_row")
+}
+
+model AmazonReview {
+  id          String      @id @default(uuid())
+  projectId   String
+  jobId       String?
+  reviewText  String
+  rating      Int?
+  verified    Boolean?
+  reviewDate  DateTime?
+  rawJson     Json?
+  productType ProductType
+  productAsin String
+  productName String?
+  createdAt   DateTime    @default(now())
+  job         Job?        @relation(fields: [jobId], references: [id])
+  project     Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([jobId])
+  @@index([productType])
+  @@map("amazon_review")
 }
 
 model Script {
@@ -297,6 +348,7 @@ model CustomerAvatar {
   projectId String
   name      String?
   persona   Json?
+  competitiveInsights Json?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -315,6 +367,29 @@ model ProductIntelligence {
 
   @@index([projectId])
   @@map("product_intelligence")
+}
+
+model ProductIntel {
+  id                String   @id @default(cuid())
+  projectId         String
+  jobId             String
+  url               String
+  productName       String
+  tagline           String?
+  keyFeatures       String[]
+  ingredientsOrSpecs String[]
+  price             String?
+  keyClaims         String[]
+  targetAudience    String?
+  usp               String?
+  rawHtml           String?  @db.Text
+  createdAt         DateTime @default(now())
+  project           Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  job               Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([jobId])
+  @@map("product_intel")
 }
 
 model Subscription {
@@ -356,12 +431,23 @@ enum JobType {
   PRODUCT_ANALYSIS
 }
 
+enum ProductType {
+  MAIN_PRODUCT
+  COMPETITOR_1
+  COMPETITOR_2
+  COMPETITOR_3
+}
+
 enum ResearchSource {
   REDDIT_PRODUCT
   REDDIT_PROBLEM
   AMAZON
+  AMAZON_MAIN_PRODUCT
+  AMAZON_COMPETITOR_1
+  AMAZON_COMPETITOR_2
+  AMAZON_COMPETITOR_3
   G2
-  LOCAL_BUSINESS
+  UPLOADED
 }
 
 enum JobStatus {

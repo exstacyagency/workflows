@@ -33,3 +33,5 @@ scripts/check_no_prod_debug.sh
 # Golden outputs are ephemeral during local runs; baseline is tracked separately.
 e2e/golden/output/
 /tmp/golden-output/
+logs/anthropic/
+.vercel
