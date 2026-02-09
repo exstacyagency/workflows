@@ -77,6 +77,16 @@ export async function POST(req: NextRequest) {
     
     while (attempt < maxAttempts) {
       try {
+        console.log('[POST /api/projects] userId:', userId);
+        const userExists = await db.user.findUnique({ where: { id: userId } });
+        console.log('[POST /api/projects] user exists:', !!userExists);
+        if (!userExists) {
+          return NextResponse.json(
+            { error: `User ${userId} not found in database` },
+            { status: 400 }
+          );
+        }
+
         const project = await db.project.create({
           data: {
             name: attempt === 0 ? projectName : `${projectName} (${attempt})`,
