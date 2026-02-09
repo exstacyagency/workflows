@@ -27,11 +27,6 @@ if (isProd) {
 export const authOptions: NextAuthOptions = {
   debug: isProd, // Enable debug logging in production temporarily
 
-  pages: {
-    signIn: "/auth/signin",
-    error: "/auth/error",
-  },
-
   cookies: {
     sessionToken: {
       name: "next-auth.session-token",
