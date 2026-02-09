@@ -14,15 +14,19 @@ export async function POST(
   }
 
   const { projectId } = params;
+  if (!projectId) {
+    return NextResponse.json({ error: "projectId is required" }, { status: 400 });
+  }
+
   const deny = await requireProjectOwner404(projectId);
-  if (deny) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (deny) return deny;
 
   try {
     const formData = await req.formData();
     const file = formData.get("file") as File;
     const jobId = formData.get("jobId") as string | null;
 
-    if (!file || !jobId) {
+    if (!(file instanceof File) || typeof jobIdValue !== "string" || !jobIdValue.trim()) {
       return NextResponse.json({ error: "File and jobId required" }, { status: 400 });
     }
 
@@ -42,9 +46,7 @@ export async function POST(
     }));
 
     if (rows.length > 0) {
-      await prisma.researchRow.createMany({
-        data: rows,
-      });
+      await prisma.researchRow.createMany({ data: rows });
     }
 
     return NextResponse.json({
@@ -55,7 +57,7 @@ export async function POST(
   } catch (error: any) {
     console.error("Upload error:", error);
     return NextResponse.json(
-      { error: error.message || "Upload failed" },
+      { error: error?.message || "Upload failed" },
       { status: 500 }
     );
   }
