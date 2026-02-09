@@ -25,19 +25,19 @@ export async function POST(
   try {
     const formData = await req.formData();
     const file = formData.get("file");
-    const jobIdValue = formData.get("jobId");
+    const jobId = formData.get("jobId");
 
-    if (!(file instanceof File) || typeof jobIdValue !== "string" || !jobIdValue.trim()) {
+    if (!(file instanceof File) || typeof jobId !== "string" || !jobId.trim()) {
       return NextResponse.json({ error: "File and jobId required" }, { status: 400 });
     }
 
-    const jobId = jobIdValue.trim();
+    const normalizedJobId = jobId.trim();
     const extractedRows = await extractTextFromFile(file, file.type);
     const uploadedAt = new Date().toISOString();
 
     const rows = extractedRows.map((row, idx) => ({
       projectId,
-      jobId,
+      jobId: normalizedJobId,
       source: ResearchSource.LOCAL_BUSINESS,
       type: "UPLOADED",
       content: row.text,
