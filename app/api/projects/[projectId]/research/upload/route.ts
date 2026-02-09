@@ -26,7 +26,7 @@ export async function POST(
     const file = formData.get("file") as File;
     const jobId = formData.get("jobId") as string | null;
 
-    if (!(file instanceof File) || typeof jobIdValue !== "string" || !jobIdValue.trim()) {
+    if (!(file instanceof File) || typeof jobId !== "string" || !jobId.trim()) {
       return NextResponse.json({ error: "File and jobId required" }, { status: 400 });
     }
 
