@@ -36,8 +36,8 @@ import { startScriptGenerationJob } from "../lib/scriptGenerationService.ts";
 import { startVideoPromptGenerationJob } from "../lib/videoPromptGenerationService.ts";
 import { runVideoImageGenerationJob } from "../lib/videoImageGenerationService.ts";
 import { runVideoGenerationJob } from "../lib/videoGenerationService.ts";
-import { collectProductData } from "../lib/productDataCollectionService.ts";
 import { analyzeProductData } from "../lib/productAnalysisService.ts";
+import { runProductCollectionWorker } from "../lib/workers/productCollectionWorker";
 import prisma from "../lib/prisma.ts";
 import { rollbackQuota } from "../lib/billing/usage.ts";
 import { updateJobStatus } from "@/lib/jobs/updateJobStatus";
@@ -732,30 +732,22 @@ async function runJob(
         return;
       }
 
-      case 'PRODUCT_DATA_COLLECTION' as any: {
-        const { productName, productUrl, competitors } = payload;
-        if (!productName || !productUrl) {
-          await markFailed({ jobId, error: "Invalid payload: missing productName or productUrl" });
-          return;
-        }
-
-        const result = await collectProductData({
+      case JobType.PRODUCT_DATA_COLLECTION: {
+        const result = await runProductCollectionWorker({
           projectId: job.projectId,
           jobId,
-          productName,
-          productUrl,
-          competitors: competitors || [],
+          payload,
         });
 
         await markCompleted({
           jobId,
           result,
-          summary: `Product data collected: ${result.competitorsAnalyzed} competitors`,
+          summary: `Product intel extracted: ${result.productName}`,
         });
         return;
       }
 
-      case 'PRODUCT_ANALYSIS' as any: {
+      case JobType.PRODUCT_ANALYSIS: {
         const { runId } = payload;
 
         const result = await analyzeProductData({
