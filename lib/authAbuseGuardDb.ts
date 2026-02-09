@@ -102,6 +102,11 @@ export async function consumeRegisterAttemptDb(params: {
   ip?: string | null;
   email?: string | null;
 }) {
+  // Bypass register throttling for local development or explicit override.
+  if (cfg.raw("NODE_ENV") === "development" || cfg.raw("DISABLE_RATE_LIMIT") === "true") {
+    return { allowed: true as const, retryAfterMs: null };
+  }
+
   const ip = (params.ip ?? "unknown").trim() || "unknown";
   const email = params.email ? normEmail(params.email) : null;
   const t = now();
