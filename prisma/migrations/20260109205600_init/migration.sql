@@ -13,7 +13,7 @@ BEGIN
     END IF;
 
     IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'ResearchSource') THEN
-      EXECUTE $$CREATE TYPE "ResearchSource" AS ENUM ('REDDIT_PRODUCT', 'REDDIT_PROBLEM', 'AMAZON', 'G2', 'LOCAL_BUSINESS')$$;
+      EXECUTE $$CREATE TYPE "ResearchSource" AS ENUM ('REDDIT_PRODUCT', 'REDDIT_PROBLEM', 'AMAZON', 'G2', 'UPLOADED')$$;
     END IF;
 
     IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'JobStatus') THEN
