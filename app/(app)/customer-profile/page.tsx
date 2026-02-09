@@ -56,7 +56,7 @@ export default function CustomerProfilePage() {
   useEffect(() => {
     async function loadProjects() {
       try {
-        const res = await fetch('/api/projects');
+        const res = await fetch('/api/projects', { credentials: 'include' });
         if (!res.ok) {
           throw new Error('Failed to load projects');
         }
@@ -94,8 +94,8 @@ export default function CustomerProfilePage() {
   async function loadSnapshots(projectId: string) {
     try {
       const [avatarsRes, intelRes] = await Promise.all([
-        fetch(`/api/projects/${projectId}/customer-avatar?view=all`),
-        fetch(`/api/projects/${projectId}/product-intelligence?view=all`),
+        fetch(`/api/projects/${projectId}/customer-avatar?view=all`, { credentials: 'include' }),
+        fetch(`/api/projects/${projectId}/product-intelligence?view=all`, { credentials: 'include' }),
       ]);
 
       if (avatarsRes.ok) {
@@ -140,11 +140,12 @@ export default function CustomerProfilePage() {
 
     const options: RequestInit =
       action === 'delete'
-        ? { method: 'DELETE' }
+        ? { method: 'DELETE', credentials: 'include' }
         : {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ action: action === 'restore' ? 'restore' : 'archive' }),
+            credentials: 'include',
           };
 
     try {
@@ -186,6 +187,7 @@ export default function CustomerProfilePage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
+        credentials: 'include',
       });
 
       if (!res.ok) {
@@ -231,7 +233,7 @@ export default function CustomerProfilePage() {
         type === 'avatar'
           ? `/api/projects/${selectedProjectId}/customer-avatar?download=1${idParam}`
           : `/api/projects/${selectedProjectId}/product-intelligence?download=1${idParam}`;
-      const res = await fetch(endpoint);
+      const res = await fetch(endpoint, { credentials: 'include' });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error || 'Download failed.');
