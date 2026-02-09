@@ -5,12 +5,12 @@ import { getToken } from "next-auth/jwt";
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // Skip auth routes completely
+  // Skip auth routes
   if (pathname.startsWith("/api/auth/")) {
     return NextResponse.next();
   }
 
-  // Allow test bootstrap in beta/test/dev
+  // Allow test routes in dev/beta
   if (pathname.startsWith("/api/test/")) {
     const mode =
       process.env.NODE_ENV !== "production" ||
@@ -19,7 +19,7 @@ export async function middleware(req: NextRequest) {
     if (mode) return NextResponse.next();
   }
 
-  // Check for test session cookie in beta/test/dev
+  // Check test session in dev/beta
   const mode =
     process.env.NODE_ENV !== "production" ||
     process.env.MODE === "beta" ||
@@ -30,10 +30,10 @@ export async function middleware(req: NextRequest) {
     if (testSession) return NextResponse.next();
   }
 
-  // Get token using getToken (more reliable than withAuth)
+  // Get token
   const token = await getToken({
     req,
-    secret: process.env.NEXTAUTH_SECRET
+    secret: process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET
   });
 
   if (!token) {
@@ -48,7 +48,6 @@ export async function middleware(req: NextRequest) {
 export const config = {
   matcher: [
     "/projects/:path*",
-    "/studio/:path*",
     "/api/jobs/:path*",
     "/api/projects/:path*",
     "/api/test/:path*",
