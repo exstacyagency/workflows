@@ -85,6 +85,23 @@ interface ProductCollectionFormData {
   aboutUrl: string;
 }
 
+interface AdDataCompleteness {
+  totalAds: number;
+  withTranscript: number;
+  withOcr: number;
+  withKeyframe: number;
+  withAllData: number;
+  transcriptCoverage: number;
+  ocrCoverage: number;
+  keyframeCoverage: number;
+  minAdsRequired: number;
+  minTranscriptCoverage: number;
+  minOcrCoverage: number;
+  minCompleteAds: number;
+  canRun: boolean;
+  reason: string | null;
+}
+
 interface RunAllResearchFormData {
   productName: string;
   productProblemSolved: string;
@@ -121,6 +138,12 @@ export default function ResearchHubPage() {
     shippingUrl: "",
     aboutUrl: "",
   });
+  const [adOcrCoverage, setAdOcrCoverage] = useState<{ totalAssets: number; assetsWithOcr: number }>({
+    totalAssets: 0,
+    assetsWithOcr: 0,
+  });
+  const [adCompleteness, setAdCompleteness] = useState<AdDataCompleteness | null>(null);
+  const [adCompletenessLoading, setAdCompletenessLoading] = useState(false);
   const selectedProductRef = useRef<string | null>(selectedProductId);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
 
@@ -229,6 +252,43 @@ export default function ResearchHubPage() {
       hour12: true,
     });
 
+  const loadAdOcrCoverage = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/projects/${projectId}/ad-ocr-status`, { cache: "no-store" });
+      if (!response.ok) return;
+      const data = await response.json();
+      setAdOcrCoverage({
+        totalAssets: Number(data?.totalAssets ?? 0),
+        assetsWithOcr: Number(data?.assetsWithOcr ?? 0),
+      });
+    } catch (error) {
+      console.error("[loadAdOcrCoverage] Error:", error);
+    }
+  }, [projectId]);
+
+  const loadAdCompleteness = useCallback(
+    async (runId?: string | null) => {
+      const runParam = runId || currentRunId || selectedRunId || "";
+      const query = runParam ? `?runId=${encodeURIComponent(runParam)}` : "";
+      setAdCompletenessLoading(true);
+      try {
+        const response = await fetch(`/api/projects/${projectId}/ad-data-completeness${query}`, {
+          cache: "no-store",
+        });
+        if (!response.ok) return;
+        const data = await response.json();
+        if (data?.success && data?.completeness) {
+          setAdCompleteness(data.completeness as AdDataCompleteness);
+        }
+      } catch (error) {
+        console.error("[loadAdCompleteness] Error:", error);
+      } finally {
+        setAdCompletenessLoading(false);
+      }
+    },
+    [currentRunId, projectId, selectedRunId]
+  );
+
   const loadJobs = useCallback(async (forceProductId?: string, options?: { silent?: boolean }) => {
     const silent = options?.silent === true;
     console.log('[loadJobs] Starting job fetch...', { projectId, forceProductId, timestamp: new Date().toISOString() });
@@ -256,12 +316,14 @@ export default function ResearchHubPage() {
         return filteredJobs || [];
       });
       console.log('[loadJobs] Jobs filtered:', { productId: productToFilter, filteredCount: filteredJobs.length });
+      await loadAdOcrCoverage();
+      await loadAdCompleteness();
     } catch (error) {
       console.error('[loadJobs] Error:', error);
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [projectId]);
+  }, [loadAdCompleteness, loadAdOcrCoverage, projectId]);
 
   const loadProducts = useCallback(async () => {
     try {
@@ -307,6 +369,11 @@ export default function ResearchHubPage() {
       loadJobs(selectedProductId || undefined);
     }
   }, [loadJobs, projectId, selectedProductId]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    loadAdCompleteness();
+  }, [loadAdCompleteness, projectId]);
 
   const runningJob = useMemo(
     () => jobs.find((j) => j.status === "RUNNING") ?? null,
@@ -387,12 +454,21 @@ export default function ResearchHubPage() {
           status: "NOT_STARTED",
         },
         {
+          id: "ad-ocr",
+          label: "Extract OCR",
+          description: "Extract text overlays from ad creatives",
+          jobType: "AD_PERFORMANCE",
+          endpoint: "/api/jobs/ad-ocr",
+          prerequisite: "ad-collection",
+          status: "NOT_STARTED",
+        },
+        {
           id: "ad-transcripts",
           label: "Extract Transcripts",
           description: "Convert ads to text transcripts",
           jobType: "AD_PERFORMANCE",
           endpoint: "/api/jobs/ad-transcripts",
-          prerequisite: "ad-collection",
+          prerequisite: "ad-ocr",
           status: "NOT_STARTED",
         },
         {
@@ -427,30 +503,47 @@ export default function ResearchHubPage() {
 
   // Get step status based on current run
   const getStepStatus = (jobType: JobType, stepId: string): { status: JobStatus; lastJob?: Job } => {
+    if (jobType === "AD_PERFORMANCE") {
+      // Ad pipeline uses project-level filtering by subtype (not strict run-only matching).
+      const matchingJobs = jobs.filter((j) => {
+        const jobSubtype = j.payload?.jobType || j.metadata?.jobType;
+        if (stepId === "ad-collection") return jobSubtype === "ad_raw_collection";
+        if (stepId === "ad-ocr") return jobSubtype === "ad_ocr_collection";
+        if (stepId === "ad-transcripts") {
+          return jobSubtype === "ad_transcripts" || jobSubtype === "ad_transcript_collection";
+        }
+        return false;
+      });
+
+      const job = [...matchingJobs].sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      )[0];
+
+      if (stepId === "ad-ocr" && adOcrCoverage.totalAssets > 0) {
+        if (adOcrCoverage.assetsWithOcr >= adOcrCoverage.totalAssets) {
+          return { status: "COMPLETED", lastJob: job };
+        }
+      }
+
+      if (!job) {
+        return { status: "NOT_STARTED" };
+      }
+
+      return {
+        status: job.status,
+        lastJob: job,
+      };
+    }
+
     if (!currentRunId) {
       return { status: "NOT_STARTED" };
     }
-    
-    // Only look at jobs with the current runId
-    let job: Job | undefined;
-    
-    if (jobType === "AD_PERFORMANCE") {
-      // Special handling for ad jobs which share the same type
-      job = jobs.find(j => {
-        if (j.runId !== currentRunId) return false;
-        const jobSubtype = j.payload?.jobType || j.metadata?.jobType;
-        if (stepId === "ad-collection") return jobSubtype === "ad_raw_collection";
-        if (stepId === "ad-transcripts") return jobSubtype === "ad_transcripts";
-        return false;
-      });
-    } else {
-      job = jobs.find(j => j.type === jobType && j.runId === currentRunId);
-    }
-    
+
+    const job = jobs.find(j => j.type === jobType && j.runId === currentRunId);
     if (!job) {
       return { status: "NOT_STARTED" };
     }
-    
+
     console.log(`[Step Status] ${stepId}:`, {
       jobType,
       currentRunId,
@@ -535,6 +628,10 @@ export default function ResearchHubPage() {
   const canRun = (step: ResearchStep, track: ResearchTrack): boolean => {
     if (step.id === "customer-analysis") return true;
     if (step.status === "RUNNING" || step.status === "PENDING") return false;
+    if (step.id === "pattern-analysis") {
+      if (!adCompleteness) return false;
+      if (!adCompleteness.canRun) return false;
+    }
 
     if (!step.prerequisite) return true;
 
@@ -632,6 +729,11 @@ export default function ResearchHubPage() {
           additionalProblems: Array.isArray(currentRunResearchJob?.payload?.additionalProblems)
             ? currentRunResearchJob?.payload?.additionalProblems
             : [],
+        };
+      } else if (step.id === "ad-ocr" || step.id === "ad-transcripts") {
+        payload = {
+          ...payload,
+          ...(currentRunId ? { runId: currentRunId } : {}),
         };
       }
 
@@ -1126,6 +1228,10 @@ export default function ResearchHubPage() {
                     const isCollecting =
                       (isCustomerCollectionStep && (isRunning || hasRunningJob)) ||
                       (isProductCollectionStep && isRunning);
+                    const patternAnalysisBlockedReason =
+                      stepWithStatus.id === "pattern-analysis" && adCompleteness && !adCompleteness.canRun
+                        ? adCompleteness.reason ?? "Pattern analysis requirements not met."
+                        : null;
                     const customerResearchJob = stepWithStatus.jobType === "CUSTOMER_RESEARCH"
                       ? latestCompletedCustomerResearchJob
                       : undefined;
@@ -1140,6 +1246,29 @@ export default function ResearchHubPage() {
                             {stepWithStatus.label}
                           </h3>
                           <p className="text-xs text-slate-400 mb-2">{stepWithStatus.description}</p>
+                          {stepWithStatus.id === "ad-ocr" && (
+                            <p className="text-xs text-slate-500 mb-2">
+                              OCR coverage: {adOcrCoverage.assetsWithOcr}/{adOcrCoverage.totalAssets}
+                            </p>
+                          )}
+                          {stepWithStatus.id === "pattern-analysis" && (
+                            <>
+                              {adCompletenessLoading ? (
+                                <p className="text-xs text-slate-500 mb-2">Checking data completeness...</p>
+                              ) : adCompleteness ? (
+                                <p className="text-xs text-slate-500 mb-2">
+                                  Complete ads: {adCompleteness.withAllData}/{adCompleteness.totalAds} ·
+                                  OCR {Math.round(adCompleteness.ocrCoverage * 100)}% ·
+                                  Transcripts {Math.round(adCompleteness.transcriptCoverage * 100)}%
+                                </p>
+                              ) : null}
+                              {patternAnalysisBlockedReason && (
+                                <p className="text-xs text-amber-400 mb-2 whitespace-pre-line">
+                                  {patternAnalysisBlockedReason}
+                                </p>
+                              )}
+                            </>
+                          )}
                           {stepWithStatus.label === "Customer Analysis"
                             ? selectedRunId && analysisStatusJob && (
                                 <StatusBadge status={analysisStatusJob.status} />
@@ -1311,6 +1440,7 @@ export default function ResearchHubPage() {
                                       ? "bg-gray-700 text-gray-500 cursor-not-allowed"
                                       : "bg-blue-600 hover:bg-blue-700 text-white"
                                   }`}
+                                  title={patternAnalysisBlockedReason || undefined}
                                 >
                                   {isRunning
                                     ? "Starting..."

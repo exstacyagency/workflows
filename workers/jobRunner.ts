@@ -31,6 +31,7 @@ import { cfg } from "@/lib/config";
 import { runCustomerResearch } from "../services/customerResearchService.ts";
 import { runCustomerAnalysis } from "../lib/customerAnalysisService";
 import { runAdRawCollection } from "../lib/adRawCollectionService.ts";
+import { runAdOcrCollection } from "../lib/adOcrCollectionService.ts";
 import { runPatternAnalysis } from "../lib/patternAnalysisService.ts";
 import { startScriptGenerationJob } from "../lib/scriptGenerationService.ts";
 import { startVideoPromptGenerationJob } from "../lib/videoPromptGenerationService.ts";
@@ -499,6 +500,27 @@ async function runJob(
       }
 
       case JobType.AD_PERFORMANCE: {
+        const adSubtype = String(payload?.jobType ?? payload?.kind ?? "ad_raw_collection");
+
+        if (adSubtype === "ad_ocr_collection") {
+          const cfgVision = await handleProviderConfig(jobId, "Google Vision", [
+            "GOOGLE_CLOUD_VISION_API_KEY",
+          ]);
+          if (!cfgVision.ok) return;
+
+          const result = await runAdOcrCollection({
+            projectId: job.projectId,
+            jobId,
+          });
+
+          await markCompleted({
+            jobId,
+            result: { ok: true, ...result },
+            summary: `OCR: ${result.processed}/${result.totalAssets}`,
+          });
+          return;
+        }
+
         const cfgToken = await handleProviderConfig(jobId, "Apify", ["APIFY_API_TOKEN"]);
         if (!cfgToken.ok) return;
         const datasetId = (cfg.raw("APIFY_DATASET_ID") ?? "").trim();
@@ -528,27 +550,22 @@ async function runJob(
       }
 
       case JobType.PATTERN_ANALYSIS: {
-        const { customerResearchJobId, adPerformanceJobId } = payload;
-        if (!customerResearchJobId || !adPerformanceJobId) {
-          await markFailed({
-            jobId,
-            error: "Invalid payload: missing customerResearchJobId or adPerformanceJobId",
-          });
-          return;
-        }
+        const runIdFromPayload = String(payload?.runId ?? "").trim() || null;
+        const runIdFromJob = String((job as any)?.runId ?? "").trim() || null;
+        const effectiveRunId = runIdFromPayload ?? runIdFromJob;
 
         await updateJobStatus(jobId, JobStatus.RUNNING);
 
         const result = await runPatternAnalysis({
           projectId: job.projectId,
-          customerResearchJobId: String(customerResearchJobId),
-          adPerformanceJobId: String(adPerformanceJobId),
+          runId: effectiveRunId,
+          jobId,
         });
 
         await markCompleted({
           jobId,
           result,
-          summary: `Patterns: ${result.patterns.topHooks.length} hooks`,
+          summary: `Patterns: ${result.patterns.hookPatterns.length} hooks`,
         });
         return;
       }
