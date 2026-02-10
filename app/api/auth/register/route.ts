@@ -10,6 +10,11 @@ import {
 } from "@/lib/authAbuseGuard";
 import { normalizeEmail } from "@/lib/normalizeEmail";
 
+function isValidEmail(email: string): boolean {
+  // Basic pragmatic format check for API-side validation.
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
 export async function POST(req: NextRequest) {
   let email: string | null = null;
   const ip =
@@ -18,7 +23,15 @@ export async function POST(req: NextRequest) {
     null;
 
   try {
-    const body = await req.json();
+    let body: Record<string, unknown>;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json(
+        { error: "Invalid JSON payload" },
+        { status: 400 }
+      );
+    }
 
     email = normalizeEmail(body.email) ?? "";
     const password =
@@ -40,10 +53,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!email || !password || password.length < 8) {
+    if (!email || !isValidEmail(email)) {
       recordAuthFailure({ kind: "register", ip, email });
       return NextResponse.json(
-        { error: "Invalid email or password (min 8 chars)" },
+        { error: "Invalid email format" },
+        { status: 400 }
+      );
+    }
+
+    if (!password || password.length < 8) {
+      recordAuthFailure({ kind: "register", ip, email });
+      return NextResponse.json(
+        { error: "Password must be at least 8 characters" },
         { status: 400 }
       );
     }
@@ -76,6 +97,13 @@ export async function POST(req: NextRequest) {
   } catch (error: any) {
     console.error("Error in /api/auth/register", error);
     recordAuthFailure({ kind: "register", ip, email });
+
+    if (error?.code === "P2002") {
+      return NextResponse.json(
+        { error: "User already exists" },
+        { status: 409 }
+      );
+    }
 
     await logAudit({
       action: "auth.error",
