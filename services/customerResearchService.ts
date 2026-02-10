@@ -36,17 +36,12 @@ type RedditPost = {
   author?: string;
   subreddit?: string;
   score?: number;
-  numComments?: number;
   url?: string;
   permalink?: string;
   title?: string;
   postId?: string;
   parentId?: string | null;
   depth?: number;
-  distinguished?: string | null;
-  stickied?: boolean;
-  edited?: boolean | number;
-  createdUtc?: number;
   createdAt?: Date;
   query_metadata?: RedditQueryMetadata;
 };
@@ -57,7 +52,7 @@ type AmazonReview = {
   title?: string;
   productName?: string;
   productTitle?: string;
-  rating?: number | string;
+  rating?: number;
   verified?: boolean;
   date?: string;
 };
@@ -67,19 +62,12 @@ type ProductScrapeTarget = {
   type: ProductType;
 };
 
-type AmazonStarFilter =
-  | "one_star"
-  | "two_star"
-  | "three_star"
-  | "four_star"
-  | "five_star";
-
 type AmazonInput = {
   asin: string;
   domainCode: "com";
   sortBy: "recent";
   maxPages: number;
-  filterByStar: AmazonStarFilter;
+  filterByStar: "four_star" | "five_star" | "one_star" | "two_star" | "three_star";
   filterByKeyword: "";
   reviewerType: "all_reviews";
   formatType: "current_format";
@@ -97,7 +85,6 @@ type RedditScraperRequest = {
 };
 
 type RedditScraperPost = {
-  kind?: string;
   id: string;
   title?: string;
   author?: string;
@@ -111,14 +98,10 @@ type RedditScraperPost = {
   permalink?: string;
   is_video?: boolean;
   thumbnail?: string;
-  distinguished?: string | null;
-  stickied?: boolean;
-  edited?: boolean | number;
   query_metadata?: RedditQueryMetadata;
 };
 
 type RedditScraperComment = {
-  kind?: string;
   id: string;
   post_id: string;
   author?: string;
@@ -126,12 +109,6 @@ type RedditScraperComment = {
   upvotes?: number;
   depth?: number;
   parent_id?: string | null;
-  permalink?: string;
-  url?: string;
-  distinguished?: string | null;
-  stickied?: boolean;
-  edited?: boolean | number;
-  subreddit?: string;
   created_utc?: number;
   query_metadata?: RedditQueryMetadata;
 };
@@ -140,23 +117,9 @@ type RedditQueryType = "solution" | "intent" | "keyword" | "problem";
 
 type RedditQueryMetadata = {
   problem: string;
-  problem_keyword: string;
-  solution_keyword: string | null;
   query_type: RedditQueryType;
   query_used: string;
   subreddit: string;
-};
-
-type RedditScraperConfig = {
-  query: string;
-  subreddit?: string;
-  solutionKeyword: string | null;
-  problemKeyword: string;
-  maxPosts: number;
-  scrapeComments: boolean;
-  maxCommentsPerPost: number;
-  timeRange: "week" | "month" | "year" | "all";
-  queryType: RedditQueryType;
 };
 
 type RedditScraperResponse = {
@@ -331,60 +294,15 @@ function filterProblemComments(items: RedditPost[]) {
 }
 
 // Shared Amazon review params (canonical)
-function normalizeAmazonStarFilter(starFilter: unknown): AmazonStarFilter {
-  if (typeof starFilter === "number" && Number.isFinite(starFilter)) {
-    const rounded = Math.round(starFilter);
-    if (rounded === 1) return "one_star";
-    if (rounded === 2) return "two_star";
-    if (rounded === 3) return "three_star";
-    if (rounded === 4) return "four_star";
-    if (rounded === 5) return "five_star";
-  }
-
-  const normalized = String(starFilter ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/[\s-]+/g, "_");
-
-  const mappings: Record<string, AmazonStarFilter> = {
-    "1": "one_star",
-    "1_star": "one_star",
-    one: "one_star",
-    one_star: "one_star",
-    "2": "two_star",
-    "2_star": "two_star",
-    two: "two_star",
-    two_star: "two_star",
-    "3": "three_star",
-    "3_star": "three_star",
-    three: "three_star",
-    three_star: "three_star",
-    "4": "four_star",
-    "4_star": "four_star",
-    four: "four_star",
-    four_star: "four_star",
-    "5": "five_star",
-    "5_star": "five_star",
-    five: "five_star",
-    five_star: "five_star",
-  };
-
-  const canonical = mappings[normalized];
-  if (!canonical) {
-    throw new Error(`Unsupported Amazon star filter: ${String(starFilter)}`);
-  }
-  return canonical;
-}
-
 const buildAmazonInput = (
   asin: string,
-  starFilter: AmazonStarFilter | string | number
+  starFilter: "four_star" | "five_star" | "one_star" | "two_star" | "three_star"
 ): AmazonInput => ({
   asin,
   domainCode: "com",
   sortBy: "recent",
   maxPages: 1,
-  filterByStar: normalizeAmazonStarFilter(starFilter),
+  filterByStar: starFilter,
   filterByKeyword: "",
   reviewerType: "all_reviews",
   formatType: "current_format",
@@ -413,33 +331,9 @@ function extractAmazonReviewText(review: AmazonReview): string {
   ).trim();
 }
 
-function parseAmazonRating(review: AmazonReview): number | null {
-  if (typeof review.rating === "string") {
-    const parsed = parseFloat(review.rating.match(/[\d.]+/)?.[0] || "0");
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-
-  if (typeof review.rating === "number" && Number.isFinite(review.rating)) {
-    return review.rating;
-  }
-
-  return null;
-}
-
-function getStarFiltersForProduct(type: ProductType): AmazonStarFilter[] {
-  if (type === ProductType.MAIN_PRODUCT) {
-    return ["four_star", "five_star"];
-  }
-
-  if (
-    type === ProductType.COMPETITOR_1 ||
-    type === ProductType.COMPETITOR_2 ||
-    type === ProductType.COMPETITOR_3
-  ) {
-    return ["one_star", "two_star", "three_star"];
-  }
-
-  return [];
+function getStarFiltersForProduct(type: ProductType): AmazonInput["filterByStar"][] {
+  // Collect all available review ratings for every product type.
+  return ["one_star", "two_star", "three_star", "four_star", "five_star"];
 }
 
 function toIsoDate(value: unknown): string | null {
@@ -491,39 +385,6 @@ function buildProblemQuery(
   return allKeywords.join(" ");
 }
 
-function toBigIntTimestamp(value: unknown): bigint | null {
-  if (typeof value !== "number" || !Number.isFinite(value)) return null;
-  return BigInt(Math.trunc(value));
-}
-
-function buildRedditPostContent(item: { title?: string; selftext?: string; body?: string }): string {
-  const title = String(item.title || "").trim();
-  const selftext = String(item.selftext || "").trim();
-  const body = String(item.body || "").trim();
-
-  if (title && selftext && selftext !== "[removed]" && selftext !== "[deleted]") {
-    return `${title}\n\n${selftext}`.trim();
-  }
-
-  if (title) return title;
-  return body;
-}
-
-function classifyPostType(item: {
-  title?: string;
-  selftext?: string;
-  body?: string;
-  parentId?: string | null;
-}): string {
-  const text = `${item.title || ""} ${item.selftext || item.body || ""}`.toLowerCase();
-
-  if (text.includes("?")) return "question";
-  if (/(update|results|cleared|worked|before.*after)/i.test(text)) return "results_update";
-  if (item.parentId && item.parentId.startsWith("t1_")) return "reply";
-
-  return "statement";
-}
-
 function filterQualityPosts(
   posts: RedditScraperPost[],
   maxPosts: number,
@@ -548,7 +409,7 @@ function filterQualityPosts(
     }
 
     const postScore = post.score ?? post.upvotes ?? 0;
-    if (postScore < 50 || (post.num_comments ?? 0) < 3) {
+    if (postScore < 5 || (post.num_comments ?? 0) < 3) {
       return false;
     }
 
@@ -708,58 +569,6 @@ function dedupeCommentsById(comments: RedditScraperComment[]): RedditScraperComm
   return deduped;
 }
 
-async function scrapeRedditWithMetadata(
-  config: RedditScraperConfig,
-  scraperUrl: string
-): Promise<{ posts: RedditScraperPost[]; comments: RedditScraperComment[] }> {
-  const controller = new AbortController();
-  const timeoutMs = 300000;
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const requestBody: RedditScraperRequest = {
-      query: config.query,
-      search_type: config.subreddit ? "subreddit" : "sitewide",
-      subreddit: config.subreddit || undefined,
-      max_posts: config.maxPosts,
-      time_range: config.timeRange,
-      scrape_comments: config.scrapeComments,
-      max_comments_per_post: config.maxCommentsPerPost,
-    };
-
-    const response = await nodeFetch(`${scraperUrl}/scrape`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(requestBody),
-      signal: controller.signal,
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => "no error body");
-      throw new Error(`Reddit scrape failed (${response.status}): ${errorText}`);
-    }
-
-    const result = (await response.json()) as RedditScraperResponse;
-    const posts = Array.isArray(result.posts) ? result.posts : [];
-    const comments = Array.isArray(result.comments) ? result.comments : [];
-    const queryMetadata: RedditQueryMetadata = {
-      problem: config.problemKeyword,
-      problem_keyword: config.problemKeyword,
-      solution_keyword: config.solutionKeyword,
-      query_type: config.queryType,
-      query_used: config.query,
-      subreddit: config.subreddit || "sitewide",
-    };
-
-    return {
-      posts: posts.map((post) => ({ ...post, query_metadata: queryMetadata })),
-      comments: comments.map((comment) => ({ ...comment, query_metadata: queryMetadata })),
-    };
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
-
 async function fetchLocalReddit(
   productProblemSolved: string,
   redditKeywords: string[] = [],
@@ -843,86 +652,84 @@ async function fetchLocalReddit(
 
       for (const subreddit of discoveredSubs) {
         console.log(`[Reddit] Searching r/${subreddit || "all"} for problem discussions...`);
-        const executedQueries = new Set<string>();
-        const runQuery = async (
-          query: string,
-          queryType: RedditQueryType,
-          solutionKeyword: string | null
-        ) => {
-          const normalizedQuery = query.trim();
-          if (!normalizedQuery) return;
-          const dedupeKey = normalizedQuery.toLowerCase();
-          if (executedQueries.has(dedupeKey)) return;
-          executedQueries.add(dedupeKey);
 
-          try {
-            const result = await scrapeRedditWithMetadata(
-              {
-                query: normalizedQuery,
-                subreddit: subreddit || undefined,
-                solutionKeyword,
-                problemKeyword: problem,
-                maxPosts: postsPerSubreddit,
-                scrapeComments,
-                maxCommentsPerPost,
-                timeRange,
-                queryType,
-              },
-              scraperUrl
-            );
-            console.log(
-              `[Reddit] Got ${result.posts.length} posts and ${result.comments.length} comments from r/${subreddit || "all"}`
-            );
-            allPosts.push(...result.posts);
-            allComments.push(...result.comments);
-          } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            console.error(`[Reddit] Error searching r/${subreddit || "all"}:`, message);
-          }
-        };
-
+        // Stage 2: Build query based on operator input (no hardcoded phrases)
+        let query: string;
+        let queryType: RedditQueryType = "problem";
         if (normalizedSolutionKeywords.length > 0) {
-          const problemOnlyQuery = (baseQuery || problem).trim();
-          console.log(`[Reddit] Query (problem-only) for r/${subreddit || "all"}:`, problemOnlyQuery);
-          await runQuery(problemOnlyQuery, "problem", null);
-
-          for (const solutionKeyword of normalizedSolutionKeywords) {
-            const solutionOnlyQuery = solutionKeyword.trim();
-            console.log(
-              `[Reddit] Query (solution-only) for r/${subreddit || "all"}:`,
-              solutionOnlyQuery
-            );
-            await runQuery(solutionOnlyQuery, "solution", solutionKeyword);
-
-            const combinedQuery = `${problemOnlyQuery} ${solutionKeyword}`.trim();
-            console.log(
-              `[Reddit] Query (problem+solution) for r/${subreddit || "all"}:`,
-              combinedQuery
-            );
-            await runQuery(combinedQuery, "solution", solutionKeyword);
-          }
-          continue;
-        }
-
-        if (normalizedSearchIntent.length > 0) {
+          const keywordIndex = discoveredSubs.indexOf(subreddit) % normalizedSolutionKeywords.length;
+          const solutionKeyword = normalizedSolutionKeywords[keywordIndex];
+          query = `${baseQuery || problem} ${solutionKeyword}`.trim();
+          queryType = "solution";
+          console.log(`[Reddit] Query (solution-focused) for r/${subreddit || "all"}:`, query);
+        } else if (normalizedSearchIntent.length > 0) {
           const intentIndex = discoveredSubs.indexOf(subreddit) % normalizedSearchIntent.length;
           const intentPhrase = normalizedSearchIntent[intentIndex];
-          const query = `${baseQuery || problem} ${intentPhrase}`.trim();
+          query = `${baseQuery || problem} ${intentPhrase}`.trim();
+          queryType = "intent";
           console.log(`[Reddit] Query (intent-focused) for r/${subreddit || "all"}:`, query);
-          await runQuery(query, "intent", null);
-          continue;
-        }
-
-        if (normalizedRedditKeywords.length > 0) {
-          const query = `${baseQuery || problem} ${normalizedRedditKeywords.join(" ")}`.trim();
+        } else if (normalizedRedditKeywords.length > 0) {
+          query = `${baseQuery || problem} ${normalizedRedditKeywords.join(" ")}`.trim();
+          queryType = "keyword";
           console.log(`[Reddit] Query (keyword-focused) for r/${subreddit || "all"}:`, query);
-          await runQuery(query, "keyword", null);
-          continue;
+        } else {
+          query = (baseQuery || problem).trim();
+          queryType = "problem";
+          console.log(`[Reddit] Stage 2 query (problem-only) for r/${subreddit || "all"}:`, query);
         }
 
-        const query = (baseQuery || problem).trim();
-        console.log(`[Reddit] Stage 2 query (problem-only) for r/${subreddit || "all"}:`, query);
-        await runQuery(query, "problem", null);
+        const controller = new AbortController();
+        const timeoutMs = 300000;
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+        try {
+          const requestBody: RedditScraperRequest = {
+            query,
+            search_type: subreddit ? "subreddit" : "sitewide",
+            subreddit: subreddit || undefined,
+            max_posts: postsPerSubreddit,
+            time_range: timeRange,
+            scrape_comments: scrapeComments,
+            max_comments_per_post: maxCommentsPerPost,
+          };
+
+          const response = await nodeFetch(`${scraperUrl}/scrape`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(requestBody),
+            signal: controller.signal,
+          });
+
+          clearTimeout(timeoutId);
+
+          if (!response.ok) {
+            const errorText = await response.text().catch(() => "no error body");
+            console.error(
+              `[Reddit] Failed r/${subreddit || "all"} (${response.status}):`,
+              errorText
+            );
+            continue;
+          }
+
+          const result = (await response.json()) as RedditScraperResponse;
+          const posts = Array.isArray(result.posts) ? result.posts : [];
+          const comments = Array.isArray(result.comments) ? result.comments : [];
+          const queryMetadata: RedditQueryMetadata = {
+            problem,
+            query_type: queryType,
+            query_used: query,
+            subreddit: subreddit || "sitewide",
+          };
+          console.log(
+            `[Reddit] Got ${posts.length} posts and ${comments.length} comments from r/${subreddit || "all"}`
+          );
+          allPosts.push(...posts.map((post) => ({ ...post, query_metadata: queryMetadata })));
+          allComments.push(...comments.map((comment) => ({ ...comment, query_metadata: queryMetadata })));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          console.error(`[Reddit] Error searching r/${subreddit || "all"}:`, message);
+          clearTimeout(timeoutId);
+        }
       }
     }
 
@@ -937,8 +744,6 @@ async function fetchLocalReddit(
       ...post,
       query_metadata: post.query_metadata ?? {
         problem: fallbackProblem,
-        problem_keyword: fallbackProblem,
-        solution_keyword: null,
         query_type: "problem",
         query_used: "",
         subreddit: post.subreddit || "sitewide",
@@ -954,8 +759,6 @@ async function fetchLocalReddit(
         ...comment,
         query_metadata: comment.query_metadata ?? metadataFromPost ?? {
           problem: fallbackProblem,
-          problem_keyword: fallbackProblem,
-          solution_keyword: null,
           query_type: "problem",
           query_used: "",
           subreddit: "sitewide",
@@ -1008,12 +811,9 @@ function dedupeRows(rows: ResearchRowInput[]) {
   const normalizedRows: typeof rows = [];
 
   for (const row of rows) {
-    const normalizedContent = String(row.content || "").replace(/\s+/g, ' ').trim();
+    const normalizedContent = row.content.replace(/\s+/g, ' ').trim();
     if (!normalizedContent) continue;
-    const redditId = String((row as any).redditId || "").trim();
-    const dedupeKey = redditId
-      ? `${row.source}:reddit:${redditId}`
-      : `${row.source}:${normalizedContent.toLowerCase()}:${(row as any).metadata?.sourceUrl ?? ''}`;
+    const dedupeKey = `${row.source}:${normalizedContent.toLowerCase()}:${(row as any).metadata?.sourceUrl ?? ''}`;
     if (seen.has(dedupeKey)) continue;
     seen.add(dedupeKey);
     normalizedRows.push({ ...row, content: normalizedContent });
@@ -1096,14 +896,9 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
         author: post.author,
         subreddit: post.subreddit,
         score: post.upvotes ?? post.score ?? 0,
-        numComments: post.num_comments,
         url: post.url,
         permalink: post.permalink,
         selftext: post.selftext,
-        distinguished: post.distinguished ?? null,
-        stickied: post.stickied,
-        edited: post.edited,
-        createdUtc: post.created_utc,
         createdAt: post.created_utc ? new Date(post.created_utc * 1000) : undefined,
         query_metadata: post.query_metadata,
       }));
@@ -1113,17 +908,10 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
         id: comment.id,
         postId: comment.post_id,
         author: comment.author,
-        subreddit: comment.subreddit,
         body: comment.body,
         score: comment.upvotes ?? 0,
         parentId: comment.parent_id ?? null,
         depth: comment.depth,
-        permalink: comment.permalink,
-        url: comment.url,
-        distinguished: comment.distinguished ?? null,
-        stickied: comment.stickied,
-        edited: comment.edited,
-        createdUtc: comment.created_utc,
         createdAt: comment.created_utc ? new Date(comment.created_utc * 1000) : undefined,
         query_metadata: comment.query_metadata,
       }));
@@ -1186,175 +974,58 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
     }
 
     const rows: ResearchRowInput[] = [
-      ...filteredProductComments.map((item, idx) => {
-        const queryMetadata = item.query_metadata;
-        const problemKeyword =
-          queryMetadata?.problem_keyword ||
-          queryMetadata?.problem ||
-          normalizedProductProblem ||
-          null;
-        const solutionKeyword = queryMetadata?.solution_keyword || null;
-
-        return {
-          projectId,
-          jobId,
-          source: 'REDDIT_PRODUCT' as any,
-          type: 'post',
-          content: buildRedditPostContent(item),
-          subreddit: item.subreddit ?? null,
-          redditId: item.id ?? null,
-          redditParentId: null,
-          redditCreatedUtc: toBigIntTimestamp(item.createdUtc),
-          searchQueryUsed: queryMetadata?.query_used || null,
-          solutionKeyword,
-          problemKeyword,
-          metadata: {
-            title: item.title,
-            author: item.author,
-            subreddit: item.subreddit,
-            score: item.score,
-            num_comments: item.numComments ?? null,
-            indexLabel: `${idx + 1}`,
-            sourceUrl: item.url || item.permalink,
-            url: item.url || item.permalink,
-            sourceDate: item.createdAt ? item.createdAt.toISOString() : null,
-            search_query: queryMetadata?.query_used || null,
-            solution_keyword: solutionKeyword,
-            problem_keyword: problemKeyword,
-            query_type: queryMetadata?.query_type || "unknown",
-            query_used: queryMetadata?.query_used || "",
-            search_problem: problemKeyword,
-            is_top_level_comment: false,
-            post_type: classifyPostType(item),
-            raw_reddit_data: {
-              author: item.author,
-              permalink: item.permalink,
-              url: item.url,
-              distinguished: item.distinguished ?? null,
-              stickied: item.stickied ?? null,
-              edited: item.edited ?? null,
-            },
-          },
-        };
-      }),
-      ...filteredProblemComments.flatMap((item, idx) => {
-        const post = item.post;
-        if (!post) return [];
-
-        const postQueryMetadata = post.query_metadata;
-        const postProblemKeyword =
-          postQueryMetadata?.problem_keyword ||
-          postQueryMetadata?.problem ||
-          normalizedProductProblem ||
-          null;
-        const postSolutionKeyword = postQueryMetadata?.solution_keyword || null;
-        const postSourceUrl = post.url || post.permalink;
-        const postScore = Number(post.score ?? 0) || 0;
-        if (postScore < 50) return [];
-
-        const postRow: ResearchRowInput = {
+      ...filteredProductComments.map((item, idx) => ({
+        projectId,
+        jobId,
+        source: 'REDDIT_PRODUCT' as any,
+        type: 'post',
+        content: item.title || item.body || item.selftext || '',
+        metadata: {
+          title: item.title,
+          author: item.author,
+          subreddit: item.subreddit,
+          score: item.score,
+          indexLabel: `${idx + 1}`,
+          sourceUrl: item.url || item.permalink,
+          url: item.url || item.permalink,
+          sourceDate: item.createdAt ? item.createdAt.toISOString() : null,
+          query_type: item.query_metadata?.query_type || "unknown",
+          query_used: item.query_metadata?.query_used || "",
+          search_problem: item.query_metadata?.problem || normalizedProductProblem || null,
+        },
+      })),
+      ...filteredProblemComments.flatMap((item, idx) =>
+        item.comments.map((comment, cidx) => ({
           projectId,
           jobId,
           source: 'REDDIT_PROBLEM' as any,
-          type: 'post',
-          content: buildRedditPostContent(post),
-          subreddit: post.subreddit ?? null,
-          redditId: post.id ?? null,
-          redditParentId: null,
-          redditCreatedUtc: toBigIntTimestamp(post.createdUtc),
-          searchQueryUsed: postQueryMetadata?.query_used || null,
-          solutionKeyword: postSolutionKeyword,
-          problemKeyword: postProblemKeyword,
+          type: 'comment',
+          content: comment.body || '',
           metadata: {
-            title: post.title,
-            author: post.author,
-            subreddit: post.subreddit,
-            score: post.score ?? null,
-            num_comments: post.numComments ?? null,
-            indexLabel: `${idx + 1}.0`,
-            sourceUrl: postSourceUrl,
-            url: postSourceUrl,
-            sourceDate: post.createdAt ? post.createdAt.toISOString() : null,
-            search_query: postQueryMetadata?.query_used || null,
-            solution_keyword: postSolutionKeyword,
-            problem_keyword: postProblemKeyword,
-            query_type: postQueryMetadata?.query_type || "unknown",
-            query_used: postQueryMetadata?.query_used || "",
-            search_problem: postProblemKeyword,
-            is_top_level_comment: false,
-            post_type: classifyPostType(post),
-            raw_reddit_data: {
-              author: post.author,
-              permalink: post.permalink,
-              url: post.url,
-              distinguished: post.distinguished ?? null,
-              stickied: post.stickied ?? null,
-              edited: post.edited ?? null,
-            },
+            postTitle: item.post?.title,
+            author: comment.author,
+            subreddit: item.post?.subreddit ?? null,
+            score: comment.score,
+            indexLabel: `${idx + 1}.${cidx + 1}`,
+            sourceUrl: comment.permalink || item.post?.permalink,
+            url: comment.permalink || item.post?.permalink,
+            sourceDate: comment.createdAt ? comment.createdAt.toISOString() : null,
+            query_type:
+              comment.query_metadata?.query_type ||
+              item.post?.query_metadata?.query_type ||
+              "unknown",
+            query_used:
+              comment.query_metadata?.query_used ||
+              item.post?.query_metadata?.query_used ||
+              "",
+            search_problem:
+              comment.query_metadata?.problem ||
+              item.post?.query_metadata?.problem ||
+              normalizedProductProblem ||
+              null,
           },
-        };
-
-        const commentRows = item.comments.flatMap((comment, cidx) => {
-          const commentScore = Number(comment.score ?? 0) || 0;
-          if (postScore < 20 && commentScore < 20) {
-            return [];
-          }
-
-          const queryMetadata = comment.query_metadata ?? postQueryMetadata;
-          const problemKeyword =
-            queryMetadata?.problem_keyword ||
-            queryMetadata?.problem ||
-            normalizedProductProblem ||
-            null;
-          const solutionKeyword = queryMetadata?.solution_keyword || null;
-          const sourceUrl = comment.permalink || post.permalink;
-          const sourceSubreddit = comment.subreddit ?? post.subreddit ?? null;
-          const isTopLevelComment = Boolean(comment.parentId?.startsWith("t3_"));
-
-          return {
-            projectId,
-            jobId,
-            source: 'REDDIT_PROBLEM' as any,
-            type: 'comment',
-            content: comment.body || '',
-            subreddit: sourceSubreddit,
-            redditId: comment.id ?? null,
-            redditParentId: comment.parentId ?? null,
-            redditCreatedUtc: toBigIntTimestamp(comment.createdUtc),
-            searchQueryUsed: queryMetadata?.query_used || null,
-            solutionKeyword,
-            problemKeyword,
-            metadata: {
-              postTitle: post.title,
-              author: comment.author,
-              subreddit: sourceSubreddit,
-              score: comment.score,
-              indexLabel: `${idx + 1}.${cidx + 1}`,
-              sourceUrl,
-              url: sourceUrl,
-              sourceDate: comment.createdAt ? comment.createdAt.toISOString() : null,
-              search_query: queryMetadata?.query_used || null,
-              solution_keyword: solutionKeyword,
-              problem_keyword: problemKeyword,
-              query_type: queryMetadata?.query_type || "unknown",
-              query_used: queryMetadata?.query_used || "",
-              search_problem: problemKeyword,
-              is_top_level_comment: isTopLevelComment,
-              post_type: classifyPostType(comment),
-              raw_reddit_data: {
-                author: comment.author,
-                permalink: comment.permalink,
-                url: comment.url,
-                distinguished: comment.distinguished ?? null,
-                stickied: comment.stickied ?? null,
-                edited: comment.edited ?? null,
-              },
-            },
-          };
-        });
-
-        return [postRow, ...commentRows];
-      })
+        }))
+      )
     ];
 
     const dedupedRows = dedupeRows(rows);
@@ -1368,83 +1039,35 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
     ).flatMap((productType) => {
       const asin = productAsinByType[productType];
       const productName = productNameByType[productType];
-      return amazonReviewsByType[productType].map((review) => {
-        const reviewText = extractAmazonReviewText(review);
-        const normalizedRating = parseAmazonRating(review);
-        const normalizedProductName = productName ?? extractAmazonProductName(review);
-        const amazonSource =
-          productType === ProductType.MAIN_PRODUCT
-            ? ResearchSource.AMAZON_MAIN_PRODUCT
-            : productType === ProductType.COMPETITOR_1
-              ? ResearchSource.AMAZON_COMPETITOR_1
-              : productType === ProductType.COMPETITOR_2
-                ? ResearchSource.AMAZON_COMPETITOR_2
-                : productType === ProductType.COMPETITOR_3
-                  ? ResearchSource.AMAZON_COMPETITOR_3
-                  : ResearchSource.AMAZON;
-
-        return {
-          projectId,
-          jobId,
-          source: amazonSource as any,
-          type: "review",
-          content: reviewText,
-          metadata: {
-            rating: normalizedRating ?? null,
-            verified: review.verified ?? null,
-            asin: asin ?? null,
-            productType,
-            productAsin: asin ?? null,
-            productName: normalizedProductName,
-            scrapedAt: new Date().toISOString(),
-            sourceDate: toIsoDate(
-              (review as any).date ??
-                (review as any).reviewDate ??
-                (review as any).reviewDateTime ??
-                (review as any).reviewTime
-            ),
-            raw: review,
-          },
-        };
-      });
+      return amazonReviewsByType[productType].map((review) => ({
+        projectId,
+        jobId,
+        source: ResearchSource.AMAZON,
+        type: "review",
+        content: extractAmazonReviewText(review),
+        metadata: {
+          rating: review.rating ?? null,
+          verified: review.verified ?? null,
+          asin: asin ?? null,
+          productType,
+          productAsin: asin ?? null,
+          productName: productName ?? extractAmazonProductName(review),
+          scrapedAt: new Date().toISOString(),
+          sourceDate: toIsoDate(
+            (review as any).date ??
+              (review as any).reviewDate ??
+              (review as any).reviewDateTime ??
+              (review as any).reviewTime
+          ),
+          raw: review,
+        },
+      }));
     });
 
     if (amazonRows.length > 0) {
       await prisma.researchRow.createMany({
         data: amazonRows,
       });
-
-      // Denormalize Amazon categorization fields onto research_row for UI/CSV consumers.
-      await prisma.$executeRaw`
-        UPDATE "research_row"
-        SET
-          "source" = CASE
-            WHEN COALESCE("metadata"->>'productType', '') = 'MAIN_PRODUCT' THEN 'AMAZON_MAIN_PRODUCT'::"ResearchSource"
-            WHEN COALESCE("metadata"->>'productType', '') = 'COMPETITOR_1' THEN 'AMAZON_COMPETITOR_1'::"ResearchSource"
-            WHEN COALESCE("metadata"->>'productType', '') = 'COMPETITOR_2' THEN 'AMAZON_COMPETITOR_2'::"ResearchSource"
-            WHEN COALESCE("metadata"->>'productType', '') = 'COMPETITOR_3' THEN 'AMAZON_COMPETITOR_3'::"ResearchSource"
-            ELSE 'AMAZON'::"ResearchSource"
-          END,
-          "productType" = CASE
-            WHEN COALESCE("metadata"->>'productType', '') = '' THEN NULL
-            ELSE ("metadata"->>'productType')::"ProductType"
-          END,
-          "productAsin" = NULLIF("metadata"->>'productAsin', ''),
-          "rating" = CASE
-            WHEN COALESCE("metadata"->>'rating', '') = '' THEN NULL
-            ELSE ROUND(("metadata"->>'rating')::numeric)::int
-          END,
-          "productName" = NULLIF("metadata"->>'productName', '')
-        WHERE "projectId" = ${projectId}
-          AND "jobId" = ${jobId}
-          AND "source" IN (
-            'AMAZON'::"ResearchSource",
-            'AMAZON_MAIN_PRODUCT'::"ResearchSource",
-            'AMAZON_COMPETITOR_1'::"ResearchSource",
-            'AMAZON_COMPETITOR_2'::"ResearchSource",
-            'AMAZON_COMPETITOR_3'::"ResearchSource"
-          )
-      `;
     }
 
     const amazonReviewRows = (
@@ -1458,7 +1081,7 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
           projectId,
           jobId,
           reviewText: extractAmazonReviewText(review),
-          rating: parseAmazonRating(review),
+          rating: typeof review.rating === "number" ? Math.round(review.rating) : null,
           verified:
             typeof review.verified === "boolean"
               ? review.verified
