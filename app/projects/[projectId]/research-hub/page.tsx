@@ -168,26 +168,24 @@ export default function ResearchHubPage() {
     console.log("Modal state changed:", activeStepModal);
   }, [activeStepModal]);
 
-  const runGroups = jobs
-    .filter((job) => job.type === "CUSTOMER_RESEARCH" || job.type === "CUSTOMER_ANALYSIS")
-    .reduce<Record<string, { runId: string; createdAt: string; jobs: Job[] }>>(
-      (acc, job) => {
-        const runId = job.runId ?? job.id;
-        if (!acc[runId]) {
-          acc[runId] = {
-            runId,
-            createdAt: job.createdAt,
-            jobs: [],
-          };
-        }
-        acc[runId].jobs.push(job);
-        if (new Date(job.createdAt).getTime() > new Date(acc[runId].createdAt).getTime()) {
-          acc[runId].createdAt = job.createdAt;
-        }
-        return acc;
-      },
-      {}
-    );
+  const runGroups = jobs.reduce<Record<string, { runId: string; createdAt: string; jobs: Job[] }>>(
+    (acc, job) => {
+      const runId = job.runId ?? job.id;
+      if (!acc[runId]) {
+        acc[runId] = {
+          runId,
+          createdAt: job.createdAt,
+          jobs: [],
+        };
+      }
+      acc[runId].jobs.push(job);
+      if (new Date(job.createdAt).getTime() > new Date(acc[runId].createdAt).getTime()) {
+        acc[runId].createdAt = job.createdAt;
+      }
+      return acc;
+    },
+    {}
+  );
 
   const runGroupsList = Object.values(runGroups);
   const runGroupsWithNumbers = runGroupsList
@@ -195,6 +193,24 @@ export default function ResearchHubPage() {
     .map((run, index) => ({
       ...run,
       runNumber: index + 1,
+      jobCount: run.jobs.length,
+      label: (() => {
+        const jobTypes = Array.from(new Set(run.jobs.map((j) => j.type)));
+        const hasCustomer = jobTypes.some(
+          (t) => t === "CUSTOMER_RESEARCH" || t === "CUSTOMER_ANALYSIS"
+        );
+        const hasAd = jobTypes.some(
+          (t) => t === "AD_PERFORMANCE" || t === "PATTERN_ANALYSIS"
+        );
+        const hasProduct = jobTypes.some(
+          (t) => t === "PRODUCT_DATA_COLLECTION" || t === "PRODUCT_ANALYSIS"
+        );
+        return (
+          [hasCustomer ? "Customer" : null, hasAd ? "Ad" : null, hasProduct ? "Product" : null]
+            .filter(Boolean)
+            .join(" + ") || "Research"
+        );
+      })(),
     }));
 
   const sortedRuns = runGroupsWithNumbers.sort(
@@ -326,9 +342,12 @@ export default function ResearchHubPage() {
         throw new Error('Failed to load jobs');
       }
       const productToFilter = (forceProductId ?? selectedProductRef.current) || null;
-      const filteredJobs = productToFilter
-        ? data.jobs.filter((j: any) => String(j.payload?.productId || "") === productToFilter)
-        : [];
+      const filteredJobs = (Array.isArray(data.jobs) ? data.jobs : []).filter((j: any) => {
+        if (!productToFilter) return true;
+        const jobProductId = String(j?.payload?.productId || "").trim();
+        // Keep project-level jobs (no productId), plus jobs tied to selected product.
+        return !jobProductId || jobProductId === String(productToFilter);
+      });
 
       setJobs((prevJobs) => {
         setPreviousJobs(prevJobs);
@@ -771,8 +790,7 @@ export default function ResearchHubPage() {
         throw new Error(data.error || "Failed to start job");
       }
 
-      // Store runId from customer research
-      if (step.id === "customer-research" && data.runId) {
+      if (data.runId) {
         setCurrentRunId(data.runId);
         setSelectedRunId(data.runId);
       }
@@ -877,6 +895,11 @@ export default function ResearchHubPage() {
         const data = await response.json().catch(() => ({}));
         throw new Error(data?.error || "Failed to start job");
       }
+      const data = await response.json().catch(() => ({}));
+      if (data?.runId) {
+        setCurrentRunId(data.runId);
+        setSelectedRunId(data.runId);
+      }
 
       setActiveStepModal(null);
       setPendingStep(null);
@@ -904,10 +927,24 @@ export default function ResearchHubPage() {
     
     const runId = crypto.randomUUID();
     setCurrentRunId(runId);
+    setSelectedRunId(runId);
     
     setStatusMessage("Starting all research jobs...");
     
     try {
+      const runResponse = await fetch(`/api/projects/${projectId}/runs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          runId,
+          projectId,
+        }),
+      });
+      if (!runResponse.ok) {
+        const runData = await runResponse.json().catch(() => ({}));
+        throw new Error(runData?.error || "Failed to create run");
+      }
+
       // Start Customer Research
       const customerResearchPayload = {
         projectId,
@@ -921,11 +958,15 @@ export default function ResearchHubPage() {
         ...(formData.competitor3Asin && { competitor3Asin: formData.competitor3Asin }),
       };
       
-      await fetch('/api/jobs/customer-research', {
+      const customerResponse = await fetch('/api/jobs/customer-research', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(customerResearchPayload),
       });
+      if (!customerResponse.ok) {
+        const data = await customerResponse.json().catch(() => ({}));
+        throw new Error(data?.error || "Failed to start customer research");
+      }
       
       // Start Ad Collection
       const adCollectionPayload = {
@@ -935,11 +976,15 @@ export default function ResearchHubPage() {
         industryCode: formData.industryCode,
       };
       
-      await fetch('/api/jobs/ad-collection', {
+      const adResponse = await fetch('/api/jobs/ad-collection', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(adCollectionPayload),
       });
+      if (!adResponse.ok) {
+        const data = await adResponse.json().catch(() => ({}));
+        throw new Error(data?.error || "Failed to start ad collection");
+      }
       
       // Start Product Data Collection
       const productCollectionPayload = {
@@ -950,11 +995,15 @@ export default function ResearchHubPage() {
         productUrl: formData.productUrl,
       };
       
-      await fetch('/api/jobs/product-data-collection', {
+      const productResponse = await fetch('/api/jobs/product-data-collection', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(productCollectionPayload),
       });
+      if (!productResponse.ok) {
+        const data = await productResponse.json().catch(() => ({}));
+        throw new Error(data?.error || "Failed to start product collection");
+      }
       
       await loadJobs();
       setStatusMessage("All research jobs started");
@@ -1146,7 +1195,7 @@ export default function ResearchHubPage() {
               <option value="no-active">No active run</option>
               {sortedRuns.map((run) => (
                 <option key={run.runId} value={run.runId}>
-                  Run #{run.runNumber} - Last: {getLastJobStatus(run.jobs)} - {formatRunDate(run.createdAt)}
+                  Run #{run.runNumber} ({run.label}, {run.jobCount} jobs) - Last: {getLastJobStatus(run.jobs)} - {formatRunDate(run.createdAt)}
                 </option>
               ))}
             </select>

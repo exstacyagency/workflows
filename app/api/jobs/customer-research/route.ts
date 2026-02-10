@@ -17,6 +17,7 @@ import { randomUUID } from 'crypto';
 export const runtime = 'nodejs';
 
 const CustomerResearchSchema = ProjectJobSchema.extend({
+  runId: z.string().optional(),
   productProblemSolved: z.string().optional(),
   mainProductAsin: z.string().optional(),
   competitor1Asin: z.string().optional(),
@@ -69,6 +70,7 @@ export async function POST(req: NextRequest) {
       productAmazonAsin,
       competitor1AmazonAsin,
       competitor2AmazonAsin,
+      runId: requestedRunId,
       forceNew,
       redditKeywords,
       searchIntent,
@@ -147,13 +149,40 @@ export async function POST(req: NextRequest) {
 
     // REMOVED: Budget check (lines 84-95)
 
-    // Create new research run
-    const run = await prisma.researchRun.create({
-      data: { 
-        projectId, 
-        status: 'IN_PROGRESS' 
+    const normalizedRequestedRunId = String(requestedRunId ?? "").trim();
+    let effectiveRunId = normalizedRequestedRunId;
+
+    if (effectiveRunId) {
+      const existingRun = await prisma.researchRun.findUnique({
+        where: { id: effectiveRunId },
+        select: { id: true, projectId: true },
+      });
+
+      if (existingRun && existingRun.projectId !== projectId) {
+        return NextResponse.json(
+          { error: "runId does not belong to this project" },
+          { status: 400 }
+        );
       }
-    });
+
+      if (!existingRun) {
+        await prisma.researchRun.create({
+          data: {
+            id: effectiveRunId,
+            projectId,
+            status: "IN_PROGRESS",
+          },
+        });
+      }
+    } else {
+      const run = await prisma.researchRun.create({
+        data: {
+          projectId,
+          status: "IN_PROGRESS",
+        },
+      });
+      effectiveRunId = run.id;
+    }
 
     const idempotencyKey = randomUUID();
 
@@ -162,6 +191,7 @@ export async function POST(req: NextRequest) {
     const initialPayload: any = {
       projectId,
       ...(productId && { productId }),
+      runId: effectiveRunId,
       productProblemSolved,
       mainProductAsin: resolvedMainProductAsin,
       competitor1Asin: resolvedCompetitor1Asin,
@@ -194,7 +224,7 @@ export async function POST(req: NextRequest) {
         type: JobType.CUSTOMER_RESEARCH,
         status: securitySweep ? JobStatus.COMPLETED : JobStatus.PENDING,
         idempotencyKey,
-        runId: run.id,
+        runId: effectiveRunId,
         payload: initialPayload,
         resultSummary: securitySweep ? "Skipped: SECURITY_SWEEP" : undefined,
         error: Prisma.JsonNull,
@@ -238,7 +268,13 @@ export async function POST(req: NextRequest) {
     });
 
     return NextResponse.json(
-      { jobId, runId: run.id, started: !securitySweep, skipped: securitySweep, reason: securitySweep ? "SECURITY_SWEEP" : null },
+      {
+        jobId,
+        runId: effectiveRunId,
+        started: !securitySweep,
+        skipped: securitySweep,
+        reason: securitySweep ? "SECURITY_SWEEP" : null,
+      },
       { status: 200 },
     );
   } catch (error: any) {
