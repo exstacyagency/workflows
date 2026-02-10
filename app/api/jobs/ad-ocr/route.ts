@@ -14,6 +14,8 @@ import { reserveQuota, rollbackQuota, QuotaExceededError } from "@/lib/billing/u
 import { randomUUID } from "crypto";
 import { z } from "zod";
 
+export const runtime = "nodejs";
+
 const JOB_TYPE = JobType.AD_PERFORMANCE;
 
 const AdOcrSchema = ProjectJobSchema.extend({
@@ -157,16 +159,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!cfg.raw("APIFY_API_TOKEN")) {
+    if (!cfg.raw("GOOGLE_CLOUD_VISION_API_KEY")) {
       return NextResponse.json(
-        { error: "APIFY_API_TOKEN must be set" },
-        { status: 500 }
-      );
-    }
-
-    if (!cfg.raw("APIFY_AD_OCR_ACTOR_ID") && !cfg.raw("APIFY_VISION_EXTRACTOR_ACTOR_ID")) {
-      return NextResponse.json(
-        { error: "APIFY_AD_OCR_ACTOR_ID or APIFY_VISION_EXTRACTOR_ACTOR_ID must be set" },
+        { error: "GOOGLE_CLOUD_VISION_API_KEY must be set" },
         { status: 500 }
       );
     }
