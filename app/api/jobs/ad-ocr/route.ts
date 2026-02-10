@@ -1,7 +1,6 @@
-// app/api/jobs/ad-transcripts/route.ts
 import { cfg } from "@/lib/config";
 import { NextRequest, NextResponse } from "next/server";
-import { startAdTranscriptJob } from "@/lib/adTranscriptCollectionService";
+import { startAdOcrJob } from "@/lib/adOcrCollectionService";
 import { prisma } from "@/lib/prisma";
 import { requireProjectOwner } from "@/lib/requireProjectOwner";
 import { ProjectJobSchema, parseJson } from "@/lib/validation/jobs";
@@ -12,12 +11,12 @@ import { enforceUserConcurrency } from "@/lib/jobGuards";
 import { JobStatus, JobType } from "@prisma/client";
 import { assertMinPlan, UpgradeRequiredError } from "@/lib/billing/requirePlan";
 import { reserveQuota, rollbackQuota, QuotaExceededError } from "@/lib/billing/usage";
-import { randomUUID } from 'crypto';
-import { z } from 'zod';
+import { randomUUID } from "crypto";
+import { z } from "zod";
 
-const JOB_TYPE = JobType.AD_PERFORMANCE; // enum-safe, schema-backed
+const JOB_TYPE = JobType.AD_PERFORMANCE;
 
-const AdTranscriptsSchema = ProjectJobSchema.extend({
+const AdOcrSchema = ProjectJobSchema.extend({
   runId: z.string().optional(),
 });
 
@@ -33,14 +32,11 @@ export async function POST(req: NextRequest) {
   let reservation:
     | { periodKey: string; metric: string; amount: number }
     | null = null;
-
-  const ip =
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
-
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
   let planId: "FREE" | "GROWTH" | "SCALE" = "FREE";
 
   try {
-    const parsed = await parseJson(req, AdTranscriptsSchema);
+    const parsed = await parseJson(req, AdOcrSchema);
     if (!parsed.success) {
       return NextResponse.json(
         { error: parsed.error, details: parsed.details },
@@ -71,14 +67,10 @@ export async function POST(req: NextRequest) {
     if (!securitySweep) {
       const concurrency = await enforceUserConcurrency(userId);
       if (!concurrency.allowed) {
-        return NextResponse.json(
-          { error: concurrency.reason },
-          { status: 429 }
-        );
+        return NextResponse.json({ error: concurrency.reason }, { status: 429 });
       }
     }
 
-    // Get runId from request or find most recent completed ad collection job
     let effectiveRunId = runId;
     if (!effectiveRunId) {
       const latestCollection = await prisma.job.findFirst({
@@ -88,11 +80,11 @@ export async function POST(req: NextRequest) {
           status: JobStatus.COMPLETED,
           runId: { not: null },
           payload: {
-            path: ['jobType'],
-            equals: 'ad_raw_collection',
+            path: ["jobType"],
+            equals: "ad_raw_collection",
           },
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
         select: { runId: true },
       });
       effectiveRunId = latestCollection?.runId ?? undefined;
@@ -100,7 +92,7 @@ export async function POST(req: NextRequest) {
 
     if (!effectiveRunId) {
       return NextResponse.json(
-        { error: 'No completed ad collection job found. Please run ad collection first.' },
+        { error: "No completed ad collection job found. Please run ad collection first." },
         { status: 400 }
       );
     }
@@ -132,7 +124,13 @@ export async function POST(req: NextRequest) {
           type: JOB_TYPE,
           status: JobStatus.PENDING,
           idempotencyKey,
-          payload: parsed.data,
+          payload: {
+            projectId,
+            ...(productId ? { productId } : {}),
+            jobType: "ad_ocr_collection",
+            kind: "ad_ocr_collection",
+            idempotencyKey,
+          },
           resultSummary: "Skipped: SECURITY_SWEEP",
         },
         select: { id: true },
@@ -147,7 +145,7 @@ export async function POST(req: NextRequest) {
         action: "job.create",
         ip,
         metadata: {
-          type: "ad-transcripts",
+          type: "ad-ocr",
           skipped: true,
           reason: "SECURITY_SWEEP",
         },
@@ -162,6 +160,13 @@ export async function POST(req: NextRequest) {
     if (!cfg.raw("APIFY_API_TOKEN")) {
       return NextResponse.json(
         { error: "APIFY_API_TOKEN must be set" },
+        { status: 500 }
+      );
+    }
+
+    if (!cfg.raw("APIFY_AD_OCR_ACTOR_ID") && !cfg.raw("APIFY_VISION_EXTRACTOR_ACTOR_ID")) {
+      return NextResponse.json(
+        { error: "APIFY_AD_OCR_ACTOR_ID or APIFY_VISION_EXTRACTOR_ACTOR_ID must be set" },
         { status: 500 }
       );
     }
@@ -187,8 +192,8 @@ export async function POST(req: NextRequest) {
         payload: {
           projectId,
           ...(productId ? { productId } : {}),
-          jobType: "ad_transcripts",
-          kind: "ad_transcript_collection",
+          jobType: "ad_ocr_collection",
+          kind: "ad_ocr_collection",
           idempotencyKey,
         },
       },
@@ -196,7 +201,7 @@ export async function POST(req: NextRequest) {
 
     jobId = job.id;
 
-    const result = await startAdTranscriptJob({
+    const result = await startAdOcrJob({
       projectId,
       jobId: job.id,
     });
@@ -207,7 +212,7 @@ export async function POST(req: NextRequest) {
       jobId,
       action: "job.create",
       ip,
-      metadata: { type: "ad-transcripts" },
+      metadata: { type: "ad-ocr" },
     });
 
     return NextResponse.json({ ...result, runId: effectiveRunId }, { status: 200 });
@@ -225,13 +230,13 @@ export async function POST(req: NextRequest) {
       action: "job.error",
       ip,
       metadata: {
-        type: "ad-transcripts",
+        type: "ad-ocr",
         error: String(err?.message ?? err),
       },
     });
 
     return NextResponse.json(
-      { error: err?.message ?? "Ad transcript job failed" },
+      { error: err?.message ?? "Ad OCR job failed" },
       { status: 500 }
     );
   }
