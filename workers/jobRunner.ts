@@ -31,13 +31,14 @@ import { cfg } from "@/lib/config";
 import { runCustomerResearch } from "../services/customerResearchService.ts";
 import { runCustomerAnalysis } from "../lib/customerAnalysisService";
 import { runAdRawCollection } from "../lib/adRawCollectionService.ts";
+import { runAdOcrCollection } from "../lib/adOcrCollectionService.ts";
 import { runPatternAnalysis } from "../lib/patternAnalysisService.ts";
 import { startScriptGenerationJob } from "../lib/scriptGenerationService.ts";
 import { startVideoPromptGenerationJob } from "../lib/videoPromptGenerationService.ts";
 import { runVideoImageGenerationJob } from "../lib/videoImageGenerationService.ts";
 import { runVideoGenerationJob } from "../lib/videoGenerationService.ts";
+import { collectProductIntelWithWebFetch } from "../lib/productDataCollectionService.ts";
 import { analyzeProductData } from "../lib/productAnalysisService.ts";
-import { runProductCollectionWorker } from "../lib/workers/productCollectionWorker";
 import prisma from "../lib/prisma.ts";
 import { rollbackQuota } from "../lib/billing/usage.ts";
 import { updateJobStatus } from "@/lib/jobs/updateJobStatus";
@@ -499,6 +500,27 @@ async function runJob(
       }
 
       case JobType.AD_PERFORMANCE: {
+        const adSubtype = String(payload?.jobType ?? payload?.kind ?? "ad_raw_collection");
+
+        if (adSubtype === "ad_ocr_collection") {
+          const cfgVision = await handleProviderConfig(jobId, "Google Vision", [
+            "GOOGLE_CLOUD_VISION_API_KEY",
+          ]);
+          if (!cfgVision.ok) return;
+
+          const result = await runAdOcrCollection({
+            projectId: job.projectId,
+            jobId,
+          });
+
+          await markCompleted({
+            jobId,
+            result: { ok: true, ...result },
+            summary: `OCR: ${result.processed}/${result.totalAssets}`,
+          });
+          return;
+        }
+
         const cfgToken = await handleProviderConfig(jobId, "Apify", ["APIFY_API_TOKEN"]);
         if (!cfgToken.ok) return;
         const datasetId = (cfg.raw("APIFY_DATASET_ID") ?? "").trim();
@@ -528,27 +550,22 @@ async function runJob(
       }
 
       case JobType.PATTERN_ANALYSIS: {
-        const { customerResearchJobId, adPerformanceJobId } = payload;
-        if (!customerResearchJobId || !adPerformanceJobId) {
-          await markFailed({
-            jobId,
-            error: "Invalid payload: missing customerResearchJobId or adPerformanceJobId",
-          });
-          return;
-        }
+        const runIdFromPayload = String(payload?.runId ?? "").trim() || null;
+        const runIdFromJob = String((job as any)?.runId ?? "").trim() || null;
+        const effectiveRunId = runIdFromPayload ?? runIdFromJob;
 
         await updateJobStatus(jobId, JobStatus.RUNNING);
 
         const result = await runPatternAnalysis({
           projectId: job.projectId,
-          customerResearchJobId: String(customerResearchJobId),
-          adPerformanceJobId: String(adPerformanceJobId),
+          runId: effectiveRunId,
+          jobId,
         });
 
         await markCompleted({
           jobId,
           result,
-          summary: `Patterns: ${result.patterns.topHooks.length} hooks`,
+          summary: `Patterns: ${result.patterns.hookPatterns.length} hooks`,
         });
         return;
       }
@@ -732,22 +749,89 @@ async function runJob(
         return;
       }
 
-      case JobType.PRODUCT_DATA_COLLECTION: {
-        const result = await runProductCollectionWorker({
-          projectId: job.projectId,
+      case 'PRODUCT_DATA_COLLECTION' as any: {
+        const { projectId, productUrl, returnsUrl, shippingUrl, aboutUrl } = payload as {
+          projectId?: string;
+          productUrl?: string;
+          returnsUrl?: string | null;
+          shippingUrl?: string | null;
+          aboutUrl?: string | null;
+        };
+        console.log("[Product Collection Worker] Starting job:", {
           jobId,
-          payload,
+          projectId: projectId || job.projectId,
+          productUrl,
+          returnsUrl: returnsUrl || null,
+          shippingUrl: shippingUrl || null,
+          aboutUrl: aboutUrl || null,
         });
+        if (!productUrl) {
+          await markFailed({ jobId, error: "Invalid payload: missing productUrl" });
+          return;
+        }
 
-        await markCompleted({
-          jobId,
-          result,
-          summary: `Product intel extracted: ${result.productName}`,
-        });
-        return;
+        try {
+          const intel = await collectProductIntelWithWebFetch(
+            String(productUrl),
+            String(projectId || job.projectId),
+            jobId,
+            typeof returnsUrl === "string" ? returnsUrl : null,
+            typeof shippingUrl === "string" ? shippingUrl : null,
+            typeof aboutUrl === "string" ? aboutUrl : null
+          );
+          console.log("[Product Collection Worker] Extraction complete:", {
+            jobId,
+            benefit: (intel as any)?.main_benefit ?? null,
+          });
+
+          const intelPrice =
+            typeof (intel as any)?.price === "string"
+              ? (intel as any).price
+              : (intel as any)?.price?.current ?? null;
+          const intelLabel =
+            (intel as any)?.name ??
+            (intel as any)?.main_benefit ??
+            (intel as any)?.benefit ??
+            (intel as any)?.title ??
+            null;
+
+          await markCompleted({
+            jobId,
+            result: { success: true, intel },
+            summary: {
+              success: true,
+              productName: intelLabel,
+              price: intelPrice,
+            },
+          });
+          return;
+        } catch (error: any) {
+          const msg = String(error?.message ?? error ?? "");
+          console.error("[Product Collection Worker] Job failed:", {
+            jobId,
+            error: msg,
+          });
+          if (msg.includes("url_not_accessible")) {
+            await markCompleted({
+              jobId,
+              result: { success: false, error: "Product page not accessible" },
+              summary: { success: false, error: "Product page not accessible" },
+            });
+            return;
+          }
+          if (msg.includes("max_uses_exceeded")) {
+            await markCompleted({
+              jobId,
+              result: { success: false, error: "Too many fetch attempts" },
+              summary: { success: false, error: "Too many fetch attempts" },
+            });
+            return;
+          }
+          throw error;
+        }
       }
 
-      case JobType.PRODUCT_ANALYSIS: {
+      case 'PRODUCT_ANALYSIS' as any: {
         const { runId } = payload;
 
         const result = await analyzeProductData({
