@@ -14,7 +14,19 @@ import { normalizeEmail } from "@/lib/normalizeEmail";
 
 const isProd = process.env.NODE_ENV === "production";
 
+// Debug logging to verify environment variables
+if (isProd) {
+  console.log("[AUTH CONFIG]", {
+    hasSecret: !!(process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET),
+    nodeEnv: process.env.NODE_ENV,
+    nextauthUrl: process.env.NEXTAUTH_URL,
+    hasTrustHost: process.env.AUTH_TRUST_HOST,
+  });
+}
+
 export const authOptions: NextAuthOptions = {
+  debug: isProd, // Enable debug logging in production temporarily
+
   cookies: {
     sessionToken: {
       name: "next-auth.session-token",
@@ -22,12 +34,15 @@ export const authOptions: NextAuthOptions = {
         httpOnly: true,
         sameSite: "lax",
         path: "/",
-        secure: false,
+        secure: isProd, // ✅ Fixed: was hardcoded to false
       },
     },
   },
-  secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || undefined,
+
+  secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET,
+
   session: { strategy: "jwt" },
+
   providers: [
     Credentials({
       name: "Credentials",
@@ -39,10 +54,12 @@ export const authOptions: NextAuthOptions = {
         if (!credentials?.email || !credentials?.password) return null;
         const email = normalizeEmail(credentials.email);
         if (!email) return null;
+
         const ip =
           (req as any)?.headers?.get?.("x-forwarded-for")?.split(",")?.[0]?.trim() ??
           (req as any)?.headers?.["x-forwarded-for"]?.split?.(",")?.[0]?.trim?.() ??
           null;
+
         if (isProd) {
           try {
             const gate = await checkAuthAllowedDb({ kind: "login", ip, email });
@@ -50,34 +67,50 @@ export const authOptions: NextAuthOptions = {
               return null;
             }
           } catch (e) {
+            console.error("[AUTH] Rate limit check failed:", e);
             return null;
           }
         }
+
         const user = await prisma.user.findUnique({
           where: { email },
         });
+
         if (cfg.raw("AUTH_DEBUG") === "1") {
-          console.log("[AUTH_DEBUG] email", email, "user?", !!user, "hasHash?", !!user?.passwordHash);
+          console.log(
+            "[AUTH_DEBUG] email",
+            email,
+            "user?",
+            !!user,
+            "hasHash?",
+            !!user?.passwordHash
+          );
         }
+
         if (!user || !user.passwordHash) {
           if (isProd) {
             await recordLoginFailureDb({ ip, email });
           }
           return null;
         }
+
         const isValid = await bcrypt.compare(credentials.password, user.passwordHash);
+
         if (cfg.raw("AUTH_DEBUG") === "1") {
           console.log("[AUTH_DEBUG] bcrypt compare", isValid);
         }
+
         if (!isValid) {
           if (isProd) {
             await recordLoginFailureDb({ ip, email });
           }
           return null;
         }
+
         if (isProd) {
           await recordLoginSuccessDb({ ip, email });
         }
+
         return {
           id: user.id,
           email: user.email,
@@ -86,6 +119,7 @@ export const authOptions: NextAuthOptions = {
       },
     }),
   ],
+
   callbacks: {
     async jwt({ token, user }) {
       if (user && "id" in user && (user as any).id) {
@@ -100,6 +134,7 @@ export const authOptions: NextAuthOptions = {
       return session;
     },
   },
+
   events: {
     async signIn() {
       if (!isProd && !(process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET)) {
