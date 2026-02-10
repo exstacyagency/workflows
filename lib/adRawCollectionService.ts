@@ -1,7 +1,7 @@
 // lib/adRawCollectionService.ts
 import prisma from '@/lib/prisma';
 import { AdPlatform, JobStatus, Prisma } from '@prisma/client';
-import { env, requireEnv } from './configGuard.ts';
+import { ConfigError, env, requireEnv } from './configGuard.ts';
 import { updateJobStatus } from '@/lib/jobs/updateJobStatus';
 
 const APIFY_BASE = 'https://api.apify.com/v2';
@@ -66,6 +66,17 @@ function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+function getAdResearchApifyToken(): string {
+  // Ad research route uses AUX token when provided, otherwise falls back to MAIN.
+  const aux = env('APIFY_API_TOKEN_AUX');
+  if (aux) return aux;
+
+  const main = env('APIFY_API_TOKEN');
+  if (main) return main;
+
+  throw new ConfigError('APIFY: APIFY_API_TOKEN_AUX or APIFY_API_TOKEN must be set in .env');
+}
+
 async function readTextSafely(res: Response) {
   try {
     return await res.text();
@@ -117,8 +128,7 @@ function parseDateToIso(value: unknown): string | null {
 }
 
 export async function fetchDatasetItems(datasetId: string): Promise<any[]> {
-  requireEnv(['APIFY_API_TOKEN'], 'APIFY');
-  const token = env('APIFY_API_TOKEN')!;
+  const token = getAdResearchApifyToken();
 
   const url = new URL(`${APIFY_BASE}/datasets/${encodeURIComponent(datasetId)}/items`);
   url.searchParams.set('token', token);
@@ -136,8 +146,7 @@ export async function fetchDatasetItems(datasetId: string): Promise<any[]> {
 }
 
 export async function waitForApifyRun(runId: string): Promise<string> {
-  requireEnv(['APIFY_API_TOKEN'], 'APIFY');
-  const token = env('APIFY_API_TOKEN')!;
+  const token = getAdResearchApifyToken();
 
   const deadlineMs = Date.now() + APIFY_MAX_WAIT_MS;
   while (true) {
@@ -173,8 +182,8 @@ export async function waitForApifyRun(runId: string): Promise<string> {
 }
 
 export async function runApifyActor(input: Record<string, unknown>): Promise<{ runId: string; datasetId: string }> {
-  requireEnv(['APIFY_API_TOKEN', 'APIFY_ACTOR_ID'], 'APIFY');
-  const token = env('APIFY_API_TOKEN')!;
+  requireEnv(['APIFY_ACTOR_ID'], 'APIFY');
+  const token = getAdResearchApifyToken();
   const actorId = env('APIFY_ACTOR_ID')!;
 
   const url = new URL(`${APIFY_BASE}/acts/${encodeURIComponent(actorId)}/runs`);
@@ -218,8 +227,8 @@ async function fetchApifyAds(options: {
   industryCode: string;
   projectId: string;
 }): Promise<{ items: ApifyAd[]; actorId: string | null; runId: string | null; datasetId: string }> {
-  requireEnv(['APIFY_API_TOKEN', 'APIFY_ACTOR_ID'], 'APIFY');
-  
+  requireEnv(['APIFY_ACTOR_ID'], 'APIFY');
+
   const actorId = env('APIFY_ACTOR_ID')!;
   const { runId, datasetId } = await runApifyActor({
     industryCode: options.industryCode,

@@ -159,9 +159,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!cfg.raw("ASSEMBLYAI_API_KEY")) {
+    if (!cfg.raw("APIFY_API_TOKEN")) {
       return NextResponse.json(
-        { error: "ASSEMBLYAI_API_KEY must be set" },
+        { error: "APIFY_API_TOKEN must be set" },
         { status: 500 }
       );
     }

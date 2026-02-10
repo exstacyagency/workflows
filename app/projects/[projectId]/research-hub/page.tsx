@@ -79,9 +79,10 @@ interface AdCollectionFormData {
 }
 
 interface ProductCollectionFormData {
-  productName: string;
   productUrl: string;
-  competitorUrls: string[];
+  returnsUrl: string;
+  shippingUrl: string;
+  aboutUrl: string;
 }
 
 interface RunAllResearchFormData {
@@ -93,7 +94,6 @@ interface RunAllResearchFormData {
   competitor3Asin?: string;
   industryCode: string;
   productUrl: string;
-  competitorUrls: string[];
 }
 
 export default function ResearchHubPage() {
@@ -115,6 +115,12 @@ export default function ResearchHubPage() {
   const [customerModalTab, setCustomerModalTab] = useState<"scrape" | "upload">("scrape");
   const [uploadJobId, setUploadJobId] = useState<string | null>(null);
   const [uploadOnly, setUploadOnly] = useState(false);
+  const [productCollectionForm, setProductCollectionForm] = useState<ProductCollectionFormData>({
+    productUrl: "",
+    returnsUrl: "",
+    shippingUrl: "",
+    aboutUrl: "",
+  });
   const selectedProductRef = useRef<string | null>(selectedProductId);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
 
@@ -133,6 +139,10 @@ export default function ResearchHubPage() {
     const timeout = setTimeout(() => setStatusMessage(null), 4000);
     return () => clearTimeout(timeout);
   }, [statusMessage]);
+
+  useEffect(() => {
+    console.log("Modal state changed:", activeStepModal);
+  }, [activeStepModal]);
 
   const runGroups = jobs
     .filter((job) => job.type === "CUSTOMER_RESEARCH" || job.type === "CUSTOMER_ANALYSIS")
@@ -411,15 +421,6 @@ export default function ResearchHubPage() {
           endpoint: "/api/jobs/product-data-collection",
           status: "NOT_STARTED",
         },
-        {
-          id: "product-analysis",
-          label: "Product Analysis",
-          description: "Generate product insights",
-          jobType: "PRODUCT_ANALYSIS",
-          endpoint: "/api/jobs/product-analysis",
-          prerequisite: "product-collection",
-          status: "NOT_STARTED",
-        },
       ],
     },
   ];
@@ -555,11 +556,32 @@ export default function ResearchHubPage() {
 
   // Run a step - show modal or execute directly
   const runStep = async (step: ResearchStep, trackKey: string) => {
+    console.log("runStep called:", step.id, trackKey);
+
+    // Product collection doesn't need product selected - URL comes from modal
+    if (step.id === "product-collection") {
+      const nextPendingStep = { step, trackKey };
+      setPendingStep(nextPendingStep);
+      setActiveStepModal(step.id);
+      console.log("Modal open requested:", {
+        nextPendingStep,
+        nextActiveStepModal: step.id,
+        shouldOpenModal: true,
+      });
+      return;
+    }
+
+    console.log("selectedProductId check:", selectedProductId);
     if (!selectedProductId) {
+      console.log("BLOCKED: No product selected");
       setStatusMessage("Create/select a product before running research jobs.");
       return;
     }
-    if (!canRun(step, updatedTracks.find((t) => t.key === trackKey)!)) return;
+    const track = updatedTracks.find((t) => t.key === trackKey)!;
+    console.log("canRun inputs:", { stepId: step.id, track, step });
+    const canRunResult = canRun(step, track);
+    console.log("canRun result:", canRunResult);
+    if (!canRunResult) return;
 
     // Show modal for steps that need input
     if (step.id === "customer-research") {
@@ -570,10 +592,6 @@ export default function ResearchHubPage() {
       setActiveStepModal(step.id);
       return;
     } else if (step.id === "ad-collection") {
-      setPendingStep({ step, trackKey });
-      setActiveStepModal(step.id);
-      return;
-    } else if (step.id === "product-collection") {
       setPendingStep({ step, trackKey });
       setActiveStepModal(step.id);
       return;
@@ -616,6 +634,8 @@ export default function ResearchHubPage() {
             : [],
         };
       }
+
+      console.log("executeStep calling:", step.endpoint, payload);
 
       const response = await fetch(step.endpoint, {
         method: "POST",
@@ -704,17 +724,46 @@ export default function ResearchHubPage() {
   };
 
   const handleProductCollectionSubmit = async (formData: ProductCollectionFormData) => {
-    if (!pendingStep) return;
-    
-    const payload = {
-      productName: formData.productName,
-      productUrl: formData.productUrl,
-      competitorUrls: formData.competitorUrls.filter(url => url.trim() !== ''),
-    };
+    if (!selectedProductId) {
+      setStatusMessage("Create/select a product before running product collection.");
+      return;
+    }
 
-    setActiveStepModal(null);
-    await executeStep(pendingStep.step, payload);
-    setPendingStep(null);
+    const productUrl = String(formData.productUrl || productCollectionForm.productUrl || "").trim();
+    if (!productUrl) {
+      setStatusMessage("Product URL is required.");
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/jobs/product-data-collection", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          productId: selectedProductId,
+          productName: selectedProduct?.name,
+          productUrl,
+          returnsUrl: productCollectionForm.returnsUrl,
+          shippingUrl: productCollectionForm.shippingUrl,
+          aboutUrl: productCollectionForm.aboutUrl,
+          runId: currentRunId,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data?.error || "Failed to start job");
+      }
+
+      setActiveStepModal(null);
+      setPendingStep(null);
+      setStatusMessage("Product collection started.");
+      await loadJobs(selectedProductId);
+    } catch (error) {
+      console.error(error);
+      setStatusMessage(error instanceof Error ? error.message : "Failed to start job");
+    }
   };
 
   const handleStartNewRun = () => {
@@ -777,7 +826,6 @@ export default function ResearchHubPage() {
         runId,
         productName: formData.productName,
         productUrl: formData.productUrl,
-        competitorUrls: formData.competitorUrls.filter(url => url.trim() !== ''),
       };
       
       await fetch('/api/jobs/product-data-collection', {
@@ -1059,49 +1107,58 @@ export default function ResearchHubPage() {
               {track.enabled ? (
                 <div className="space-y-4">
                   {track.steps.map((step, idx) => {
-                    const locked = !canRun(step, track);
+                    const stepStatus = getStepStatus(step.jobType, step.id);
+                    const stepWithStatus = {
+                      ...step,
+                      status: stepStatus.status,
+                      lastJob: stepStatus.lastJob,
+                    };
+                    const locked = !canRun(stepWithStatus, track);
                     const analysisRunning = Boolean(selectedRunId) && jobs.some(
                       (job) =>
                         job.type === "CUSTOMER_ANALYSIS" &&
                         job.status === "RUNNING" &&
                         job.runId === selectedRunId
                     );
-                    const isRunning = runningStep === step.id;
-                    const isCustomerCollectionStep = step.label === "Customer Collection";
-                    const isCollecting = isCustomerCollectionStep && (isRunning || hasRunningJob);
-                    const customerResearchJob = step.jobType === "CUSTOMER_RESEARCH"
+                    const isRunning = runningStep === stepWithStatus.id;
+                    const isCustomerCollectionStep = stepWithStatus.label === "Customer Collection";
+                    const isProductCollectionStep = stepWithStatus.label === "Product Collection";
+                    const isCollecting =
+                      (isCustomerCollectionStep && (isRunning || hasRunningJob)) ||
+                      (isProductCollectionStep && isRunning);
+                    const customerResearchJob = stepWithStatus.jobType === "CUSTOMER_RESEARCH"
                       ? latestCompletedCustomerResearchJob
                       : undefined;
                     return (
                       <div
-                        key={step.id}
+                        key={stepWithStatus.id}
                         className="flex items-start gap-4 p-4 rounded-lg bg-slate-900/50 border border-slate-800"
                       >
                         {/* Step Info */}
                         <div className="flex-1 min-w-0">
                           <h3 className="text-sm font-semibold text-white mb-1">
-                            {step.label}
+                            {stepWithStatus.label}
                           </h3>
-                          <p className="text-xs text-slate-400 mb-2">{step.description}</p>
-                          {step.label === "Customer Analysis"
+                          <p className="text-xs text-slate-400 mb-2">{stepWithStatus.description}</p>
+                          {stepWithStatus.label === "Customer Analysis"
                             ? selectedRunId && analysisStatusJob && (
                                 <StatusBadge status={analysisStatusJob.status} />
                               )
-                            : step.status !== "NOT_STARTED" && <StatusBadge status={step.status} />}
-                          {step.label === "Customer Analysis" && analysisRunning && (
+                            : stepWithStatus.status !== "NOT_STARTED" && <StatusBadge status={stepWithStatus.status} />}
+                          {stepWithStatus.label === "Customer Analysis" && analysisRunning && (
                             <div className="mt-2 text-xs text-slate-400">Analysis in progress...</div>
                           )}
 
                           {/* Error Display */}
-                          {step.status === "FAILED" && step.lastJob?.error && (
+                          {stepWithStatus.status === "FAILED" && stepWithStatus.lastJob?.error && (
                             <div className="mt-3 rounded-lg bg-red-500/10 border border-red-500/30 p-3">
                               <div className="flex items-start justify-between gap-3">
                                 <div className="flex-1">
                                   <p className="text-xs font-semibold text-red-300 mb-1">Error Details:</p>
-                                  <p className="text-xs text-red-400">{step.lastJob.error}</p>
+                                  <p className="text-xs text-red-400">{stepWithStatus.lastJob.error}</p>
                                 </div>
                                 <button
-                                  onClick={() => runStep(step, track.key)}
+                                  onClick={() => runStep(stepWithStatus, track.key)}
                                   className="text-xs text-red-400 hover:text-red-300 underline whitespace-nowrap"
                                 >
                                   Try again →
@@ -1113,7 +1170,7 @@ export default function ResearchHubPage() {
 
                         {/* Action Button */}
                         <div className="flex-shrink-0 flex gap-2">
-                          {step.jobType === "CUSTOMER_RESEARCH" ? (
+                          {stepWithStatus.jobType === "CUSTOMER_RESEARCH" ? (
                             customerResearchJob && (
                             <div className="flex flex-col gap-1">
                               <>
@@ -1137,8 +1194,8 @@ export default function ResearchHubPage() {
                               <button
                                 onClick={() => {
                                   const url = currentRunId 
-                                    ? `/projects/${projectId}/research-hub/jobs/${step.jobType}?runId=${currentRunId}`
-                                    : `/projects/${projectId}/research-hub/jobs/${step.jobType}`;
+                                    ? `/projects/${projectId}/research-hub/jobs/${stepWithStatus.jobType}?runId=${currentRunId}`
+                                    : `/projects/${projectId}/research-hub/jobs/${stepWithStatus.jobType}`;
                                   router.push(url);
                                 }}
                                 className="text-slate-400 hover:text-slate-300 text-xs underline"
@@ -1147,7 +1204,7 @@ export default function ResearchHubPage() {
                               </button>
                             </div>
                             )
-                          ) : step.label === "Customer Analysis" ? (
+                          ) : stepWithStatus.label === "Customer Analysis" ? (
                             <div className="flex flex-col gap-1">
                               {selectedRunId && analysisStatusJob?.status === "COMPLETED" && (
                                 <Link
@@ -1170,13 +1227,13 @@ export default function ResearchHubPage() {
                               </button>
                             </div>
                           ) : (
-                          step.status === "COMPLETED" && step.lastJob && (
+                          stepWithStatus.status === "COMPLETED" && stepWithStatus.lastJob && (
                             <div className="flex flex-col gap-1">
                               <button
                                 onClick={() => {
                                   const url = currentRunId 
-                                    ? `/projects/${projectId}/research-hub/jobs/${step.jobType}?runId=${currentRunId}`
-                                    : `/projects/${projectId}/research-hub/jobs/${step.jobType}`;
+                                    ? `/projects/${projectId}/research-hub/jobs/${stepWithStatus.jobType}?runId=${currentRunId}`
+                                    : `/projects/${projectId}/research-hub/jobs/${stepWithStatus.jobType}`;
                                   router.push(url);
                                 }}
                                 className="text-slate-400 hover:text-slate-300 text-xs underline"
@@ -1185,9 +1242,9 @@ export default function ResearchHubPage() {
                               </button>
                             </div>
                           ))}
-                          {step.label === "Customer Analysis" ? (
+                          {stepWithStatus.label === "Customer Analysis" ? (
                             <button
-                              onClick={() => runStep(step, track.key)}
+                              onClick={() => runStep(stepWithStatus, track.key)}
                               disabled={!canRunAnalysis || isRunning}
                               className={`px-4 py-2 rounded text-sm font-medium flex items-center gap-2 ${
                                 !canRunAnalysis || isRunning
@@ -1198,71 +1255,81 @@ export default function ResearchHubPage() {
                             >
                               {isRunning ? "Starting..." : "Run"}
                             </button>
-                          ) : step.status === "COMPLETED" ? (
-                            <button
-                              onClick={() => runStep(step, track.key)}
-                              disabled={isRunning || isCollecting}
-                              className={`px-4 py-2 rounded text-sm font-medium flex items-center gap-2 ${
-                                isRunning || isCollecting
-                                  ? "bg-slate-700 text-slate-400 cursor-not-allowed"
-                                  : "bg-slate-800 hover:bg-slate-700 text-slate-300"
-                              }`}
-                            >
-                              {isCollecting ? "RUNNING" : step.label === "Customer Analysis" ? (
-                                "Re-run Analysis"
-                              ) : step.label === "Customer Collection" ? (
-                                "Collect Data"
-                              ) : (
-                                "Re-run"
+                          ) : stepWithStatus.status === "COMPLETED" ? (
+                            <div className="flex flex-col gap-1">
+                              {isCollecting && (
+                                <div className="text-xs text-blue-400">Running...</div>
                               )}
-                            </button>
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => runStep(stepWithStatus, track.key)}
+                                  disabled={isRunning || isCollecting}
+                                  className={`px-3 py-1 text-sm rounded ${
+                                    isRunning || isCollecting
+                                      ? "bg-gray-700 text-gray-500 cursor-not-allowed"
+                                      : "bg-blue-600 hover:bg-blue-700 text-white"
+                                  }`}
+                                >
+                                  {stepWithStatus.label === "Customer Analysis"
+                                    ? "Re-run Analysis"
+                                    : stepWithStatus.label === "Customer Collection"
+                                      ? "Collect Data"
+                                      : "Re-run"}
+                                </button>
+                                {stepWithStatus.lastJob && (
+                                  <button
+                                    onClick={() => {
+                                      console.log("=== JOB DATA ===");
+                                      console.log("Input:", stepWithStatus.lastJob?.payload);
+                                      console.log("Output:", stepWithStatus.lastJob?.result);
+                                      alert(`Check console for ${stepWithStatus.label} data`);
+                                    }}
+                                    className="px-2 py-1 text-xs text-gray-400 hover:text-gray-300 border border-gray-600 rounded"
+                                  >
+                                    View Data
+                                  </button>
+                                )}
+                              </div>
+                            </div>
                           ) : (
-                            <>
-                              <button
-                                onClick={() => runStep(step, track.key)}
-                                disabled={
-                                  locked ||
-                                  isRunning ||
-                                  (isCustomerCollectionStep && hasRunningJob) ||
-                                  (step.label === "Customer Analysis" && !canRunAnalysis) ||
-                                  (step.label === "Customer Analysis" && analysisRunning)
-                                }
-                                title={
-                                  isCustomerCollectionStep && hasRunningJob
-                                    ? "Another research job is currently running"
-                                  : step.label === "Customer Analysis" && !canRunAnalysis
-                                    ? "Collect data first"
-                                  : step.label === "Customer Analysis" && analysisRunning
-                                      ? "Analysis in progress..."
-                                      : undefined
-                                }
-                                className={`px-4 py-2 rounded text-sm font-medium flex items-center gap-2 ${
-                                  locked ||
-                                  isRunning ||
-                                  (isCustomerCollectionStep && hasRunningJob) ||
-                                  (step.label === "Customer Analysis" && !canRunAnalysis) ||
-                                  (step.label === "Customer Analysis" && analysisRunning)
-                                    ? "bg-slate-700 text-slate-400 cursor-not-allowed"
-                                    : `bg-${track.color}-500 hover:bg-${track.color}-400 text-white`
-                                }`}
-                              >
-                                {isCollecting ? "RUNNING" : isRunning
-                                  ? "Starting..."
-                                  : locked
-                                    ? "🔒 Locked"
-                                  : step.label === "Customer Collection"
-                                    ? "Collect Data"
-                                    : step.label === "Customer Analysis"
-                                      ? analysisRunning
-                                        ? "Running..."
-                                        : "Run Analysis"
-                                      : "Run"}
-                              </button>
-                            </>
+                            <div className="flex flex-col gap-1">
+                              {isCollecting && (
+                                <div className="text-xs text-blue-400">Running...</div>
+                              )}
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => runStep(stepWithStatus, track.key)}
+                                  disabled={
+                                    locked ||
+                                    isRunning ||
+                                    (isCustomerCollectionStep && hasRunningJob) ||
+                                    (stepWithStatus.label === "Customer Analysis" && !canRunAnalysis) ||
+                                    (stepWithStatus.label === "Customer Analysis" && analysisRunning)
+                                  }
+                                  className={`px-3 py-1 text-sm rounded ${
+                                    locked || isRunning || (isCustomerCollectionStep && hasRunningJob) || (stepWithStatus.label === "Customer Analysis" && (analysisRunning || !canRunAnalysis))
+                                      ? "bg-gray-700 text-gray-500 cursor-not-allowed"
+                                      : "bg-blue-600 hover:bg-blue-700 text-white"
+                                  }`}
+                                >
+                                  {isRunning
+                                    ? "Starting..."
+                                    : locked
+                                      ? "🔒 Locked"
+                                      : stepWithStatus.label === "Customer Collection"
+                                        ? "Collect Data"
+                                        : stepWithStatus.label === "Customer Analysis"
+                                          ? analysisRunning
+                                            ? "Running..."
+                                            : "Run Analysis"
+                                          : "Run"}
+                                </button>
+                              </div>
+                            </div>
                           )}
-                          {step.status === "RUNNING" && step.lastJob && (
+                          {stepWithStatus.status === "RUNNING" && stepWithStatus.lastJob && (
                             <button
-                              onClick={() => cancelJob(step.lastJob!.id)}
+                              onClick={() => cancelJob(stepWithStatus.lastJob!.id)}
                               className="px-2 py-1 text-xs text-red-400 hover:text-red-300"
                             >
                               Cancel
@@ -1271,9 +1338,9 @@ export default function ResearchHubPage() {
                         </div>
 
                         {/* Step Modal - Render inline */}
-                        {activeStepModal === step.id && (
+                        {activeStepModal === stepWithStatus.id && (
                           <>
-                            {step.id === "customer-research" && (
+                            {stepWithStatus.id === "customer-research" && (
                               <CustomerResearchModal
                                 onSubmit={handleCustomerResearchSubmit}
                                 projectId={projectId}
@@ -1289,7 +1356,7 @@ export default function ResearchHubPage() {
                                 }}
                               />
                             )}
-                            {step.id === "ad-collection" && (
+                            {stepWithStatus.id === "ad-collection" && (
                               <AdCollectionModal
                                 onSubmit={handleAdCollectionSubmit}
                                 onClose={() => {
@@ -1298,12 +1365,20 @@ export default function ResearchHubPage() {
                                 }}
                               />
                             )}
-                            {step.id === "product-collection" && (
+                            {stepWithStatus.id === "product-collection" && (
                               <ProductCollectionModal
                                 onSubmit={handleProductCollectionSubmit}
+                                formData={productCollectionForm}
+                                setFormData={setProductCollectionForm}
                                 onClose={() => {
                                   setActiveStepModal(null);
                                   setPendingStep(null);
+                                  setProductCollectionForm({
+                                    productUrl: "",
+                                    returnsUrl: "",
+                                    shippingUrl: "",
+                                    aboutUrl: "",
+                                  });
                                 }}
                               />
                             )}
@@ -1870,46 +1945,25 @@ function AdCollectionModal({
 // Product Collection Modal Component
 function ProductCollectionModal({
   onSubmit,
+  formData,
+  setFormData,
   onClose,
 }: {
   onSubmit: (data: ProductCollectionFormData) => void;
+  formData: ProductCollectionFormData;
+  setFormData: (next: ProductCollectionFormData) => void;
   onClose: () => void;
 }) {
-  const [formData, setFormData] = useState<ProductCollectionFormData>({
-    productName: "",
-    productUrl: "",
-    competitorUrls: [""],
-  });
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
-    if (!formData.productName || !formData.productUrl) {
+    if (!formData.productUrl) {
       setErrorMessage("Please fill in all required fields.");
       return;
     }
     onSubmit(formData);
-  };
-
-  const addCompetitorUrl = () => {
-    setFormData({
-      ...formData,
-      competitorUrls: [...formData.competitorUrls, ""],
-    });
-  };
-
-  const removeCompetitorUrl = (index: number) => {
-    setFormData({
-      ...formData,
-      competitorUrls: formData.competitorUrls.filter((_, i) => i !== index),
-    });
-  };
-
-  const updateCompetitorUrl = (index: number, value: string) => {
-    const newUrls = [...formData.competitorUrls];
-    newUrls[index] = value;
-    setFormData({ ...formData, competitorUrls: newUrls });
   };
 
   return (
@@ -1918,25 +1972,11 @@ function ProductCollectionModal({
         <div className="p-6">
           <h2 className="text-xl font-bold text-white mb-2">Product Information</h2>
           <p className="text-sm text-slate-400 mb-6">
-            Enter your product details and competitor URLs
+            Enter your product URL
           </p>
           {errorMessage && <p className="text-sm text-red-400 mb-3">{errorMessage}</p>}
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                Product Name <span className="text-red-400">*</span>
-              </label>
-              <input
-                type="text"
-                value={formData.productName}
-                onChange={(e) => setFormData({ ...formData, productName: e.target.value })}
-                className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500"
-                placeholder="e.g., Smart Watch Pro"
-                required
-              />
-            </div>
-
             <div>
               <label className="block text-sm font-medium text-slate-300 mb-2">
                 Product URL <span className="text-red-400">*</span>
@@ -1950,40 +1990,32 @@ function ProductCollectionModal({
                 required
               />
             </div>
-
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                Competitor URLs <span className="text-slate-500">(optional)</span>
-              </label>
-              <div className="space-y-2">
-                {formData.competitorUrls.map((url, index) => (
-                  <div key={index} className="flex gap-2">
-                    <input
-                      type="url"
-                      value={url}
-                      onChange={(e) => updateCompetitorUrl(index, e.target.value)}
-                      className="flex-1 px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500"
-                      placeholder="https://competitor.com/product"
-                    />
-                    {formData.competitorUrls.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => removeCompetitorUrl(index)}
-                        className="px-3 py-2 rounded bg-red-500/20 hover:bg-red-500/30 text-red-400"
-                      >
-                        ✕
-                      </button>
-                    )}
-                  </div>
-                ))}
-                <button
-                  type="button"
-                  onClick={addCompetitorUrl}
-                  className="text-sm text-violet-400 hover:text-violet-300"
-                >
-                  + Add another competitor URL
-                </button>
-              </div>
+              <input
+                type="url"
+                value={formData.returnsUrl}
+                onChange={(e) => setFormData({ ...formData, returnsUrl: e.target.value })}
+                placeholder="Returns/Refund Policy URL (optional)"
+                className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white"
+              />
+            </div>
+            <div>
+              <input
+                type="url"
+                value={formData.shippingUrl}
+                onChange={(e) => setFormData({ ...formData, shippingUrl: e.target.value })}
+                placeholder="Shipping Policy URL (optional)"
+                className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white"
+              />
+            </div>
+            <div>
+              <input
+                type="url"
+                value={formData.aboutUrl}
+                onChange={(e) => setFormData({ ...formData, aboutUrl: e.target.value })}
+                placeholder="About/Standards URL (optional)"
+                className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white"
+              />
             </div>
 
             <div className="flex gap-3 pt-4">
@@ -2025,7 +2057,6 @@ function RunAllResearchModal({
     competitor3Asin: "",
     industryCode: "",
     productUrl: "",
-    competitorUrls: [""],
   });
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -2037,26 +2068,6 @@ function RunAllResearchModal({
       return;
     }
     onSubmit(formData);
-  };
-
-  const addCompetitorUrl = () => {
-    setFormData({
-      ...formData,
-      competitorUrls: [...formData.competitorUrls, ""],
-    });
-  };
-
-  const removeCompetitorUrl = (index: number) => {
-    setFormData({
-      ...formData,
-      competitorUrls: formData.competitorUrls.filter((_, i) => i !== index),
-    });
-  };
-
-  const updateCompetitorUrl = (index: number, value: string) => {
-    const newUrls = [...formData.competitorUrls];
-    newUrls[index] = value;
-    setFormData({ ...formData, competitorUrls: newUrls });
   };
 
   return (
@@ -2191,40 +2202,6 @@ function RunAllResearchModal({
                   />
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
-                    Competitor URLs <span className="text-slate-500">(optional)</span>
-                  </label>
-                  <div className="space-y-2">
-                    {formData.competitorUrls.map((url, index) => (
-                      <div key={index} className="flex gap-2">
-                        <input
-                          type="url"
-                          value={url}
-                          onChange={(e) => updateCompetitorUrl(index, e.target.value)}
-                          className="flex-1 px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500"
-                          placeholder="https://competitor.com/product"
-                        />
-                        {formData.competitorUrls.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => removeCompetitorUrl(index)}
-                            className="px-3 py-2 rounded bg-red-500/20 hover:bg-red-500/30 text-red-400"
-                          >
-                            ✕
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                    <button
-                      type="button"
-                      onClick={addCompetitorUrl}
-                      className="text-sm text-violet-400 hover:text-violet-300"
-                    >
-                      + Add another competitor URL
-                    </button>
-                  </div>
-                </div>
               </div>
             </div>
 
