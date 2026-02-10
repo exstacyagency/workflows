@@ -111,6 +111,7 @@ model ResearchRun {
   project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   status    RunStatus @default(IN_PROGRESS)
   createdAt DateTime  @default(now())
+  completedAt DateTime?
   jobs      Job[]
 
   @@index([projectId])

@@ -11,7 +11,7 @@ if (fs.existsSync(env)) dotenv.config({ path: env });
 
 import { assertRuntimeMode } from "../lib/jobRuntimeMode";
 import { logError } from "@/lib/logger";
-import { JobStatus, JobType, Prisma } from "@prisma/client";
+import { JobStatus, JobType, Prisma, RunStatus } from "@prisma/client";
 import type { RuntimeMode } from "@/lib/jobRuntimeMode";
 import { cfg } from "@/lib/config";
 // ...existing code...
@@ -184,7 +184,7 @@ async function markCompleted({
 }) {
   const existing = await prisma.job.findUnique({
     where: { id: jobId },
-    select: { payload: true, resultSummary: true, status: true },
+    select: { payload: true, resultSummary: true, status: true, runId: true, projectId: true },
   });
   if (!existing) return;
 
@@ -197,12 +197,13 @@ async function markCompleted({
 
   await updateJobStatus(jobId, JobStatus.COMPLETED);
   await prisma.job.update({ where: { id: jobId }, data });
+  await updateRunStatus(existing.runId, existing.projectId);
 }
 
 async function markFailed({ jobId, error }: { jobId: string; error: unknown }) {
   const existing = await prisma.job.findUnique({
     where: { id: jobId },
-    select: { payload: true, resultSummary: true, status: true },
+    select: { payload: true, resultSummary: true, status: true, runId: true, projectId: true },
   });
   if (!existing) return;
 
@@ -258,6 +259,48 @@ async function markFailed({ jobId, error }: { jobId: string; error: unknown }) {
       payload: nextPayload,
     },
   });
+  await updateRunStatus(existing.runId, existing.projectId);
+}
+
+async function updateRunStatus(runId: string | null | undefined, projectId: string) {
+  if (!runId) return;
+
+  const jobs = await prisma.job.findMany({
+    where: { runId, projectId },
+    select: { status: true },
+  });
+  if (jobs.length === 0) return;
+
+  const hasFailedJobs = jobs.some((j) => j.status === JobStatus.FAILED);
+  const hasOpenJobs = jobs.some(
+    (j) => j.status === JobStatus.PENDING || j.status === JobStatus.RUNNING
+  );
+  const allCompleted = jobs.every((j) => j.status === JobStatus.COMPLETED);
+
+  const status: RunStatus =
+    hasFailedJobs
+      ? RunStatus.FAILED
+      : allCompleted
+        ? RunStatus.COMPLETED
+        : hasOpenJobs
+          ? RunStatus.IN_PROGRESS
+          : RunStatus.IN_PROGRESS;
+
+  try {
+    const updateData = {
+      status,
+      completedAt:
+        status === RunStatus.COMPLETED || status === RunStatus.FAILED
+          ? new Date()
+          : null,
+    };
+    await prisma.researchRun.update({
+      where: { id: runId },
+      data: updateData as any,
+    });
+  } catch (error) {
+    console.warn("[Worker] Failed to update run status", { runId, projectId, error });
+  }
 }
 
 async function appendResultSummary(jobId: string, msg: string) {
