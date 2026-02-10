@@ -154,28 +154,26 @@ export default async function ProjectDashboardPage({ params }: Params) {
         </div>
         <div className="flex flex-col gap-2 md:items-end">
           <div className="flex flex-col gap-2 md:flex-row md:justify-end">
-            <Link
-              href={hasProducts ? `/projects/${project.id}/research-hub?productId=${defaultProductId}` : '#'}
-              className={`inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium ${
-                hasProducts
-                  ? 'bg-sky-500 hover:bg-sky-400 text-white'
-                  : 'bg-slate-800 text-slate-500 cursor-not-allowed pointer-events-none'
-              }`}
-              aria-disabled={!hasProducts}
-            >
-              Research Hub
-            </Link>
-            <Link
-              href={hasProducts ? `/projects/${project.id}/creative-studio?productId=${defaultProductId}` : '#'}
-              className={`inline-flex items-center justify-center rounded-md border px-4 py-2 text-sm font-medium ${
-                hasProducts
-                  ? 'border-slate-700 bg-slate-950/60 text-slate-200 hover:bg-slate-900'
-                  : 'border-slate-800 bg-slate-900 text-slate-500 cursor-not-allowed pointer-events-none'
-              }`}
-              aria-disabled={!hasProducts}
-            >
-              Creative Studio
-            </Link>
+            {hasProducts ? (
+              <>
+                <Link
+                  href={`/projects/${project.id}/research-hub?productId=${defaultProductId}`}
+                  className="inline-flex items-center justify-center rounded-md bg-sky-500 px-4 py-2 text-sm font-medium text-white hover:bg-sky-400"
+                >
+                  Research Hub
+                </Link>
+                <Link
+                  href={`/projects/${project.id}/creative-studio?productId=${defaultProductId}`}
+                  className="inline-flex items-center justify-center rounded-md border border-slate-700 bg-slate-950/60 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-900"
+                >
+                  Creative Studio
+                </Link>
+              </>
+            ) : (
+              <div className="inline-flex items-center rounded-md border border-slate-800 bg-slate-900 px-4 py-2 text-sm text-slate-500">
+                Select a product to access Research Hub and Creative Studio
+              </div>
+            )}
             <Link
               href={`/projects/${project.id}/dead-letter`}
               className="inline-flex items-center justify-center rounded-md border border-slate-700 bg-slate-950/60 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-900"
