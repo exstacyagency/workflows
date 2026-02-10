@@ -36,7 +36,7 @@ import { startScriptGenerationJob } from "../lib/scriptGenerationService.ts";
 import { startVideoPromptGenerationJob } from "../lib/videoPromptGenerationService.ts";
 import { runVideoImageGenerationJob } from "../lib/videoImageGenerationService.ts";
 import { runVideoGenerationJob } from "../lib/videoGenerationService.ts";
-import { collectProductData } from "../lib/productDataCollectionService.ts";
+import { collectProductIntelWithWebFetch } from "../lib/productDataCollectionService.ts";
 import { analyzeProductData } from "../lib/productAnalysisService.ts";
 import prisma from "../lib/prisma.ts";
 import { rollbackQuota } from "../lib/billing/usage.ts";
@@ -733,26 +733,85 @@ async function runJob(
       }
 
       case 'PRODUCT_DATA_COLLECTION' as any: {
-        const { productName, productUrl, competitors } = payload;
-        if (!productName || !productUrl) {
-          await markFailed({ jobId, error: "Invalid payload: missing productName or productUrl" });
+        const { projectId, productUrl, returnsUrl, shippingUrl, aboutUrl } = payload as {
+          projectId?: string;
+          productUrl?: string;
+          returnsUrl?: string | null;
+          shippingUrl?: string | null;
+          aboutUrl?: string | null;
+        };
+        console.log("[Product Collection Worker] Starting job:", {
+          jobId,
+          projectId: projectId || job.projectId,
+          productUrl,
+          returnsUrl: returnsUrl || null,
+          shippingUrl: shippingUrl || null,
+          aboutUrl: aboutUrl || null,
+        });
+        if (!productUrl) {
+          await markFailed({ jobId, error: "Invalid payload: missing productUrl" });
           return;
         }
 
-        const result = await collectProductData({
-          projectId: job.projectId,
-          jobId,
-          productName,
-          productUrl,
-          competitors: competitors || [],
-        });
+        try {
+          const intel = await collectProductIntelWithWebFetch(
+            String(productUrl),
+            String(projectId || job.projectId),
+            jobId,
+            typeof returnsUrl === "string" ? returnsUrl : null,
+            typeof shippingUrl === "string" ? shippingUrl : null,
+            typeof aboutUrl === "string" ? aboutUrl : null
+          );
+          console.log("[Product Collection Worker] Extraction complete:", {
+            jobId,
+            benefit: (intel as any)?.main_benefit ?? null,
+          });
 
-        await markCompleted({
-          jobId,
-          result,
-          summary: `Product data collected: ${result.competitorsAnalyzed} competitors`,
-        });
-        return;
+          const intelPrice =
+            typeof (intel as any)?.price === "string"
+              ? (intel as any).price
+              : (intel as any)?.price?.current ?? null;
+          const intelLabel =
+            (intel as any)?.name ??
+            (intel as any)?.main_benefit ??
+            (intel as any)?.benefit ??
+            (intel as any)?.title ??
+            null;
+
+          await markCompleted({
+            jobId,
+            result: { success: true, intel },
+            summary: {
+              success: true,
+              productName: intelLabel,
+              price: intelPrice,
+            },
+          });
+          return;
+        } catch (error: any) {
+          const msg = String(error?.message ?? error ?? "");
+          console.error("[Product Collection Worker] Job failed:", {
+            jobId,
+            error: msg,
+          });
+          if (msg.includes("url_not_accessible")) {
+            await markCompleted({
+              jobId,
+              result: { success: false, error: "Product page not accessible" },
+              summary: { success: false, error: "Product page not accessible" },
+            });
+            return;
+          }
+          if (msg.includes("max_uses_exceeded")) {
+            await markCompleted({
+              jobId,
+              result: { success: false, error: "Too many fetch attempts" },
+              summary: { success: false, error: "Too many fetch attempts" },
+            });
+            return;
+          }
+          throw error;
+        }
       }
 
       case 'PRODUCT_ANALYSIS' as any: {
