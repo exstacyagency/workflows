@@ -25,6 +25,11 @@ export async function POST(
     const formData = await req.formData();
     const file = formData.get("file") as File;
     const jobId = formData.get("jobId") as string | null;
+    const sourceTagRaw = formData.get("source");
+    const sourceTag =
+      typeof sourceTagRaw === "string" && sourceTagRaw.trim().length > 0
+        ? sourceTagRaw.trim()
+        : "operator_upload";
 
     if (!(file instanceof File) || typeof jobId !== "string" || !jobId.trim()) {
       return NextResponse.json({ error: "File and jobId required" }, { status: 400 });
@@ -42,7 +47,7 @@ export async function POST(
       source: ResearchSource.UPLOADED,
       type: "upload",
       content: chunk,
-      metadata: {},
+      metadata: { source: sourceTag },
     }));
 
     if (rows.length > 0) {
