@@ -152,14 +152,47 @@ function safeArray(value: unknown): any[] {
   return Array.isArray(value) ? value : [];
 }
 
+function safeObject(value: unknown): Record<string, any> {
+  return isPlainObject(value) ? value : {};
+}
+
 function normalizePatternOutput(payload: any) {
+  const winningAds = safeArray(payload?.winningAds);
+  const prescriptiveGuidance = safeObject(payload?.prescriptiveGuidance);
+  const avoidPatterns = safeArray(payload?.avoidPatterns);
+
+  const hookPatterns = safeArray(payload?.hookPatterns);
+  const messagePatterns = safeArray(payload?.messagePatterns);
+  const textOverlayPatterns = safeArray(payload?.textOverlayPatterns);
+  const ctaPatterns = safeArray(payload?.ctaPatterns);
+  const timingPatterns = safeArray(payload?.timingPatterns);
+  const clusters = safeArray(payload?.clusters);
+
   return {
-    hookPatterns: safeArray(payload?.hookPatterns),
-    messagePatterns: safeArray(payload?.messagePatterns),
-    textOverlayPatterns: safeArray(payload?.textOverlayPatterns),
-    ctaPatterns: safeArray(payload?.ctaPatterns),
-    timingPatterns: safeArray(payload?.timingPatterns),
-    clusters: safeArray(payload?.clusters),
+    winningAds,
+    prescriptiveGuidance,
+    avoidPatterns,
+    hookPatterns:
+      hookPatterns.length > 0
+        ? hookPatterns
+        : (prescriptiveGuidance.hook ? [{ pattern: prescriptiveGuidance.hook }] : []),
+    messagePatterns:
+      messagePatterns.length > 0
+        ? messagePatterns
+        : (prescriptiveGuidance.body ? [{ pattern: prescriptiveGuidance.body }] : []),
+    textOverlayPatterns:
+      textOverlayPatterns.length > 0
+        ? textOverlayPatterns
+        : (prescriptiveGuidance.textOverlays ? [{ pattern: prescriptiveGuidance.textOverlays }] : []),
+    ctaPatterns:
+      ctaPatterns.length > 0
+        ? ctaPatterns
+        : (prescriptiveGuidance.cta ? [{ pattern: prescriptiveGuidance.cta }] : []),
+    timingPatterns:
+      timingPatterns.length > 0
+        ? timingPatterns
+        : (prescriptiveGuidance.body ? [{ pattern: prescriptiveGuidance.body }] : []),
+    clusters,
   };
 }
 
@@ -205,6 +238,21 @@ function extractRetention3s(raw: Record<string, any>): number | null {
   return firstNumber(point3s?.value, analysis[2]?.value, raw?.metrics?.retention_3s);
 }
 
+function extractRetentionCurve(raw: Record<string, any>): string {
+  const { playRetain } = getKeyframeMetrics(raw);
+  const analysis = Array.isArray(playRetain?.analysis) ? playRetain.analysis : [];
+  const points = analysis
+    .map((row: any) => {
+      const second = firstNumber(row?.second, row?.t);
+      const value = firstNumber(row?.value);
+      if (second === null || value === null) return null;
+      return [Math.round(second), value];
+    })
+    .filter((row): row is [number, number] => Array.isArray(row));
+  if (points.length === 0) return "N/A";
+  return JSON.stringify(points);
+}
+
 function extractConversionHighlightSeconds(raw: Record<string, any>): number[] {
   const { convertCnt } = getKeyframeMetrics(raw);
   const highlights = Array.isArray(convertCnt?.highlight) ? convertCnt.highlight : [];
@@ -235,15 +283,17 @@ function mapHighlightToText(raw: Record<string, any>, second: number): string {
 }
 
 function buildAnalysisPrompt(ads: AdForAnalysis[]): string {
-  const adBlocks = ads.map((ad) => {
+  const adBlocks = ads
+    .map((ad) => {
     const raw = ad.rawJson;
     const title = extractAdTitle(raw);
     const ctr = extractCtr(raw);
-    const engagement = extractEngagement(raw);
-    const cost = extractCost(raw);
+    const retentionCurve = extractRetentionCurve(raw);
     const transcript = asString(raw?.transcript) ?? "";
     const ocrFrames = Array.isArray(raw?.ocrFrames) ? raw.ocrFrames : [];
-    const retention3s = extractRetention3s(raw);
+    const visualDescription =
+      asString(raw?.visualDescription) ??
+      "Describe shot sequence based on OCR/transcript";
     const conversionHighlights = extractConversionHighlightSeconds(raw);
     const conversionLines = conversionHighlights.length
       ? conversionHighlights
@@ -257,47 +307,61 @@ function buildAnalysisPrompt(ads: AdForAnalysis[]): string {
           .join("\n")
       : "No OCR frames";
 
-    return `AD_ID: ${ad.id}
-AD: ${title}
-PERFORMANCE:
-- CTR: ${ctr ?? "N/A"}
-- Engagement: ${engagement}
-- Cost: ${cost ?? "N/A"}
+      return `
+AD_ID: ${ad.id}
+TITLE: ${title}
+CTR: ${ctr ?? "N/A"}
+RETENTION_CURVE: ${retentionCurve || "N/A"}
 
-TRANSCRIPT (what they say):
+FULL_TRANSCRIPT:
 ${transcript || "N/A"}
 
-OCR TEXT (text overlays at high-converting moments):
+OCR_TEXT_WITH_TIMING:
 ${ocrFrameLines}
 
-HOOK PERFORMANCE (first 3 seconds):
-- Retention: ${retention3s ?? "N/A"}
+VISUAL_STRUCTURE:
+${visualDescription || "Describe shot sequence based on OCR/transcript"}
 
-CONVERSION MOMENTS (when people clicked/converted):
-${conversionLines}`;
-  });
+CONVERSION_MOMENTS:
+${conversionLines}
+`;
+    })
+    .join("\n---\n");
 
-  return `Analyze these TikTok ads and identify patterns:
+  return `Analyze these ${ads.length} TikTok ads. Return actionable creative templates, not abstract insights.
 
-${adBlocks.join("\n---\n")}
+${adBlocks}
 
-Identify:
-1. HOOK PATTERNS: What do the best-performing first 3 seconds have in common?
-2. MESSAGE PATTERNS: What themes/pain points appear in high-CTR ads?
-3. TEXT OVERLAY PATTERNS: What text appears at conversion moments?
-4. CTA PATTERNS: What calls-to-action drive clicks?
-5. TIMING PATTERNS: When should key messages appear for best results?
-6. CREATIVE CLUSTERS: Group similar ads by performance level
-
-Return structured JSON with:
+Output JSON:
 {
-  "hookPatterns": [{"pattern": "...", "exampleAds": [...], "avgCTR": ...}],
-  "messagePatterns": [...],
-  "textOverlayPatterns": [...],
-  "ctaPatterns": [...],
-  "timingPatterns": [...],
-  "clusters": [{"name": "...", "adIds": [...], "characteristics": "..."}]
-}`;
+  "winningAds": [
+    {
+      "adId": "...",
+      "ctr": 0.21,
+      "retentionCurve": [[0,1.0], [3,0.745], [10,0.58]],
+      "fullTranscript": "verbatim script with timestamps",
+      "ocrText": "exact overlays with timestamps",
+      "visualDescription": "shot-by-shot breakdown",
+      "whyItWorks": "specific mechanisms that drove performance"
+    }
+  ],
+  "prescriptiveGuidance": {
+    "hook": "Exact first 2s structure with example phrase",
+    "body": "Second-by-second content map (e.g., 3-8s: establish authority, 12-13s: introduce solution)",
+    "cta": "Exact CTA structure with example phrase",
+    "textOverlays": "When to show text, exact phrasing patterns",
+    "visualFlow": "Shot sequence that maximizes retention"
+  },
+  "avoidPatterns": [
+    {
+      "pattern": "what low performers did wrong",
+      "adIds": ["..."],
+      "whyItFailed": "specific retention/CTR impact"
+    }
+  ]
+}
+
+Focus: Give script writers copy-paste templates. Include verbatim winning phrases. Map timing to specific actions.`;
 }
 
 async function loadAdsForRun(
@@ -414,7 +478,9 @@ export async function runPatternAnalysis(args: {
   const parsed = extractJsonFromText(outputText);
   const patterns = normalizePatternOutput(parsed);
 
-  const summary = `Identified ${patterns.hookPatterns.length} hook patterns, ${patterns.messagePatterns.length} message patterns`;
+  const summary = patterns.winningAds.length > 0
+    ? `Identified ${patterns.winningAds.length} winning ads and ${patterns.avoidPatterns.length} avoid patterns`
+    : `Identified ${patterns.hookPatterns.length} hook patterns, ${patterns.messagePatterns.length} message patterns`;
 
   await prisma.$transaction(async (tx) => {
     await tx.adPatternResult.create({
@@ -433,6 +499,11 @@ export async function runPatternAnalysis(args: {
     });
 
     const references = [
+      ...patterns.winningAds.map((entry: any) => ({ source: "winning_ad", metadata: entry })),
+      ...(Object.keys(patterns.prescriptiveGuidance).length > 0
+        ? [{ source: "prescriptive_guidance", metadata: patterns.prescriptiveGuidance }]
+        : []),
+      ...patterns.avoidPatterns.map((entry: any) => ({ source: "avoid_pattern", metadata: entry })),
       ...patterns.hookPatterns.map((entry: any) => ({ source: "hook", metadata: entry })),
       ...patterns.messagePatterns.map((entry: any) => ({ source: "message", metadata: entry })),
       ...patterns.textOverlayPatterns.map((entry: any) => ({ source: "text_overlay", metadata: entry })),
