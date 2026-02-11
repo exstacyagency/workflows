@@ -30,8 +30,9 @@ import { cfg } from "@/lib/config";
 // ...existing code...
 import { runCustomerResearch } from "../services/customerResearchService.ts";
 import { runCustomerAnalysis } from "../lib/customerAnalysisService";
-import { runAdRawCollection } from "../lib/adRawCollectionService.ts";
+import { collectAds, buildAdCollectionConfig, type AdCollectionConfig } from "../lib/adRawCollectionService.ts";
 import { runAdOcrCollection } from "../lib/adOcrCollectionService.ts";
+import { runAdQualityGate } from "../lib/adQualityGateService.ts";
 import { runPatternAnalysis } from "../lib/patternAnalysisService.ts";
 import { startScriptGenerationJob } from "../lib/scriptGenerationService.ts";
 import { startVideoPromptGenerationJob } from "../lib/videoPromptGenerationService.ts";
@@ -92,6 +93,7 @@ const TEST_POLL_INTERVAL_MS = Number(cfg.raw("WORKER_TEST_POLL_MS") ?? 50);
 const POLL_MS = IS_TEST ? TEST_POLL_INTERVAL_MS : DEFAULT_POLL_INTERVAL_MS;
 const RUN_ONCE = cfg.raw("RUN_ONCE") === "1";
 const WORKER_JOB_MAX_RUNTIME_MS = Number(cfg.raw("WORKER_JOB_MAX_RUNTIME_MS") ?? 20 * 60_000);
+const AD_QUALITY_GATE_JOB_TYPE = "AD_QUALITY_GATE" as JobType;
 
 type JsonObject = Record<string, any>;
 
@@ -348,6 +350,10 @@ async function claimNextJob() {
       SELECT "id"
       FROM job
       WHERE "status" = CAST('PENDING' AS "JobStatus")
+        AND NOT (
+          "type" = CAST('AD_PERFORMANCE' AS "JobType")
+          AND COALESCE("payload"->>'jobType', "payload"->>'kind', '') IN ('ad_transcripts', 'ad_transcript_collection')
+        )
         AND (
           ("payload"->>'nextRunAt') IS NULL
           OR (("payload"->>'nextRunAt')::bigint) <= ${dueBefore}
@@ -551,9 +557,14 @@ async function runJob(
           ]);
           if (!cfgVision.ok) return;
 
+          const runId = String(payload?.runId ?? (job as any)?.runId ?? "").trim();
+          const forceReprocess = payload?.forceReprocess === true;
+
           const result = await runAdOcrCollection({
             projectId: job.projectId,
             jobId,
+            runId,
+            forceReprocess,
           });
 
           await markCompleted({
@@ -564,11 +575,17 @@ async function runJob(
           return;
         }
 
-        const cfgToken = await handleProviderConfig(jobId, "Apify", ["APIFY_API_TOKEN"]);
-        if (!cfgToken.ok) return;
+        const hasApifyToken = Boolean(
+          String(cfg.raw("APIFY_API_TOKEN") ?? "").trim() ||
+            String(cfg.raw("APIFY_TOKEN") ?? "").trim()
+        );
+        if (!hasApifyToken) {
+          await markFailed({ jobId, error: "Apify not configured" });
+          return;
+        }
         const datasetId = (cfg.raw("APIFY_DATASET_ID") ?? "").trim();
         if (!datasetId) {
-          const cfgActor = await handleProviderConfig(jobId, "Apify", ["APIFY_ACTOR_ID"]);
+          const cfgActor = await handleProviderConfig(jobId, "Apify TikTok", ["APIFY_TIKTOK_ACTOR_ID"]);
           if (!cfgActor.ok) return;
         }
 
@@ -578,11 +595,19 @@ async function runJob(
           return;
         }
 
-        const result = await runAdRawCollection({
-          projectId: job.projectId,
-          industryCode,
+        const runId = String(payload?.runId ?? (job as any)?.runId ?? "").trim();
+        const configured =
+          payload?.adCollectionConfig && typeof payload.adCollectionConfig === "object"
+            ? (payload.adCollectionConfig as AdCollectionConfig)
+            : null;
+        const adCollectionConfig = configured ?? buildAdCollectionConfig(String(industryCode));
+
+        const result = await collectAds(
+          job.projectId,
+          runId,
           jobId,
-        });
+          adCollectionConfig,
+        );
 
         await markCompleted({
           jobId,
@@ -592,12 +617,39 @@ async function runJob(
         return;
       }
 
+      case AD_QUALITY_GATE_JOB_TYPE: {
+        const cfgAnthropic = await handleProviderConfig(jobId, "Anthropic", ["ANTHROPIC_API_KEY"]);
+        if (!cfgAnthropic.ok) return;
+
+        const runId = String(payload?.runId ?? (job as any)?.runId ?? "").trim();
+        if (!runId) {
+          await markFailed({ jobId, error: "Invalid payload: missing runId" });
+          return;
+        }
+
+        const forceReprocess = payload?.forceReprocess === true;
+        const result = await runAdQualityGate({
+          projectId: job.projectId,
+          jobId,
+          runId,
+          forceReprocess,
+        });
+
+        await markCompleted({
+          jobId,
+          result: { ok: true, ...result },
+          summary: result.summary,
+        });
+        return;
+      }
+
       case JobType.PATTERN_ANALYSIS: {
         const runIdFromPayload = String(payload?.runId ?? "").trim() || null;
         const runIdFromJob = String((job as any)?.runId ?? "").trim() || null;
         const effectiveRunId = runIdFromPayload ?? runIdFromJob;
 
-        await updateJobStatus(jobId, JobStatus.RUNNING);
+        // The claim query already transitions PENDING -> RUNNING.
+        // Avoid a duplicate RUNNING -> RUNNING transition here.
 
         const result = await runPatternAnalysis({
           projectId: job.projectId,

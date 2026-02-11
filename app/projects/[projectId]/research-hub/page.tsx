@@ -11,6 +11,7 @@ type JobType =
   | "CUSTOMER_RESEARCH"
   | "CUSTOMER_ANALYSIS"
   | "AD_PERFORMANCE"
+  | "AD_QUALITY_GATE"
   | "PATTERN_ANALYSIS"
   | "PRODUCT_DATA_COLLECTION"
   | "PRODUCT_ANALYSIS";
@@ -86,23 +87,6 @@ interface ProductCollectionFormData {
   aboutUrl: string;
 }
 
-interface AdDataCompleteness {
-  totalAds: number;
-  withTranscript: number;
-  withOcr: number;
-  withKeyframe: number;
-  withAllData: number;
-  transcriptCoverage: number;
-  ocrCoverage: number;
-  keyframeCoverage: number;
-  minAdsRequired: number;
-  minTranscriptCoverage: number;
-  minOcrCoverage: number;
-  minCompleteAds: number;
-  canRun: boolean;
-  reason: string | null;
-}
-
 interface RunAllResearchFormData {
   productName: string;
   productProblemSolved: string;
@@ -113,6 +97,31 @@ interface RunAllResearchFormData {
   industryCode: string;
   productUrl: string;
 }
+
+const INDUSTRY_SUGGESTIONS = [
+  { code: "22000000000", label: "Apparel & Accessories" },
+  { code: "16000000000", label: "Appliances" },
+  { code: "20000000000", label: "Apps" },
+  { code: "12000000000", label: "Baby, Kids & Maternity" },
+  { code: "14000000000", label: "Beauty & Personal Care" },
+  { code: "24000000000", label: "Business Services" },
+  { code: "30000000000", label: "E-Commerce (Non-app)" },
+  { code: "10000000000", label: "Education" },
+  { code: "13000000000", label: "Financial Services" },
+  { code: "27000000000", label: "Food & Beverage" },
+  { code: "25000000000", label: "Games" },
+  { code: "29000000000", label: "Health" },
+  { code: "21000000000", label: "Home Improvement" },
+  { code: "18000000000", label: "Household Products" },
+  { code: "26000000000", label: "Life Services" },
+  { code: "23000000000", label: "News & Entertainment" },
+  { code: "19000000000", label: "Pets" },
+  { code: "28000000000", label: "Sports & Outdoor" },
+  { code: "15000000000", label: "Tech & Electronics" },
+  { code: "17000000000", label: "Travel" },
+  { code: "11000000000", label: "Vehicle & Transportation" },
+] as const;
+const DEFAULT_MODAL_INDUSTRY_CODE = "14000000000";
 
 export default function ResearchHubPage() {
   const params = useParams();
@@ -143,8 +152,6 @@ export default function ResearchHubPage() {
     totalAssets: 0,
     assetsWithOcr: 0,
   });
-  const [adCompleteness, setAdCompleteness] = useState<AdDataCompleteness | null>(null);
-  const [adCompletenessLoading, setAdCompletenessLoading] = useState(false);
   const selectedProductRef = useRef<string | null>(selectedProductId);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
 
@@ -202,6 +209,7 @@ export default function ResearchHubPage() {
       CUSTOMER_RESEARCH: "Customer Research",
       CUSTOMER_ANALYSIS: "Customer Analysis",
       AD_PERFORMANCE: "Ad Collection",
+      AD_QUALITY_GATE: "Quality Assessment",
       PATTERN_ANALYSIS: "Pattern Analysis",
       PRODUCT_DATA_COLLECTION: "Product Collection",
       PRODUCT_ANALYSIS: "Product Analysis",
@@ -209,13 +217,13 @@ export default function ResearchHubPage() {
     return names[job.type] || job.type;
   };
   const runGroupsWithNumbers = runGroupsList
-    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
-    .map((run, index, allRuns) => {
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .map((run, index) => {
       const completedJobs = run.jobs
         .filter((j) => j.status === "COMPLETED")
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       const lastJob = completedJobs[0];
-      const runNumber = allRuns.length - index;
+      const runNumber = index + 1;
       const lastJobName = lastJob ? getRunJobName(lastJob) : "No jobs";
 
       return {
@@ -226,9 +234,7 @@ export default function ResearchHubPage() {
       };
     });
 
-  const sortedRuns = runGroupsWithNumbers.sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-  );
+  const sortedRuns = runGroupsWithNumbers;
 
   const selectedRun = selectedRunId ? sortedRuns.find((run) => run.runId === selectedRunId) : null;
 
@@ -276,36 +282,6 @@ export default function ResearchHubPage() {
     }
   }, [projectId]);
 
-  const loadAdCompleteness = useCallback(
-    async (runId?: string | null) => {
-      const runParam = runId || currentRunId || selectedRunId || "";
-      const query = runParam ? `?runId=${encodeURIComponent(runParam)}` : "";
-      setAdCompletenessLoading(true);
-      try {
-        const response = await fetch(`/api/projects/${projectId}/ad-data-completeness${query}`, {
-          cache: "no-store",
-        });
-        if (!response.ok) {
-          console.warn("Completeness check failed, deferring to server-side validation");
-          setAdCompleteness(null);
-          return;
-        }
-        const data = await response.json();
-        if (data?.success && data?.completeness) {
-          setAdCompleteness(data.completeness as AdDataCompleteness);
-        } else {
-          setAdCompleteness(null);
-        }
-      } catch (error) {
-        console.warn("Completeness API unavailable:", error);
-        setAdCompleteness(null);
-      } finally {
-        setAdCompletenessLoading(false);
-      }
-    },
-    [currentRunId, projectId, selectedRunId]
-  );
-
   const loadJobs = useCallback(async (forceProductId?: string, options?: { silent?: boolean }) => {
     const silent = options?.silent === true;
     console.log('[loadJobs] Starting job fetch...', { projectId, forceProductId, timestamp: new Date().toISOString() });
@@ -337,13 +313,12 @@ export default function ResearchHubPage() {
       });
       console.log('[loadJobs] Jobs filtered:', { productId: productToFilter, filteredCount: filteredJobs.length });
       await loadAdOcrCoverage();
-      await loadAdCompleteness();
     } catch (error) {
       console.error('[loadJobs] Error:', error);
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [loadAdCompleteness, loadAdOcrCoverage, projectId]);
+  }, [loadAdOcrCoverage, projectId]);
 
   const loadProducts = useCallback(async () => {
     try {
@@ -390,16 +365,12 @@ export default function ResearchHubPage() {
     }
   }, [loadJobs, projectId, selectedProductId]);
 
-  useEffect(() => {
-    if (!projectId) return;
-    loadAdCompleteness();
-  }, [loadAdCompleteness, projectId]);
-
   const runningJob = useMemo(
     () => jobs.find((j) => j.status === "RUNNING") ?? null,
     [jobs]
   );
   const hasRunningJob = Boolean(runningJob);
+  const anyRunning = jobs.some((j) => j.status === "RUNNING");
   const selectedProduct = useMemo(
     () => products.find((product) => product.id === selectedProductId) ?? null,
     [products, selectedProductId]
@@ -420,13 +391,19 @@ export default function ResearchHubPage() {
   useEffect(() => {
     if (previousJobs.length === 0) return;
 
-    const newCompletions = jobs.filter(job => 
-      job.status === 'COMPLETED' && 
-      previousJobs.find(prev => prev.id === job.id && prev.status === 'RUNNING')
+    const newCompletions = jobs.filter(
+      (job) =>
+        job.status === "COMPLETED" &&
+        previousJobs.find((prev) => prev.id === job.id && prev.status === "RUNNING")
     );
-    
-    newCompletions.forEach(job => {
+
+    newCompletions.forEach((job) => {
       setStatusMessage(`${getJobTypeLabel(job.type)} completed`);
+      const jobSubtype = String(job.payload?.jobType || job.metadata?.jobType || "").trim();
+      if (jobSubtype === "ad_raw_collection" && job.runId) {
+        setCurrentRunId(job.runId);
+        setSelectedRunId(job.runId);
+      }
     });
   }, [jobs, previousJobs]);
 
@@ -488,7 +465,16 @@ export default function ResearchHubPage() {
           description: "Convert ads to text transcripts",
           jobType: "AD_PERFORMANCE",
           endpoint: "/api/jobs/ad-transcripts",
-          prerequisite: "ad-ocr",
+          prerequisite: "ad-collection",
+          status: "NOT_STARTED",
+        },
+        {
+          id: "ad-quality-gate",
+          label: "Quality Assessment",
+          description: "Filter to viable ad content before pattern analysis",
+          jobType: "AD_QUALITY_GATE",
+          endpoint: "/api/jobs/ad-quality-gate",
+          prerequisites: ["ad-collection", "ad-ocr", "ad-transcripts"],
           status: "NOT_STARTED",
         },
         {
@@ -497,7 +483,7 @@ export default function ResearchHubPage() {
           description: "Identify winning ad patterns",
           jobType: "PATTERN_ANALYSIS",
           endpoint: "/api/jobs/pattern-analysis",
-          prerequisites: ["ad-collection", "ad-ocr", "ad-transcripts"],
+          prerequisite: "ad-quality-gate",
           status: "NOT_STARTED",
         },
       ],
@@ -524,7 +510,7 @@ export default function ResearchHubPage() {
   // Get step status based on current run
   const getStepStatus = (jobType: JobType, stepId: string): { status: JobStatus; lastJob?: Job } => {
     if (jobType === "AD_PERFORMANCE") {
-      // Ad pipeline uses project-level filtering by subtype (not strict run-only matching).
+      const adRunId = currentRunId || selectedRunId;
       const matchingJobs = jobs.filter((j) => {
         const jobSubtype = j.payload?.jobType || j.metadata?.jobType;
         if (stepId === "ad-collection") return jobSubtype === "ad_raw_collection";
@@ -533,7 +519,7 @@ export default function ResearchHubPage() {
           return jobSubtype === "ad_transcripts" || jobSubtype === "ad_transcript_collection";
         }
         return false;
-      });
+      }).filter((j) => (!adRunId ? true : j.runId === adRunId));
 
       const job = [...matchingJobs].sort(
         (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
@@ -555,11 +541,12 @@ export default function ResearchHubPage() {
       };
     }
 
-    if (!currentRunId) {
+    const activeRunId = currentRunId || selectedRunId;
+    if (!activeRunId) {
       return { status: "NOT_STARTED" };
     }
 
-    const job = jobs.find(j => j.type === jobType && j.runId === currentRunId);
+    const job = jobs.find(j => j.type === jobType && j.runId === activeRunId);
     if (!job) {
       return { status: "NOT_STARTED" };
     }
@@ -678,9 +665,17 @@ export default function ResearchHubPage() {
     }
 
     if (step.id === "pattern-analysis") {
-      if (adCompleteness && !adCompleteness.canRun) return false;
-      // If completeness API is unavailable, allow run and rely on server-side validation.
-      return true;
+      const adCollectionStatus = track.steps.find((s) => s.id === "ad-collection")?.status;
+      const ocrStatus = track.steps.find((s) => s.id === "ad-ocr")?.status;
+      const transcriptStatus = track.steps.find((s) => s.id === "ad-transcripts")?.status;
+
+      const canRunPatternAnalysis =
+        adCollectionStatus === "COMPLETED" &&
+        ocrStatus === "COMPLETED" &&
+        transcriptStatus === "COMPLETED" &&
+        track.steps.find((s) => s.id === "ad-quality-gate")?.status === "COMPLETED";
+
+      return canRunPatternAnalysis;
     }
     
     return true;
@@ -744,6 +739,18 @@ export default function ResearchHubPage() {
         ...formData,
       };
 
+      const resolveAdRunId = () => {
+        if (currentRunId) return currentRunId;
+        if (selectedRunId) return selectedRunId;
+        const latestCollection = jobs
+          .filter((j) => {
+            const subtype = String(j.payload?.jobType || j.metadata?.jobType || "").trim();
+            return subtype === "ad_raw_collection" && j.status === "COMPLETED" && j.runId;
+          })
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+        return latestCollection?.runId ?? null;
+      };
+
       // Add step-specific data
       if (step.id === "customer-analysis") {
         const currentRunResearchJob = jobs.find(
@@ -765,10 +772,16 @@ export default function ResearchHubPage() {
             ? currentRunResearchJob?.payload?.additionalProblems
             : [],
         };
-      } else if (step.id === "ad-ocr" || step.id === "ad-transcripts") {
+      } else if (
+        step.id === "ad-ocr" ||
+        step.id === "ad-transcripts" ||
+        step.id === "ad-quality-gate" ||
+        step.id === "pattern-analysis"
+      ) {
+        const adRunId = resolveAdRunId();
         payload = {
           ...payload,
-          ...(currentRunId ? { runId: currentRunId } : {}),
+          ...(adRunId ? { runId: adRunId } : {}),
         };
       }
 
@@ -912,6 +925,38 @@ export default function ResearchHubPage() {
     setShowNewRunModal(false);
     setStatusMessage("New research run started");
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleViewStepData = (step: ResearchStep & { lastJob?: Job }) => {
+    const payloadRunId = String(step.lastJob?.payload?.runId ?? "").trim();
+    const runId = step.lastJob?.runId || payloadRunId || currentRunId;
+
+    if (step.id === "ad-collection" || step.id === "ad-ocr") {
+      if (!runId) {
+        setStatusMessage("No runId found for this ad job.");
+        return;
+      }
+      const query = step.id === "ad-ocr" ? "?focus=ocr" : "";
+      router.push(`/projects/${projectId}/research-hub/ad-assets/${runId}${query}`);
+      return;
+    }
+
+    if (step.id === "ad-quality-gate") {
+      if (!runId) {
+        setStatusMessage("No runId found for this quality assessment job.");
+        return;
+      }
+      router.push(`/projects/${projectId}/research-hub/data?jobType=ad-quality-gate&runId=${runId}`);
+      return;
+    }
+
+    if (step.id === "pattern-analysis") {
+      if (!runId) {
+        setStatusMessage("No runId found for this ad analysis job.");
+        return;
+      }
+      router.push(`/projects/${projectId}/research-hub/data?jobType=pattern-analysis&runId=${runId}`);
+    }
   };
 
   const handleRunAllResearch = async (formData: RunAllResearchFormData) => {
@@ -1293,10 +1338,15 @@ export default function ResearchHubPage() {
                     const isCollecting =
                       (isCustomerCollectionStep && (isRunning || hasRunningJob)) ||
                       (isProductCollectionStep && isRunning);
-                    const patternAnalysisBlockedReason =
-                      stepWithStatus.id === "pattern-analysis" && adCompleteness && !adCompleteness.canRun
-                        ? adCompleteness.reason ?? "Pattern analysis requirements not met."
+                    const patternAnalysisBlockedReason = (() => {
+                      if (stepWithStatus.id !== "pattern-analysis") return null;
+                      const qualityGateStatus = track.steps.find((s) => s.id === "ad-quality-gate")?.status;
+                      const missing: string[] = [];
+                      if (qualityGateStatus !== "COMPLETED") missing.push("Quality Assessment");
+                      return missing.length > 0
+                        ? `Complete first: ${missing.join(", ")}.`
                         : null;
+                    })();
                     const customerResearchJob = stepWithStatus.jobType === "CUSTOMER_RESEARCH"
                       ? latestCompletedCustomerResearchJob
                       : undefined;
@@ -1311,23 +1361,10 @@ export default function ResearchHubPage() {
                             {stepWithStatus.label}
                           </h3>
                           <p className="text-xs text-slate-400 mb-2">{stepWithStatus.description}</p>
-                          {stepWithStatus.id === "pattern-analysis" && (
-                            <>
-                              {adCompletenessLoading ? (
-                                <p className="text-xs text-slate-500 mb-2">Checking data completeness...</p>
-                              ) : adCompleteness ? (
-                                <p className="text-xs text-slate-500 mb-2">
-                                  Complete ads: {adCompleteness.withAllData}/{adCompleteness.totalAds} ·
-                                  OCR {Math.round(adCompleteness.ocrCoverage * 100)}% ·
-                                  Transcripts {Math.round(adCompleteness.transcriptCoverage * 100)}%
-                                </p>
-                              ) : null}
-                              {patternAnalysisBlockedReason && (
-                                <p className="text-xs text-amber-400 mb-2 whitespace-pre-line">
-                                  {patternAnalysisBlockedReason}
-                                </p>
-                              )}
-                            </>
+                          {stepWithStatus.id === "pattern-analysis" && patternAnalysisBlockedReason && (
+                            <p className="text-xs text-amber-400 mb-2 whitespace-pre-line">
+                              {patternAnalysisBlockedReason}
+                            </p>
                           )}
                           {stepWithStatus.label === "Customer Analysis"
                             ? selectedRunId && analysisStatusJob && (
@@ -1429,6 +1466,26 @@ export default function ResearchHubPage() {
                               >
                                 {currentRunId ? 'View Run History' : 'View All History'}
                               </button>
+                              {(stepWithStatus.id === "ad-transcripts" ||
+                                stepWithStatus.id === "ad-quality-gate" ||
+                                stepWithStatus.id === "pattern-analysis") && (
+                                <button
+                                  onClick={() => {
+                                    const payloadRunId = String(stepWithStatus.lastJob?.payload?.runId ?? "").trim();
+                                    const runId = stepWithStatus.lastJob?.runId || payloadRunId || currentRunId;
+                                    const jobType = stepWithStatus.id === "ad-quality-gate"
+                                      ? "ad-quality-gate"
+                                      : stepWithStatus.id === "pattern-analysis"
+                                        ? "pattern-analysis"
+                                        : "ad-transcripts";
+                                    const runQuery = runId ? `&runId=${runId}` : "";
+                                    router.push(`/projects/${projectId}/research-hub/data?jobType=${jobType}${runQuery}`);
+                                  }}
+                                  className="px-2 py-1 text-xs text-slate-300 border border-slate-600 rounded hover:border-slate-500 hover:text-slate-200"
+                                >
+                                  View Data
+                                </button>
+                              )}
                             </div>
                           ))}
                           {stepWithStatus.label === "Customer Analysis" ? (
@@ -1465,14 +1522,13 @@ export default function ResearchHubPage() {
                                       ? "Collect Data"
                                       : "Re-run"}
                                 </button>
-                                {stepWithStatus.lastJob && (
+                                {(stepWithStatus.id === "ad-collection" ||
+                                  stepWithStatus.id === "ad-ocr" ||
+                                  stepWithStatus.id === "ad-quality-gate" ||
+                                  stepWithStatus.id === "pattern-analysis") &&
+                                  stepWithStatus.lastJob && (
                                   <button
-                                    onClick={() => {
-                                      console.log("=== JOB DATA ===");
-                                      console.log("Input:", stepWithStatus.lastJob?.payload);
-                                      console.log("Output:", stepWithStatus.lastJob?.result);
-                                      alert(`Check console for ${stepWithStatus.label} data`);
-                                    }}
+                                    onClick={() => handleViewStepData(stepWithStatus)}
                                     className="px-2 py-1 text-xs text-gray-400 hover:text-gray-300 border border-gray-600 rounded"
                                   >
                                     View Data
@@ -1486,34 +1542,36 @@ export default function ResearchHubPage() {
                                 <div className="text-xs text-blue-400">Running...</div>
                               )}
                               <div className="flex gap-2">
-                                <button
-                                  onClick={() => runStep(stepWithStatus, track.key)}
-                                  disabled={
-                                    locked ||
-                                    isRunning ||
-                                    (isCustomerCollectionStep && hasRunningJob) ||
-                                    (stepWithStatus.label === "Customer Analysis" && !canRunAnalysis) ||
-                                    (stepWithStatus.label === "Customer Analysis" && analysisRunning)
-                                  }
-                                  className={`px-3 py-1 text-sm rounded ${
-                                    locked || isRunning || (isCustomerCollectionStep && hasRunningJob) || (stepWithStatus.label === "Customer Analysis" && (analysisRunning || !canRunAnalysis))
-                                      ? "bg-gray-700 text-gray-500 cursor-not-allowed"
-                                      : "bg-blue-600 hover:bg-blue-700 text-white"
-                                  }`}
-                                  title={patternAnalysisBlockedReason || undefined}
-                                >
-                                  {isRunning
-                                    ? "Starting..."
-                                    : locked
-                                      ? "🔒 Locked"
-                                      : stepWithStatus.label === "Customer Collection"
-                                        ? "Collect Data"
-                                        : stepWithStatus.label === "Customer Analysis"
-                                          ? analysisRunning
-                                            ? "Running..."
-                                            : "Run Analysis"
-                                          : "Run"}
-                                </button>
+                                {!(locked && anyRunning) && (
+                                  <button
+                                    onClick={() => runStep(stepWithStatus, track.key)}
+                                    disabled={
+                                      locked ||
+                                      isRunning ||
+                                      (isCustomerCollectionStep && hasRunningJob) ||
+                                      (stepWithStatus.label === "Customer Analysis" && !canRunAnalysis) ||
+                                      (stepWithStatus.label === "Customer Analysis" && analysisRunning)
+                                    }
+                                    className={`px-3 py-1 text-sm rounded ${
+                                      locked || isRunning || (isCustomerCollectionStep && hasRunningJob) || (stepWithStatus.label === "Customer Analysis" && (analysisRunning || !canRunAnalysis))
+                                        ? "bg-gray-700 text-gray-500 cursor-not-allowed"
+                                        : "bg-blue-600 hover:bg-blue-700 text-white"
+                                    }`}
+                                    title={patternAnalysisBlockedReason || undefined}
+                                  >
+                                    {isRunning
+                                      ? "Starting..."
+                                      : locked
+                                        ? "🔒 Locked"
+                                        : stepWithStatus.label === "Customer Collection"
+                                          ? "Collect Data"
+                                          : stepWithStatus.label === "Customer Analysis"
+                                            ? analysisRunning
+                                              ? "Running..."
+                                              : "Run Analysis"
+                                            : "Run"}
+                                  </button>
+                                )}
                               </div>
                             </div>
                           )}
@@ -2069,17 +2127,51 @@ function AdCollectionModal({
   onSubmit: (data: AdCollectionFormData) => void;
   onClose: () => void;
 }) {
-  const [industryCode, setIndustryCode] = useState("");
+  const [industryCode, setIndustryCode] = useState(DEFAULT_MODAL_INDUSTRY_CODE);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+
+  const selectedIndustry =
+    INDUSTRY_SUGGESTIONS.find((option) => option.code === industryCode) ?? null;
+  const filteredIndustries = INDUSTRY_SUGGESTIONS.filter((option) => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      option.label.toLowerCase().includes(q) ||
+      option.code.toLowerCase().includes(q)
+    );
+  });
+
+  useEffect(() => {
+    if (!isDropdownOpen) return;
+    searchInputRef.current?.focus();
+  }, [isDropdownOpen]);
+
+  useEffect(() => {
+    if (!isDropdownOpen) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (!dropdownRef.current) return;
+      if (dropdownRef.current.contains(event.target as Node)) return;
+      setIsDropdownOpen(false);
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [isDropdownOpen]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
-    if (!industryCode) {
+    const normalized = industryCode.trim();
+    if (!normalized) {
       setErrorMessage("Please enter an industry code.");
       return;
     }
-    onSubmit({ industryCode });
+    onSubmit({ industryCode: normalized });
   };
 
   return (
@@ -2097,16 +2189,61 @@ function AdCollectionModal({
               <label className="block text-sm font-medium text-slate-300 mb-2">
                 Industry Code <span className="text-red-400">*</span>
               </label>
-              <input
-                type="text"
-                value={industryCode}
-                onChange={(e) => setIndustryCode(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500"
-                placeholder="e.g., tech, fitness, beauty"
-                required
-              />
+              <div className="relative" ref={dropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => setIsDropdownOpen((prev) => !prev)}
+                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-left text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+                >
+                  {selectedIndustry
+                    ? `${selectedIndustry.label} (${selectedIndustry.code})`
+                    : "Select an industry"}
+                </button>
+
+                {isDropdownOpen && (
+                  <div className="absolute z-20 mt-2 w-full rounded border border-slate-700 bg-slate-900 shadow-xl">
+                    <div className="p-2 border-b border-slate-700">
+                      <input
+                        ref={searchInputRef}
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                        placeholder="Search industry (e.g., Health)"
+                      />
+                    </div>
+                    <div className="max-h-64 overflow-y-auto p-1">
+                      {filteredIndustries.length === 0 ? (
+                        <p className="px-3 py-2 text-sm text-slate-400">
+                          No matching industries.
+                        </p>
+                      ) : (
+                        filteredIndustries.map((option) => (
+                          <button
+                            key={option.code}
+                            type="button"
+                            onClick={() => {
+                              setIndustryCode(option.code);
+                              setSearchQuery("");
+                              setIsDropdownOpen(false);
+                            }}
+                            className={`w-full rounded px-3 py-2 text-left text-sm hover:bg-slate-800 ${
+                              option.code === industryCode
+                                ? "bg-slate-800 text-sky-300"
+                                : "text-slate-200"
+                            }`}
+                          >
+                            <span>{option.label}</span>
+                            <span className="ml-2 text-xs text-slate-400">{option.code}</span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
               <p className="mt-2 text-xs text-slate-500">
-                Enter a code that represents your industry or niche
+                Search by name or code. All 21 TikTok industry categories are available.
               </p>
             </div>
 
@@ -2245,7 +2382,7 @@ function RunAllResearchModal({
     competitor1Asin: "",
     competitor2Asin: "",
     competitor3Asin: "",
-    industryCode: "",
+    industryCode: DEFAULT_MODAL_INDUSTRY_CODE,
     productUrl: "",
   });
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -2367,10 +2504,18 @@ function RunAllResearchModal({
                   type="text"
                   value={formData.industryCode}
                   onChange={(e) => setFormData({ ...formData, industryCode: e.target.value })}
+                  list="tiktok-industry-codes-run-all"
                   className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500"
-                  placeholder="e.g., tech, fitness, beauty"
+                  placeholder="e.g., 23116000000"
                   required
                 />
+                <datalist id="tiktok-industry-codes-run-all">
+                  {INDUSTRY_SUGGESTIONS.map((option) => (
+                    <option key={option.code} value={option.code}>
+                      {option.label}
+                    </option>
+                  ))}
+                </datalist>
               </div>
             </div>
 

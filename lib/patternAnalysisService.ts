@@ -6,10 +6,7 @@ const anthropic = new Anthropic({
   apiKey: cfg.raw("ANTHROPIC_API_KEY"),
 });
 
-const MIN_ADS_REQUIRED = 10;
-const MIN_TRANSCRIPT_COVERAGE = 0.7;
-const MIN_OCR_COVERAGE = 0.7;
-const MIN_COMPLETE_ADS = 10;
+const QUALITY_CONFIDENCE_THRESHOLD = 70;
 const MAX_ADS_FOR_ANALYSIS = 80;
 
 type AdCompletenessArgs = {
@@ -26,10 +23,10 @@ type AdCompleteness = {
   transcriptCoverage: number;
   ocrCoverage: number;
   keyframeCoverage: number;
-  minAdsRequired: number;
-  minTranscriptCoverage: number;
-  minOcrCoverage: number;
-  minCompleteAds: number;
+  assessedAds: number;
+  viableAds: number;
+  rejectedAds: number;
+  confidenceThreshold: number;
   canRun: boolean;
   reason: string | null;
 };
@@ -102,19 +99,44 @@ function hasKeyframe(raw: Record<string, any>): boolean {
   return playAnalysis.length > 0 || convertHighlights.length > 0 || clickHighlights.length > 0;
 }
 
+function getQualityGatePayload(raw: Record<string, any>): Record<string, any> {
+  return isPlainObject(raw?.qualityGate) ? raw.qualityGate : {};
+}
+
+function isQualityAssessed(raw: Record<string, any>): boolean {
+  const qualityGate = getQualityGatePayload(raw);
+  if (Object.keys(qualityGate).length > 0) return true;
+  return raw.contentViable === true || raw.contentViable === false;
+}
+
+function isViableForPatternAnalysis(raw: Record<string, any>): boolean {
+  const qualityGate = getQualityGatePayload(raw);
+  const viable =
+    raw.contentViable === true ||
+    qualityGate.viable === true;
+  const confidence = firstNumber(
+    raw.qualityConfidence,
+    qualityGate.confidence
+  );
+  return Boolean(viable) && (confidence ?? 0) >= QUALITY_CONFIDENCE_THRESHOLD;
+}
+
 function getCoverage(numerator: number, denominator: number): number {
   if (denominator <= 0) return 0;
   return numerator / denominator;
 }
 
 function formatCompletenessReason(stats: AdCompleteness): string {
-  const checks = [
-    `Ad Collection: ${stats.totalAds >= MIN_ADS_REQUIRED ? "✓" : "✕"} ${stats.totalAds}/${MIN_ADS_REQUIRED} minimum ads`,
-    `OCR Extraction: ${Math.round(stats.ocrCoverage * 100)}% (${stats.withOcr}/${stats.totalAds})`,
-    `Transcripts: ${Math.round(stats.transcriptCoverage * 100)}% (${stats.withTranscript}/${stats.totalAds})`,
-    `Complete ads (transcript + OCR + keyframe): ${stats.withAllData}/${stats.totalAds}`,
-  ];
-  return `Pattern analysis requires complete data collection. Status:\n${checks.join("\n")}`;
+  if (stats.totalAds === 0) {
+    return "No ads found for this run.";
+  }
+  if (stats.assessedAds === 0) {
+    return "No quality assessments found. Run quality gate first.";
+  }
+  if (stats.viableAds === 0) {
+    return "No viable ads. Run quality gate first.";
+  }
+  return "Pattern analysis requirements not met.";
 }
 
 function extractJsonFromText(text: string): any {
@@ -278,12 +300,16 @@ Return structured JSON with:
 }`;
 }
 
-async function loadAdsForRun(args: AdCompletenessArgs): Promise<AdForAnalysis[]> {
+async function loadAdsForRun(
+  args: AdCompletenessArgs,
+  options?: { onlyViable?: boolean }
+): Promise<AdForAnalysis[]> {
   const { projectId, runId } = args;
+  const onlyViable = options?.onlyViable === true;
   const assets = await prisma.adAsset.findMany({
     where: {
       projectId,
-      ...(runId ? { job: { runId } } : {}),
+      ...(runId ? { job: { is: { runId } } } : {}),
     },
     select: {
       id: true,
@@ -293,14 +319,17 @@ async function loadAdsForRun(args: AdCompletenessArgs): Promise<AdForAnalysis[]>
     take: 300,
   });
 
-  return assets.map((asset) => ({
+  const normalized = assets.map((asset) => ({
     id: asset.id,
     rawJson: isPlainObject(asset.rawJson) ? asset.rawJson : {},
   }));
+
+  if (!onlyViable) return normalized;
+  return normalized.filter((asset) => isViableForPatternAnalysis(asset.rawJson));
 }
 
 export async function getAdDataCompleteness(args: AdCompletenessArgs): Promise<AdCompleteness> {
-  const ads = await loadAdsForRun(args);
+  const ads = await loadAdsForRun(args, { onlyViable: false });
   const totalAds = ads.length;
   const withTranscript = ads.filter((ad) => hasTranscript(ad.rawJson)).length;
   const withOcr = ads.filter((ad) => hasOcr(ad.rawJson)).length;
@@ -308,16 +337,15 @@ export async function getAdDataCompleteness(args: AdCompletenessArgs): Promise<A
   const withAllData = ads.filter(
     (ad) => hasTranscript(ad.rawJson) && hasOcr(ad.rawJson) && hasKeyframe(ad.rawJson)
   ).length;
+  const assessedAds = ads.filter((ad) => isQualityAssessed(ad.rawJson)).length;
+  const viableAds = ads.filter((ad) => isViableForPatternAnalysis(ad.rawJson)).length;
+  const rejectedAds = Math.max(0, assessedAds - viableAds);
 
   const transcriptCoverage = getCoverage(withTranscript, totalAds);
   const ocrCoverage = getCoverage(withOcr, totalAds);
   const keyframeCoverage = getCoverage(withKeyframe, totalAds);
 
-  const canRun =
-    totalAds >= MIN_ADS_REQUIRED &&
-    transcriptCoverage >= MIN_TRANSCRIPT_COVERAGE &&
-    ocrCoverage >= MIN_OCR_COVERAGE &&
-    withAllData >= MIN_COMPLETE_ADS;
+  const canRun = viableAds > 0;
 
   const result: AdCompleteness = {
     totalAds,
@@ -328,10 +356,10 @@ export async function getAdDataCompleteness(args: AdCompletenessArgs): Promise<A
     transcriptCoverage,
     ocrCoverage,
     keyframeCoverage,
-    minAdsRequired: MIN_ADS_REQUIRED,
-    minTranscriptCoverage: MIN_TRANSCRIPT_COVERAGE,
-    minOcrCoverage: MIN_OCR_COVERAGE,
-    minCompleteAds: MIN_COMPLETE_ADS,
+    assessedAds,
+    viableAds,
+    rejectedAds,
+    confidenceThreshold: QUALITY_CONFIDENCE_THRESHOLD,
     canRun,
     reason: null,
   };
@@ -365,13 +393,11 @@ export async function runPatternAnalysis(args: {
     throw new Error(completeness.reason ?? "Pattern analysis requirements not met");
   }
 
-  const ads = await loadAdsForRun({ projectId, runId });
-  const completeAds = ads
-    .filter((ad) => hasTranscript(ad.rawJson) && hasOcr(ad.rawJson) && hasKeyframe(ad.rawJson))
-    .slice(0, MAX_ADS_FOR_ANALYSIS);
+  const ads = await loadAdsForRun({ projectId, runId }, { onlyViable: true });
+  const completeAds = ads.slice(0, MAX_ADS_FOR_ANALYSIS);
 
-  if (completeAds.length < MIN_COMPLETE_ADS) {
-    throw new Error(`Only ${completeAds.length} complete ads available. Need at least ${MIN_COMPLETE_ADS}.`);
+  if (completeAds.length === 0) {
+    throw new Error("No viable ads. Run quality gate first.");
   }
 
   const analysisPrompt = buildAnalysisPrompt(completeAds);
