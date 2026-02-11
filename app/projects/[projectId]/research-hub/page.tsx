@@ -87,17 +87,6 @@ interface ProductCollectionFormData {
   aboutUrl: string;
 }
 
-interface RunAllResearchFormData {
-  productName: string;
-  productProblemSolved: string;
-  mainProductAsin: string;
-  competitor1Asin?: string;
-  competitor2Asin?: string;
-  competitor3Asin?: string;
-  industryCode: string;
-  productUrl: string;
-}
-
 const INDUSTRY_SUGGESTIONS = [
   { code: "22000000000", label: "Apparel & Accessories" },
   { code: "16000000000", label: "Appliances" },
@@ -159,7 +148,6 @@ export default function ResearchHubPage() {
   const [activeStepModal, setActiveStepModal] = useState<string | null>(null);
   const [pendingStep, setPendingStep] = useState<{ step: ResearchStep; trackKey: string } | null>(null);
   const [showNewRunModal, setShowNewRunModal] = useState(false);
-  const [showRunAllModal, setShowRunAllModal] = useState(false);
 
   useEffect(() => {
     selectedProductRef.current = selectedProductId;
@@ -511,6 +499,9 @@ export default function ResearchHubPage() {
   const getStepStatus = (jobType: JobType, stepId: string): { status: JobStatus; lastJob?: Job } => {
     if (jobType === "AD_PERFORMANCE") {
       const adRunId = currentRunId || selectedRunId;
+      if (!adRunId) {
+        return { status: "NOT_STARTED" };
+      }
       const matchingJobs = jobs.filter((j) => {
         const jobSubtype = j.payload?.jobType || j.metadata?.jobType;
         if (stepId === "ad-collection") return jobSubtype === "ad_raw_collection";
@@ -519,20 +510,20 @@ export default function ResearchHubPage() {
           return jobSubtype === "ad_transcripts" || jobSubtype === "ad_transcript_collection";
         }
         return false;
-      }).filter((j) => (!adRunId ? true : j.runId === adRunId));
+      }).filter((j) => j.runId === adRunId);
 
       const job = [...matchingJobs].sort(
         (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       )[0];
 
+      if (!job) {
+        return { status: "NOT_STARTED" };
+      }
+
       if (stepId === "ad-ocr" && adOcrCoverage.totalAssets > 0) {
         if (adOcrCoverage.assetsWithOcr >= adOcrCoverage.totalAssets) {
           return { status: "COMPLETED", lastJob: job };
         }
-      }
-
-      if (!job) {
-        return { status: "NOT_STARTED" };
       }
 
       return {
@@ -959,101 +950,6 @@ export default function ResearchHubPage() {
     }
   };
 
-  const handleRunAllResearch = async (formData: RunAllResearchFormData) => {
-    if (!selectedProductId) {
-      setStatusMessage("Create/select a product before running research jobs.");
-      return;
-    }
-    setShowRunAllModal(false);
-    
-    const runId = crypto.randomUUID();
-    setCurrentRunId(runId);
-    setSelectedRunId(runId);
-    
-    setStatusMessage("Starting all research jobs...");
-    
-    try {
-      const runResponse = await fetch(`/api/projects/${projectId}/runs`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          runId,
-          projectId,
-        }),
-      });
-      if (!runResponse.ok) {
-        const runData = await runResponse.json().catch(() => ({}));
-        throw new Error(runData?.error || "Failed to create run");
-      }
-
-      // Start Customer Research
-      const customerResearchPayload = {
-        projectId,
-        ...(selectedProductId ? { productId: selectedProductId } : {}),
-        runId,
-        productProblemSolved: formData.productProblemSolved,
-        // TODO - replace with actual form that collects up to 4 ASINs
-        mainProductAsin: formData.mainProductAsin,
-        ...(formData.competitor1Asin && { competitor1Asin: formData.competitor1Asin }),
-        ...(formData.competitor2Asin && { competitor2Asin: formData.competitor2Asin }),
-        ...(formData.competitor3Asin && { competitor3Asin: formData.competitor3Asin }),
-      };
-      
-      const customerResponse = await fetch('/api/jobs/customer-research', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(customerResearchPayload),
-      });
-      if (!customerResponse.ok) {
-        const data = await customerResponse.json().catch(() => ({}));
-        throw new Error(data?.error || "Failed to start customer research");
-      }
-      
-      // Start Ad Collection
-      const adCollectionPayload = {
-        projectId,
-        ...(selectedProductId ? { productId: selectedProductId } : {}),
-        runId,
-        industryCode: formData.industryCode,
-      };
-      
-      const adResponse = await fetch('/api/jobs/ad-collection', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(adCollectionPayload),
-      });
-      if (!adResponse.ok) {
-        const data = await adResponse.json().catch(() => ({}));
-        throw new Error(data?.error || "Failed to start ad collection");
-      }
-      
-      // Start Product Data Collection
-      const productCollectionPayload = {
-        projectId,
-        ...(selectedProductId ? { productId: selectedProductId } : {}),
-        runId,
-        productName: formData.productName,
-        productUrl: formData.productUrl,
-      };
-      
-      const productResponse = await fetch('/api/jobs/product-data-collection', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(productCollectionPayload),
-      });
-      if (!productResponse.ok) {
-        const data = await productResponse.json().catch(() => ({}));
-        throw new Error(data?.error || "Failed to start product collection");
-      }
-      
-      await loadJobs();
-      setStatusMessage("All research jobs started");
-    } catch (error: any) {
-      console.error("Failed to start research jobs:", error);
-      setStatusMessage(error.message || "Failed to start some research jobs");
-    }
-  };
-
   // Status badge
   const StatusBadge = ({ status }: { status: JobStatus }) => {
     const colors = {
@@ -1081,15 +977,6 @@ export default function ResearchHubPage() {
 
   return (
     <>
-      {/* Run All Research Modal */}
-      {showRunAllModal && (
-        <RunAllResearchModal
-          onSubmit={handleRunAllResearch}
-          onClose={() => setShowRunAllModal(false)}
-        />
-      )}
-
-
       {/* New Run Confirmation Modal */}
       {showNewRunModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -1275,12 +1162,6 @@ export default function ResearchHubPage() {
               </div>
             )}
           </div>
-          <button
-            onClick={() => setShowRunAllModal(true)}
-            className='px-4 py-2 text-sm bg-sky-600 hover:bg-sky-500 text-white rounded-lg'
-          >
-            Run All Research
-          </button>
         </div>
       </div>
 
@@ -1338,15 +1219,6 @@ export default function ResearchHubPage() {
                     const isCollecting =
                       (isCustomerCollectionStep && (isRunning || hasRunningJob)) ||
                       (isProductCollectionStep && isRunning);
-                    const patternAnalysisBlockedReason = (() => {
-                      if (stepWithStatus.id !== "pattern-analysis") return null;
-                      const qualityGateStatus = track.steps.find((s) => s.id === "ad-quality-gate")?.status;
-                      const missing: string[] = [];
-                      if (qualityGateStatus !== "COMPLETED") missing.push("Quality Assessment");
-                      return missing.length > 0
-                        ? `Complete first: ${missing.join(", ")}.`
-                        : null;
-                    })();
                     const customerResearchJob = stepWithStatus.jobType === "CUSTOMER_RESEARCH"
                       ? latestCompletedCustomerResearchJob
                       : undefined;
@@ -1361,11 +1233,6 @@ export default function ResearchHubPage() {
                             {stepWithStatus.label}
                           </h3>
                           <p className="text-xs text-slate-400 mb-2">{stepWithStatus.description}</p>
-                          {stepWithStatus.id === "pattern-analysis" && patternAnalysisBlockedReason && (
-                            <p className="text-xs text-amber-400 mb-2 whitespace-pre-line">
-                              {patternAnalysisBlockedReason}
-                            </p>
-                          )}
                           {stepWithStatus.label === "Customer Analysis"
                             ? selectedRunId && analysisStatusJob && (
                                 <StatusBadge status={analysisStatusJob.status} />
@@ -1557,7 +1424,6 @@ export default function ResearchHubPage() {
                                         ? "bg-gray-700 text-gray-500 cursor-not-allowed"
                                         : "bg-blue-600 hover:bg-blue-700 text-white"
                                     }`}
-                                    title={patternAnalysisBlockedReason || undefined}
                                   >
                                     {isRunning
                                       ? "Starting..."
@@ -2358,201 +2224,6 @@ function ProductCollectionModal({
                 className="flex-1 px-4 py-2 rounded bg-violet-500 hover:bg-violet-400 text-white font-medium"
               >
                 Collect Data
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Run All Research Modal Component
-function RunAllResearchModal({
-  onSubmit,
-  onClose,
-}: {
-  onSubmit: (data: RunAllResearchFormData) => void;
-  onClose: () => void;
-}) {
-  const [formData, setFormData] = useState<RunAllResearchFormData>({
-    productName: "",
-    productProblemSolved: "",
-    mainProductAsin: "",
-    competitor1Asin: "",
-    competitor2Asin: "",
-    competitor3Asin: "",
-    industryCode: DEFAULT_MODAL_INDUSTRY_CODE,
-    productUrl: "",
-  });
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMessage(null);
-    if (!formData.productName || !formData.productProblemSolved || !formData.mainProductAsin || !formData.industryCode || !formData.productUrl) {
-      setErrorMessage("Please fill in all required fields.");
-      return;
-    }
-    onSubmit(formData);
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-slate-900 rounded-lg border border-slate-700 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="p-6">
-          <h2 className="text-xl font-bold text-white mb-2">Run All Research</h2>
-          <p className="text-sm text-slate-400 mb-6">
-            Enter all details to start customer, ad, and product research simultaneously
-          </p>
-          {errorMessage && <p className="text-sm text-red-400 mb-3">{errorMessage}</p>}
-
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Customer Collection Section */}
-            <div className="border-t border-slate-700 pt-4">
-              <h3 className="text-lg font-semibold text-emerald-400 mb-3">Customer Collection</h3>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
-                    Product Name <span className="text-red-400">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.productName}
-                    onChange={(e) => setFormData({ ...formData, productName: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    placeholder="e.g., Wireless Headphones"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
-                    Product Problem Solved <span className="text-red-400">*</span>
-                  </label>
-                  <textarea
-                    value={formData.productProblemSolved}
-                    onChange={(e) => setFormData({ ...formData, productProblemSolved: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    placeholder="e.g., Provides noise cancellation for focus"
-                    rows={2}
-                    required
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-2">
-                      Amazon ASIN <span className="text-slate-500">(optional)</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.mainProductAsin}
-                      onChange={(e) => setFormData({ ...formData, mainProductAsin: e.target.value })}
-                      className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                      placeholder="B07XYZ1234"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-2">
-                      Competitor 1 ASIN
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.competitor1Asin}
-                      onChange={(e) => setFormData({ ...formData, competitor1Asin: e.target.value })}
-                      className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                      placeholder="B08ABC5678"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-2">
-                      Competitor 2 ASIN
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.competitor2Asin}
-                      onChange={(e) => setFormData({ ...formData, competitor2Asin: e.target.value })}
-                      className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                      placeholder="B09DEF9012"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-2">
-                      Competitor 3 ASIN
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.competitor3Asin}
-                      onChange={(e) => setFormData({ ...formData, competitor3Asin: e.target.value })}
-                      className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                      placeholder="B0GHI3456"
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Ad Collection Section */}
-            <div className="border-t border-slate-700 pt-4">
-              <h3 className="text-lg font-semibold text-sky-400 mb-3">Ad Collection</h3>
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">
-                  Industry Code <span className="text-red-400">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={formData.industryCode}
-                  onChange={(e) => setFormData({ ...formData, industryCode: e.target.value })}
-                  list="tiktok-industry-codes-run-all"
-                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500"
-                  placeholder="e.g., 23116000000"
-                  required
-                />
-                <datalist id="tiktok-industry-codes-run-all">
-                  {INDUSTRY_SUGGESTIONS.map((option) => (
-                    <option key={option.code} value={option.code}>
-                      {option.label}
-                    </option>
-                  ))}
-                </datalist>
-              </div>
-            </div>
-
-            {/* Product Collection Section */}
-            <div className="border-t border-slate-700 pt-4">
-              <h3 className="text-lg font-semibold text-violet-400 mb-3">Product Collection</h3>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
-                    Product URL <span className="text-red-400">*</span>
-                  </label>
-                  <input
-                    type="url"
-                    value={formData.productUrl}
-                    onChange={(e) => setFormData({ ...formData, productUrl: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500"
-                    placeholder="https://example.com/product"
-                    required
-                  />
-                </div>
-
-              </div>
-            </div>
-
-            <div className="flex gap-3 pt-4 border-t border-slate-700">
-              <button
-                type="button"
-                onClick={onClose}
-                className="flex-1 px-4 py-2 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="flex-1 px-4 py-2 rounded bg-emerald-500 hover:bg-emerald-400 text-white font-medium"
-              >
-                Start All Research
               </button>
             </div>
           </form>
