@@ -231,7 +231,7 @@ function groupResearchRows(
 function buildCustomerAvatarPrompt(
   grouped: GroupedResearch,
   researchRowCount: number,
-  operatorContext: AnalysisOperatorContext
+  _operatorContext: AnalysisOperatorContext
 ): { system: string; prompt: string } {
   const {
     productProblemSolved,
@@ -239,162 +239,70 @@ function buildCustomerAvatarPrompt(
     competitor1Reviews,
     competitor2Reviews,
     competitor3Reviews,
-    redditProduct,
     redditProblem,
-    uploadedData,
   } = grouped;
-  const { solutionKeywords, additionalProblems } = operatorContext;
-  const solutionKeywordLines =
-    solutionKeywords.length > 0 ? solutionKeywords.map((value) => `- ${value}`).join('\n') : '(none provided)';
-  const additionalProblemLines =
-    additionalProblems.length > 0 ? additionalProblems.map((value) => `- ${value}`).join('\n') : '(none provided)';
-  const totalCompetitorReviews =
-    competitor1Reviews.length + competitor2Reviews.length + competitor3Reviews.length;
+  const prompt = `Analyze ${researchRowCount} customer discussions about: ${productProblemSolved}
 
-  const prompt = `
-MANDATORY FORMAT: Every major field MUST include "supporting_quotes": [] array with 2-5 direct verbatim quotes from the data. If you cannot find direct quotes, mark the field as [INSUFFICIENT DATA] instead of guessing.
-
-Analyze ${researchRowCount} customer data points for the problem: ${productProblemSolved}.
-
-ALTERNATIVE SOLUTIONS - REDDIT (${solutionKeywords.length}):
-${solutionKeywordLines}
-
-MARKET FRUSTRATIONS - REDDIT (${redditProblem.length} discussions):
+REDDIT DISCUSSIONS (${redditProblem.length} threads):
 ${redditProblem.join('\n---\n')}
 
-ADDITIONAL PROBLEMS - REDDIT (${additionalProblems.length}):
-${additionalProblemLines}
-
-ALTERNATIVES - REDDIT (${redditProduct.length} discussions):
-${redditProduct.join('\n---\n')}
-
-COMPETITOR PRODUCT FAILURES - AMAZON REVIEWS (${totalCompetitorReviews} reviews):
-These are competitor product reviews and should be treated as failure/pain evidence for positioning.
-Competitor sources are intentionally low-star (1-3 stars) to surface what does NOT work.
-
-COMPETITOR 1 REVIEWS (source = AMAZON_COMPETITOR_1) (low-star failures) (${competitor1Reviews.length} reviews):
+COMPETITOR FAILURES - Low-star Amazon reviews:
 ${competitor1Reviews.join('\n---\n')}
-
-COMPETITOR 2 REVIEWS (source = AMAZON_COMPETITOR_2) (low-star failures) (${competitor2Reviews.length} reviews):
 ${competitor2Reviews.join('\n---\n')}
-
-COMPETITOR 3 REVIEWS (source = AMAZON_COMPETITOR_3) (low-star failures) (${competitor3Reviews.length} reviews):
 ${competitor3Reviews.join('\n---\n')}
 
-MAIN PRODUCT SUCCESS - AMAZON REVIEWS (${mainProductReviews.length} reviews):
-These are main-product high-star (4-5 stars) success signals showing what works for buyers.
-
-MAIN PRODUCT REVIEWS (source = AMAZON_MAIN_PRODUCT) (high-star successes):
+MAIN PRODUCT SUCCESS - High-star Amazon reviews:
 ${mainProductReviews.join('\n---\n')}
 
-UPLOADED - PROPRIETARY (${uploadedData.length} entries):
-${uploadedData.join('\n---\n')}
-
-Create ONE customer avatar representing the most common buyer pattern.
-
-ALSO perform competitive analysis using the source segments above:
-- Use COMPETITOR blocks as failure data (what breaks, disappoints, or causes churn).
-- Use MAIN PRODUCT block as success data (what delivers outcomes and trust).
-- COMPETITOR REVIEWS are low-star ratings showing product failures. Do NOT list positive attributes.
-- Extract failures, complaints, and reasons for low ratings from competitor reviews.
-- Focus on specific failure modes: ineffectiveness, side effects, quality issues, compliance/usability problems.
-- MAIN PRODUCT REVIEWS are high-star ratings showing what works. Use these to contrast against competitor failures.
-- Main product pain points and complaints
-- What fails in each competitor and why customers rate them poorly
-- Competitive gaps: what is missing from the main product that competitors have
-- Opportunities: problems all products fail to solve
-
-CRITICAL: Every field must be backed by direct quotes. If you can't find 3+ quotes supporting a claim, don't include it.
+Extract ONE dominant customer pattern with highest pain intensity + purchase urgency.
 
 Return JSON:
 {
   "avatar": {
-    "profile": {
-      "life_stage": "specific situation with supporting_quotes: []",
-      "awareness_level": "problem-aware|solution-aware|product-aware",
-      "decision_urgency": "immediate|researching|chronic"
-    },
-    "primary_pain": {
-      "pain": "the ONE pain that shows up most with highest emotional intensity",
-      "supporting_quotes": ["direct quotes that prove this"]
-    },
-    "primary_goal": {
-      "goal": "what they actually want beyond 'clear skin'",
-      "supporting_quotes": ["direct quotes"]
-    },
-    "failed_alternatives": [
-      {
-        "product": "",
-        "why_failed": "",
-        "emotional_impact": "",
-        "supporting_quotes": ["direct quotes showing failure and impact"]
-      }
-    ],
-    "buy_trigger": {
-      "trigger": "the specific moment/realization that causes purchase",
-      "supporting_quotes": ["direct quotes showing this trigger"]
-    },
-    "main_objections": [
-      {
-        "objection": "",
-        "supporting_quotes": ["direct quotes"]
-      }
-    ],
-    "success_criteria": {
-      "criteria": "what 'worked' means to them specifically",
-      "supporting_quotes": ["direct quotes"]
-    },
-    "voc_phrases": ["exact customer language for ad copy - must appear verbatim in data"],
-    "hook_angles": [
-      {
-        "angle": "",
-        "based_on_pattern": "explain which quotes/patterns this angle exploits",
-        "evidence_quotes": ["direct quotes that support this angle"]
-      }
+    "life_stage": "specific situation they're in right now",
+    "pain_state": "current emotional/physical state",
+    "urgency_level": "immediate|researching|chronic",
+    "spending_history": "what they've already spent trying to fix this"
+  },
+  "primary_pain": {
+    "pain": "specific situation causing emotional distress",
+    "intensity_signal": "quote showing desperation/urgency",
+    "failed_solutions": [
+      "product tried + why it failed (with quote)"
     ]
   },
-  "competitive_analysis": {
-    "main_product_pain_points": [
-      {
-        "pain": "",
-        "supporting_quotes": ["direct quotes from source=AMAZON_MAIN_PRODUCT"]
-      }
-    ],
-    "competitor_weaknesses": [
-      {
-        "competitor": "COMPETITOR_1|COMPETITOR_2|COMPETITOR_3",
-        "weaknesses": ["specific failures from low-star competitor reviews"],
-        "supporting_quotes": ["direct quotes from competitor sources"]
-      }
-    ],
-    "competitive_gaps": [
-      {
-        "gap": "what competitor users get that main-product users say is missing",
-        "supporting_quotes": ["direct quote evidence"]
-      }
-    ],
-    "market_opportunities": [
-      {
-        "opportunity": "problem space all products fail to solve",
-        "supporting_quotes": ["direct quote evidence"]
-      }
-    ]
-  }
+  "buy_trigger": {
+    "situation": "life event or deadline forcing action",
+    "quote": "exact words showing trigger"
+  },
+  "success_looks_like": {
+    "outcome": "tangible result they can visualize",
+    "emotional_payoff": "how they'll feel when it works",
+    "quote": "customer describing desired state"
+  },
+  "competitor_landmines": [
+    {
+      "what_failed": "specific product failure",
+      "impact": "consequence of failure",
+      "quote": "customer describing damage"
+    }
+  ],
+  "copy_ready_phrases": [
+    "synthesized phrases capturing common patterns (not verbatim)"
+  ]
 }
 
-SCORING WEIGHTS:
-- Reddit upvotes = market size signal
-- Emotional language intensity = pain level
-- Specific details (timeframes, numbers) = higher value
-- Frequency across sources = pattern strength
+Prioritize:
+- Emotional intensity over frequency
+- Specific details (numbers, timeframes) over vague complaints
+- Failure stories over success (pain sells)
+- Quotes showing desperation/urgency
 
 RULES:
 - NO claims without quotes
-- If VOC phrase isn't verbatim from data, exclude it
-- Hook angles must reference specific customer language patterns
 - Treat operator-provided solution keywords and additional problems as prioritization hints only
 - If a provided keyword/problem is unsupported by quotes, mark it [LOW CONFIDENCE]
-- Minimum 3 quotes per major claim or mark as [LOW CONFIDENCE]
+- One quote per claim. No quote padding.
 `;
 
   const system = 'Return ONLY valid JSON. Start with {. End with }. No markdown. No text.';
