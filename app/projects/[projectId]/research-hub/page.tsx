@@ -44,6 +44,7 @@ interface ResearchStep {
   jobType: JobType;
   endpoint: string;
   prerequisite?: string;
+  prerequisites?: string[];
   status: JobStatus;
   lastJob?: Job;
 }
@@ -144,7 +145,6 @@ export default function ResearchHubPage() {
   });
   const [adCompleteness, setAdCompleteness] = useState<AdDataCompleteness | null>(null);
   const [adCompletenessLoading, setAdCompletenessLoading] = useState(false);
-  const [adCompletenessWarning, setAdCompletenessWarning] = useState<string | null>(null);
   const selectedProductRef = useRef<string | null>(selectedProductId);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
 
@@ -188,30 +188,43 @@ export default function ResearchHubPage() {
   );
 
   const runGroupsList = Object.values(runGroups);
+  const getRunJobName = (job: Job) => {
+    if (job.type === "AD_PERFORMANCE") {
+      const subtype = String(job.payload?.jobType || job.metadata?.jobType || "").trim();
+      if (subtype === "ad_ocr_collection") return "Ad OCR";
+      if (subtype === "ad_transcripts" || subtype === "ad_transcript_collection") {
+        return "Ad Transcripts";
+      }
+      return "Ad Collection";
+    }
+
+    const names: Record<JobType, string> = {
+      CUSTOMER_RESEARCH: "Customer Research",
+      CUSTOMER_ANALYSIS: "Customer Analysis",
+      AD_PERFORMANCE: "Ad Collection",
+      PATTERN_ANALYSIS: "Pattern Analysis",
+      PRODUCT_DATA_COLLECTION: "Product Collection",
+      PRODUCT_ANALYSIS: "Product Analysis",
+    };
+    return names[job.type] || job.type;
+  };
   const runGroupsWithNumbers = runGroupsList
     .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
-    .map((run, index) => ({
-      ...run,
-      runNumber: index + 1,
-      jobCount: run.jobs.length,
-      label: (() => {
-        const jobTypes = Array.from(new Set(run.jobs.map((j) => j.type)));
-        const hasCustomer = jobTypes.some(
-          (t) => t === "CUSTOMER_RESEARCH" || t === "CUSTOMER_ANALYSIS"
-        );
-        const hasAd = jobTypes.some(
-          (t) => t === "AD_PERFORMANCE" || t === "PATTERN_ANALYSIS"
-        );
-        const hasProduct = jobTypes.some(
-          (t) => t === "PRODUCT_DATA_COLLECTION" || t === "PRODUCT_ANALYSIS"
-        );
-        return (
-          [hasCustomer ? "Customer" : null, hasAd ? "Ad" : null, hasProduct ? "Product" : null]
-            .filter(Boolean)
-            .join(" + ") || "Research"
-        );
-      })(),
-    }));
+    .map((run, index, allRuns) => {
+      const completedJobs = run.jobs
+        .filter((j) => j.status === "COMPLETED")
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      const lastJob = completedJobs[0];
+      const runNumber = allRuns.length - index;
+      const lastJobName = lastJob ? getRunJobName(lastJob) : "No jobs";
+
+      return {
+        ...run,
+        runNumber,
+        displayLabel: `Run #${runNumber} - Last: ${lastJobName} ✓`,
+        jobCount: run.jobs.length,
+      };
+    });
 
   const sortedRuns = runGroupsWithNumbers.sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
@@ -239,26 +252,6 @@ export default function ResearchHubPage() {
       j.type === "CUSTOMER_RESEARCH" &&
       j.status === "COMPLETED"
   );
-
-  const getStatusIcon = (status: JobStatus) => {
-    const icons: Record<JobStatus, string> = {
-      COMPLETED: "✓",
-      FAILED: "✕",
-      RUNNING: "⏳",
-      PENDING: "○",
-      NOT_STARTED: "○",
-    };
-    return icons[status] || "";
-  };
-
-  const getLastJobStatus = (runJobs: Job[]) => {
-    const sorted = [...runJobs].sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
-    const lastJob = sorted.find((j) => j.status !== "PENDING");
-    if (!lastJob) return "Not started";
-    return `${getJobTypeLabel(lastJob.type)} ${getStatusIcon(lastJob.status)}`;
-  };
 
   const formatRunDate = (dateString: string) =>
     new Date(dateString).toLocaleString("en-US", {
@@ -288,7 +281,6 @@ export default function ResearchHubPage() {
       const runParam = runId || currentRunId || selectedRunId || "";
       const query = runParam ? `?runId=${encodeURIComponent(runParam)}` : "";
       setAdCompletenessLoading(true);
-      setAdCompletenessWarning(null);
       try {
         const response = await fetch(`/api/projects/${projectId}/ad-data-completeness${query}`, {
           cache: "no-store",
@@ -296,27 +288,17 @@ export default function ResearchHubPage() {
         if (!response.ok) {
           console.warn("Completeness check failed, deferring to server-side validation");
           setAdCompleteness(null);
-          setAdCompletenessWarning(
-            "Unable to verify data completeness. Click to attempt analysis."
-          );
           return;
         }
         const data = await response.json();
         if (data?.success && data?.completeness) {
           setAdCompleteness(data.completeness as AdDataCompleteness);
-          setAdCompletenessWarning(null);
         } else {
           setAdCompleteness(null);
-          setAdCompletenessWarning(
-            "Unable to verify data completeness. Server will validate when you run analysis."
-          );
         }
       } catch (error) {
         console.warn("Completeness API unavailable:", error);
         setAdCompleteness(null);
-        setAdCompletenessWarning(
-          "Unable to verify data completeness. Server will validate when you run analysis."
-        );
       } finally {
         setAdCompletenessLoading(false);
       }
@@ -515,7 +497,7 @@ export default function ResearchHubPage() {
           description: "Identify winning ad patterns",
           jobType: "PATTERN_ANALYSIS",
           endpoint: "/api/jobs/pattern-analysis",
-          prerequisite: "ad-transcripts",
+          prerequisites: ["ad-collection", "ad-ocr", "ad-transcripts"],
           status: "NOT_STARTED",
         },
       ],
@@ -662,19 +644,29 @@ export default function ResearchHubPage() {
       )
     : null;
 
+  const arePrerequisitesComplete = (step: ResearchStep, track: ResearchTrack): boolean => {
+    const prerequisiteIds =
+      Array.isArray(step.prerequisites) && step.prerequisites.length > 0
+        ? step.prerequisites
+        : step.prerequisite
+          ? [step.prerequisite]
+          : [];
+
+    if (prerequisiteIds.length === 0) return true;
+
+    return prerequisiteIds.every((prerequisiteId) => {
+      const prerequisiteStep = track.steps.find((s) => s.id === prerequisiteId);
+      return prerequisiteStep?.status === "COMPLETED";
+    });
+  };
+
   // Check if step can run
   const canRun = (step: ResearchStep, track: ResearchTrack): boolean => {
-    if (step.id === "customer-analysis") return true;
     if (step.status === "RUNNING" || step.status === "PENDING") return false;
-    if (step.id === "pattern-analysis") {
-      if (adCompleteness && !adCompleteness.canRun) return false;
-      // If completeness API is unavailable, allow run and rely on server-side validation.
-      return true;
-    }
 
-    if (!step.prerequisite) return true;
+    if (!arePrerequisitesComplete(step, track)) return false;
 
-    // Special handling for customer-analysis: check if ANY completed customer research exists
+    // Special handling for customer-analysis: check if completed customer research exists in current run.
     if (step.id === "customer-analysis") {
       const hasCompletedResearch = Boolean(currentRunId) && jobs.some(
         (j) =>
@@ -685,9 +677,13 @@ export default function ResearchHubPage() {
       return hasCompletedResearch;
     }
 
-    // Default: check prerequisite step status
-    const prerequisiteStep = track.steps.find((s) => s.id === step.prerequisite);
-    return prerequisiteStep?.status === "COMPLETED";
+    if (step.id === "pattern-analysis") {
+      if (adCompleteness && !adCompleteness.canRun) return false;
+      // If completeness API is unavailable, allow run and rely on server-side validation.
+      return true;
+    }
+    
+    return true;
   };
 
   // Run a step - show modal or execute directly
@@ -1195,7 +1191,7 @@ export default function ResearchHubPage() {
               <option value="no-active">No active run</option>
               {sortedRuns.map((run) => (
                 <option key={run.runId} value={run.runId}>
-                  Run #{run.runNumber} ({run.label}, {run.jobCount} jobs) - Last: {getLastJobStatus(run.jobs)} - {formatRunDate(run.createdAt)}
+                  {run.displayLabel} - {formatRunDate(run.createdAt)}
                 </option>
               ))}
             </select>
@@ -1301,10 +1297,6 @@ export default function ResearchHubPage() {
                       stepWithStatus.id === "pattern-analysis" && adCompleteness && !adCompleteness.canRun
                         ? adCompleteness.reason ?? "Pattern analysis requirements not met."
                         : null;
-                    const patternAnalysisWarning =
-                      stepWithStatus.id === "pattern-analysis" && !patternAnalysisBlockedReason
-                        ? adCompletenessWarning
-                        : null;
                     const customerResearchJob = stepWithStatus.jobType === "CUSTOMER_RESEARCH"
                       ? latestCompletedCustomerResearchJob
                       : undefined;
@@ -1319,11 +1311,6 @@ export default function ResearchHubPage() {
                             {stepWithStatus.label}
                           </h3>
                           <p className="text-xs text-slate-400 mb-2">{stepWithStatus.description}</p>
-                          {stepWithStatus.id === "ad-ocr" && (
-                            <p className="text-xs text-slate-500 mb-2">
-                              OCR coverage: {adOcrCoverage.assetsWithOcr}/{adOcrCoverage.totalAssets}
-                            </p>
-                          )}
                           {stepWithStatus.id === "pattern-analysis" && (
                             <>
                               {adCompletenessLoading ? (
@@ -1339,9 +1326,6 @@ export default function ResearchHubPage() {
                                 <p className="text-xs text-amber-400 mb-2 whitespace-pre-line">
                                   {patternAnalysisBlockedReason}
                                 </p>
-                              )}
-                              {patternAnalysisWarning && (
-                                <p className="text-xs text-yellow-400 mb-2">{patternAnalysisWarning}</p>
                               )}
                             </>
                           )}
@@ -1516,7 +1500,7 @@ export default function ResearchHubPage() {
                                       ? "bg-gray-700 text-gray-500 cursor-not-allowed"
                                       : "bg-blue-600 hover:bg-blue-700 text-white"
                                   }`}
-                                  title={patternAnalysisBlockedReason || patternAnalysisWarning || undefined}
+                                  title={patternAnalysisBlockedReason || undefined}
                                 >
                                   {isRunning
                                     ? "Starting..."
