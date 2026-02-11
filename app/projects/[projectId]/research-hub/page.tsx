@@ -204,14 +204,20 @@ export default function ResearchHubPage() {
     };
     return names[job.type] || job.type;
   };
-  const runGroupsWithNumbers = runGroupsList
+  const runNumberByRunId = new Map(
+    [...runGroupsList]
+      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+      .map((run, index) => [run.runId, index + 1] as const)
+  );
+
+  const runGroupsWithNumbers = [...runGroupsList]
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    .map((run, index) => {
+    .map((run) => {
       const completedJobs = run.jobs
         .filter((j) => j.status === "COMPLETED")
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       const lastJob = completedJobs[0];
-      const runNumber = index + 1;
+      const runNumber = runNumberByRunId.get(run.runId) ?? 0;
       const lastJobName = lastJob ? getRunJobName(lastJob) : "No jobs";
 
       return {
@@ -607,14 +613,6 @@ export default function ResearchHubPage() {
     const seconds = elapsed % 60;
     return `${minutes}m ${seconds}s`;
   };
-
-  const formatDateTime = (dateString: string) =>
-    new Date(dateString).toLocaleString("en-US", {
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    });
 
   const latestJob = jobs.length
     ? jobs.reduce((latest, job) =>
@@ -1023,29 +1021,13 @@ export default function ResearchHubPage() {
               <p className="text-slate-400">
                 Build a comprehensive understanding of your customers, ads, and product
               </p>
-              {latestJob ? (
-                <div className="flex items-center gap-2 text-xs text-slate-500">
-                  <span className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                  </span>
-                  <span>Last run: {formatDateTime(latestJob.createdAt)}</span>
-                </div>
-              ) : (
+              {!latestJob && (
                 <div className="flex items-center gap-2 text-xs text-slate-500">
                   <span>No runs yet</span>
                 </div>
               )}
             </div>
           </div>
-          {selectedProductId && (
-            <Link
-              href={`/projects/${projectId}/research/data?productId=${selectedProductId}`}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded text-sm text-slate-200"
-            >
-              View All Data
-            </Link>
-          )}
         </div>
       </div>
 
@@ -1096,9 +1078,6 @@ export default function ResearchHubPage() {
                     </option>
                   ))}
                 </select>
-                <div className="mt-2 text-xs text-slate-500">
-                  Switching between {products.length} product{products.length === 1 ? "" : "s"}
-                </div>
                 <Link
                   href={`/projects/${projectId}`}
                   className="mt-2 inline-block text-xs text-sky-400 hover:text-sky-300"
@@ -1127,6 +1106,16 @@ export default function ResearchHubPage() {
                 </option>
               ))}
             </select>
+            {selectedProductId && (
+              <div className="mt-3">
+                <Link
+                  href={`/projects/${projectId}/research/data?productId=${selectedProductId}`}
+                  className="inline-block px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded text-sm text-slate-200"
+                >
+                  View All Data
+                </Link>
+              </div>
+            )}
             {selectedRun && (
               <div className="mt-3 text-sm text-slate-400">
                 <div className="mt-2 text-slate-400">Jobs in this run:</div>
@@ -1222,6 +1211,24 @@ export default function ResearchHubPage() {
                     const customerResearchJob = stepWithStatus.jobType === "CUSTOMER_RESEARCH"
                       ? latestCompletedCustomerResearchJob
                       : undefined;
+                    const stepsWithAlwaysHistoryButton = new Set([
+                      "customer-research",
+                      "customer-analysis",
+                      "ad-collection",
+                      "ad-ocr",
+                      "ad-transcripts",
+                      "ad-quality-gate",
+                      "pattern-analysis",
+                      "product-collection",
+                    ]);
+                    const showAlwaysHistoryButton = stepsWithAlwaysHistoryButton.has(stepWithStatus.id);
+                    const historyUrl = currentRunId
+                      ? stepWithStatus.label === "Customer Analysis"
+                        ? `/projects/${projectId}/research-hub/jobs/customer-analysis?runId=${currentRunId}`
+                        : `/projects/${projectId}/research-hub/jobs/${stepWithStatus.jobType}?runId=${currentRunId}`
+                      : stepWithStatus.label === "Customer Analysis"
+                        ? `/projects/${projectId}/research-hub/jobs/customer-analysis`
+                        : `/projects/${projectId}/research-hub/jobs/${stepWithStatus.jobType}`;
                     return (
                       <div
                         key={stepWithStatus.id}
@@ -1263,6 +1270,16 @@ export default function ResearchHubPage() {
 
                         {/* Action Button */}
                         <div className="flex-shrink-0 flex gap-2">
+                          {showAlwaysHistoryButton && (
+                            <button
+                              onClick={() => {
+                                router.push(historyUrl);
+                              }}
+                              className="text-slate-400 hover:text-slate-300 text-xs underline"
+                            >
+                              {currentRunId ? "View Run History" : "View All History"}
+                            </button>
+                          )}
                           {stepWithStatus.jobType === "CUSTOMER_RESEARCH" ? (
                             customerResearchJob && (
                             <div className="flex flex-col gap-1">
@@ -1284,17 +1301,6 @@ export default function ResearchHubPage() {
                                   </button>
                                 )}
                               </>
-                              <button
-                                onClick={() => {
-                                  const url = currentRunId 
-                                    ? `/projects/${projectId}/research-hub/jobs/${stepWithStatus.jobType}?runId=${currentRunId}`
-                                    : `/projects/${projectId}/research-hub/jobs/${stepWithStatus.jobType}`;
-                                  router.push(url);
-                                }}
-                                className="text-slate-400 hover:text-slate-300 text-xs underline"
-                              >
-                                {currentRunId ? 'View Run History' : 'View All History'}
-                              </button>
                             </div>
                             )
                           ) : stepWithStatus.label === "Customer Analysis" ? (
@@ -1307,32 +1313,10 @@ export default function ResearchHubPage() {
                                   View Results
                                 </Link>
                               )}
-                              <button
-                                onClick={() => {
-                                  const url = currentRunId
-                                    ? `/projects/${projectId}/research-hub/jobs/customer-analysis?runId=${currentRunId}`
-                                    : `/projects/${projectId}/research-hub/jobs/customer-analysis`;
-                                  router.push(url);
-                                }}
-                                className="text-slate-400 hover:text-slate-300 text-xs underline"
-                              >
-                              {currentRunId ? "View Run History" : "View All History"}
-                              </button>
                             </div>
                           ) : (
                           stepWithStatus.status === "COMPLETED" && stepWithStatus.lastJob && (
                             <div className="flex flex-col gap-1">
-                              <button
-                                onClick={() => {
-                                  const url = currentRunId 
-                                    ? `/projects/${projectId}/research-hub/jobs/${stepWithStatus.jobType}?runId=${currentRunId}`
-                                    : `/projects/${projectId}/research-hub/jobs/${stepWithStatus.jobType}`;
-                                  router.push(url);
-                                }}
-                                className="text-slate-400 hover:text-slate-300 text-xs underline"
-                              >
-                                {currentRunId ? 'View Run History' : 'View All History'}
-                              </button>
                               {(stepWithStatus.id === "ad-transcripts" ||
                                 stepWithStatus.id === "ad-quality-gate" ||
                                 stepWithStatus.id === "pattern-analysis") && (
@@ -1383,11 +1367,7 @@ export default function ResearchHubPage() {
                                       : "bg-blue-600 hover:bg-blue-700 text-white"
                                   }`}
                                 >
-                                  {stepWithStatus.label === "Customer Analysis"
-                                    ? "Re-run Analysis"
-                                    : stepWithStatus.label === "Customer Collection"
-                                      ? "Collect Data"
-                                      : "Re-run"}
+                                  Run
                                 </button>
                                 {(stepWithStatus.id === "ad-collection" ||
                                   stepWithStatus.id === "ad-ocr" ||
@@ -1429,13 +1409,9 @@ export default function ResearchHubPage() {
                                       ? "Starting..."
                                       : locked
                                         ? "🔒 Locked"
-                                        : stepWithStatus.label === "Customer Collection"
-                                          ? "Collect Data"
-                                          : stepWithStatus.label === "Customer Analysis"
-                                            ? analysisRunning
-                                              ? "Running..."
-                                              : "Run Analysis"
-                                            : "Run"}
+                                        : stepWithStatus.label === "Customer Analysis" && analysisRunning
+                                          ? "Running..."
+                                          : "Run"}
                                   </button>
                                 )}
                               </div>
@@ -1473,6 +1449,8 @@ export default function ResearchHubPage() {
                             {stepWithStatus.id === "ad-collection" && (
                               <AdCollectionModal
                                 onSubmit={handleAdCollectionSubmit}
+                                projectId={projectId}
+                                uploadJobId={stepWithStatus.lastJob?.id ?? null}
                                 onClose={() => {
                                   setActiveStepModal(null);
                                   setPendingStep(null);
@@ -1482,6 +1460,8 @@ export default function ResearchHubPage() {
                             {stepWithStatus.id === "product-collection" && (
                               <ProductCollectionModal
                                 onSubmit={handleProductCollectionSubmit}
+                                projectId={projectId}
+                                uploadJobId={stepWithStatus.lastJob?.id ?? null}
                                 formData={productCollectionForm}
                                 setFormData={setProductCollectionForm}
                                 onClose={() => {
@@ -1652,6 +1632,7 @@ function CustomerResearchModal({
     formDataUpload.append("file", uploadFile);
     formDataUpload.append("jobId", uploadJobId);
     formDataUpload.append("projectId", projectId);
+    formDataUpload.append("source", "operator_upload");
 
     try {
       const response = await fetch(`/api/projects/${projectId}/research/upload`, {
@@ -1925,7 +1906,7 @@ function CustomerResearchModal({
                 type="submit"
                 className="flex-1 px-4 py-2 rounded bg-emerald-500 hover:bg-emerald-400 text-white font-medium"
               >
-                Start Research
+                Run
               </button>
             </div>
           </form>
@@ -1988,14 +1969,23 @@ function CustomerResearchModal({
 // Ad Collection Modal Component
 function AdCollectionModal({
   onSubmit,
+  projectId,
+  uploadJobId,
   onClose,
 }: {
   onSubmit: (data: AdCollectionFormData) => void;
+  projectId: string;
+  uploadJobId: string | null;
   onClose: () => void;
 }) {
+  const router = useRouter();
+  const [activeTab, setActiveTab] = useState<"collect" | "upload">("collect");
   const [industryCode, setIndustryCode] = useState(DEFAULT_MODAL_INDUSTRY_CODE);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadMessage, setUploadMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
@@ -2040,16 +2030,81 @@ function AdCollectionModal({
     onSubmit({ industryCode: normalized });
   };
 
+  const handleUpload = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setUploadMessage(null);
+    if (!uploadFile) {
+      setUploadMessage("Please select a file.");
+      return;
+    }
+    if (!uploadJobId) {
+      setUploadMessage("Missing job reference for upload.");
+      return;
+    }
+
+    setUploading(true);
+    const formDataUpload = new FormData();
+    formDataUpload.append("file", uploadFile);
+    formDataUpload.append("jobId", uploadJobId);
+    formDataUpload.append("projectId", projectId);
+    formDataUpload.append("source", "operator_ad_upload");
+
+    try {
+      const response = await fetch(`/api/projects/${projectId}/research/upload`, {
+        method: "POST",
+        body: formDataUpload,
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Upload failed");
+      }
+      setUploadMessage(`Added ${data.rowsAdded} rows from uploaded file.`);
+      router.refresh();
+      onClose();
+    } catch (error: any) {
+      setUploadMessage(error.message || "Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-slate-900 rounded-lg border border-slate-700 max-w-lg w-full">
         <div className="p-6">
           <h2 className="text-xl font-bold text-white mb-2">Industry Selection</h2>
           <p className="text-sm text-slate-400 mb-6">
-            Enter your industry code to collect relevant ads
+            Enter your industry code to collect relevant ads or upload your own ad research data
           </p>
           {errorMessage && <p className="text-sm text-red-400 mb-3">{errorMessage}</p>}
+          {uploadMessage && <p className="text-sm text-slate-300 mb-3">{uploadMessage}</p>}
 
+          <div className="flex gap-2 mb-6 border-b border-slate-700">
+            <button
+              type="button"
+              onClick={() => setActiveTab("collect")}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === "collect"
+                  ? "border-sky-500 text-sky-400"
+                  : "border-transparent text-slate-400 hover:text-slate-300"
+              }`}
+            >
+              Collect Ads
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("upload")}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === "upload"
+                  ? "border-sky-500 text-sky-400"
+                  : "border-transparent text-slate-400 hover:text-slate-300"
+              }`}
+            >
+              Upload Data
+            </button>
+          </div>
+
+          {activeTab === "collect" && (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-slate-300 mb-2">
@@ -2125,10 +2180,59 @@ function AdCollectionModal({
                 type="submit"
                 className="flex-1 px-4 py-2 rounded bg-sky-500 hover:bg-sky-400 text-white font-medium"
               >
-                Collect Ads
+                Run
               </button>
             </div>
           </form>
+          )}
+          {activeTab === "upload" && (
+            <form onSubmit={handleUpload} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">
+                  Upload Research File
+                </label>
+                <p className="text-xs text-slate-400 mb-3">
+                  Accepted formats: CSV, TXT, PDF, DOCX, JSON
+                </p>
+                <input
+                  type="file"
+                  accept=".csv,.txt,.pdf,.docx,.json"
+                  onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                  className="block w-full text-sm text-slate-400
+                    file:mr-4 file:py-2 file:px-4
+                    file:rounded file:border-0
+                    file:text-sm file:font-medium
+                    file:bg-sky-600 file:text-white
+                    hover:file:bg-sky-500"
+                />
+                {uploadFile && (
+                  <p className="text-xs text-slate-400 mt-2">
+                    Selected: {uploadFile.name} ({(uploadFile.size / 1024).toFixed(1)} KB)
+                  </p>
+                )}
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded text-sm"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={uploading || !uploadFile}
+                  className="px-4 py-2 bg-sky-600 hover:bg-sky-500 disabled:opacity-50 disabled:cursor-not-allowed rounded text-sm"
+                >
+                  {uploading ? "Uploading..." : "Upload & Add Data"}
+                </button>
+              </div>
+              {uploading && (
+                <p className="text-xs text-slate-400 text-right">Processing file...</p>
+              )}
+            </form>
+          )}
         </div>
       </div>
     </div>
@@ -2138,15 +2242,24 @@ function AdCollectionModal({
 // Product Collection Modal Component
 function ProductCollectionModal({
   onSubmit,
+  projectId,
+  uploadJobId,
   formData,
   setFormData,
   onClose,
 }: {
   onSubmit: (data: ProductCollectionFormData) => void;
+  projectId: string;
+  uploadJobId: string | null;
   formData: ProductCollectionFormData;
   setFormData: (next: ProductCollectionFormData) => void;
   onClose: () => void;
 }) {
+  const router = useRouter();
+  const [activeTab, setActiveTab] = useState<"collect" | "upload">("collect");
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadMessage, setUploadMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -2159,16 +2272,81 @@ function ProductCollectionModal({
     onSubmit(formData);
   };
 
+  const handleUpload = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setUploadMessage(null);
+    if (!uploadFile) {
+      setUploadMessage("Please select a file.");
+      return;
+    }
+    if (!uploadJobId) {
+      setUploadMessage("Missing job reference for upload.");
+      return;
+    }
+
+    setUploading(true);
+    const formDataUpload = new FormData();
+    formDataUpload.append("file", uploadFile);
+    formDataUpload.append("jobId", uploadJobId);
+    formDataUpload.append("projectId", projectId);
+    formDataUpload.append("source", "operator_product_upload");
+
+    try {
+      const response = await fetch(`/api/projects/${projectId}/research/upload`, {
+        method: "POST",
+        body: formDataUpload,
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Upload failed");
+      }
+      setUploadMessage(`Added ${data.rowsAdded} rows from uploaded file.`);
+      router.refresh();
+      onClose();
+    } catch (error: any) {
+      setUploadMessage(error.message || "Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-slate-900 rounded-lg border border-slate-700 max-w-lg w-full max-h-[90vh] overflow-y-auto">
         <div className="p-6">
           <h2 className="text-xl font-bold text-white mb-2">Product Information</h2>
           <p className="text-sm text-slate-400 mb-6">
-            Enter your product URL
+            Enter your product URL or upload your own product research data
           </p>
           {errorMessage && <p className="text-sm text-red-400 mb-3">{errorMessage}</p>}
+          {uploadMessage && <p className="text-sm text-slate-300 mb-3">{uploadMessage}</p>}
 
+          <div className="flex gap-2 mb-6 border-b border-slate-700">
+            <button
+              type="button"
+              onClick={() => setActiveTab("collect")}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === "collect"
+                  ? "border-violet-500 text-violet-400"
+                  : "border-transparent text-slate-400 hover:text-slate-300"
+              }`}
+            >
+              Collect Data
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("upload")}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === "upload"
+                  ? "border-violet-500 text-violet-400"
+                  : "border-transparent text-slate-400 hover:text-slate-300"
+              }`}
+            >
+              Upload Data
+            </button>
+          </div>
+
+          {activeTab === "collect" && (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-slate-300 mb-2">
@@ -2223,10 +2401,59 @@ function ProductCollectionModal({
                 type="submit"
                 className="flex-1 px-4 py-2 rounded bg-violet-500 hover:bg-violet-400 text-white font-medium"
               >
-                Collect Data
+                Run
               </button>
             </div>
           </form>
+          )}
+          {activeTab === "upload" && (
+            <form onSubmit={handleUpload} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">
+                  Upload Research File
+                </label>
+                <p className="text-xs text-slate-400 mb-3">
+                  Accepted formats: CSV, TXT, PDF, DOCX, JSON
+                </p>
+                <input
+                  type="file"
+                  accept=".csv,.txt,.pdf,.docx,.json"
+                  onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                  className="block w-full text-sm text-slate-400
+                    file:mr-4 file:py-2 file:px-4
+                    file:rounded file:border-0
+                    file:text-sm file:font-medium
+                    file:bg-violet-600 file:text-white
+                    hover:file:bg-violet-500"
+                />
+                {uploadFile && (
+                  <p className="text-xs text-slate-400 mt-2">
+                    Selected: {uploadFile.name} ({(uploadFile.size / 1024).toFixed(1)} KB)
+                  </p>
+                )}
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded text-sm"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={uploading || !uploadFile}
+                  className="px-4 py-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed rounded text-sm"
+                >
+                  {uploading ? "Uploading..." : "Upload & Add Data"}
+                </button>
+              </div>
+              {uploading && (
+                <p className="text-xs text-slate-400 text-right">Processing file...</p>
+              )}
+            </form>
+          )}
         </div>
       </div>
     </div>
