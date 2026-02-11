@@ -1,0 +1,11 @@
+-- Add engagement metric columns for ad collection ranking
+ALTER TABLE "ad_asset"
+  ADD COLUMN IF NOT EXISTS "retention_3s" DOUBLE PRECISION,
+  ADD COLUMN IF NOT EXISTS "retention_10s" DOUBLE PRECISION,
+  ADD COLUMN IF NOT EXISTS "retention_3s_ctr" DOUBLE PRECISION,
+  ADD COLUMN IF NOT EXISTS "retention_10s_ctr" DOUBLE PRECISION,
+  ADD COLUMN IF NOT EXISTS "retention_3s_cvr" DOUBLE PRECISION,
+  ADD COLUMN IF NOT EXISTS "retention_10s_cvr" DOUBLE PRECISION,
+  ADD COLUMN IF NOT EXISTS "duration" INTEGER,
+  ADD COLUMN IF NOT EXISTS "source_type" TEXT,
+  ADD COLUMN IF NOT EXISTS "engagement_score" DOUBLE PRECISION;

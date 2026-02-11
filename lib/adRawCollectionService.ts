@@ -18,6 +18,14 @@ type ApifyAd = {
     play_retain_cnt?: {
       analysis?: { second: number; value: number }[];
     };
+    retain_ctr?: {
+      analysis?: { second: number; value: number }[];
+      highlight?: any;
+    };
+    retain_cvr?: {
+      analysis?: { second: number; value: number }[];
+      highlight?: any;
+    };
     convert_cnt?: {
       analysis?: { second: number; value: number }[];
       highlight?: any;
@@ -38,14 +46,22 @@ type NormalizedAd = {
   videoUrl: string;
   retention3s: number;
   retention10s: number;
+  retention3sCtr: number;
+  retention10sCtr: number;
+  retention3sCvr: number;
+  retention10sCvr: number;
   duration: number;
   ctr: number | null;
   cost: number | null;
   like: number | null;
   adTitle: string | null;
   playRetainCnt: any;
+  retainCtr: any;
+  retainCvr: any;
   convertCnt: any;
   conversionSpikes: any;
+  sourceType: string;
+  engagementScore: number;
 };
 
 type JobNormalizedAd = {
@@ -62,11 +78,44 @@ type JobNormalizedAd = {
   raw: Record<string, any>;
 };
 
+export type AdCollectionConfig = {
+  ad_language: string[];
+  country: string[];
+  include_analytics: boolean;
+  include_keyframe_metrics: string[];
+  industry: string[];
+  likes: string[];
+  limit: number;
+  period: string;
+  sort_by: string;
+  top_ads_spotlight: boolean;
+};
+
+export function buildAdCollectionConfig(industryCode: string): AdCollectionConfig {
+  return {
+    ad_language: ["en"],
+    country: ["US"],
+    include_analytics: true,
+    include_keyframe_metrics: ["retain_cvr", "retain_ctr", "play_retain_cnt"],
+    industry: [industryCode],
+    likes: ["1-20"],
+    limit: 10,
+    period: "30",
+    sort_by: "cvr",
+    top_ads_spotlight: false,
+  };
+}
+
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
 function getAdResearchApifyToken(): string {
+  // Temporary debug signal for env wiring issues.
+  console.log('[adRawCollectionService] APIFY_TOKEN:', env('APIFY_TOKEN') ? 'Present' : 'Missing');
+  console.log('[adRawCollectionService] APIFY_API_TOKEN_AUX:', env('APIFY_API_TOKEN_AUX') ? 'Present' : 'Missing');
+  console.log('[adRawCollectionService] APIFY_API_TOKEN:', env('APIFY_API_TOKEN') ? 'Present' : 'Missing');
+
   // Ad research route uses AUX token when provided, otherwise falls back to MAIN.
   const aux = env('APIFY_API_TOKEN_AUX');
   if (aux) return aux;
@@ -74,7 +123,10 @@ function getAdResearchApifyToken(): string {
   const main = env('APIFY_API_TOKEN');
   if (main) return main;
 
-  throw new ConfigError('APIFY: APIFY_API_TOKEN_AUX or APIFY_API_TOKEN must be set in .env');
+  const legacy = env('APIFY_TOKEN');
+  if (legacy) return legacy;
+
+  throw new ConfigError('APIFY: APIFY_API_TOKEN_AUX or APIFY_API_TOKEN or APIFY_TOKEN must be set in .env');
 }
 
 async function readTextSafely(res: Response) {
@@ -93,6 +145,14 @@ function asPlainObject(value: unknown): Record<string, any> {
 function asRawObject(value: unknown): Record<string, any> {
   if (value && typeof value === 'object' && !Array.isArray(value)) return value as Record<string, any>;
   return { value };
+}
+
+function unwrapApifyItem(item: unknown): Record<string, any> {
+  const raw = asRawObject(item);
+  if (raw?.json && typeof raw.json === 'object' && !Array.isArray(raw.json)) {
+    return raw.json as Record<string, any>;
+  }
+  return raw;
 }
 
 function firstString(...values: unknown[]): string | null {
@@ -182,9 +242,9 @@ export async function waitForApifyRun(runId: string): Promise<string> {
 }
 
 export async function runApifyActor(input: Record<string, unknown>): Promise<{ runId: string; datasetId: string }> {
-  requireEnv(['APIFY_ACTOR_ID'], 'APIFY');
+  requireEnv(['APIFY_TIKTOK_ACTOR_ID'], 'APIFY');
   const token = getAdResearchApifyToken();
-  const actorId = env('APIFY_ACTOR_ID')!;
+  const actorId = env('APIFY_TIKTOK_ACTOR_ID')!;
 
   const url = new URL(`${APIFY_BASE}/acts/${encodeURIComponent(actorId)}/runs`);
   url.searchParams.set('token', token);
@@ -209,13 +269,14 @@ export async function runApifyActor(input: Record<string, unknown>): Promise<{ r
   return { runId, datasetId };
 }
 
-function extractRetention(
-  playArr: { second: number; value: number }[] | undefined,
+function extractMetricAtSecond(
+  analysis: Array<{ second?: number; value?: number } | Record<string, any>> | undefined,
   second: number,
 ): number {
-  if (!playArr) return 0;
-  const hit = playArr.find(a => a.second === second);
-  return hit?.value ?? 0;
+  if (!Array.isArray(analysis)) return 0;
+  const hit = analysis.find((row: any) => firstNumber(row?.second, row?.t) === second);
+  const value = firstNumber(hit?.value);
+  return value ?? 0;
 }
 
 /**
@@ -224,16 +285,12 @@ function extractRetention(
  * we simplify: we fetch items from a dataset ID and then filter/normalize in code.
  */
 async function fetchApifyAds(options: {
-  industryCode: string;
-  projectId: string;
+  config: AdCollectionConfig;
 }): Promise<{ items: ApifyAd[]; actorId: string | null; runId: string | null; datasetId: string }> {
-  requireEnv(['APIFY_ACTOR_ID'], 'APIFY');
+  requireEnv(['APIFY_TIKTOK_ACTOR_ID'], 'APIFY');
 
-  const actorId = env('APIFY_ACTOR_ID')!;
-  const { runId, datasetId } = await runApifyActor({
-    industryCode: options.industryCode,
-    projectId: options.projectId,
-  });
+  const actorId = env('APIFY_TIKTOK_ACTOR_ID')!;
+  const { runId, datasetId } = await runApifyActor(options.config);
   const items = (await fetchDatasetItems(datasetId)) as ApifyAd[];
   return { items, actorId, runId, datasetId };
 }
@@ -265,7 +322,7 @@ function deriveMetrics(item: any): Record<string, any> | null {
 }
 
 function normalizeApifyItemForJob(item: any): JobNormalizedAd {
-  const raw = asRawObject(item);
+  const raw = unwrapApifyItem(item);
 
   const adId = firstString(raw?.adId, raw?.ad_id, raw?.id, raw?.itemId, raw?.item_id);
   const platform = firstString(raw?.platform, raw?.source, raw?.network);
@@ -307,65 +364,105 @@ function normalizeApifyItemForJob(item: any): JobNormalizedAd {
   };
 }
 
-/**
- * Validate ads have required fields and extract retention_3s / retention_10s.
- */
-function validateAndNormalizeAds(rawAds: ApifyAd[]): NormalizedAd[] {
-  const validated: NormalizedAd[] = [];
+function validateApifyData(items: any[]): NormalizedAd[] {
+  if (!items?.length) throw new Error('Apify returned no data');
 
-  for (const ad of rawAds) {
-    const videoUrl720 = ad.video_info?.video_url?.['720p'];
-    const duration = ad.video_info?.duration;
-
-    const playArr =
-      ad.keyframe_metrics?.play_retain_cnt?.analysis ?? undefined;
-    const convertArr =
-      ad.keyframe_metrics?.convert_cnt?.analysis ?? undefined;
-
-    if (!ad.id || !videoUrl720 || !duration || !playArr) {
-      continue;
-    }
-
-    const retention3s = extractRetention(playArr, 3);
-    const retention10s = extractRetention(playArr, 10);
-
-    validated.push({
-      id: ad.id,
-      videoUrl: videoUrl720,
-      retention3s,
-      retention10s,
-      duration,
-      ctr: ad.ctr ?? null,
-      cost: ad.cost ?? null,
-      like: ad.like ?? null,
-      adTitle: ad.ad_title ?? null,
-      playRetainCnt: playArr,
-      convertCnt: convertArr ?? [],
-      conversionSpikes: ad.keyframe_metrics?.convert_cnt?.highlight ?? null,
+  const validated = items
+    .map((item) => unwrapApifyItem(item))
+    .filter((j) => {
+      const videoUrl =
+        firstString(j?.video_info?.video_url?.['720p']) ??
+        firstString(j?.video_info?.video_url?.['1080p']) ??
+        (typeof j?.video_info?.video_url === 'string' ? firstString(j?.video_info?.video_url) : null) ??
+        firstString(j?.url, j?.videoUrl);
+      const duration = firstNumber(j?.video_info?.duration, j?.duration);
+      const playRetainAnalysis = j?.keyframe_metrics?.play_retain_cnt?.analysis;
+      return Boolean(j?.id && videoUrl && duration !== null && Array.isArray(playRetainAnalysis));
     });
-  }
 
-  return validated;
+  if (!validated.length) throw new Error('All results missing required fields');
+
+  return validated.map((j) => {
+    const videoUrl =
+      firstString(j?.video_info?.video_url?.['720p']) ??
+      firstString(j?.video_info?.video_url?.['1080p']) ??
+      (typeof j?.video_info?.video_url === 'string' ? firstString(j?.video_info?.video_url) : null) ??
+      firstString(j?.url, j?.videoUrl) ??
+      '';
+    const duration = Math.round(firstNumber(j?.video_info?.duration, j?.duration) ?? 0);
+    const metrics = asPlainObject(j?.keyframe_metrics);
+    const playRetainAnalysis = Array.isArray(metrics?.play_retain_cnt?.analysis)
+      ? metrics.play_retain_cnt.analysis
+      : [];
+    const retainCtrAnalysis = Array.isArray(metrics?.retain_ctr?.analysis)
+      ? metrics.retain_ctr.analysis
+      : [];
+    const retainCvrAnalysis = Array.isArray(metrics?.retain_cvr?.analysis)
+      ? metrics.retain_cvr.analysis
+      : [];
+    const convertCntAnalysis = Array.isArray(metrics?.convert_cnt?.analysis)
+      ? metrics.convert_cnt.analysis
+      : [];
+    const conversionSpikes =
+      metrics?.convert_cnt?.highlight ??
+      metrics?.retain_cvr?.highlight ??
+      metrics?.retain_ctr?.highlight ??
+      null;
+
+    return {
+      id: String(j.id),
+      videoUrl,
+      retention3s: extractMetricAtSecond(playRetainAnalysis, 3),
+      retention10s: extractMetricAtSecond(playRetainAnalysis, 10),
+      retention3sCtr: extractMetricAtSecond(retainCtrAnalysis, 3),
+      retention10sCtr: extractMetricAtSecond(retainCtrAnalysis, 10),
+      retention3sCvr: extractMetricAtSecond(retainCvrAnalysis, 3),
+      retention10sCvr: extractMetricAtSecond(retainCvrAnalysis, 10),
+      duration,
+      ctr: firstNumber(j?.ctr),
+      cost: firstNumber(j?.cost, j?.spend),
+      like: firstNumber(j?.like, j?.likes),
+      adTitle: firstString(j?.ad_title, j?.title),
+      playRetainCnt: playRetainAnalysis,
+      retainCtr: retainCtrAnalysis,
+      retainCvr: retainCvrAnalysis,
+      convertCnt: convertCntAnalysis,
+      conversionSpikes,
+      sourceType: 'paid',
+      engagementScore: 0,
+    };
+  });
 }
 
-/**
- * Apply quality filters from the workflow:
- * - retention_3s >= 0.08
- * - 10s <= duration <= 90s
- * Then sort by retention_3s desc.
- */
-function filterAdDataQuality(validated: NormalizedAd[]): NormalizedAd[] {
-  const filtered = validated.filter(ad => {
-    if (ad.retention3s < 0.08) return false;
-    if (ad.duration < 10 || ad.duration > 90) return false;
-    return true;
-  });
+function calculateEngagementScore(ad: NormalizedAd): number {
+  const retention = ad.retention3s || 0;
+  const ctr = ad.retention3sCtr || 0;
+  const cvr = ad.retention3sCvr || 0;
+  return (retention * 0.5) + (ctr * 0.3) + (cvr * 0.2);
+}
 
-  filtered.sort(
-    (a, b) => (b.retention3s || 0) - (a.retention3s || 0),
-  );
+function filterQualityThresholds(ads: NormalizedAd[]): NormalizedAd[] {
+  return ads
+    .filter((ad) => {
+      if (ad.retention3s < 0.08) return false;
+      if (ad.duration < 10 || ad.duration > 90) return false;
+      if (ad.retention3sCtr < 0.01) return false;
+      return true;
+    })
+    .map((ad) => ({
+      ...ad,
+      engagementScore: calculateEngagementScore(ad),
+    }));
+}
 
-  return filtered;
+function sortByEngagement(ads: NormalizedAd[]): NormalizedAd[] {
+  return ads
+    .filter((ad) => Number.isFinite(ad.engagementScore))
+    .sort((a, b) => (b.engagementScore || 0) - (a.engagementScore || 0))
+    .map((ad) => ({
+      ...ad,
+      sourceType: 'paid',
+    }));
 }
 
 /**
@@ -380,33 +477,55 @@ async function saveAdsToPrisma(options: {
 }) {
   const { projectId, jobId, industryCode, ads } = options;
 
-  if (!ads.length) return;
+  if (!ads.length) {
+    console.log("[adRawCollection] About to insert 0 ad assets");
+    console.log("[adRawCollection] Inserted 0 ad assets");
+    return;
+  }
 
   const data = ads.map(ad => ({
     projectId,
     jobId,
     platform: AdPlatform.TIKTOK,
+    retention_3s: ad.retention3s,
+    retention_10s: ad.retention10s,
+    retention_3s_ctr: ad.retention3sCtr,
+    retention_10s_ctr: ad.retention10sCtr,
+    retention_3s_cvr: ad.retention3sCvr,
+    retention_10s_cvr: ad.retention10sCvr,
+    duration: ad.duration,
+    source_type: ad.sourceType,
+    engagement_score: ad.engagementScore,
     rawJson: {
       url: ad.videoUrl,
       metrics: {
         source: 'apify',
-        source_type: 'paid',
+        source_type: ad.sourceType,
         industry_code: industryCode,
         retention_3s: ad.retention3s,
         retention_10s: ad.retention10s,
+        retention_3s_ctr: ad.retention3sCtr,
+        retention_10s_ctr: ad.retention10sCtr,
+        retention_3s_cvr: ad.retention3sCvr,
+        retention_10s_cvr: ad.retention10sCvr,
         duration: ad.duration,
+        engagement_score: ad.engagementScore,
         ctr: ad.ctr,
         cost: ad.cost,
         like: ad.like,
         ad_title: ad.adTitle,
         play_retain_cnt: ad.playRetainCnt,
+        retain_ctr: ad.retainCtr,
+        retain_cvr: ad.retainCvr,
         convert_cnt: ad.convertCnt,
         conversion_spikes: ad.conversionSpikes,
       },
     } as any,
   }));
 
-  await prisma.adAsset.createMany({ data });
+  console.log("[adRawCollection] About to insert", data.length, "ad assets");
+  const result = await prisma.adAsset.createMany({ data });
+  console.log("[adRawCollection] Inserted", result.count, "ad assets");
 }
 
 /**
@@ -416,30 +535,43 @@ async function saveAdsToPrisma(options: {
 export async function runAdRawCollection(args: {
   projectId: string;
   industryCode: string;
+  runId?: string | null;
   jobId: string;
+  config?: AdCollectionConfig;
 }) {
-  const { projectId, industryCode, jobId } = args;
+  const { projectId, industryCode, runId, jobId, config } = args;
+  const effectiveRunId = String(runId ?? "").trim();
+  const effectiveConfig = config ?? buildAdCollectionConfig(industryCode);
 
   // 1) Fetch from Apify
-  const apify = await fetchApifyAds({ projectId, industryCode });
+  const apify = await fetchApifyAds({ config: effectiveConfig });
   const rawAds = apify.items;
   const normalizedAds = rawAds.map(normalizeApifyItemForJob);
+  const effectiveIndustryCode = firstString(effectiveConfig.industry?.[0], industryCode) ?? industryCode;
+  console.log("[adRawCollection] Apify returned", rawAds.length, "items");
 
-  // 2) Validate + add retention metrics
-  const validated = validateAndNormalizeAds(rawAds);
+  // 2) Validate + add retention/keyframe metrics
+  const validated = validateApifyData(rawAds);
+  console.log("[adRawCollection] Validated", validated.length, "items");
 
-  // 3) Filter and sort quality ads
-  const filtered = filterAdDataQuality(validated);
+  // 3) Filter quality thresholds and score engagement
+  const filtered = filterQualityThresholds(validated);
+  console.log("[adRawCollection] Quality-filtered", filtered.length, "items");
 
-  // 4) Persist to Prisma
+  // 4) Sort by engagement
+  const sorted = sortByEngagement(filtered);
+  console.log("[adRawCollection] Engagement-sorted", sorted.length, "items");
+
+  // 5) Persist to Prisma
   await saveAdsToPrisma({
     projectId,
     jobId,
-    industryCode,
-    ads: filtered,
+    industryCode: effectiveIndustryCode,
+    ads: sorted,
   });
 
   return {
+    runId: effectiveRunId || null,
     apify: {
       actorId: apify.actorId,
       runId: apify.runId,
@@ -448,8 +580,24 @@ export async function runAdRawCollection(args: {
     },
     ads: normalizedAds,
     totalValidated: validated.length,
-    totalSaved: filtered.length,
+    totalSaved: sorted.length,
   };
+}
+
+export async function collectAds(
+  projectId: string,
+  runId: string,
+  jobId: string,
+  config: AdCollectionConfig,
+) {
+  const industryCode = firstString(config?.industry?.[0]) ?? "unknown";
+  return runAdRawCollection({
+    projectId,
+    runId,
+    jobId,
+    industryCode,
+    config,
+  });
 }
 
 /**
@@ -459,15 +607,19 @@ export async function runAdRawCollection(args: {
 export async function startAdRawCollectionJob(params: {
   projectId: string;
   industryCode: string;
+  runId?: string | null;
   jobId: string;
+  config?: AdCollectionConfig;
 }) {
-  const { projectId, industryCode, jobId } = params;
+  const { projectId, industryCode, runId, jobId, config } = params;
   await updateJobStatus(jobId, JobStatus.RUNNING);
   try {
     const result = await runAdRawCollection({
       projectId,
       industryCode,
+      runId,
       jobId,
+      config,
     });
 
     const existing = await prisma.job.findUnique({
