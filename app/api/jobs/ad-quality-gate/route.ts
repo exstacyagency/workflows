@@ -1,5 +1,6 @@
 import { cfg } from "@/lib/config";
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma, JobStatus, JobType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireProjectOwner } from "@/lib/requireProjectOwner";
 import { ProjectJobSchema, parseJson } from "@/lib/validation/jobs";
@@ -7,20 +8,16 @@ import { checkRateLimit } from "@/lib/rateLimiter";
 import { logAudit } from "@/lib/logger";
 import { getSessionUserId } from "@/lib/getSessionUserId";
 import { enforceUserConcurrency } from "@/lib/jobGuards";
-import { JobStatus, JobType } from "@prisma/client";
 import { assertMinPlan, UpgradeRequiredError } from "@/lib/billing/requirePlan";
 import { reserveQuota, rollbackQuota, QuotaExceededError } from "@/lib/billing/usage";
 import { randomUUID } from "crypto";
 import { z } from "zod";
 
-export const runtime = "nodejs";
-
-const JOB_TYPE = JobType.AD_PERFORMANCE;
-
-const AdOcrSchema = ProjectJobSchema.extend({
+const AdQualityGateSchema = ProjectJobSchema.extend({
   runId: z.string().optional(),
   forceReprocess: z.boolean().optional(),
 });
+const JOB_TYPE_AD_QUALITY_GATE = "AD_QUALITY_GATE" as JobType;
 
 export async function POST(req: NextRequest) {
   const userId = await getSessionUserId();
@@ -31,14 +28,15 @@ export async function POST(req: NextRequest) {
   const securitySweep = cfg.raw("SECURITY_SWEEP") === "1";
   let projectId: string | null = null;
   let jobId: string | null = null;
-  let reservation:
-    | { periodKey: string; metric: string; amount: number }
-    | null = null;
+  let didReserveQuota = false;
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
   let planId: "FREE" | "GROWTH" | "SCALE" = "FREE";
 
   try {
-    const parsed = await parseJson(req, AdOcrSchema);
+    const debugPayload = await req.clone().json().catch(() => null);
+    console.log("Received:", debugPayload);
+
+    const parsed = await parseJson(req, AdQualityGateSchema);
     if (!parsed.success) {
       return NextResponse.json(
         { error: parsed.error, details: parsed.details },
@@ -69,7 +67,7 @@ export async function POST(req: NextRequest) {
           { status: 402 }
         );
       }
-      throw err;
+      return NextResponse.json({ error: "Billing check failed" }, { status: 500 });
     }
 
     if (!securitySweep) {
@@ -102,16 +100,48 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No ads to process" }, { status: 400 });
     }
 
+    if (!cfg.raw("ANTHROPIC_API_KEY")) {
+      return NextResponse.json(
+        { error: "ANTHROPIC_API_KEY not configured" },
+        { status: 500 }
+      );
+    }
+
+    const existingActiveJob = await prisma.job.findFirst({
+      where: {
+        projectId,
+        userId,
+        type: JOB_TYPE_AD_QUALITY_GATE,
+        runId: effectiveRunId,
+        status: { in: [JobStatus.PENDING, JobStatus.RUNNING] },
+      },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, status: true },
+    });
+    if (existingActiveJob) {
+      return NextResponse.json(
+        {
+          jobId: existingActiveJob.id,
+          runId: effectiveRunId,
+          started: false,
+          reused: true,
+          status: existingActiveJob.status,
+        },
+        { status: 200 }
+      );
+    }
+
     const idempotencyKey = randomUUID();
 
     try {
-      reservation = await reserveQuota(userId, planId, "researchQueries", 1);
+      await reserveQuota(userId, planId, "patternAnalysisJobs", 1);
+      didReserveQuota = true;
     } catch (err) {
       if (err instanceof QuotaExceededError) {
         return NextResponse.json(
           {
             error: "Quota exceeded",
-            metric: "researchQueries",
+            metric: "patternAnalysisJobs",
             limit: err.limit,
             used: err.used,
           },
@@ -121,31 +151,31 @@ export async function POST(req: NextRequest) {
       throw err;
     }
 
+    const payload = {
+      projectId,
+      runId: effectiveRunId,
+      ...(productId ? { productId } : {}),
+      jobType: "ad_quality_gate",
+      forceReprocess,
+      idempotencyKey,
+    };
+
     if (securitySweep) {
       const job = await prisma.job.create({
         data: {
           projectId,
           userId,
-          type: JOB_TYPE,
+          type: JOB_TYPE_AD_QUALITY_GATE,
           status: JobStatus.PENDING,
           idempotencyKey,
           runId: effectiveRunId,
-          payload: {
-            projectId,
-            runId: effectiveRunId,
-            ...(productId ? { productId } : {}),
-            jobType: "ad_ocr_collection",
-            kind: "ad_ocr_collection",
-            forceReprocess,
-            idempotencyKey,
-          },
+          payload,
           resultSummary: "Skipped: SECURITY_SWEEP",
+          error: Prisma.JsonNull,
         },
         select: { id: true },
       });
-
       jobId = job.id;
-
       await logAudit({
         userId,
         projectId,
@@ -153,22 +183,14 @@ export async function POST(req: NextRequest) {
         action: "job.create",
         ip,
         metadata: {
-          type: "ad-ocr",
+          type: "ad-quality-gate",
           skipped: true,
           reason: "SECURITY_SWEEP",
         },
       });
-
       return NextResponse.json(
         { jobId, runId: effectiveRunId, started: false, skipped: true },
         { status: 200 }
-      );
-    }
-
-    if (!cfg.raw("GOOGLE_CLOUD_VISION_API_KEY")) {
-      return NextResponse.json(
-        { error: "GOOGLE_CLOUD_VISION_API_KEY must be set" },
-        { status: 500 }
       );
     }
 
@@ -186,22 +208,14 @@ export async function POST(req: NextRequest) {
       data: {
         projectId,
         userId,
-        type: JOB_TYPE,
+        type: JOB_TYPE_AD_QUALITY_GATE,
         status: JobStatus.PENDING,
         idempotencyKey,
         runId: effectiveRunId,
-        payload: {
-          projectId,
-          runId: effectiveRunId,
-          ...(productId ? { productId } : {}),
-          jobType: "ad_ocr_collection",
-          kind: "ad_ocr_collection",
-          forceReprocess,
-          idempotencyKey,
-        },
+        payload,
       },
+      select: { id: true },
     });
-
     jobId = job.id;
 
     await logAudit({
@@ -210,7 +224,10 @@ export async function POST(req: NextRequest) {
       jobId,
       action: "job.create",
       ip,
-      metadata: { type: "ad-ocr" },
+      metadata: {
+        type: "ad-quality-gate",
+        runId: effectiveRunId,
+      },
     });
 
     return NextResponse.json(
@@ -218,10 +235,9 @@ export async function POST(req: NextRequest) {
       { status: 202 }
     );
   } catch (err: any) {
-    console.error(err);
-
-    if (reservation && userId) {
-      await rollbackQuota(userId, reservation.periodKey, "researchQueries", 1);
+    if (didReserveQuota) {
+      const periodKey = new Date().toISOString().slice(0, 7);
+      await rollbackQuota(userId, periodKey, "patternAnalysisJobs", 1).catch(console.error);
     }
 
     await logAudit({
@@ -231,14 +247,14 @@ export async function POST(req: NextRequest) {
       action: "job.error",
       ip,
       metadata: {
-        type: "ad-ocr",
+        type: "ad-quality-gate",
         error: String(err?.message ?? err),
       },
     });
 
     return NextResponse.json(
-      { error: err?.message ?? "Ad OCR job failed" },
-      { status: 500 }
+      { error: err?.message ?? "Invalid request" },
+      { status: 400 }
     );
   }
 }

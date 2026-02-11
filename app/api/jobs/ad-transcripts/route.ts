@@ -19,6 +19,7 @@ const JOB_TYPE = JobType.AD_PERFORMANCE; // enum-safe, schema-backed
 
 const AdTranscriptsSchema = ProjectJobSchema.extend({
   runId: z.string().optional(),
+  forceReprocess: z.boolean().optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -48,8 +49,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { projectId: parsedProjectId, runId, productId } = parsed.data;
+    const {
+      projectId: parsedProjectId,
+      runId,
+      productId,
+      forceReprocess: rawForceReprocess,
+    } = parsed.data;
     projectId = parsedProjectId;
+    const forceReprocess = rawForceReprocess === true;
 
     const auth = await requireProjectOwner(projectId);
     if (auth.error) {
@@ -99,10 +106,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (!effectiveRunId) {
-      return NextResponse.json(
-        { error: 'No completed ad collection job found. Please run ad collection first.' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "No ads to process" }, { status: 400 });
     }
 
     const idempotencyKey = randomUUID();
@@ -132,7 +136,16 @@ export async function POST(req: NextRequest) {
           type: JOB_TYPE,
           status: JobStatus.PENDING,
           idempotencyKey,
-          payload: parsed.data,
+          runId: effectiveRunId,
+          payload: {
+            projectId,
+            runId: effectiveRunId,
+            ...(productId ? { productId } : {}),
+            jobType: "ad_transcripts",
+            kind: "ad_transcript_collection",
+            forceReprocess,
+            idempotencyKey,
+          },
           resultSummary: "Skipped: SECURITY_SWEEP",
         },
         select: { id: true },
@@ -154,14 +167,14 @@ export async function POST(req: NextRequest) {
       });
 
       return NextResponse.json(
-        { jobId, started: false, skipped: true },
+        { jobId, runId: effectiveRunId, started: false, skipped: true },
         { status: 200 }
       );
     }
 
-    if (!cfg.raw("APIFY_API_TOKEN")) {
+    if (!cfg.raw("ASSEMBLYAI_API_KEY")) {
       return NextResponse.json(
-        { error: "APIFY_API_TOKEN must be set" },
+        { error: "ASSEMBLYAI_API_KEY must be set" },
         { status: 500 }
       );
     }
@@ -186,9 +199,11 @@ export async function POST(req: NextRequest) {
         runId: effectiveRunId,
         payload: {
           projectId,
+          runId: effectiveRunId,
           ...(productId ? { productId } : {}),
           jobType: "ad_transcripts",
           kind: "ad_transcript_collection",
+          forceReprocess,
           idempotencyKey,
         },
       },
@@ -199,6 +214,8 @@ export async function POST(req: NextRequest) {
     const result = await startAdTranscriptJob({
       projectId,
       jobId: job.id,
+      runId: effectiveRunId,
+      forceReprocess,
     });
 
     await logAudit({

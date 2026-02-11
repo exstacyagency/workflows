@@ -2,13 +2,16 @@ import { cfg } from "@/lib/config";
 import { prisma } from "@/lib/prisma";
 import { AdPlatform, JobStatus } from "@prisma/client";
 import { updateJobStatus } from "@/lib/jobs/updateJobStatus";
+import { uploadFrame } from "@/lib/s3Service";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 
 const AD_BATCH_SIZE = 10;
-const MAX_FRAMES_PER_AD = Number(cfg.raw("AD_OCR_MAX_FRAMES") ?? 5);
+const parsedMaxFrames = Number(cfg.raw("AD_OCR_MAX_FRAMES"));
+const MAX_FRAMES_PER_AD =
+  Number.isFinite(parsedMaxFrames) && parsedMaxFrames > 0 ? Math.floor(parsedMaxFrames) : 5;
 
 let ffmpegCheckDone = false;
 let ffmpegAvailable = false;
@@ -17,6 +20,7 @@ type OcrFrameResult = {
   second: number;
   text: string;
   confidence: number | null;
+  imageUrl: string | null;
 };
 
 function isPlainObject(value: unknown): value is Record<string, any> {
@@ -62,15 +66,20 @@ function toSecond(value: unknown): number | null {
 
 function parseHighlightSeconds(rawJson: unknown): number[] {
   const raw = isPlainObject(rawJson) ? rawJson : {};
-  const keyframe = isPlainObject(raw.keyframe_metrics) ? raw.keyframe_metrics : {};
+  const metrics = isPlainObject(raw.metrics) ? raw.metrics : {};
+  const metricKeyframe = isPlainObject(metrics.keyframe_metrics) ? metrics.keyframe_metrics : {};
+  const rawKeyframe = isPlainObject(raw.keyframe_metrics) ? raw.keyframe_metrics : {};
+  const keyframe = isPlainObject(metricKeyframe) ? metricKeyframe : rawKeyframe;
   const convert = isPlainObject(keyframe.convert_cnt) ? keyframe.convert_cnt : {};
   const click = isPlainObject(keyframe.click_cnt) ? keyframe.click_cnt : {};
 
+  const conversionSpikes = Array.isArray(metrics.conversion_spikes) ? metrics.conversion_spikes : [];
   const convertHighlights = Array.isArray(convert.highlight) ? convert.highlight : [];
   const clickHighlights = Array.isArray(click.highlight) ? click.highlight : [];
-  const merged = [...convertHighlights, ...clickHighlights];
+  const candidates =
+    conversionSpikes.length > 0 ? conversionSpikes : [...convertHighlights, ...clickHighlights];
 
-  const asSeconds = merged
+  const asSeconds = candidates
     .map((entry) => toSecond(entry))
     .filter((v): v is number => typeof v === "number")
     .map((v) => Math.max(0, Math.round(v)));
@@ -145,7 +154,7 @@ async function extractFramesAtHighlights(videoPath: string, framesDir: string, s
   if (seconds.length === 0) return [];
 
   const selectExpr = seconds.map((s) => `eq(t\\,${s})`).join("+");
-  const framePattern = path.join(framesDir, "frame_%03d.jpg");
+  const framePattern = path.join(framesDir, "frame_%03d.png");
   const ffmpegArgs = [
     "-y",
     "-i",
@@ -160,7 +169,7 @@ async function extractFramesAtHighlights(videoPath: string, framesDir: string, s
   await runCommand("ffmpeg", ffmpegArgs, "ffmpeg frame extraction");
   const files = await fs.readdir(framesDir);
   return files
-    .filter((file) => /^frame_\d+\.jpg$/i.test(file))
+    .filter((file) => /^frame_\d+\.png$/i.test(file))
     .sort((a, b) => a.localeCompare(b))
     .map((file) => path.join(framesDir, file));
 }
@@ -226,7 +235,7 @@ function chunk<T>(items: T[], size: number): T[][] {
   return out;
 }
 
-async function processSingleAd(assetId: string, apiKey: string) {
+async function processSingleAd(assetId: string, apiKey: string, forceReprocess: boolean) {
   const asset = await prisma.adAsset.findUnique({
     where: { id: assetId },
     select: { id: true, rawJson: true },
@@ -235,12 +244,24 @@ async function processSingleAd(assetId: string, apiKey: string) {
 
   const raw = isPlainObject(asset.rawJson) ? (asset.rawJson as Record<string, any>) : {};
   const existingOcr = firstString(raw.ocrText);
-  if (existingOcr) return { processed: false, reason: "already_processed", apiCalls: 0, framesExtracted: 0 };
+  if (!forceReprocess && existingOcr) {
+    return { processed: false, reason: "already_processed", apiCalls: 0, framesExtracted: 0 };
+  }
 
   const videoUrl = extractVideoUrl(raw);
   if (!videoUrl) return { processed: false, reason: "missing_video_url", apiCalls: 0, framesExtracted: 0 };
 
   const highlightSeconds = parseHighlightSeconds(raw);
+  console.log("[OCR Debug] Asset:", assetId);
+  console.log("[OCR Debug] Raw conversion spikes:", raw?.metrics?.conversion_spikes ?? null);
+  console.log(
+    "[OCR Debug] Raw keyframe convert highlights:",
+    raw?.metrics?.keyframe_metrics?.convert_cnt?.highlight ??
+      raw?.keyframe_metrics?.convert_cnt?.highlight ??
+      null
+  );
+  console.log("[OCR Debug] Highlight seconds extracted:", highlightSeconds);
+  console.log("[OCR Debug] Will extract frames at:", highlightSeconds);
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "ad-ocr-"));
   const videoPath = path.join(tempDir, "video.mp4");
   const framesDir = path.join(tempDir, "frames");
@@ -248,6 +269,9 @@ async function processSingleAd(assetId: string, apiKey: string) {
 
   try {
     await downloadVideo(videoUrl, videoPath);
+    for (const second of highlightSeconds) {
+      console.log("[OCR Debug] Extracting frame at second:", second, "for asset:", assetId);
+    }
     const framePaths = await extractFramesAtHighlights(videoPath, framesDir, highlightSeconds);
 
     const ocrFrames: OcrFrameResult[] = [];
@@ -258,11 +282,25 @@ async function processSingleAd(assetId: string, apiKey: string) {
       const second = highlightSeconds[i] ?? highlightSeconds[highlightSeconds.length - 1] ?? 0;
       const result = await detectTextWithGoogleVision(framePath, apiKey);
       apiCalls += 1;
+      let imageUrl: string | null = null;
+      try {
+        imageUrl = await uploadFrame(framePath, assetId, second);
+      } catch (error: any) {
+        console.warn(
+          "[OCR Debug] Failed to upload frame:",
+          String(error?.message ?? error),
+          "asset:",
+          assetId,
+          "second:",
+          second
+        );
+      }
       if (!result.text) continue;
       ocrFrames.push({
         second,
         text: result.text,
         confidence: result.confidence,
+        imageUrl,
       });
     }
 
@@ -290,6 +328,18 @@ async function processSingleAd(assetId: string, apiKey: string) {
         },
       },
     };
+    console.log(
+      "[OCR Debug] Saved frames:",
+      Array.isArray(nextRaw.ocrFrames)
+        ? nextRaw.ocrFrames.map((f: any) => f?.timestamp ?? f?.second ?? null)
+        : []
+    );
+    console.log(
+      "[OCR Debug] Saved ocrFrames count:",
+      Array.isArray(nextRaw.ocrFrames) ? nextRaw.ocrFrames.length : 0,
+      "for asset:",
+      assetId
+    );
 
     await prisma.adAsset.update({
       where: { id: asset.id },
@@ -310,9 +360,15 @@ async function processSingleAd(assetId: string, apiKey: string) {
 export async function runAdOcrCollection(args: {
   projectId: string;
   jobId: string;
+  runId: string;
+  forceReprocess?: boolean;
   onProgress?: (pct: number) => void;
 }) {
-  const { projectId, onProgress } = args;
+  const { projectId, runId, forceReprocess = false, onProgress } = args;
+
+  if (!runId || !String(runId).trim()) {
+    throw new Error("runId is required for OCR collection");
+  }
 
   const apiKey = cfg.raw("GOOGLE_CLOUD_VISION_API_KEY");
   if (!apiKey) {
@@ -321,14 +377,24 @@ export async function runAdOcrCollection(args: {
   await ensureFfmpegAvailable();
 
   const assets = await prisma.adAsset.findMany({
-    where: { projectId, platform: AdPlatform.TIKTOK },
+    where: {
+      projectId,
+      platform: AdPlatform.TIKTOK,
+      job: {
+        is: {
+          runId,
+        },
+      },
+    },
     select: { id: true, rawJson: true },
   });
 
-  const assetsToProcess = assets.filter((asset) => {
-    const current = (asset.rawJson as any)?.ocrText;
-    return !current || String(current).trim() === "";
-  });
+  const assetsToProcess = forceReprocess
+    ? assets
+    : assets.filter((asset) => {
+        const current = (asset.rawJson as any)?.ocrText;
+        return !current || String(current).trim() === "";
+      });
 
   if (assetsToProcess.length === 0) {
     return { totalAssets: 0, processed: 0, framesExtracted: 0, apiCalls: 0 };
@@ -343,7 +409,7 @@ export async function runAdOcrCollection(args: {
   for (const batch of batches) {
     for (const asset of batch) {
       try {
-        const result = await processSingleAd(asset.id, apiKey);
+        const result = await processSingleAd(asset.id, apiKey, forceReprocess);
         if (result.processed) processed += 1;
         totalFrames += result.framesExtracted;
         totalApiCalls += result.apiCalls;
@@ -375,11 +441,16 @@ export async function runAdOcrCollection(args: {
   };
 }
 
-export async function startAdOcrJob(params: { projectId: string; jobId: string }) {
-  const { projectId, jobId } = params;
+export async function startAdOcrJob(params: {
+  projectId: string;
+  jobId: string;
+  runId: string;
+  forceReprocess?: boolean;
+}) {
+  const { projectId, jobId, runId, forceReprocess } = params;
   await updateJobStatus(jobId, JobStatus.RUNNING);
   try {
-    const result = await runAdOcrCollection({ projectId, jobId });
+    const result = await runAdOcrCollection({ projectId, jobId, runId, forceReprocess });
     await updateJobStatus(jobId, JobStatus.COMPLETED);
     await prisma.job.update({
       where: { id: jobId },
