@@ -5,14 +5,33 @@ import { updateJobStatus } from "@/lib/jobs/updateJobStatus";
 import pLimit from "p-limit";
 import { guardedExternalCall } from "./externalCallGuard.ts";
 import { env, requireEnv } from "./configGuard.ts";
+import { log } from "@/lib/logger";
 
-const APIFY_BASE = "https://api.apify.com/v2";
-const APIFY_TIMEOUT_MS = Number(cfg.raw("APIFY_TIMEOUT_MS") ?? 30_000);
-const APIFY_BREAKER_FAILS = Number(cfg.raw("APIFY_BREAKER_FAILS") ?? 3);
-const APIFY_BREAKER_COOLDOWN_MS = Number(cfg.raw("APIFY_BREAKER_COOLDOWN_MS") ?? 60_000);
-const APIFY_RETRIES = Number(cfg.raw("APIFY_RETRIES") ?? 1);
-const APIFY_WAIT_FOR_FINISH_SECS = Number(cfg.raw("APIFY_TRANSCRIPT_WAIT_SECS") ?? 180);
-const APIFY_TRANSCRIPT_ACTOR_ID_DEFAULT = "gE6MpI4jJF4h5mahj";
+function parsePositiveInt(raw: string | undefined, fallback: number, min = 1): number {
+  const value = Number(raw);
+  if (!Number.isFinite(value)) return fallback;
+  const normalized = Math.floor(value);
+  return normalized >= min ? normalized : fallback;
+}
+
+function parseNonNegativeInt(raw: string | undefined, fallback: number): number {
+  const value = Number(raw);
+  if (!Number.isFinite(value)) return fallback;
+  const normalized = Math.floor(value);
+  return normalized >= 0 ? normalized : fallback;
+}
+
+const ASSEMBLYAI_TIMEOUT_MS = parsePositiveInt(cfg.raw("ASSEMBLYAI_TIMEOUT_MS"), 120_000);
+const ASSEMBLYAI_BREAKER_FAILS = parsePositiveInt(cfg.raw("ASSEMBLYAI_BREAKER_FAILS"), 3);
+const ASSEMBLYAI_BREAKER_COOLDOWN_MS = parsePositiveInt(cfg.raw("ASSEMBLYAI_BREAKER_COOLDOWN_MS"), 60_000);
+const ASSEMBLYAI_MAX_RETRIES = parseNonNegativeInt(cfg.raw("ASSEMBLYAI_RETRIES"), 1);
+const ASSEMBLYAI_POLL_INTERVAL_MS = parsePositiveInt(cfg.raw("ASSEMBLYAI_POLL_INTERVAL_MS"), 3_000);
+
+const logger = {
+  info(message: string, data: Record<string, unknown>) {
+    log(message, data);
+  },
+};
 
 const TRIGGER_WORDS = ["you", "your", "yourself"];
 const limit = pLimit(5);
@@ -46,20 +65,22 @@ function firstNumber(...values: unknown[]): number | null {
   return null;
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+function getAssemblyAiApiKey() {
+  requireEnv(["ASSEMBLYAI_API_KEY"], "AssemblyAI");
+  return env("ASSEMBLYAI_API_KEY")!;
 }
 
-function getApifyToken() {
-  requireEnv(["APIFY_API_TOKEN"], "APIFY");
-  return env("APIFY_API_TOKEN")!;
+async function createAssemblyAiClient() {
+  const apiKey = getAssemblyAiApiKey();
+  try {
+    const { AssemblyAI } = await import("assemblyai");
+    return new AssemblyAI({ apiKey });
+  } catch {
+    throw new Error("AssemblyAI SDK not installed. Run `npm install assemblyai` and restart.");
+  }
 }
 
-function getTranscriptActorId() {
-  return env("APIFY_AD_TRANSCRIPT_ACTOR_ID") ?? APIFY_TRANSCRIPT_ACTOR_ID_DEFAULT;
-}
-
-function isApifyRetryable(err: any) {
+function isAssemblyAiRetryable(err: any) {
   const msg = String(err?.message ?? err).toLowerCase();
   return (
     msg.includes("timed out") ||
@@ -74,133 +95,18 @@ function isApifyRetryable(err: any) {
   );
 }
 
-async function readTextSafely(res: Response) {
-  try {
-    return await res.text();
-  } catch {
-    return "";
-  }
-}
-
-async function fetchApifyDatasetItems(datasetId: string, token: string): Promise<any[]> {
-  const url = new URL(`${APIFY_BASE}/datasets/${encodeURIComponent(datasetId)}/items`);
-  url.searchParams.set("token", token);
-  url.searchParams.set("clean", "true");
-  url.searchParams.set("format", "json");
-
-  const res = await guardedExternalCall({
-    breakerKey: "apify:ad-transcripts",
-    breaker: { failureThreshold: APIFY_BREAKER_FAILS, cooldownMs: APIFY_BREAKER_COOLDOWN_MS },
-    timeoutMs: APIFY_TIMEOUT_MS,
-    retry: { retries: APIFY_RETRIES, baseDelayMs: 500, maxDelayMs: 5000 },
-    label: "Apify transcript dataset",
-    fn: async () => {
-      const response = await fetch(url.toString(), { method: "GET" });
-      if (!response.ok) {
-        const body = await readTextSafely(response);
-        throw new Error(`Apify transcript dataset failed: ${response.status} ${body}`);
-      }
-      return response;
-    },
-    isRetryable: isApifyRetryable,
-  });
-
-  const data = (await res.json()) as unknown;
-  return Array.isArray(data) ? data : [];
-}
-
-async function runTranscriptActorForMedia(mediaUrl: string): Promise<{
-  item: Record<string, unknown>;
-  actorId: string;
-  runId: string | null;
-  datasetId: string | null;
-}> {
-  const token = getApifyToken();
-  const actorId = getTranscriptActorId();
-
-  const input: Record<string, unknown> = {
-    url: mediaUrl,
-    videoUrl: mediaUrl,
-    urls: [mediaUrl],
-    videoUrls: [mediaUrl],
-    startUrls: [{ url: mediaUrl }],
-    maxItems: 1,
-  };
-
-  const url = new URL(`${APIFY_BASE}/acts/${encodeURIComponent(actorId)}/runs`);
-  url.searchParams.set("token", token);
-  url.searchParams.set("waitForFinish", String(APIFY_WAIT_FOR_FINISH_SECS));
-
-  const runRes = await guardedExternalCall({
-    breakerKey: "apify:ad-transcripts",
-    breaker: { failureThreshold: APIFY_BREAKER_FAILS, cooldownMs: APIFY_BREAKER_COOLDOWN_MS },
-    timeoutMs: APIFY_TIMEOUT_MS,
-    retry: { retries: APIFY_RETRIES, baseDelayMs: 500, maxDelayMs: 5000 },
-    label: "Apify transcript run",
-    fn: async () => {
-      const response = await fetch(url.toString(), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(input),
-      });
-      if (!response.ok) {
-        const body = await readTextSafely(response);
-        throw new Error(`Apify transcript run failed: ${response.status} ${body}`);
-      }
-      return response;
-    },
-    isRetryable: isApifyRetryable,
-  });
-
-  const runData = (await runRes.json()) as any;
-  const run = runData?.data ?? runData ?? {};
-  const runId = firstString(run?.id);
-  const datasetId = firstString(run?.defaultDatasetId);
-
-  if (!datasetId) {
-    throw new Error(`Apify transcript run missing defaultDatasetId (actor=${actorId}, runId=${runId ?? "unknown"})`);
-  }
-
-  const items = await fetchApifyDatasetItems(datasetId, token);
-  const first = items.find((item) => isPlainObject(item));
-  if (!first) {
-    throw new Error(`Apify transcript actor returned no items (actor=${actorId}, runId=${runId ?? "unknown"})`);
-  }
-
-  return {
-    item: first as Record<string, unknown>,
-    actorId,
-    runId,
-    datasetId,
-  };
-}
-
-function isMusicLyrics(text: string): boolean {
-  const lowerText = text.toLowerCase();
-  const musicKeywords = ["verse", "chorus", "bridge", "instrumental", "lyrics"];
-  const matchCount = musicKeywords.filter((k) => lowerText.includes(k)).length;
-  return matchCount >= 2;
-}
-
-function normalizeTranscriptWords(raw: unknown, duration: number | null): TranscriptWord[] {
+function normalizeAssemblyAiWords(raw: unknown): TranscriptWord[] {
   if (!Array.isArray(raw)) return [];
-
-  const maxSecondsHint = duration && duration > 0 && duration < 10_000 ? duration : null;
 
   return raw
     .map((entry) => {
-      if (!isPlainObject(entry)) return null;
-      const text = firstString(entry.text, entry.word, entry.token);
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) return null;
+      const word = entry as Record<string, unknown>;
+      const text = firstString(word.text, word.word, word.token);
       if (!text) return null;
 
-      let start = firstNumber(entry.start, entry.start_ms, entry.startMs, entry.s, entry.from) ?? 0;
-      let end = firstNumber(entry.end, entry.end_ms, entry.endMs, entry.e, entry.to) ?? start;
-
-      // If timestamps look like seconds (small numbers), convert to ms for downstream meta logic.
-      if (maxSecondsHint && start <= maxSecondsHint + 2 && end <= maxSecondsHint + 2) {
-        start *= 1000;
-        end *= 1000;
-      }
+      const start = firstNumber(word.start, word.start_ms, word.startMs) ?? 0;
+      const end = firstNumber(word.end, word.end_ms, word.endMs) ?? start;
 
       return {
         text,
@@ -211,57 +117,40 @@ function normalizeTranscriptWords(raw: unknown, duration: number | null): Transc
     .filter((w): w is TranscriptWord => Boolean(w));
 }
 
-function extractTranscriptText(item: Record<string, unknown>): string {
-  const direct = firstString(
-    item.transcript,
-    item.text,
-    item.transcription,
-    item.caption,
-    item.captions,
-    item.subtitle,
-    item.subtitles,
-    item.output,
-    item.result
-  );
-  if (direct) return direct;
+async function transcribeWithAssemblyAi(mediaUrl: string): Promise<{
+  text: string;
+  words: TranscriptWord[];
+  transcriptId: string | null;
+  status: string | null;
+  confidence: number | null;
+  audioDuration: number | null;
+}> {
+  const client = await createAssemblyAiClient();
+  const transcript = (await guardedExternalCall({
+    breakerKey: "assemblyai:ad-transcripts",
+    breaker: { failureThreshold: ASSEMBLYAI_BREAKER_FAILS, cooldownMs: ASSEMBLYAI_BREAKER_COOLDOWN_MS },
+    timeoutMs: ASSEMBLYAI_TIMEOUT_MS,
+    retry: { retries: ASSEMBLYAI_MAX_RETRIES, baseDelayMs: 500, maxDelayMs: 5000 },
+    label: "AssemblyAI transcript run",
+    fn: async () => client.transcripts.transcribe({ audio: mediaUrl }),
+    isRetryable: isAssemblyAiRetryable,
+  })) as Record<string, unknown>;
 
-  const segments = [
-    item.segments,
-    item.transcriptSegments,
-    item.transcript_segments,
-    item.sentences,
-    item.lines,
-  ];
+  return {
+    text: firstString(transcript.text) ?? "",
+    words: normalizeAssemblyAiWords(transcript.words),
+    transcriptId: firstString(transcript.id),
+    status: firstString(transcript.status),
+    confidence: firstNumber(transcript.confidence),
+    audioDuration: firstNumber(transcript.audio_duration),
+  };
+}
 
-  for (const segmentValue of segments) {
-    if (!Array.isArray(segmentValue)) continue;
-    const text = segmentValue
-      .map((segment) => {
-        if (typeof segment === "string") return segment.trim();
-        if (!isPlainObject(segment)) return "";
-        return firstString(segment.text, segment.caption, segment.value) ?? "";
-      })
-      .filter(Boolean)
-      .join(" ")
-      .trim();
-
-    if (text) return text;
-  }
-
-  if (Array.isArray(item.words)) {
-    const text = item.words
-      .map((w) => {
-        if (typeof w === "string") return w.trim();
-        if (!isPlainObject(w)) return "";
-        return firstString(w.text, w.word, w.token) ?? "";
-      })
-      .filter(Boolean)
-      .join(" ")
-      .trim();
-    if (text) return text;
-  }
-
-  return "";
+function isMusicLyrics(text: string): boolean {
+  const lowerText = text.toLowerCase();
+  const musicKeywords = ["verse", "chorus", "bridge", "instrumental", "lyrics"];
+  const matchCount = musicKeywords.filter((k) => lowerText.includes(k)).length;
+  return matchCount >= 2;
 }
 
 function computeTranscriptMeta(
@@ -305,18 +194,18 @@ async function enrichAssetWithTranscript(assetId: string) {
 
   const mediaUrl =
     firstString(
-      (asset.rawJson as any)?.url,
-      (asset.rawJson as any)?.audioUrl,
-      (asset.rawJson as any)?.mediaUrl,
-      (asset.rawJson as any)?.videoUrl,
       (asset.rawJson as any)?.video_info?.video_url?.["720p"],
-      (asset.rawJson as any)?.video_info?.video_url?.["1080p"]
+      (asset.rawJson as any)?.video_info?.video_url?.["1080p"],
+      (asset.rawJson as any)?.url,
+      (asset.rawJson as any)?.videoUrl,
+      (asset.rawJson as any)?.mediaUrl,
+      (asset.rawJson as any)?.audioUrl
     ) ?? null;
 
   if (!mediaUrl) return;
 
-  const { item, actorId, runId, datasetId } = await runTranscriptActorForMedia(mediaUrl);
-  const text = extractTranscriptText(item);
+  const transcript = await transcribeWithAssemblyAi(mediaUrl);
+  const text = transcript.text.trim();
 
   if (text.length < 10) return;
   if (isMusicLyrics(text)) return;
@@ -324,19 +213,17 @@ async function enrichAssetWithTranscript(assetId: string) {
   const duration = firstNumber(
     (asset.rawJson as any)?.metrics?.duration,
     (asset.rawJson as any)?.video_info?.duration,
-    item.duration,
-    item.videoDuration,
-    item.video_duration
+    transcript.audioDuration
   );
 
-  const words = normalizeTranscriptWords(item.words, duration);
+  const words = transcript.words;
   const meta = computeTranscriptMeta(text, words, duration);
 
   let mergedMetrics: any = (asset.rawJson as any)?.metrics || {};
   mergedMetrics = {
     ...mergedMetrics,
     transcript_meta: meta,
-    transcript_provider: "apify",
+    transcript_provider: "assemblyai",
   };
 
   const newRawJson = {
@@ -344,10 +231,10 @@ async function enrichAssetWithTranscript(assetId: string) {
     transcript: text,
     transcriptWords: words,
     transcriptSource: {
-      provider: "apify",
-      actorId,
-      runId,
-      datasetId,
+      provider: "assemblyai",
+      transcriptId: transcript.transcriptId,
+      status: transcript.status,
+      confidence: transcript.confidence,
       mediaUrl,
     },
     metrics: mergedMetrics,
@@ -364,24 +251,37 @@ async function enrichAssetWithTranscript(assetId: string) {
 export async function runAdTranscriptCollection(args: {
   projectId: string;
   jobId: string;
+  runId: string;
+  forceReprocess?: boolean;
   onProgress?: (pct: number) => void;
 }) {
-  const { projectId, jobId, onProgress } = args;
+  const { projectId, jobId, runId, forceReprocess = false, onProgress } = args;
 
-  requireEnv(["APIFY_API_TOKEN"], "APIFY");
+  requireEnv(["ASSEMBLYAI_API_KEY"], "AssemblyAI");
+
+  if (!runId || !String(runId).trim()) {
+    throw new Error("runId is required for transcript collection");
+  }
 
   const assets = await prisma.adAsset.findMany({
     where: {
       projectId,
       platform: AdPlatform.TIKTOK,
+      job: {
+        is: {
+          runId,
+        },
+      },
     },
     select: { id: true, rawJson: true },
   });
 
-  const assetsToProcess = assets.filter((a) => {
-    const t = (a.rawJson as any)?.transcript;
-    return !t || String(t).trim() === "";
-  });
+  const assetsToProcess = forceReprocess
+    ? assets
+    : assets.filter((a) => {
+        const t = (a.rawJson as any)?.transcript;
+        return !t || String(t).trim() === "";
+      });
 
   if (!assetsToProcess.length) {
     return { totalAssets: 0, processed: 0 };
@@ -421,13 +321,36 @@ export async function runAdTranscriptCollection(args: {
 export async function startAdTranscriptJob(params: {
   projectId: string;
   jobId: string;
+  runId: string;
+  forceReprocess?: boolean;
 }) {
-  const { projectId, jobId } = params;
-  await updateJobStatus(jobId, JobStatus.RUNNING);
+  const { projectId, jobId, runId, forceReprocess } = params;
+  const currentJob = await prisma.job.findUnique({
+    where: { id: jobId },
+    select: { status: true },
+  });
+
+  if (!currentJob) {
+    throw new Error(`Transcript job not found: ${jobId}`);
+  }
+
+  if (currentJob.status === JobStatus.RUNNING) {
+    console.log("[Transcript] Job already running, skipping status update", { jobId });
+  } else {
+    await updateJobStatus(jobId, JobStatus.RUNNING);
+  }
+  logger.info("[Transcript] Config loaded", {
+    jobId,
+    timeoutMs: ASSEMBLYAI_TIMEOUT_MS,
+    maxRetries: ASSEMBLYAI_MAX_RETRIES,
+    pollIntervalMs: ASSEMBLYAI_POLL_INTERVAL_MS,
+  });
   try {
     const result = await runAdTranscriptCollection({
       projectId,
       jobId,
+      runId,
+      forceReprocess,
     });
 
     await updateJobStatus(jobId, JobStatus.COMPLETED);

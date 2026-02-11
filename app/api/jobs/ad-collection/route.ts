@@ -10,15 +10,24 @@ import { z } from 'zod';
 import { checkRateLimit } from '@/lib/rateLimiter';
 import { logAudit } from '@/lib/logger';
 import { getSessionUserId } from '@/lib/getSessionUserId';
-import { enforceUserConcurrency, findIdempotentJob } from '@/lib/jobGuards';
+import { enforceUserConcurrency } from '@/lib/jobGuards';
 import { assertMinPlan, UpgradeRequiredError } from '@/lib/billing/requirePlan';
 import { reserveQuota, rollbackQuota, QuotaExceededError } from '@/lib/billing/usage';
 import { randomUUID } from 'crypto';
+import { buildAdCollectionConfig } from '@/lib/adRawCollectionService';
 
 const AdCollectionSchema = ProjectJobSchema.extend({
-  industryCode: z.string().min(1, 'industryCode is required'),
+  industryCode: z.string().optional(),
   runId: z.string().optional(),
 });
+
+const DEFAULT_TIKTOK_INDUSTRY_CODE = (cfg.raw("APIFY_DEFAULT_INDUSTRY_CODE") ?? "23000000000").trim();
+const TIKTOK_INDUSTRY_CODE_PATTERN = /^\d{11}$/;
+
+function resolveIndustryCode(value: unknown): string {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  return normalized || DEFAULT_TIKTOK_INDUSTRY_CODE;
+}
 
 export async function POST(req: NextRequest) {
   const userId = await getSessionUserId();
@@ -41,8 +50,24 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { projectId: parsedProjectId, industryCode, runId } = parsed.data;
+    const {
+      projectId: parsedProjectId,
+      productId,
+      industryCode: rawIndustryCode,
+      runId,
+    } = parsed.data;
     projectId = parsedProjectId;
+    const industryCode = resolveIndustryCode(rawIndustryCode);
+    if (!TIKTOK_INDUSTRY_CODE_PATTERN.test(industryCode)) {
+      return NextResponse.json(
+        {
+          error:
+            "Invalid industryCode. Expected TikTok Creative Center industry ID (11 digits), e.g. 23116000000.",
+        },
+        { status: 400 },
+      );
+    }
+
     const auth = await requireProjectOwner(projectId);
     if (auth.error) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
@@ -75,15 +100,52 @@ export async function POST(req: NextRequest) {
     let effectiveRunId = runId;
     if (!effectiveRunId) {
       const run = await prisma.researchRun.create({
-        data: { 
-          projectId, 
-          status: 'IN_PROGRESS' 
-        }
+        data: {
+          projectId,
+          status: "IN_PROGRESS",
+        },
       });
       effectiveRunId = run.id;
     }
 
+    const existingActiveJob = await prisma.job.findFirst({
+      where: {
+        projectId,
+        userId,
+        type: JobType.AD_PERFORMANCE,
+        runId: effectiveRunId,
+        status: { in: [JobStatus.PENDING, JobStatus.RUNNING] },
+        payload: {
+          path: ["jobType"],
+          equals: "ad_raw_collection",
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, status: true },
+    });
+    if (existingActiveJob) {
+      return NextResponse.json(
+        {
+          jobId: existingActiveJob.id,
+          runId: effectiveRunId,
+          started: false,
+          reused: true,
+          status: existingActiveJob.status,
+        },
+        { status: 200 },
+      );
+    }
+
     const idempotencyKey = randomUUID();
+    const apifyConfig = buildAdCollectionConfig(industryCode);
+    const payloadBase = {
+      projectId,
+      ...(productId ? { productId } : {}),
+      runId: effectiveRunId,
+      industryCode,
+      jobType: "ad_raw_collection",
+      adCollectionConfig: apifyConfig,
+    };
 
     try {
       await reserveQuota(userId, planId, 'adCollectionJobs', 1);
@@ -106,7 +168,8 @@ export async function POST(req: NextRequest) {
           type: JobType.AD_PERFORMANCE,
           status: JobStatus.PENDING,
           idempotencyKey,
-          payload: { ...parsed.data, jobType: 'ad_raw_collection' },
+          runId: effectiveRunId,
+          payload: { ...payloadBase, idempotencyKey },
           resultSummary: "Skipped: SECURITY_SWEEP",
           error: Prisma.JsonNull,
         },
@@ -122,7 +185,7 @@ export async function POST(req: NextRequest) {
         metadata: { type: "ad-collection", skipped: true, reason: "SECURITY_SWEEP" },
       });
       return NextResponse.json(
-        { jobId, started: false, skipped: true, reason: "SECURITY_SWEEP" },
+        { jobId, runId: effectiveRunId, started: false, skipped: true, reason: "SECURITY_SWEEP" },
         { status: 200 },
       );
     }
@@ -145,7 +208,7 @@ export async function POST(req: NextRequest) {
         status: JobStatus.PENDING,
         idempotencyKey,
         runId: effectiveRunId,
-        payload: { ...parsed.data, jobType: 'ad_raw_collection', idempotencyKey },
+        payload: { ...payloadBase, idempotencyKey },
       },
     });
     jobId = job.id;
