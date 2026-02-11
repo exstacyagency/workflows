@@ -145,7 +145,6 @@ export default function ResearchHubPage() {
   });
   const [adCompleteness, setAdCompleteness] = useState<AdDataCompleteness | null>(null);
   const [adCompletenessLoading, setAdCompletenessLoading] = useState(false);
-  const [adCompletenessWarning, setAdCompletenessWarning] = useState<string | null>(null);
   const selectedProductRef = useRef<string | null>(selectedProductId);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
 
@@ -282,7 +281,6 @@ export default function ResearchHubPage() {
       const runParam = runId || currentRunId || selectedRunId || "";
       const query = runParam ? `?runId=${encodeURIComponent(runParam)}` : "";
       setAdCompletenessLoading(true);
-      setAdCompletenessWarning(null);
       try {
         const response = await fetch(`/api/projects/${projectId}/ad-data-completeness${query}`, {
           cache: "no-store",
@@ -290,27 +288,17 @@ export default function ResearchHubPage() {
         if (!response.ok) {
           console.warn("Completeness check failed, deferring to server-side validation");
           setAdCompleteness(null);
-          setAdCompletenessWarning(
-            "Unable to verify data completeness. Click to attempt analysis."
-          );
           return;
         }
         const data = await response.json();
         if (data?.success && data?.completeness) {
           setAdCompleteness(data.completeness as AdDataCompleteness);
-          setAdCompletenessWarning(null);
         } else {
           setAdCompleteness(null);
-          setAdCompletenessWarning(
-            "Unable to verify data completeness. Server will validate when you run analysis."
-          );
         }
       } catch (error) {
         console.warn("Completeness API unavailable:", error);
         setAdCompleteness(null);
-        setAdCompletenessWarning(
-          "Unable to verify data completeness. Server will validate when you run analysis."
-        );
       } finally {
         setAdCompletenessLoading(false);
       }
@@ -1309,10 +1297,6 @@ export default function ResearchHubPage() {
                       stepWithStatus.id === "pattern-analysis" && adCompleteness && !adCompleteness.canRun
                         ? adCompleteness.reason ?? "Pattern analysis requirements not met."
                         : null;
-                    const patternAnalysisWarning =
-                      stepWithStatus.id === "pattern-analysis" && !patternAnalysisBlockedReason
-                        ? adCompletenessWarning
-                        : null;
                     const customerResearchJob = stepWithStatus.jobType === "CUSTOMER_RESEARCH"
                       ? latestCompletedCustomerResearchJob
                       : undefined;
@@ -1327,11 +1311,6 @@ export default function ResearchHubPage() {
                             {stepWithStatus.label}
                           </h3>
                           <p className="text-xs text-slate-400 mb-2">{stepWithStatus.description}</p>
-                          {stepWithStatus.id === "ad-ocr" && (
-                            <p className="text-xs text-slate-500 mb-2">
-                              OCR coverage: {adOcrCoverage.assetsWithOcr}/{adOcrCoverage.totalAssets}
-                            </p>
-                          )}
                           {stepWithStatus.id === "pattern-analysis" && (
                             <>
                               {adCompletenessLoading ? (
@@ -1347,9 +1326,6 @@ export default function ResearchHubPage() {
                                 <p className="text-xs text-amber-400 mb-2 whitespace-pre-line">
                                   {patternAnalysisBlockedReason}
                                 </p>
-                              )}
-                              {patternAnalysisWarning && (
-                                <p className="text-xs text-yellow-400 mb-2">{patternAnalysisWarning}</p>
                               )}
                             </>
                           )}
@@ -1524,7 +1500,7 @@ export default function ResearchHubPage() {
                                       ? "bg-gray-700 text-gray-500 cursor-not-allowed"
                                       : "bg-blue-600 hover:bg-blue-700 text-white"
                                   }`}
-                                  title={patternAnalysisBlockedReason || patternAnalysisWarning || undefined}
+                                  title={patternAnalysisBlockedReason || undefined}
                                 >
                                   {isRunning
                                     ? "Starting..."
