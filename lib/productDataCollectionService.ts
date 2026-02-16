@@ -381,7 +381,7 @@ export async function collectProductIntelWithWebFetch(
     throw new Error("ANTHROPIC_API_KEY is not configured");
   }
 
-  const anthropic = new Anthropic({ apiKey });
+  const anthropic = new Anthropic({ apiKey, timeout: 60000 });
 
   const urls = [productUrl, returnsUrl, shippingUrl, aboutUrl]
     .map((value) => String(value ?? "").trim())
