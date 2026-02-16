@@ -19,6 +19,10 @@ const CreateProductSchema = z.object({
   amazonAsin: z.string().trim().max(64).optional(),
 });
 
+const DeleteProductSchema = z.object({
+  productId: z.string().trim().min(1, "productId is required"),
+});
+
 async function assertProjectOwner(projectId: string, userId: string) {
   const project = await prisma.project.findFirst({
     where: { id: projectId, userId },
@@ -152,5 +156,49 @@ export async function POST(
   } catch (error: any) {
     console.error("Failed to create product", error);
     return NextResponse.json({ error: "Failed to create product" }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: { projectId: string } }
+) {
+  try {
+    const userId = await getSessionUserId();
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const projectId = params.projectId;
+    const ownsProject = await assertProjectOwner(projectId, userId);
+    if (!ownsProject) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+
+    const parsed = DeleteProductSchema.safeParse(await req.json());
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Invalid request body", details: parsed.error.flatten() },
+        { status: 400 }
+      );
+    }
+
+    await ensureProductsTable();
+
+    const deleted = await prisma.$queryRaw<Array<{ id: string }>>`
+      DELETE FROM "product"
+      WHERE "project_id" = ${projectId}
+        AND "id" = ${parsed.data.productId}
+      RETURNING "id"
+    `;
+
+    if (deleted.length === 0) {
+      return NextResponse.json({ error: "Product not found" }, { status: 404 });
+    }
+
+    return NextResponse.json({ success: true, productId: deleted[0].id }, { status: 200 });
+  } catch (error) {
+    console.error("Failed to delete product", error);
+    return NextResponse.json({ error: "Failed to delete product" }, { status: 500 });
   }
 }

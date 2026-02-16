@@ -722,10 +722,14 @@ export default function ResearchHubPage() {
     setRunningStep(step.id);
 
     try {
-      let payload: any = {
+      const customPayload = {
         projectId,
+        mainProductAsin: formData?.mainProductAsin,
         ...(selectedProductId ? { productId: selectedProductId } : {}),
+      };
+      let payload: any = {
         ...formData,
+        ...customPayload,
       };
 
       const resolveAdRunId = () => {
@@ -1222,14 +1226,22 @@ export default function ResearchHubPage() {
                       "product-collection",
                     ]);
                     const showAlwaysHistoryButton = stepsWithAlwaysHistoryButton.has(stepWithStatus.id);
-                    const historyUrl = currentRunId
-                      ? stepWithStatus.label === "Customer Analysis"
-                        ? `/projects/${projectId}/research-hub/jobs/customer-analysis?runId=${currentRunId}`
-                        : `/projects/${projectId}/research-hub/jobs/${stepWithStatus.jobType}?runId=${currentRunId}`
-                      : stepWithStatus.label === "Customer Analysis"
-                        ? `/projects/${projectId}/research-hub/jobs/customer-analysis`
-                        : `/projects/${projectId}/research-hub/jobs/${stepWithStatus.jobType}`;
-                    return (
+	                    const historyUrl = currentRunId
+	                      ? stepWithStatus.label === "Customer Analysis"
+	                        ? `/projects/${projectId}/research-hub/jobs/customer-analysis?runId=${currentRunId}`
+	                        : `/projects/${projectId}/research-hub/jobs/${stepWithStatus.jobType}?runId=${currentRunId}`
+	                      : stepWithStatus.label === "Customer Analysis"
+	                        ? `/projects/${projectId}/research-hub/jobs/customer-analysis`
+	                        : `/projects/${projectId}/research-hub/jobs/${stepWithStatus.jobType}`;
+	                    const payloadRunId = String(stepWithStatus.lastJob?.payload?.runId ?? "").trim();
+	                    const stepRunId =
+	                      stepWithStatus.lastJob?.runId || payloadRunId || currentRunId || selectedRunId || null;
+	                    const stepRawDataHref = stepWithStatus.lastJob
+	                      ? `/projects/${projectId}/research/data/${stepWithStatus.lastJob.id}${
+	                          stepRunId ? `?runId=${stepRunId}` : ""
+	                        }`
+	                      : null;
+	                    return (
                       <div
                         key={stepWithStatus.id}
                         className="flex items-start gap-4 p-4 rounded-lg bg-slate-900/50 border border-slate-800"
@@ -1252,17 +1264,11 @@ export default function ResearchHubPage() {
                           {/* Error Display */}
                           {stepWithStatus.status === "FAILED" && stepWithStatus.lastJob?.error && (
                             <div className="mt-3 rounded-lg bg-red-500/10 border border-red-500/30 p-3">
-                              <div className="flex items-start justify-between gap-3">
+                              <div className="flex items-start gap-3">
                                 <div className="flex-1">
                                   <p className="text-xs font-semibold text-red-300 mb-1">Error Details:</p>
                                   <p className="text-xs text-red-400">{stepWithStatus.lastJob.error}</p>
                                 </div>
-                                <button
-                                  onClick={() => runStep(stepWithStatus, track.key)}
-                                  className="text-xs text-red-400 hover:text-red-300 underline whitespace-nowrap"
-                                >
-                                  Try again →
-                                </button>
                               </div>
                             </div>
                           )}
@@ -1315,11 +1321,19 @@ export default function ResearchHubPage() {
                               )}
                             </div>
                           ) : (
-                          stepWithStatus.status === "COMPLETED" && stepWithStatus.lastJob && (
-                            <div className="flex flex-col gap-1">
-                              {(stepWithStatus.id === "ad-transcripts" ||
-                                stepWithStatus.id === "ad-quality-gate" ||
-                                stepWithStatus.id === "pattern-analysis") && (
+	                          stepWithStatus.status === "COMPLETED" && stepWithStatus.lastJob && (
+	                            <div className="flex flex-col gap-1">
+	                              {stepWithStatus.id === "product-collection" && stepRawDataHref && (
+	                                <Link
+	                                  href={stepRawDataHref}
+	                                  className="inline-block px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-xs"
+	                                >
+	                                  View Raw Data
+	                                </Link>
+	                              )}
+	                              {(stepWithStatus.id === "ad-transcripts" ||
+	                                stepWithStatus.id === "ad-quality-gate" ||
+	                                stepWithStatus.id === "pattern-analysis") && (
                                 <button
                                   onClick={() => {
                                     const payloadRunId = String(stepWithStatus.lastJob?.payload?.runId ?? "").trim();
@@ -1354,9 +1368,6 @@ export default function ResearchHubPage() {
                             </button>
                           ) : stepWithStatus.status === "COMPLETED" ? (
                             <div className="flex flex-col gap-1">
-                              {isCollecting && (
-                                <div className="text-xs text-blue-400">Running...</div>
-                              )}
                               <div className="flex gap-2">
                                 <button
                                   onClick={() => runStep(stepWithStatus, track.key)}
@@ -1385,9 +1396,6 @@ export default function ResearchHubPage() {
                             </div>
                           ) : (
                             <div className="flex flex-col gap-1">
-                              {isCollecting && (
-                                <div className="text-xs text-blue-400">Running...</div>
-                              )}
                               <div className="flex gap-2">
                                 {!(locked && anyRunning) && (
                                   <button

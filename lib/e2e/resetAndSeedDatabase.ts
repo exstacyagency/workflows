@@ -1,6 +1,11 @@
 import { prisma } from "@/lib/prisma";
 
 export async function resetAndSeedDatabase() {
+  // eslint-disable-next-line no-restricted-properties
+  if (process.env.NODE_ENV !== "test") {
+    throw new Error("resetDb can only run in test mode");
+  }
+
   // ⚠️ Order matters because of FK constraints
   await prisma.$transaction([
     prisma.job.deleteMany(),
