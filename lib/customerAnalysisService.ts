@@ -330,7 +330,7 @@ async function callAnthropic(
     throw error;
   }
   const apiKey = env('ANTHROPIC_API_KEY')!;
-  const anthropic = new Anthropic({ apiKey });
+  const anthropic = new Anthropic({ apiKey, timeout: 60000 });
   console.log('CUSTOMER_ANALYSIS_LLM_RETRIES:', CUSTOMER_ANALYSIS_LLM_RETRIES);
   console.log('API Key present:', !!apiKey);
   console.log('API Key length:', apiKey?.length);

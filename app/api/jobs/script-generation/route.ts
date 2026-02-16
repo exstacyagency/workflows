@@ -90,8 +90,24 @@ export async function POST(req: NextRequest) {
     }
 
     const breakerTest = flag("FF_BREAKER_TEST");
-    let idempotencyKey = `script-generation:${projectId}`;
+    const selectedCustomerAnalysisJobId =
+      typeof parsed.data.customerAnalysisJobId === "string"
+        ? parsed.data.customerAnalysisJobId
+        : "latest";
+    const selectedProductId =
+      typeof parsed.data.productId === "string"
+        ? parsed.data.productId
+        : "none";
+    let idempotencyKey = `script-generation:${projectId}:${selectedProductId}:${selectedCustomerAnalysisJobId}`;
     if (breakerTest) idempotencyKey += `:${Date.now()}`;
+    const bypassFailedIdempotencyRecord = async (jobId: string) => {
+      await prisma.job.update({
+        where: { id: jobId },
+        data: {
+          idempotencyKey: `${idempotencyKey}:failed:${jobId}`,
+        },
+      });
+    };
 
     const existingJob = await prisma.job.findFirst({
       where: { projectId, userId, idempotencyKey },
@@ -115,10 +131,14 @@ export async function POST(req: NextRequest) {
           { status: 200 },
         );
       }
-      return NextResponse.json(
-        { jobId: existingJob.id, ok: existingJob.status === JobStatus.COMPLETED },
-        { status: 200 },
-      );
+      if (existingJob.status === JobStatus.FAILED) {
+        await bypassFailedIdempotencyRecord(existingJob.id);
+      } else {
+        return NextResponse.json(
+          { jobId: existingJob.id, ok: existingJob.status === JobStatus.COMPLETED },
+          { status: 200 },
+        );
+      }
     }
 
     // SECURITY_SWEEP short-circuit
@@ -243,9 +263,8 @@ export async function POST(req: NextRequest) {
 
     reservation = await reserveQuota(userId, planId, "researchQueries", 1);
 
-    let job;
-    try {
-      job = await prisma.job.create({
+    const createScriptGenerationJob = () =>
+      prisma.job.create({
         data: {
           projectId,
           userId,
@@ -255,29 +274,40 @@ export async function POST(req: NextRequest) {
           payload: parsed.data,
         },
       });
+
+    let job;
+    try {
+      job = await createScriptGenerationJob();
     } catch (err: any) {
       if (err?.code === "P2002") {
         const existing = await prisma.job.findFirst({
-          where: { projectId, idempotencyKey },
+          where: { projectId, userId, idempotencyKey },
           select: { id: true, status: true },
         });
 
         if (existing) {
-          if (reservation && userIdForQuota) {
-            await rollbackQuota(
-              userIdForQuota,
-              reservation.periodKey,
-              "researchQueries",
-              1,
+          if (existing.status === JobStatus.FAILED) {
+            await bypassFailedIdempotencyRecord(existing.id);
+            job = await createScriptGenerationJob();
+          } else {
+            if (reservation && userIdForQuota) {
+              await rollbackQuota(
+                userIdForQuota,
+                reservation.periodKey,
+                "researchQueries",
+                1,
+              );
+            }
+            return NextResponse.json(
+              { jobId: existing.id, ok: existing.status === JobStatus.COMPLETED },
+              { status: 200 },
             );
           }
-          return NextResponse.json(
-            { jobId: existing.id, ok: existing.status === JobStatus.COMPLETED },
-            { status: 200 },
-          );
         }
       }
-      throw err;
+      if (!job) {
+        throw err;
+      }
     }
 
     await logAudit({
