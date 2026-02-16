@@ -22,13 +22,14 @@ load_env_file() {
   fi
 }
 
-# Load env if caller didn't export it already
-if [ -z "${DATABASE_URL:-}" ] || [ -z "${NEXTAUTH_SECRET:-}" ] || [ -z "${DEBUG_ADMIN_TOKEN:-}" ]; then
-  load_env_file ".env.local"
-  load_env_file ".env"
+# Always load isolated test environment; never fall back to .env.
+load_env_file ".env.test"
+
+if [ -n "${TEST_DATABASE_URL:-}" ]; then
+  export DATABASE_URL="${TEST_DATABASE_URL}"
 fi
 
-required_envs=("DATABASE_URL" "NEXTAUTH_SECRET" "DEBUG_ADMIN_TOKEN")
+required_envs=("TEST_DATABASE_URL" "DATABASE_URL" "NEXTAUTH_SECRET" "DEBUG_ADMIN_TOKEN")
 for k in "${required_envs[@]}"; do
   if [ -z "${!k:-}" ]; then
     echo "[e2e] Missing required env: $k" >&2

@@ -38,7 +38,7 @@
     "dev:auth:reset": "node scripts/dev_auth_reset.mjs attacker@local.dev Attacker123",
     "dev": "next dev",
     "worker": "tsx workers/jobRunner.ts",
-    "dev:all": "concurrently \"npm run dev\" \"npm run worker\"",
+    "dev:all": "concurrently \"REDDIT_SCRAPER_URL=http://localhost:5001 npm run dev\" \"REDDIT_SCRAPER_URL=http://localhost:5001 npm run worker\" \"cd services/reddit-scraper && python3 flask_api.py\"",
     "dev:with-env": "bash scripts/run_dev.sh",
     "build": "prisma generate && node -e \"const fs=require('fs');fs.rmSync('tsconfig.tsbuildinfo',{force:true});\" && next build",
     "prod:guardrails": "tsx scripts/prod_guardrails.ts",

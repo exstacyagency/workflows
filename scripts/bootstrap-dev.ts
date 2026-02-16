@@ -18,8 +18,17 @@ const PROJECT = {
 };
 
 async function main() {
-    // Cleanup: delete any existing user with email 'test@local.dev' to guarantee deterministic id
-    await prisma.user.deleteMany({ where: { email: "test@local.dev" } });
+  const runEnv = String(process.env.RUN_ENV ?? "").trim();
+  const ci = String(process.env.CI ?? "").trim();
+  // eslint-disable-next-line no-restricted-properties
+  if (!runEnv && !ci && process.env.NODE_ENV !== "test") {
+    throw new Error(
+      "bootstrap-dev refused: set RUN_ENV or CI, or run with NODE_ENV=test."
+    );
+  }
+
+  // Cleanup: delete any existing user with email 'test@local.dev' to guarantee deterministic id
+  await prisma.user.deleteMany({ where: { email: "test@local.dev" } });
   // --- users ---
   for (const u of USERS) {
     const hash = await bcrypt.hash(u.password, 10);

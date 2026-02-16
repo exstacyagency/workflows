@@ -151,6 +151,35 @@ function asStringArray(value: unknown): string[] {
     .filter(Boolean);
 }
 
+function stripGuaranteesFromProductIntelInput(
+  input: Record<string, unknown>
+): Record<string, unknown> {
+  const cleaned: Record<string, unknown> = { ...input };
+  delete cleaned.guarantees;
+
+  const citations = asObject(cleaned.citations);
+  if (citations) {
+    const nextCitations = { ...citations };
+    delete (nextCitations as Record<string, unknown>).guarantees;
+    cleaned.citations = nextCitations;
+  }
+
+  const validatedFields = asObject(cleaned.validated_fields);
+  if (validatedFields) {
+    const nextValidated = { ...validatedFields };
+    delete (nextValidated as Record<string, unknown>).guarantees;
+    cleaned.validated_fields = nextValidated;
+  }
+
+  if (Array.isArray(cleaned.resolved_via_web_search)) {
+    cleaned.resolved_via_web_search = cleaned.resolved_via_web_search.filter(
+      (field) => field !== "guarantees"
+    );
+  }
+
+  return cleaned;
+}
+
 function toPatternEntry(value: unknown, category: string): Pattern | null {
   const input = asObject(value);
   if (!input) return null;
@@ -1065,7 +1094,9 @@ export async function runScriptGeneration(args: {
     project.name,
     selectedCustomerAnalysis
   );
-  const productIntelPayload = productIntelSelection.productIntel;
+  const productIntelPayload = stripGuaranteesFromProductIntelInput(
+    productIntelSelection.productIntel
+  );
   const productIntelDate = productIntelSelection.sourceDate;
   const researchSources: ResearchSourcesUsed = {
     customerAnalysisJobId: selectedCustomerAnalysis?.jobId ?? null,
