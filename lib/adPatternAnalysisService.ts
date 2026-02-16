@@ -21,6 +21,7 @@ const ANTHROPIC_RETRIES = Number(cfg.raw("ANTHROPIC_RETRIES") ?? APIFY_RETRIES);
 
 const anthropic = new Anthropic({
   apiKey: cfg.raw("ANTHROPIC_API_KEY"),
+  timeout: 60000,
 });
 
 function isAnthropicRetryable(err: any) {

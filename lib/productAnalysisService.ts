@@ -101,7 +101,7 @@ Return valid JSON with this EXACT structure:
 async function callAnthropic(system: string, prompt: string): Promise<string> {
   requireEnv(['ANTHROPIC_API_KEY'], 'ANTHROPIC');
   const apiKey = env('ANTHROPIC_API_KEY')!;
-  const model = cfg.raw("ANTHROPIC_MODEL") ?? 'claude-3-opus-20240229';
+  const model = cfg.raw('ANTHROPIC_MODEL') || 'claude-sonnet-4-5-20250929';
 
   const body = JSON.stringify({
     model,

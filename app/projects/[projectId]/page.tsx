@@ -1,9 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { JobStatus } from '@prisma/client';
-import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { PipelineStatusDb } from '@/components/PipelineStatusDb';
-import { ScriptMediaPreview, type ScriptMedia } from '@/components/ScriptMediaPreview';
 import { getJobTypeLabel } from '@/lib/jobLabels';
 import { ProjectProductsPanel } from '@/components/ProjectProductsPanel';
 
@@ -77,22 +74,6 @@ export default async function ProjectDashboardPage({ params }: Params) {
         orderBy: { createdAt: 'desc' },
         take: 12,
       },
-      researchRows: {
-        orderBy: { createdAt: 'desc' },
-        take: 8,
-      },
-      customerAvatars: {
-        orderBy: { createdAt: 'desc' },
-        take: 1,
-      },
-      productIntelligences: {
-        orderBy: { createdAt: 'desc' },
-        take: 1,
-      },
-      scripts: {
-        orderBy: { createdAt: 'desc' },
-        take: 4,
-      },
     },
   });
 
@@ -115,21 +96,6 @@ export default async function ProjectDashboardPage({ params }: Params) {
   `;
 
   const recentJobs = project.jobs;
-  const recentResearch = project.researchRows;
-  const latestAvatar = project.customerAvatars[0] ?? null;
-  const latestProductIntel = project.productIntelligences[0] ?? null;
-  const latestAvatarPersona = (latestAvatar?.persona ?? {}) as any;
-  const latestProductInsights = (latestProductIntel?.insights ?? {}) as any;
-  const recentScripts: ScriptMedia[] = project.scripts.map(script => ({
-    id: script.id,
-    status: script.status,
-    createdAt: script.createdAt.toISOString(),
-    mergedVideoUrl: script.mergedVideoUrl,
-    upscaledVideoUrl: script.upscaledVideoUrl,
-    wordCount: script.wordCount,
-  }));
-  const hasProducts = products.length > 0;
-  const defaultProductId = products[0]?.id ?? null;
 
   const stats = [
     { label: 'Total Jobs', value: project._count.jobs.toString() },
@@ -140,7 +106,7 @@ export default async function ProjectDashboardPage({ params }: Params) {
 
   return (
     <div className="px-6 py-6 space-y-6">
-      <section className="rounded-xl border border-slate-800 bg-slate-900/80 p-5 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+      <section className="rounded-xl border border-slate-800 bg-slate-900/80 p-5">
         <div>
           <p className="text-[11px] uppercase tracking-widest text-slate-500">Project</p>
           <h1 className="text-2xl font-semibold text-slate-50">{project.name}</h1>
@@ -151,41 +117,6 @@ export default async function ProjectDashboardPage({ params }: Params) {
             ID: <span className="font-mono">{project.id}</span> · Updated{' '}
             {dateFormatter.format(project.updatedAt)}
           </div>
-        </div>
-        <div className="flex flex-col gap-2 md:items-end">
-          <div className="flex flex-col gap-2 md:flex-row md:justify-end">
-            {hasProducts ? (
-              <>
-                <Link
-                  href={`/projects/${project.id}/research-hub?productId=${defaultProductId}`}
-                  className="inline-flex items-center justify-center rounded-md bg-sky-500 px-4 py-2 text-sm font-medium text-white hover:bg-sky-400"
-                >
-                  Research Hub
-                </Link>
-                <Link
-                  href={`/projects/${project.id}/creative-studio?productId=${defaultProductId}`}
-                  className="inline-flex items-center justify-center rounded-md border border-slate-700 bg-slate-950/60 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-900"
-                >
-                  Creative Studio
-                </Link>
-              </>
-            ) : (
-              <div className="inline-flex items-center rounded-md border border-slate-800 bg-slate-900 px-4 py-2 text-sm text-slate-500">
-                Select a product to access Research Hub and Creative Studio
-              </div>
-            )}
-            <Link
-              href={`/projects/${project.id}/dead-letter`}
-              className="inline-flex items-center justify-center rounded-md border border-slate-700 bg-slate-950/60 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-900"
-            >
-              Dead Letter
-            </Link>
-          </div>
-          <p className="text-xs text-slate-400 max-w-xs text-center md:text-right">
-            {hasProducts
-              ? 'Research Hub: Gather insights. Creative Studio: Generate videos.'
-              : 'Create a product below to unlock Research Hub and Creative Studio.'}
-          </p>
         </div>
       </section>
 
@@ -206,73 +137,6 @@ export default async function ProjectDashboardPage({ params }: Params) {
           createdAt: product.createdAt.toISOString(),
         }))}
       />
-
-      <section className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-5 space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-slate-100">Customer Avatar</h2>
-            <Link href="/customer-profile" className="text-[11px] text-sky-400 hover:text-sky-300">
-              Open Profile Studio →
-            </Link>
-          </div>
-          {!latestAvatar ? (
-            <p className="text-xs text-slate-400">Run Phase 1B to generate a persona snapshot.</p>
-          ) : (
-            <div className="space-y-1.5 text-sm">
-              <p>
-                <span className="text-slate-400">Age</span>: {latestAvatarPersona.age ?? '—'}
-              </p>
-              <p>
-                <span className="text-slate-400">Gender</span>: {latestAvatarPersona.gender ?? '—'}
-              </p>
-              <p>
-                <span className="text-slate-400">Job</span>: {latestAvatarPersona.jobTitle ?? '—'}
-              </p>
-              <p>
-                <span className="text-slate-400">Location</span>: {latestAvatarPersona.location ?? '—'}
-              </p>
-              <p>
-                <span className="text-slate-400">Primary Pain</span>: {latestAvatarPersona.primaryPain ?? '—'}
-              </p>
-              <p>
-                <span className="text-slate-400">Primary Goal</span>: {latestAvatarPersona.primaryGoal ?? '—'}
-              </p>
-            </div>
-          )}
-        </div>
-
-        <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-5 space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-slate-100">Product Intelligence</h2>
-            <Link href="/customer-profile" className="text-[11px] text-sky-400 hover:text-sky-300">
-              View Details →
-            </Link>
-          </div>
-          {!latestProductIntel ? (
-            <p className="text-xs text-slate-400">Run Phase 1B to capture mechanism + timeline insights.</p>
-          ) : (
-            <div className="space-y-1.5 text-sm">
-              <p>
-                <span className="text-slate-400">Hero Ingredient</span>: {latestProductInsights.heroIngredient ?? '—'}
-              </p>
-              <p>
-                <span className="text-slate-400">Mechanism</span>: {latestProductInsights.heroMechanism ?? '—'}
-              </p>
-              <p>
-                <span className="text-slate-400">Form</span>: {latestProductInsights.form ?? '—'}
-              </p>
-              <p>
-                <span className="text-slate-400">Initial Timeline</span>: {latestProductInsights.initialTimeline ?? '—'}
-              </p>
-              <p>
-                <span className="text-slate-400">Peak Timeline</span>: {latestProductInsights.peakTimeline ?? '—'}
-              </p>
-            </div>
-          )}
-        </div>
-      </section>
-
-      <PipelineStatusDb projectId={projectId} />
 
       <section className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-5 space-y-3">
@@ -313,65 +177,6 @@ export default async function ProjectDashboardPage({ params }: Params) {
             </div>
           )}
         </div>
-
-        <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-5 space-y-4">
-          <div>
-            <h2 className="text-sm font-semibold text-slate-100">Latest Customer Insights</h2>
-            <p className="text-xs text-slate-400">
-              Pulled from recent research rows and Phase 1B outputs.
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            {recentResearch.length === 0 ? (
-              <p className="text-xs text-slate-400">Run customer research to populate insights.</p>
-            ) : (
-              recentResearch.map(row => (
-                <div key={row.id} className="rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2">
-                  <div className="flex items-center justify-between text-[11px] text-slate-500 mb-1">
-                    <span>{row.source}</span>
-                    <span>{dateFormatter.format(row.createdAt)}</span>
-                  </div>
-                  <p className="text-sm text-slate-50 line-clamp-3">{row.content}</p>
-                </div>
-              ))
-            )}
-          </div>
-
-        </div>
-      </section>
-
-      <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-5 space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-sm font-semibold text-slate-100">Scripts & Media</h2>
-            <p className="text-xs text-slate-400">
-              Preview the most recent scripts and their rendered videos.
-            </p>
-          </div>
-          <Link
-            href={`/projects/${project.id}/scripts`}
-            className="text-[11px] text-sky-400 hover:text-sky-300"
-          >
-            View all scripts →
-          </Link>
-        </div>
-        {recentScripts.length === 0 ? (
-          <p className="text-xs text-slate-400">
-            Run script generation to create your first storyboard-ready video.
-          </p>
-        ) : (
-          <div className="grid gap-4 md:grid-cols-2">
-            {recentScripts.map(script => (
-              <div
-                key={script.id}
-                className="rounded-lg border border-slate-800 bg-slate-950/70 px-4 py-3"
-              >
-                <ScriptMediaPreview script={script} />
-              </div>
-            ))}
-          </div>
-        )}
       </section>
     </div>
   );

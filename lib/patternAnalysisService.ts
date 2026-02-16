@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 
 const anthropic = new Anthropic({
   apiKey: cfg.raw("ANTHROPIC_API_KEY"),
+  timeout: 60000,
 });
 
 const QUALITY_CONFIDENCE_THRESHOLD = 70;

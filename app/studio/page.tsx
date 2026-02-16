@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import StudioHeader from "./StudioHeader";
 import WhoAmI from "./WhoAmI";
-import CreateProjectButton from "@/app/(app)/projects/CreateProjectButton";
 
 type Project = {
   id: string;
@@ -18,6 +17,10 @@ export default function StudioHomePage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [projectName, setProjectName] = useState("");
+  const [creatingProject, setCreatingProject] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   async function loadProjects() {
     setLoading(true);
@@ -43,6 +46,56 @@ export default function StudioHomePage() {
   useEffect(() => {
     loadProjects();
   }, []);
+
+  async function handleConfirmCreateProject() {
+    setCreatingProject(true);
+    setCreateError(null);
+
+    try {
+      const enteredName = projectName.trim();
+      const timestamp = new Date()
+        .toISOString()
+        .replace(/[-:]/g, "")
+        .slice(0, 15);
+      const finalName = enteredName || `Project ${timestamp}`;
+
+      const res = await fetch("/api/projects", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          name: finalName,
+          description: "Created from Studio UI",
+        }),
+      });
+
+      if (!res.ok) {
+        const body = await res
+          .json()
+          .catch(() => ({ error: "Unknown error" }));
+        throw new Error(body.error || `Server returned ${res.status}`);
+      }
+
+      const project = await res.json();
+      window.location.href = `/projects/${project.id}`;
+    } catch (err: any) {
+      setCreateError(err?.message || "Failed to create project");
+      setCreatingProject(false);
+    }
+  }
+
+  function handleStartCreateProject() {
+    setShowCreateForm(true);
+    setCreateError(null);
+  }
+
+  function handleCancelCreateProject() {
+    setShowCreateForm(false);
+    setProjectName("");
+    setCreateError(null);
+  }
 
   const lastProject = projects[0] || null;
 
@@ -118,15 +171,59 @@ export default function StudioHomePage() {
       <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-4 space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-slate-100">Projects</h2>
-          <CreateProjectButton />
-          <button
-            onClick={loadProjects}
-            disabled={loading}
-            className="text-xs px-3 py-1 rounded-md border border-slate-700 hover:bg-slate-800 disabled:opacity-50"
-          >
-            {loading ? "Refreshing…" : "Refresh"}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleStartCreateProject}
+              disabled={creatingProject}
+              className="inline-flex items-center px-3 py-1.5 rounded-md bg-sky-500 hover:bg-sky-400 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-medium"
+            >
+              {creatingProject ? "Creating…" : "Create Project"}
+            </button>
+            <button
+              onClick={loadProjects}
+              disabled={loading}
+              className="text-xs px-3 py-1 rounded-md border border-slate-700 hover:bg-slate-800 disabled:opacity-50"
+            >
+              {loading ? "Refreshing…" : "Refresh"}
+            </button>
+          </div>
         </div>
+        {showCreateForm && (
+          <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-3 space-y-3">
+            <label
+              htmlFor="project-name"
+              className="block text-xs font-medium text-slate-200"
+            >
+              Project name
+            </label>
+            <input
+              id="project-name"
+              type="text"
+              value={projectName}
+              onChange={(e) => setProjectName(e.target.value)}
+              placeholder="Optional: defaults to timestamp name"
+              className="w-full rounded-md bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-slate-50"
+              disabled={creatingProject}
+            />
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleConfirmCreateProject}
+                disabled={creatingProject}
+                className="inline-flex items-center px-3 py-1.5 rounded-md bg-sky-500 hover:bg-sky-400 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-medium"
+              >
+                {creatingProject ? "Creating…" : "Confirm"}
+              </button>
+              <button
+                onClick={handleCancelCreateProject}
+                disabled={creatingProject}
+                className="inline-flex items-center px-3 py-1.5 rounded-md border border-slate-700 hover:bg-slate-800 disabled:opacity-50 text-xs font-medium"
+              >
+                Cancel
+              </button>
+            </div>
+            {createError && <p className="text-xs text-red-400">{createError}</p>}
+          </div>
+        )}
         {error && <p className="text-xs text-red-400">{error}</p>}
         {projects.length === 0 && !loading && (
           <p className="text-xs text-slate-400">

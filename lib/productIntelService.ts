@@ -13,7 +13,7 @@ export type ExtractedProductIntel = {
   raw_html?: string;
 };
 
-const PRODUCT_INTEL_MODEL = cfg.raw("ANTHROPIC_MODEL") ?? "claude-sonnet-4-20250514";
+const PRODUCT_INTEL_MODEL = cfg.raw('ANTHROPIC_MODEL') || 'claude-sonnet-4-5-20250929';
 const PRODUCT_INTEL_MAX_TOKENS = Number(cfg.raw("PRODUCT_INTEL_MAX_TOKENS") ?? 4000);
 
 function cleanText(value: unknown): string {
@@ -71,7 +71,7 @@ export async function extractProductIntel(url: string): Promise<ExtractedProduct
     throw new Error("ANTHROPIC_API_KEY is not configured");
   }
 
-  const anthropic = new Anthropic({ apiKey });
+  const anthropic = new Anthropic({ apiKey, timeout: 60000 });
 
   const message = await anthropic.messages.create({
     model: PRODUCT_INTEL_MODEL,
