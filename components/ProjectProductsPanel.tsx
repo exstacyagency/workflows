@@ -38,6 +38,12 @@ export function ProjectProductsPanel({ projectId, initialProducts }: Props) {
     }
   }, [products, selectedProductId]);
 
+  useEffect(() => {
+    if (selectedProductId && !products.some((product) => product.id === selectedProductId)) {
+      setSelectedProductId(products[0]?.id || "");
+    }
+  }, [products, selectedProductId]);
+
   async function handleCreateProduct(e: FormEvent) {
     e.preventDefault();
     setSubmitting(true);
@@ -79,7 +85,7 @@ export function ProjectProductsPanel({ projectId, initialProducts }: Props) {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col items-start gap-2">
             <select
               value={selectedProductId}
               onChange={(e) => setSelectedProductId(e.target.value)}
@@ -93,35 +99,45 @@ export function ProjectProductsPanel({ projectId, initialProducts }: Props) {
                 </option>
               ))}
             </select>
+            <div className="flex items-center gap-2">
+              <Link
+                href={
+                  selectedProductId
+                    ? `/projects/${projectId}/research-hub?productId=${selectedProductId}`
+                    : "#"
+                }
+                className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ${
+                  selectedProductId
+                    ? "bg-slate-800 text-slate-100 hover:bg-slate-700"
+                    : "bg-slate-900 text-slate-500 cursor-not-allowed pointer-events-none"
+                }`}
+                aria-disabled={!selectedProductId}
+              >
+                Research hub
+              </Link>
+              <Link
+                href={
+                  selectedProductId
+                    ? `/projects/${projectId}/creative-studio?productId=${selectedProductId}`
+                    : "#"
+                }
+                className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ${
+                  selectedProductId
+                    ? "border border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800"
+                    : "border border-slate-800 bg-slate-900 text-slate-500 cursor-not-allowed pointer-events-none"
+                }`}
+                aria-disabled={!selectedProductId}
+              >
+                creative studio
+              </Link>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
             <Link
-              href={
-                selectedProductId
-                  ? `/projects/${projectId}/research-hub?productId=${selectedProductId}`
-                  : "#"
-              }
-              className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ${
-                selectedProductId
-                  ? "bg-slate-800 text-slate-100 hover:bg-slate-700"
-                  : "bg-slate-900 text-slate-500 cursor-not-allowed pointer-events-none"
-              }`}
-              aria-disabled={!selectedProductId}
+              href={`/projects/${projectId}/products`}
+              className="inline-flex items-center rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-xs font-medium text-slate-200 hover:bg-slate-800"
             >
-              Research Hub
-            </Link>
-            <Link
-              href={
-                selectedProductId
-                  ? `/projects/${projectId}/creative-studio?productId=${selectedProductId}`
-                  : "#"
-              }
-              className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ${
-                selectedProductId
-                  ? "border border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800"
-                  : "border border-slate-800 bg-slate-900 text-slate-500 cursor-not-allowed pointer-events-none"
-              }`}
-              aria-disabled={!selectedProductId}
-            >
-              Creative Studio
+              View All Products
             </Link>
           </div>
         </div>
@@ -135,36 +151,10 @@ export function ProjectProductsPanel({ projectId, initialProducts }: Props) {
           </p>
         </div>
       ) : (
-        <div className="space-y-3">
-          {sortedProducts.map((product) => (
-            <div
-              key={product.id}
-              className="rounded-lg border border-slate-800 bg-slate-950/70 p-4"
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div className="space-y-1">
-                  <div className="text-xs text-slate-500">
-                    ID: <span className="font-mono">{product.id}</span>
-                  </div>
-                  <div className="text-sm font-semibold text-slate-100">{product.name}</div>
-                </div>
-                <div className="flex gap-2">
-                  <Link
-                    href={`/projects/${projectId}/research-hub?productId=${product.id}`}
-                    className="inline-flex items-center rounded-md bg-sky-500 hover:bg-sky-400 px-3 py-2 text-xs font-medium text-white"
-                  >
-                    Research Hub
-                  </Link>
-                  <Link
-                    href={`/projects/${projectId}/creative-studio?productId=${product.id}`}
-                    className="inline-flex items-center rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-medium text-slate-200 hover:bg-slate-800"
-                  >
-                    Creative Studio
-                  </Link>
-                </div>
-              </div>
-            </div>
-          ))}
+        <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-4">
+          <p className="text-xs text-slate-400">
+            Click <span className="text-slate-200 font-medium">View All Products</span> to manage and delete products.
+          </p>
         </div>
       )}
 
