@@ -5,28 +5,29 @@ import { prisma } from "@/lib/prisma";
 
 export interface ProductIntel {
   main_benefit?: string;
+  mechanismProcess?: string;
   key_features?: string[];
   usage?: string;
   price?: string;
   format?: string;
   specific_claims?: string[];
-  guarantees?: string[];
   variations?: string[];
   shipping?: string;
   citations?: Partial<Record<ProductIntelField, Citation[]>>;
   resolved_via_web_search?: ProductIntelField[];
   validated_fields?: Partial<Record<ProductIntelField, ValidatedField>>;
+  reverification_required_fields?: ProductIntelField[];
   [key: string]: unknown;
 }
 
 type ProductIntelField =
   | "main_benefit"
+  | "mechanismProcess"
   | "key_features"
   | "usage"
   | "price"
   | "format"
   | "specific_claims"
-  | "guarantees"
   | "variations"
   | "shipping";
 
@@ -35,6 +36,10 @@ type Citation = {
   title?: string;
   quote?: string;
   verification_date?: string;
+  source_domain?: string;
+  source_confidence?: "high" | "low";
+  needs_reverification?: boolean;
+  confidence_reason?: string;
 };
 
 type ValidatedField = {
@@ -50,12 +55,12 @@ type WebSearchEnrichment = {
 
 const PRODUCT_INTEL_FIELDS: ProductIntelField[] = [
   "main_benefit",
+  "mechanismProcess",
   "key_features",
   "usage",
   "price",
   "format",
   "specific_claims",
-  "guarantees",
   "variations",
   "shipping",
 ];
@@ -63,7 +68,6 @@ const PRODUCT_INTEL_FIELDS: ProductIntelField[] = [
 const PRODUCT_INTEL_ARRAY_FIELDS = new Set<ProductIntelField>([
   "key_features",
   "specific_claims",
-  "guarantees",
   "variations",
 ]);
 
@@ -71,6 +75,37 @@ const MAX_HTML_CHARS = 120_000;
 const HTML_FETCH_TIMEOUT_MS = 30_000;
 const DEFAULT_USER_AGENT = "Mozilla/5.0";
 const WEB_SEARCH_TOOL_MAX_STEPS = 5;
+const SPECIFIC_CLAIM_NUMERIC_PATTERN = /\d/;
+const SPECIFIC_CLAIM_MEASURABLE_UNIT_PATTERN =
+  /\b(?:mg|g|kg|mcg|ug|ml|l|oz|lb|lbs|capsule(?:s)?|tablet(?:s)?|serving(?:s)?|day(?:s)?|week(?:s)?|month(?:s)?|year(?:s)?|hour(?:s)?|minute(?:s)?|sec(?:ond)?s?)\b/i;
+const LOW_CONFIDENCE_HOST_SIGNALS = [
+  "coupon",
+  "coupons",
+  "deal",
+  "deals",
+  "discount",
+  "promo",
+  "voucher",
+  "cashback",
+  "affiliate",
+  "affiliates",
+  "shareasale",
+  "linksynergy",
+  "skimlinks",
+  "rakutenadvertising",
+  "awin1",
+  "impact.com",
+  "cj.com",
+];
+const LOW_CONFIDENCE_QUERY_SIGNALS = [
+  "aff_id",
+  "affiliate",
+  "referrer",
+  "utm_affiliate",
+  "coupon",
+  "deal",
+  "promo",
+];
 
 function extractJson(text: string): ProductIntel {
   const cleaned = text.replace(/```json|```/g, "").trim();
@@ -106,7 +141,26 @@ function normalizeStringArray(value: unknown): string[] {
     .filter(Boolean);
 }
 
+function claimHasNumericSignal(claim: string): boolean {
+  const text = claim.trim();
+  if (!text) return false;
+  return (
+    SPECIFIC_CLAIM_NUMERIC_PATTERN.test(text) ||
+    SPECIFIC_CLAIM_MEASURABLE_UNIT_PATTERN.test(text)
+  );
+}
+
+function specificClaimsAreQuantified(claims: unknown): boolean {
+  const normalizedClaims = normalizeStringArray(claims);
+  if (normalizedClaims.length === 0) return false;
+  return normalizedClaims.some((claim) => claimHasNumericSignal(claim));
+}
+
 function hasValue(value: unknown, field: ProductIntelField): boolean {
+  if (field === "specific_claims") {
+    // Specific claims are only valid when at least one claim has a measurable number/unit.
+    return specificClaimsAreQuantified(value);
+  }
   if (PRODUCT_INTEL_ARRAY_FIELDS.has(field)) {
     return normalizeStringArray(value).length > 0;
   }
@@ -114,7 +168,23 @@ function hasValue(value: unknown, field: ProductIntelField): boolean {
 }
 
 function getMissingFields(intel: ProductIntel): ProductIntelField[] {
-  return PRODUCT_INTEL_FIELDS.filter((field) => !hasValue(intel[field], field));
+  const missing = new Set<ProductIntelField>(
+    PRODUCT_INTEL_FIELDS.filter((field) => !hasValue(intel[field], field))
+  );
+
+  const hasAnyCitations = countCitations(intel.citations) > 0;
+  const hasSpecificClaimsCitations =
+    normalizeCitationArray(intel.citations?.specific_claims).length > 0;
+
+  // Always force specific_claims through web-search validation/enrichment.
+  missing.add("specific_claims");
+
+  // Empty citations are never considered complete.
+  if (!hasAnyCitations || !hasSpecificClaimsCitations) {
+    missing.add("specific_claims");
+  }
+
+  return Array.from(missing);
 }
 
 function normalizeCitationArray(value: unknown): Citation[] {
@@ -129,14 +199,120 @@ function normalizeCitationArray(value: unknown): Citation[] {
       const verificationDate = String(
         (entry as { verification_date?: unknown }).verification_date ?? ""
       ).trim();
+      const confidenceAssessment = assessCitationSourceConfidence(sourceUrl);
       return {
         source_url: sourceUrl,
         ...(title ? { title } : {}),
         ...(quote ? { quote } : {}),
         ...(verificationDate ? { verification_date: verificationDate } : {}),
+        ...(confidenceAssessment.source_domain
+          ? { source_domain: confidenceAssessment.source_domain }
+          : {}),
+        source_confidence: confidenceAssessment.source_confidence,
+        needs_reverification: confidenceAssessment.needs_reverification,
+        ...(confidenceAssessment.confidence_reason
+          ? { confidence_reason: confidenceAssessment.confidence_reason }
+          : {}),
       } satisfies Citation;
     })
     .filter((entry): entry is Citation => Boolean(entry));
+}
+
+function countCitations(value: unknown): number {
+  if (!value || typeof value !== "object") return 0;
+  const record = value as Record<string, unknown>;
+  return Object.values(record).reduce((total, fieldCitations) => {
+    return total + normalizeCitationArray(fieldCitations).length;
+  }, 0);
+}
+
+function assessCitationSourceConfidence(sourceUrl: string): {
+  source_domain: string | null;
+  source_confidence: "high" | "low";
+  needs_reverification: boolean;
+  confidence_reason?: string;
+} {
+  let url: URL | null = null;
+  try {
+    url = new URL(sourceUrl);
+  } catch {
+    return {
+      source_domain: null,
+      source_confidence: "high",
+      needs_reverification: false,
+    };
+  }
+
+  const hostname = url.hostname.toLowerCase().replace(/^www\./, "");
+  const query = url.search.toLowerCase();
+
+  const hostSignal = LOW_CONFIDENCE_HOST_SIGNALS.find((signal) =>
+    hostname.includes(signal)
+  );
+  const querySignal = LOW_CONFIDENCE_QUERY_SIGNALS.find((signal) =>
+    query.includes(signal)
+  );
+
+  if (hostSignal) {
+    return {
+      source_domain: hostname,
+      source_confidence: "low",
+      needs_reverification: true,
+      confidence_reason: `Low-confidence source domain matched "${hostSignal}"`,
+    };
+  }
+
+  if (querySignal) {
+    return {
+      source_domain: hostname,
+      source_confidence: "low",
+      needs_reverification: true,
+      confidence_reason: `Low-confidence URL parameter matched "${querySignal}"`,
+    };
+  }
+
+  return {
+    source_domain: hostname,
+    source_confidence: "high",
+    needs_reverification: false,
+  };
+}
+
+function normalizeProductIntel(intel: ProductIntel): ProductIntel {
+  const normalized: ProductIntel = {
+    ...intel,
+    ...(isNonEmptyString(intel.main_benefit)
+      ? { main_benefit: intel.main_benefit.trim() }
+      : {}),
+    ...(isNonEmptyString(intel.mechanismProcess)
+      ? { mechanismProcess: intel.mechanismProcess.trim() }
+      : {}),
+  };
+  delete (normalized as Record<string, unknown>).guarantees;
+  const normalizedCitations: Partial<Record<ProductIntelField, Citation[]>> = {};
+  const reverificationRequiredFields: ProductIntelField[] = [];
+
+  for (const field of PRODUCT_INTEL_FIELDS) {
+    const fieldCitations = normalizeCitationArray(intel.citations?.[field]);
+    if (fieldCitations.length === 0) continue;
+    normalizedCitations[field] = fieldCitations;
+    if (fieldCitations.some((citation) => citation.needs_reverification)) {
+      reverificationRequiredFields.push(field);
+    }
+  }
+
+  // Always persist citations, even when empty.
+  normalized.citations = normalizedCitations;
+
+  if (reverificationRequiredFields.length > 0) {
+    normalized.reverification_required_fields = Array.from(
+      new Set(reverificationRequiredFields)
+    );
+  } else {
+    delete normalized.reverification_required_fields;
+  }
+
+  return normalized;
 }
 
 function normalizeValidatedFields(
@@ -271,6 +447,7 @@ Return JSON:
 
 OVERRIDE EXTRACTED DATA IF:
 - format is vague ("supplement bottle" → find "90 capsules, 3 daily")
+- mechanismProcess explains outcome but not mechanics ("helps with energy" → find "contains 200mg caffeine + L-theanine; caffeine blocks adenosine receptors and theanine smooths stimulation")
 - key_features are benefits not specs ("anti-aging" → find "retinol 2.5%, vitamin C 15%")
 - usage lacks numbers ("as directed" → find "2 capsules daily with food")
 - specific_claims lack percentages ("effective" → find "73% improvement in 8 weeks")
@@ -423,18 +600,19 @@ Return JSON. Pull FACTS, not marketing copy:
 
 {
   "main_benefit": "the ONE problem this solves",
+  "mechanismProcess": "how the product works mechanically (inputs/components -> biological/technical action -> user-level effect)",
   "key_features": ["specific ingredients/specs/capabilities with amounts - NOT benefits"],
   "usage": "exact dosage/frequency/method - numbers required",
   "price": "number with currency",
   "format": "physical form + exact count + daily amount (e.g., '60 capsules, 2 daily' or '1.7oz bottle, apply twice daily')",
   "specific_claims": ["claims with hard numbers - % improved, days to results, study sample sizes"],
-  "guarantees": ["exact terms - number of days, conditions"],
   "variations": ["variant name - count/size - price"],
   "shipping": "shipping policy or threshold",
   "citations": {"field": [{"source_url": "url", "quote": "exact text"}]}
 }
 
 RULES:
+- mechanismProcess = concrete mechanism, not marketing outcome. Include technical/biological chain of action.
 - key_features = ingredient names + dosages OR tech specs + numbers, NOT "powerful" or "advanced"
 - usage = "take X capsules Y times daily" OR "apply X amount Y times daily", NOT "as directed"
 - format = count + frequency, NOT product type ("90 capsules, 3 daily" NOT "supplement bottle")
@@ -457,7 +635,7 @@ If you see marketing fluff, dig for the spec underneath it. Numbers over words. 
   });
 
   const text = extraction.content.find((c) => c.type === "text")?.text || "{}";
-  const baseProductIntel = extractJson(text);
+  const baseProductIntel = normalizeProductIntel(extractJson(text));
   const missingFields = getMissingFields(baseProductIntel);
 
   let productIntel = baseProductIntel;
@@ -471,7 +649,9 @@ If you see marketing fluff, dig for the spec underneath it. Numbers over words. 
         missingFields,
       });
       if (enrichment) {
-        productIntel = mergeSearchEnrichment(baseProductIntel, enrichment);
+        productIntel = normalizeProductIntel(
+          mergeSearchEnrichment(baseProductIntel, enrichment)
+        );
       }
     } catch (error) {
       console.warn("[Product Intel] Web search enrichment failed:", error);
@@ -494,6 +674,8 @@ If you see marketing fluff, dig for the spec underneath it. Numbers over words. 
         webSearchResolvedFields: productIntel.resolved_via_web_search ?? [],
         webSearchCitations: productIntel.citations ?? {},
         webSearchValidatedFields: productIntel.validated_fields ?? {},
+        webSearchReverificationRequiredFields:
+          productIntel.reverification_required_fields ?? [],
         sourceUrls: validContents.map((entry) => entry.url),
         collectedAt: new Date().toISOString(),
         source_url: productUrl,

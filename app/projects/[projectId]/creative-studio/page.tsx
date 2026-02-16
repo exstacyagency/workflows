@@ -552,11 +552,14 @@ export default function CreativeStudioPage() {
     setError(null);
 
     try {
+      const activeRunId = String(selectedRunId ?? "").trim();
       let endpoint = "";
       let payload: any = {
+        ...(extraPayload || {}),
+        // If a run is selected, pin jobs to it. If "No active run", omit runId so run-aware APIs create one.
+        ...(activeRunId ? { runId: activeRunId } : {}),
         projectId,
         productId: selectedProductId,
-        ...(extraPayload || {}),
       };
 
       // Map steps to their API endpoints
@@ -589,6 +592,9 @@ export default function CreativeStudioPage() {
 
       const data = await res.json();
       console.log("[Creative] Job created:", data.jobId);
+      if (data?.runId) {
+        setSelectedRunId(String(data.runId));
+      }
 
       // Reload jobs
       await loadJobs(selectedProductId);
@@ -699,12 +705,14 @@ export default function CreativeStudioPage() {
     setScriptModalError(null);
 
     try {
+      const activeRunId = String(selectedRunId ?? "").trim();
       const res = await fetch("/api/jobs/script-upload", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           projectId,
           productId: selectedProductId,
+          ...(activeRunId ? { runId: activeRunId } : {}),
           scriptText: text,
         }),
       });
@@ -714,6 +722,10 @@ export default function CreativeStudioPage() {
         throw new Error(data.error || `Server returned ${res.status}`);
       }
 
+      const data = await res.json().catch(() => ({}));
+      if (data?.runId) {
+        setSelectedRunId(String(data.runId));
+      }
       await loadJobs(selectedProductId);
       toast.success("Script uploaded successfully.");
       setShowScriptModal(false);
@@ -1336,25 +1348,11 @@ export default function CreativeStudioPage() {
                     padding: 12,
                   }}
                 >
-                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
                     <div style={{ flex: 1 }}>
                       <p style={{ fontSize: 12, fontWeight: 600, color: "#fca5a5", margin: "0 0 4px 0" }}>Error Details:</p>
                       <p style={{ fontSize: 12, color: "#f87171", margin: 0 }}>{getErrorText(step.lastJob.error)}</p>
                     </div>
-                    <button
-                      onClick={() => handleStepRunClick(step)}
-                      style={{
-                        fontSize: 12,
-                        color: "#f87171",
-                        textDecoration: "underline",
-                        whiteSpace: "nowrap",
-                        background: "transparent",
-                        border: "none",
-                        cursor: "pointer",
-                      }}
-                    >
-                      Try again →
-                    </button>
                   </div>
                 </div>
               )}

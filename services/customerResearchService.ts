@@ -331,9 +331,18 @@ function extractAmazonReviewText(review: AmazonReview): string {
   ).trim();
 }
 
-function getStarFiltersForProduct(type: ProductType): AmazonInput["filterByStar"][] {
-  // Collect all available review ratings for every product type.
-  return ["one_star", "two_star", "three_star", "four_star", "five_star"];
+function getStarFiltersForProduct(
+  asin: string,
+  mainProductAsin?: string | null
+): AmazonInput["filterByStar"][] {
+  const normalizedAsin = asin.trim().toUpperCase();
+  const normalizedMainAsin = (mainProductAsin ?? "").trim().toUpperCase();
+  const isMainProduct = Boolean(normalizedMainAsin) && normalizedAsin === normalizedMainAsin;
+
+  if (isMainProduct) {
+    return ["four_star", "five_star"];
+  }
+  return ["one_star", "two_star", "three_star"];
 }
 
 function toIsoDate(value: unknown): string | null {
@@ -962,7 +971,7 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
     };
 
     for (const product of productsToScrape) {
-      const starFilters = getStarFiltersForProduct(product.type);
+      const starFilters = getStarFiltersForProduct(product.asin, normalizedMainProductAsin);
       for (const starFilter of starFilters) {
         const reviews = await fetchApifyAmazonReviews([buildAmazonInput(product.asin, starFilter)]);
         amazonReviewsByType[product.type].push(...reviews);

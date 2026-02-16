@@ -178,9 +178,11 @@ The system models a complete video production workflow:
    npx prisma migrate dev
    ```
 
-5. **Start Development Server**:
+5. **Start the Application Services** (run each command in a separate terminal):
    ```bash
    npm run dev
+   npm run worker
+   cd services/reddit-scraper && python3 flask_api.py
    ```
 
 6. **Access the Application**: Open http://localhost:3000
