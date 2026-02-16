@@ -30,6 +30,7 @@ const QUALITY_CONFIDENCE_THRESHOLD = 70;
 
 const anthropic = new Anthropic({
   apiKey: cfg.raw("ANTHROPIC_API_KEY"),
+  timeout: 60000,
 });
 
 function asObject(value: unknown): Record<string, any> {

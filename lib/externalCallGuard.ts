@@ -17,6 +17,10 @@ export async function withTimeout<T>(
   ms: number,
   label = "operation"
 ): Promise<T> {
+  console.log("[externalCallGuard] withTimeout apply", {
+    label,
+    timeoutMs: ms,
+  });
   let t: NodeJS.Timeout | null = null;
   const timeout = new Promise<never>((_, reject) => {
     t = setTimeout(() => reject(new TimeoutError(`${label} timed out after ${ms}ms`)), ms);
@@ -114,7 +118,14 @@ export async function guardedExternalCall<T>(params: {
 
   try {
     const result = await withRetries(
-      () => withTimeout(fn(), timeoutMs, label),
+      () => {
+        console.log("[externalCallGuard] guardedExternalCall received timeout", {
+          label,
+          breakerKey,
+          timeoutMs,
+        });
+        return withTimeout(fn(), timeoutMs, label);
+      },
       retry,
       isRetryable
     );

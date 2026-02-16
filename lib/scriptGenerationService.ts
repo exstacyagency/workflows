@@ -1,14 +1,19 @@
 // lib/scriptGenerationService.ts
 import { cfg } from "@/lib/config";
+import Anthropic from "@anthropic-ai/sdk";
 import prisma from './prisma.ts';
-import { JobStatus, JobType, ScriptStatus } from '@prisma/client';
+import { JobStatus, JobType, Prisma, ScriptStatus } from '@prisma/client';
 import { updateJobStatus } from '@/lib/jobs/updateJobStatus';
 import type { Job } from '@prisma/client';
 import { guardedExternalCall } from './externalCallGuard.ts';
 import { env, requireEnv } from './configGuard.ts';
 import { flag, devNumber } from './flags.ts';
 
-const LLM_TIMEOUT_MS = Number(cfg.raw("LLM_TIMEOUT_MS") ?? 30_000);
+const LLM_TIMEOUT_MS = Number(cfg.raw("LLM_TIMEOUT_MS") ?? 90_000);
+console.log("[LLM] timeout config:", {
+  raw: cfg.raw("LLM_TIMEOUT_MS"),
+  resolved: LLM_TIMEOUT_MS,
+});
 const LLM_BREAKER_FAILS = Number(cfg.raw("LLM_BREAKER_FAILS") ?? 3);
 const LLM_BREAKER_COOLDOWN_MS = Number(cfg.raw("LLM_BREAKER_COOLDOWN_MS") ?? 60_000);
 const LLM_RETRIES = Number(cfg.raw("LLM_RETRIES") ?? 1);
@@ -77,6 +82,167 @@ type StructuredProductIntelRow = {
   createdAt: Date;
 };
 
+type CustomerAnalysisContext = {
+  jobId: string;
+  runId: string | null;
+  createdAt: Date;
+  completedAt: Date;
+};
+
+type AvatarSelection = {
+  avatar: any | null;
+  customerAnalysis: CustomerAnalysisContext | null;
+};
+
+type PatternSelection = {
+  patternResult: {
+    jobId: string | null;
+    createdAt: Date;
+    rawJson: unknown;
+    jobRunId: string | null;
+    jobUpdatedAt: Date | null;
+  } | null;
+  source: "latest" | "after_customer_analysis";
+};
+
+type ProductCollectionJobContext = {
+  id: string;
+  runId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  payload: unknown;
+};
+
+type ProductIntelSelection = {
+  productIntel: Record<string, unknown>;
+  source: "product_collection" | "structured_table" | "legacy";
+  sourceDate: Date | null;
+  productCollectionJobId: string | null;
+};
+
+type ResearchSourcesUsed = {
+  customerAnalysisJobId: string | null;
+  customerAnalysisRunDate: string | null;
+  patternAnalysisJobId: string | null;
+  patternAnalysisRunDate: string | null;
+  productIntelDate: string | null;
+};
+
+function toIso(date: Date | null | undefined): string | null {
+  return date instanceof Date ? date.toISOString() : null;
+}
+
+function asObject(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function asString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function asStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => (typeof entry === "string" ? entry.trim() : String(entry ?? "").trim()))
+    .filter(Boolean);
+}
+
+function toPatternEntry(value: unknown, category: string): Pattern | null {
+  const input = asObject(value);
+  if (!input) return null;
+  const patternName =
+    asString(input.pattern_name) ||
+    asString(input.pattern) ||
+    asString(input.name) ||
+    asString(input.title) ||
+    null;
+  if (!patternName) return null;
+  return {
+    pattern_name: patternName,
+    category,
+    description: asString(input.description) || asString(input.reason) || undefined,
+    example: asString(input.example) || undefined,
+    timing: asString(input.timing) || undefined,
+    visual_notes: asString(input.visual_notes) || asString(input.visual) || undefined,
+    occurrence_rate:
+      typeof input.occurrence_rate === "number" || typeof input.occurrence_rate === "string"
+        ? input.occurrence_rate
+        : undefined,
+  };
+}
+
+function normalizePatternInputs(rawJson: unknown): {
+  patterns: Pattern[];
+  antiPatterns: AntiPattern[];
+  stackingRules: StackingRule[];
+} {
+  const raw = asObject(rawJson) ?? {};
+  const topLevelPatterns = raw.patterns;
+
+  if (Array.isArray(topLevelPatterns)) {
+    return {
+      patterns: topLevelPatterns as Pattern[],
+      antiPatterns: (Array.isArray(raw.anti_patterns) ? raw.anti_patterns : []) as AntiPattern[],
+      stackingRules: (Array.isArray(raw.stacking_rules) ? raw.stacking_rules : []) as StackingRule[],
+    };
+  }
+
+  const nested = asObject(topLevelPatterns) ?? {};
+  const hookPatterns = Array.isArray(nested.hookPatterns) ? nested.hookPatterns : [];
+  const messagePatterns = Array.isArray(nested.messagePatterns) ? nested.messagePatterns : [];
+  const textOverlayPatterns = Array.isArray(nested.textOverlayPatterns) ? nested.textOverlayPatterns : [];
+  const ctaPatterns = Array.isArray(nested.ctaPatterns) ? nested.ctaPatterns : [];
+  const timingPatterns = Array.isArray(nested.timingPatterns) ? nested.timingPatterns : [];
+  const avoidPatterns = Array.isArray(nested.avoidPatterns) ? nested.avoidPatterns : [];
+
+  const patterns: Pattern[] = [
+    ...hookPatterns
+      .map((entry) => toPatternEntry(entry, "Hook Structure"))
+      .filter((entry): entry is Pattern => Boolean(entry)),
+    ...messagePatterns
+      .map((entry) => toPatternEntry(entry, "Proof Mechanism"))
+      .filter((entry): entry is Pattern => Boolean(entry)),
+    ...textOverlayPatterns
+      .map((entry) => toPatternEntry(entry, "Proof Mechanism"))
+      .filter((entry): entry is Pattern => Boolean(entry)),
+    ...ctaPatterns
+      .map((entry) => toPatternEntry(entry, "Proof Mechanism"))
+      .filter((entry): entry is Pattern => Boolean(entry)),
+    ...timingPatterns
+      .map((entry) => toPatternEntry(entry, "Proof Mechanism"))
+      .filter((entry): entry is Pattern => Boolean(entry)),
+  ];
+
+  const antiPatterns: AntiPattern[] = avoidPatterns
+    .map((entry) => {
+      const input = asObject(entry);
+      if (!input) return null;
+      const patternName =
+        asString(input.pattern_name) ||
+        asString(input.pattern) ||
+        asString(input.name) ||
+        asString(input.title);
+      if (!patternName) return null;
+      return {
+        pattern_name: patternName,
+        why_it_fails:
+          asString(input.why_it_fails) || asString(input.reason) || asString(input.description) || undefined,
+        example: asString(input.example) || undefined,
+      } as AntiPattern;
+    })
+    .filter((entry): entry is AntiPattern => Boolean(entry));
+
+  return {
+    patterns,
+    antiPatterns,
+    stackingRules: [],
+  };
+}
+
 async function loadStructuredProductIntel(projectId: string): Promise<StructuredProductIntelRow | null> {
   try {
     const rows = await prisma.$queryRaw<StructuredProductIntelRow[]>`
@@ -113,19 +279,193 @@ async function loadStructuredProductIntel(projectId: string): Promise<Structured
   }
 }
 
-function getAnthropicHeaders(apiKey: string) {
+async function loadStructuredProductIntelByJobId(jobId: string): Promise<StructuredProductIntelRow | null> {
+  try {
+    const rows = await prisma.$queryRaw<StructuredProductIntelRow[]>`
+      SELECT
+        "id",
+        "projectId",
+        "jobId",
+        "url",
+        "productName",
+        "tagline",
+        "keyFeatures",
+        "ingredientsOrSpecs",
+        "price",
+        "keyClaims",
+        "targetAudience",
+        "usp",
+        "rawHtml",
+        "createdAt"
+      FROM "product_intel"
+      WHERE "jobId" = ${jobId}
+      ORDER BY "createdAt" DESC
+      LIMIT 1
+    `;
+    return rows[0] ?? null;
+  } catch (error) {
+    const message = String((error as any)?.message ?? "");
+    if (
+      message.includes('relation "product_intel" does not exist') ||
+      (message.includes('column "') && message.includes('" does not exist'))
+    ) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+async function selectProductCollectionJob(
+  projectId: string,
+  preferredRunId: string | null
+): Promise<ProductCollectionJobContext | null> {
+  if (preferredRunId) {
+    const sameRun = await prisma.job.findFirst({
+      where: {
+        projectId,
+        type: JobType.PRODUCT_DATA_COLLECTION,
+        status: JobStatus.COMPLETED,
+        runId: preferredRunId,
+      },
+      orderBy: { updatedAt: "desc" },
+      select: {
+        id: true,
+        runId: true,
+        createdAt: true,
+        updatedAt: true,
+        payload: true,
+      },
+    });
+    if (sameRun) return sameRun;
+  }
+
+  return prisma.job.findFirst({
+    where: {
+      projectId,
+      type: JobType.PRODUCT_DATA_COLLECTION,
+      status: JobStatus.COMPLETED,
+    },
+    orderBy: { updatedAt: "desc" },
+    select: {
+      id: true,
+      runId: true,
+      createdAt: true,
+      updatedAt: true,
+      payload: true,
+    },
+  });
+}
+
+function mapProductCollectionIntelToPrompt(
+  intel: Record<string, unknown>,
+  fallbackProductName: string,
+  sourceUrl: string | null
+): Record<string, unknown> {
+  const keyFeatures = asStringArray(intel.key_features ?? intel.keyFeatures);
+  const keyClaims = asStringArray(intel.specific_claims ?? intel.keyClaims);
+  const ingredientsOrSpecs = asStringArray(
+    intel.ingredients_or_specs ?? intel.ingredientsOrSpecs
+  );
+  const mainBenefit = asString(intel.main_benefit ?? intel.mainBenefit);
+  const usage = asString(intel.usage);
+  const format = asString(intel.format);
+  const mechanismProcess = [usage, format, mainBenefit].filter(Boolean).join("; ");
+
   return {
-    'x-api-key': apiKey,
-    'anthropic-version': '2023-06-01',
-    'content-type': 'application/json',
+    productName:
+      asString(intel.product_name) ||
+      asString(intel.productName) ||
+      fallbackProductName,
+    url: sourceUrl,
+    tagline: asString(intel.tagline),
+    ingredientsOrSpecs,
+    usp: mainBenefit,
+    keyFeatures,
+    keyClaims,
+    targetAudience: asString(intel.target_audience ?? intel.targetAudience),
+    price: asString(intel.price),
+    rawHtml: asString(intel.raw_html ?? intel.rawHtml),
+    mechanism: mechanismProcess ? [{ process: mechanismProcess }] : undefined,
   };
 }
 
+async function loadProductIntelFromCollectionJob(
+  projectId: string,
+  job: ProductCollectionJobContext,
+  fallbackProductName: string
+): Promise<Record<string, unknown> | null> {
+  const payload = asObject(job.payload);
+  const payloadResult = asObject(payload?.result);
+  const payloadIntel = asObject(payloadResult?.intel);
+  const payloadProductUrl = asString(payload?.productUrl);
+
+  if (payloadIntel) {
+    return mapProductCollectionIntelToPrompt(
+      payloadIntel,
+      fallbackProductName,
+      payloadProductUrl
+    );
+  }
+
+  const researchIntelRow = await prisma.researchRow.findFirst({
+    where: {
+      projectId,
+      jobId: job.id,
+      type: "product_intel",
+    },
+    orderBy: { createdAt: "desc" },
+    select: {
+      content: true,
+      metadata: true,
+    },
+  });
+
+  if (researchIntelRow?.content) {
+    try {
+      const parsed = JSON.parse(researchIntelRow.content);
+      const intel = asObject(parsed);
+      if (intel) {
+        const metadata = asObject(researchIntelRow.metadata);
+        const metadataUrl = asString(metadata?.url) || asString(metadata?.source_url);
+        return mapProductCollectionIntelToPrompt(
+          intel,
+          fallbackProductName,
+          metadataUrl || payloadProductUrl
+        );
+      }
+    } catch {
+      // ignore invalid JSON and continue fallbacks
+    }
+  }
+
+  const structuredByJob = await loadStructuredProductIntelByJobId(job.id);
+  if (structuredByJob) {
+    return {
+      productName: structuredByJob.productName || fallbackProductName,
+      url: structuredByJob.url,
+      tagline: structuredByJob.tagline,
+      ingredientsOrSpecs: structuredByJob.ingredientsOrSpecs,
+      usp: structuredByJob.usp,
+      keyFeatures: structuredByJob.keyFeatures,
+      keyClaims: structuredByJob.keyClaims,
+      targetAudience: structuredByJob.targetAudience,
+      price: structuredByJob.price,
+      rawHtml: structuredByJob.rawHtml,
+    };
+  }
+
+  return null;
+}
+
 async function callAnthropic(system: string, prompt: string): Promise<string> {
-  const model = cfg.raw("ANTHROPIC_MODEL") ?? 'claude-3-opus-20240229';
+  const model = cfg.raw('ANTHROPIC_MODEL') || 'claude-sonnet-4-5-20250929';
   requireEnv(['ANTHROPIC_API_KEY'], 'ANTHROPIC');
   const apiKey = env('ANTHROPIC_API_KEY')!;
-  const headers = getAnthropicHeaders(apiKey);
+  const anthropic = new Anthropic({
+    apiKey,
+    timeout: 60000,
+  });
+  console.log("Anthropic client timeout:", 60000);
 
   const isRetryable = (err: any) => {
     const msg = String(err?.message ?? err).toLowerCase();
@@ -158,25 +498,21 @@ async function callAnthropic(system: string, prompt: string): Promise<string> {
         await new Promise(() => {}); // simulate hang for timeout testing
       }
 
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          model,
-          max_tokens: 8000,
-          system,
-          messages: [{ role: 'user', content: prompt }],
-        }),
+      const data = await anthropic.messages.create({
+        model,
+        max_tokens: 8000,
+        system,
+        messages: [{ role: 'user', content: prompt }],
       });
 
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`Anthropic script generation failed: ${res.status} ${text}`);
-      }
-
-      const data = await res.json();
-      const content = data?.content?.[0]?.text ?? data?.content ?? '';
-      return content as string;
+      const textContent = Array.isArray(data?.content)
+        ? data.content
+            .filter((block) => block?.type === "text")
+            .map((block) => String((block as any).text ?? ""))
+            .join("\n")
+            .trim()
+        : "";
+      return textContent || String((data as any)?.content ?? "");
     },
   });
 }
@@ -292,7 +628,8 @@ function buildScriptPrompt(args: {
     (Array.isArray(productIntel?.keyClaims) ? productIntel.keyClaims[0] : undefined) ||
     'addresses root cause';
 
-  const system = 'Generate 32-second commercial script. ONLY valid JSON. No markdown.';
+  const system =
+    "You are an expert TikTok direct-response creative director who has studied thousands of high-converting UGC ads. You understand scroll psychology, pattern interrupts, and what makes someone stop, watch, and buy in under 32 seconds. You write scripts where every word earns its place. You know the difference between content that entertains and content that converts. Output ONLY valid JSON. No markdown. No explanation. No preamble.";
 
   const prompt = `INPUTS
 Product: ${productName}
@@ -318,103 +655,392 @@ Synergy: ${amplifyRule?.performance_delta || 'neutral'}
 WHY synergy works: ${amplifyRule?.baseline_comparison || amplifyRule?.reason || 'patterns reinforce belief and reduce friction'}
 
 EXECUTION RULES
-Duration: 32s (4 scenes × 8s)
-Scene structure:
-- Scene 1 (0-8s): Hook pattern psychology
-- Scene 2 (8-16s): Proof pattern intro, product visible 12-16s
-- Scene 3 (16-24s): Proof demonstration completes
-- Scene 4 (24-32s): Resolution, goal achieved
+Duration: 32s (5-beat UGC flow)
+5-beat structure:
+- Beat 1 (0-5s): Hook
+- Beat 2 (5-11s): Personal Context
+- Beat 3 (11-18s): Problem Agitation
+- Beat 4 (18-26s): Product as Solution
+- Beat 5 (26-32s): Payoff
 
-VO: 48 words max @ 90 WPM
-- Scene 1: 0-10 words
-- Scene 2: 12-16 words (must break mid-sentence for Scene 3)
-- Scene 3: 12-16 words
-- Scene 4: 10-14 words
-
-Product entry: visible 12-16s (Scene 2 second half)
-Product duration: minimum 8s on-screen (Scenes 2-3)
-
-Format: Cinematic commercial (professional talent, controlled set)
-Translation: UGC pattern psychology → elevated execution
-NOT: handheld selfie, bathroom mirror, phone-in-hand.
-
-Blocker resolution: Address "${blockerFear}" through proof demonstration, NEVER spoken exposition.
-
-Proof constraint: Proof sequence must be fully visualized within Scenes 2–3. No time-lapse or "weeks later" montage.
-
-BANNED:
-- self-examination actions (touching face/body in the mirror)
-- heavy motion graphics overlays
-- flashy text animations
-
-ANTI-PATTERNS (HIGH FAIL RATE)
-${highFailAnti}
+VO: 72 words max @ 135 WPM
+- Beat 1: 6-10 words
+- Beat 2: 10-14 words
+- Beat 3: 12-16 words
+- Beat 4: 16-20 words
+- Beat 5: 8-12 words
 
 OUTPUT SCHEMA
 {
   "scenes": [
     {
-      "scene": 1,
-      "duration": "0-8s",
-      "narrative": "what happens narratively",
-      "character_action": "specific physical action + expression",
-      "environment": "location + aesthetic (modern/warm/clinical)",
-      "vo": "text or null",
-      "product_visible": false
+      "beat": "Hook",
+      "duration": "0-5s",
+      "vo": "text"
     },
     {
-      "scene": 2,
-      "duration": "8-16s",
-      "narrative": "proof mechanism begins",
-      "character_action": "action with product interaction 12s+",
-      "environment": "location + time-of-day if changed",
-      "vo": "text breaking mid-sentence",
-      "product_visible": true,
-      "product_timing": "12-16s",
-      "product_context": "how product appears (hand-held/on-counter/in-use)"
+      "beat": "Personal Context",
+      "duration": "5-11s",
+      "vo": "text"
     },
     {
-      "scene": 3,
-      "duration": "16-24s",
-      "narrative": "proof completes",
-      "character_action": "result demonstration",
-      "environment": "location",
-      "vo": "sentence completion + result",
-      "product_visible": true,
-      "continuity": "same_outfit or outfit_change or time_shift_lighting"
+      "beat": "Problem Agitation",
+      "duration": "11-18s",
+      "vo": "text"
     },
     {
-      "scene": 4,
-      "duration": "24-32s",
-      "narrative": "goal achieved",
-      "character_action": "final state showing transformation",
-      "environment": "location",
-      "vo": "resolution text",
-      "product_visible": false
+      "beat": "Product as Solution",
+      "duration": "18-26s",
+      "vo": "text"
+    },
+    {
+      "beat": "Payoff",
+      "duration": "26-32s",
+      "vo": "text"
     }
   ],
   "vo_full": "complete voiceover with scene markers",
-  "word_count": number,
-  "blocker_resolution_method": "how proof addresses fear without stating it",
-  "pattern_application": {
-    "hook_fidelity": "how hook example translated",
-    "proof_fidelity": "how proof mechanism executed",
-    "synergy_utilized": "how patterns amplified each other"
-  }
+  "word_count": number
 }
-
-CRITICAL: Scenes must chain. Scene N ending state = Scene N+1 starting state. Character outfit consistent unless continuity marker specifies change.
 
 Return ONLY JSON.`;
 
   return { system, prompt };
 }
 
+type ScriptJobPayload = {
+  customerAnalysisJobId?: unknown;
+};
+
+async function getRequestedCustomerAnalysisJobId(jobId?: string) {
+  if (!jobId) return null;
+  const job = await prisma.job.findUnique({
+    where: { id: jobId },
+    select: { payload: true },
+  });
+  const payload =
+    job?.payload && typeof job.payload === 'object'
+      ? (job.payload as ScriptJobPayload)
+      : null;
+  const selectedId =
+    typeof payload?.customerAnalysisJobId === 'string'
+      ? payload.customerAnalysisJobId.trim()
+      : '';
+  return selectedId || null;
+}
+
+async function getAvatarForScript(
+  projectId: string,
+  customerAnalysisJobId: string | null
+): Promise<AvatarSelection> {
+  if (!customerAnalysisJobId) {
+    const latestAnalysisJob = await prisma.job.findFirst({
+      where: {
+        projectId,
+        type: JobType.CUSTOMER_ANALYSIS,
+        status: JobStatus.COMPLETED,
+      },
+      orderBy: { updatedAt: "desc" },
+      select: {
+        id: true,
+        runId: true,
+        createdAt: true,
+        updatedAt: true,
+        resultSummary: true,
+      },
+    });
+
+    if (latestAnalysisJob) {
+      const summary = asObject(latestAnalysisJob.resultSummary);
+      const avatarId = asString(summary?.avatarId);
+      if (avatarId) {
+        const avatar = await prisma.customerAvatar.findFirst({
+          where: { id: avatarId, projectId },
+        });
+        if (avatar) {
+          return {
+            avatar,
+            customerAnalysis: {
+              jobId: latestAnalysisJob.id,
+              runId: latestAnalysisJob.runId ?? null,
+              createdAt: latestAnalysisJob.createdAt,
+              completedAt: latestAnalysisJob.updatedAt,
+            },
+          };
+        }
+      }
+    }
+
+    const fallbackAvatar = await prisma.customerAvatar.findFirst({
+      where: { projectId },
+      orderBy: { createdAt: "desc" },
+    });
+    return { avatar: fallbackAvatar, customerAnalysis: null };
+  }
+
+  const analysisJob = await prisma.job.findFirst({
+    where: {
+      id: customerAnalysisJobId,
+      projectId,
+      type: JobType.CUSTOMER_ANALYSIS,
+      status: JobStatus.COMPLETED,
+    },
+    select: {
+      id: true,
+      runId: true,
+      createdAt: true,
+      updatedAt: true,
+      resultSummary: true,
+    },
+  });
+
+  if (!analysisJob) {
+    throw new Error('Selected research run is invalid or not completed.');
+  }
+
+  const summary = asObject(analysisJob.resultSummary);
+  const avatarId = asString(summary?.avatarId);
+
+  if (!avatarId) {
+    throw new Error('Selected research run has no linked customer avatar.');
+  }
+
+  const avatar = await prisma.customerAvatar.findFirst({
+    where: { id: avatarId, projectId },
+  });
+
+  if (!avatar) {
+    throw new Error('Customer avatar for the selected research run was not found.');
+  }
+
+  return {
+    avatar,
+    customerAnalysis: {
+      jobId: analysisJob.id,
+      runId: analysisJob.runId ?? null,
+      createdAt: analysisJob.createdAt,
+      completedAt: analysisJob.updatedAt,
+    },
+  };
+}
+
+async function selectPatternResult(
+  projectId: string,
+  customerAnalysis: CustomerAnalysisContext | null
+): Promise<PatternSelection> {
+  const latest = await prisma.adPatternResult.findFirst({
+    where: {
+      projectId,
+      job: {
+        is: {
+          projectId,
+          type: JobType.PATTERN_ANALYSIS,
+          status: JobStatus.COMPLETED,
+        },
+      },
+    },
+    orderBy: { createdAt: 'desc' },
+    select: {
+      jobId: true,
+      createdAt: true,
+      rawJson: true,
+      job: {
+        select: {
+          runId: true,
+          updatedAt: true,
+        },
+      },
+    },
+  });
+
+  if (!customerAnalysis) {
+    console.log('[ScriptGeneration] Pattern run selected', {
+      projectId,
+      source: 'latest',
+      customerAnalysisJobId: null,
+      customerAnalysisCompletedAt: null,
+      patternJobId: latest?.jobId ?? null,
+      patternRunId: latest?.job?.runId ?? null,
+      patternResultCreatedAt: toIso(latest?.createdAt),
+      patternJobUpdatedAt: toIso(latest?.job?.updatedAt ?? null),
+    });
+    return {
+      source: 'latest',
+      patternResult: latest
+        ? {
+            jobId: latest.jobId ?? null,
+            createdAt: latest.createdAt,
+            rawJson: latest.rawJson,
+            jobRunId: latest.job?.runId ?? null,
+            jobUpdatedAt: latest.job?.updatedAt ?? null,
+          }
+        : null,
+    };
+  }
+
+  const afterCustomerAnalysisSameRun = customerAnalysis.runId
+    ? await prisma.adPatternResult.findFirst({
+        where: {
+          projectId,
+          job: {
+            is: {
+              projectId,
+              type: JobType.PATTERN_ANALYSIS,
+              status: JobStatus.COMPLETED,
+              runId: customerAnalysis.runId,
+              updatedAt: { gt: customerAnalysis.completedAt },
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        select: {
+          jobId: true,
+          createdAt: true,
+          rawJson: true,
+          job: {
+            select: {
+              runId: true,
+              updatedAt: true,
+            },
+          },
+        },
+      })
+    : null;
+
+  const afterCustomerAnalysisAnyRun = await prisma.adPatternResult.findFirst({
+    where: {
+      projectId,
+      job: {
+        is: {
+          projectId,
+          type: JobType.PATTERN_ANALYSIS,
+          status: JobStatus.COMPLETED,
+          updatedAt: { gt: customerAnalysis.completedAt },
+        },
+      },
+    },
+    orderBy: { createdAt: 'desc' },
+    select: {
+      jobId: true,
+      createdAt: true,
+      rawJson: true,
+      job: {
+        select: {
+          runId: true,
+          updatedAt: true,
+        },
+      },
+    },
+  });
+
+  const afterCustomerAnalysis =
+    afterCustomerAnalysisSameRun ?? afterCustomerAnalysisAnyRun;
+
+  const selected = afterCustomerAnalysis ?? latest;
+  const source: PatternSelection["source"] = afterCustomerAnalysis
+    ? 'after_customer_analysis'
+    : 'latest';
+
+  console.log('[ScriptGeneration] Pattern run selected', {
+    projectId,
+    source,
+    customerAnalysisJobId: customerAnalysis.jobId,
+    customerAnalysisRunId: customerAnalysis.runId,
+    customerAnalysisCompletedAt: toIso(customerAnalysis.completedAt),
+    patternJobId: selected?.jobId ?? null,
+    patternRunId: selected?.job?.runId ?? null,
+    patternResultCreatedAt: toIso(selected?.createdAt),
+    patternJobUpdatedAt: toIso(selected?.job?.updatedAt ?? null),
+  });
+
+  return {
+    source,
+    patternResult: selected
+      ? {
+          jobId: selected.jobId ?? null,
+          createdAt: selected.createdAt,
+          rawJson: selected.rawJson,
+          jobRunId: selected.job?.runId ?? null,
+          jobUpdatedAt: selected.job?.updatedAt ?? null,
+        }
+      : null,
+  };
+}
+
+async function selectProductIntelInput(
+  projectId: string,
+  projectName: string,
+  customerAnalysis: CustomerAnalysisContext | null
+): Promise<ProductIntelSelection> {
+  const preferredRunId = customerAnalysis?.runId ?? null;
+  const productCollectionJob = await selectProductCollectionJob(projectId, preferredRunId);
+
+  if (productCollectionJob) {
+    const fromCollection = await loadProductIntelFromCollectionJob(
+      projectId,
+      productCollectionJob,
+      projectName
+    );
+    if (fromCollection) {
+      console.log("[ScriptGeneration] Product intel selected", {
+        projectId,
+        source: "product_collection",
+        productCollectionJobId: productCollectionJob.id,
+        runId: productCollectionJob.runId,
+        updatedAt: toIso(productCollectionJob.updatedAt),
+      });
+      return {
+        productIntel: fromCollection,
+        source: "product_collection",
+        sourceDate: productCollectionJob.updatedAt ?? productCollectionJob.createdAt,
+        productCollectionJobId: productCollectionJob.id,
+      };
+    }
+  }
+
+  const structured = await loadStructuredProductIntel(projectId);
+  if (structured) {
+    return {
+      productIntel: {
+        productName: structured.productName || projectName,
+        url: structured.url,
+        tagline: structured.tagline,
+        ingredientsOrSpecs: structured.ingredientsOrSpecs,
+        usp: structured.usp,
+        keyFeatures: structured.keyFeatures,
+        keyClaims: structured.keyClaims,
+        targetAudience: structured.targetAudience,
+        price: structured.price,
+        rawHtml: structured.rawHtml,
+      },
+      source: "structured_table",
+      sourceDate: structured.createdAt,
+      productCollectionJobId: structured.jobId ?? null,
+    };
+  }
+
+  const legacy = await prisma.productIntelligence.findFirst({
+    where: { projectId },
+    orderBy: { createdAt: "desc" },
+  });
+
+  return {
+    productIntel: (legacy?.insights as Record<string, unknown>) ?? {},
+    source: "legacy",
+    sourceDate: legacy?.createdAt ?? null,
+    productCollectionJobId: null,
+  };
+}
+
 /**
  * Main worker: Script generation for a project.
  */
-export async function runScriptGeneration(args: { projectId: string; jobId?: string }) {
-  const { projectId, jobId } = args;
+export async function runScriptGeneration(args: {
+  projectId: string;
+  jobId?: string;
+  customerAnalysisJobId?: string;
+}) {
+  const { projectId, jobId, customerAnalysisJobId } = args;
 
   // Load dependencies:
   const project = await prisma.project.findUnique({
@@ -424,26 +1050,36 @@ export async function runScriptGeneration(args: { projectId: string; jobId?: str
     throw new Error('Project not found');
   }
 
-  const avatar = await prisma.customerAvatar.findFirst({
-    where: { projectId },
-    orderBy: { createdAt: 'desc' },
-  });
+  const selectedCustomerAnalysisJobId =
+    customerAnalysisJobId ?? (await getRequestedCustomerAnalysisJobId(jobId));
 
-  const productIntelPrimary = await loadStructuredProductIntel(projectId);
+  const avatarSelection = await getAvatarForScript(projectId, selectedCustomerAnalysisJobId);
+  const avatar = avatarSelection.avatar;
+  const selectedCustomerAnalysis = avatarSelection.customerAnalysis;
 
-  const legacyProductIntel = await prisma.productIntelligence.findFirst({
-    where: { projectId },
-    orderBy: { createdAt: 'desc' },
-  });
+  const patternSelection = await selectPatternResult(projectId, selectedCustomerAnalysis);
+  const patternResult = patternSelection.patternResult;
 
-  const patternResult = await prisma.adPatternResult.findFirst({
-    where: { projectId },
-    orderBy: { createdAt: 'desc' },
-  });
+  const productIntelSelection = await selectProductIntelInput(
+    projectId,
+    project.name,
+    selectedCustomerAnalysis
+  );
+  const productIntelPayload = productIntelSelection.productIntel;
+  const productIntelDate = productIntelSelection.sourceDate;
+  const researchSources: ResearchSourcesUsed = {
+    customerAnalysisJobId: selectedCustomerAnalysis?.jobId ?? null,
+    customerAnalysisRunDate: toIso(
+      selectedCustomerAnalysis?.completedAt ?? selectedCustomerAnalysis?.createdAt ?? null
+    ),
+    patternAnalysisJobId: patternResult?.jobId ?? null,
+    patternAnalysisRunDate: toIso(patternResult?.jobUpdatedAt ?? patternResult?.createdAt ?? null),
+    productIntelDate: toIso(productIntelDate),
+  };
 
   const missingDeps: string[] = [];
   if (!avatar) missingDeps.push('avatar');
-  if (!productIntelPrimary && !legacyProductIntel) missingDeps.push('product_intelligence');
+  if (!Object.keys(productIntelPayload).length) missingDeps.push('product_intelligence');
   if (!patternResult) missingDeps.push('pattern_result');
 
   if (missingDeps.length > 0) {
@@ -453,35 +1089,14 @@ export async function runScriptGeneration(args: { projectId: string; jobId?: str
     );
   }
 
-  const patternData = (patternResult?.rawJson as {
-    patterns?: Pattern[];
-    anti_patterns?: AntiPattern[];
-    stacking_rules?: StackingRule[];
-    [key: string]: any;
-  }) ?? {};
-
-  const patterns = patternData.patterns || [];
-  const antiPatterns = patternData.anti_patterns || [];
-  const stackingRules = patternData.stacking_rules || [];
+  const normalizedPatternInputs = normalizePatternInputs(patternResult?.rawJson ?? null);
+  const patterns = normalizedPatternInputs.patterns;
+  const antiPatterns = normalizedPatternInputs.antiPatterns;
+  const stackingRules = normalizedPatternInputs.stackingRules;
 
   if (!patterns.length && !missingDeps.includes('pattern_result')) {
     throw new Error('No patterns found in pattern brain for this project.');
   }
-
-  const productIntelPayload = productIntelPrimary
-    ? {
-        productName: productIntelPrimary.productName || project.name,
-        url: productIntelPrimary.url,
-        tagline: productIntelPrimary.tagline,
-        ingredientsOrSpecs: productIntelPrimary.ingredientsOrSpecs,
-        usp: productIntelPrimary.usp,
-        keyFeatures: productIntelPrimary.keyFeatures,
-        keyClaims: productIntelPrimary.keyClaims,
-        targetAudience: productIntelPrimary.targetAudience,
-        price: productIntelPrimary.price,
-        rawHtml: productIntelPrimary.rawHtml,
-      }
-    : (legacyProductIntel?.insights as any) ?? {};
 
   const { system, prompt } = buildScriptPrompt({
     productName: project.name,
@@ -508,7 +1123,10 @@ export async function runScriptGeneration(args: { projectId: string; jobId?: str
     console.warn(
       'ANTHROPIC_API_KEY not set – dev mode, skipping LLM call for script generation',
     );
-    return scriptRecord;
+    return {
+      script: scriptRecord,
+      researchSources,
+    };
   }
 
   const responseText = await callAnthropic(system, prompt);
@@ -526,7 +1144,10 @@ export async function runScriptGeneration(args: { projectId: string; jobId?: str
     },
   });
 
-  return updatedScript;
+  return {
+    script: updatedScript,
+    researchSources,
+  };
 }
 
 /**
@@ -543,14 +1164,22 @@ export async function startScriptGenerationJob(projectId: string, job: Job) {
       throw new Error("Transient: forced failure for retry test");
     }
 
-    const script = await runScriptGeneration({ projectId, jobId: job.id });
+    const generation = await runScriptGeneration({ projectId, jobId: job.id });
+    const script = generation.script;
+    const researchSources = generation.researchSources ?? {};
+    const completionSummary = {
+      summary: `Script generated (scriptId=${script.id}, words=${script.wordCount ?? 'unknown'})`,
+      scriptId: script.id,
+      customerAnalysisRunDate: researchSources.customerAnalysisRunDate ?? null,
+      patternAnalysisRunDate: researchSources.patternAnalysisRunDate ?? null,
+      productIntelDate: researchSources.productIntelDate ?? null,
+      researchSources,
+    };
 
-    await updateJobStatus(job.id, JobStatus.COMPLETED);
-    await prisma.job.update({
-      where: { id: job.id },
-      data: {
-        resultSummary: `Script generated (scriptId=${script.id}, words=${script.wordCount ?? 'unknown'})`,
-      },
+    // Persist result metadata in the same completion transition.
+    await updateJobStatus(job.id, JobStatus.COMPLETED, {
+      resultSummary: completionSummary as any,
+      error: Prisma.JsonNull,
     });
 
     return {
