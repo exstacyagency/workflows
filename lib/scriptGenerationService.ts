@@ -65,6 +65,36 @@ type ScriptJSON = {
   [key: string]: any;
 };
 
+type ScriptValidationReport = {
+  gatesPassed: boolean;
+  warnings: string[];
+  qualityScore: number;
+  gateResults: {
+    copyReadyPhrases: {
+      passed: boolean;
+      required: number;
+      matchedCount: number;
+      matchedPhrases: string[];
+    };
+    verifiedNumericClaims: {
+      passed: boolean;
+      extractedNumbers: string[];
+      unmatchedNumbers: string[];
+    };
+    finalBeatOutcomeOverlap: {
+      passed: boolean;
+      overlapKeywords: string[];
+      matchedKeywordCount: number;
+    };
+  };
+};
+
+type ScriptValidationInputs = {
+  copyReadyPhrases: string[];
+  verifiedNumericClaims: string[];
+  successLooksLikeQuote: string;
+};
+
 type PromptInjectionValues = {
   productName: unknown;
   mechanismProcess: unknown;
@@ -87,6 +117,7 @@ type PromptInjectionValues = {
   lifeStage: unknown;
   urgencyLevel: unknown;
   competitorLandmineTopQuote: unknown;
+  voiceCadenceConstraint: unknown;
 };
 
 type BeatPlanEntry = {
@@ -224,6 +255,7 @@ function markMissingPromptFields(values: PromptInjectionValues): PromptInjection
     lifeStage: normalize(values.lifeStage),
     urgencyLevel: normalize(values.urgencyLevel),
     competitorLandmineTopQuote: normalize(values.competitorLandmineTopQuote),
+    voiceCadenceConstraint: normalize(values.voiceCadenceConstraint),
   };
 }
 
@@ -483,19 +515,20 @@ function buildBeatPlanFromPatternData(
     .filter((entry): entry is Record<string, unknown> => Boolean(entry));
 
   if (timingPatterns.length > 0) {
-    const mapped = timingPatterns
+    const mapped: BeatPlanEntry[] = timingPatterns
       .slice(0, fallbackBeats.length)
       .map((entry, index) => {
         const fallback = fallbackBeats[index] ?? fallbackBeats[fallbackBeats.length - 1];
+        const guidance = normalizeTimingGuidance(entry);
         return {
           label: normalizeTimingLabel(entry, fallback.label),
           duration: normalizeTimingDuration(entry, fallback.duration),
-          guidance: normalizeTimingGuidance(entry),
+          ...(guidance ? { guidance } : {}),
         };
       });
 
     while (mapped.length < fallbackBeats.length) {
-      mapped.push(fallbackBeats[mapped.length]);
+      mapped.push({ ...fallbackBeats[mapped.length] });
     }
 
     return { beats: mapped, source: "timingPatterns" };
@@ -527,6 +560,84 @@ function extractTransferFormula(rawPatternJson: unknown): string | null {
     asString(prescriptiveGuidance?.transfer_formula) ||
     null
   );
+}
+
+function extractPsychologicalMechanism(rawPatternJson: unknown): string | null {
+  const root = asObject(rawPatternJson);
+  const patternsRoot = asObject(root?.patterns);
+  const prescriptiveGuidance =
+    asObject(patternsRoot?.prescriptiveGuidance) ||
+    asObject(root?.prescriptiveGuidance);
+
+  return (
+    asString(prescriptiveGuidance?.psychologicalMechanism) ||
+    asString(prescriptiveGuidance?.psychological_mechanism) ||
+    null
+  );
+}
+
+function buildVoiceCadenceConstraint(rawPatternJson: unknown): string {
+  const toFiniteNumber = (value: unknown): number | null => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+  const root = asObject(rawPatternJson);
+  const patternsRoot = asObject(root?.patterns);
+  const prescriptiveGuidance =
+    asObject(patternsRoot?.prescriptiveGuidance) ||
+    asObject(root?.prescriptiveGuidance);
+
+  const voiceCadenceRaw = prescriptiveGuidance?.voiceCadence;
+  const directString = asString(voiceCadenceRaw);
+  if (directString) {
+    return directString;
+  }
+
+  const voiceCadence = asObject(voiceCadenceRaw);
+  if (!voiceCadence) {
+    return "MISSING";
+  }
+
+  const avgSentenceLength = toFiniteNumber(voiceCadence.averageSentenceLength);
+  const sentenceLengthVariance = toFiniteNumber(voiceCadence.sentenceLengthVariance);
+  const questionUsageFrequency = toFiniteNumber(voiceCadence.questionUsageFrequency);
+  const pauseIndicators = asObject(voiceCadence.pauseIndicators);
+  const openingSentenceStructure = asObject(voiceCadence.openingSentenceStructure);
+  const dominantOpening = asString(openingSentenceStructure?.dominant);
+  const openingExamples = asStringArray(openingSentenceStructure?.examples).slice(0, 3);
+  const openingDistributionObj = asObject(openingSentenceStructure?.distribution);
+  const openingDistribution = openingDistributionObj
+    ? Object.entries(openingDistributionObj)
+        .map(([key, value]) => {
+          const count = toFiniteNumber(value);
+          return count !== null ? `${key}: ${count}` : null;
+        })
+        .filter((entry): entry is string => Boolean(entry))
+    : [];
+
+  const lines = [
+    avgSentenceLength !== null
+      ? `Average sentence length: ${avgSentenceLength.toFixed(2)} words`
+      : null,
+    sentenceLengthVariance !== null
+      ? `Sentence length variance: ${sentenceLengthVariance.toFixed(2)}`
+      : null,
+    pauseIndicators
+      ? `Pause indicators: periods=${toFiniteNumber(pauseIndicators.periods) ?? 0}, dashes=${toFiniteNumber(pauseIndicators.dashes) ?? 0}, ellipses=${toFiniteNumber(pauseIndicators.ellipses) ?? 0}`
+      : null,
+    questionUsageFrequency !== null
+      ? `Question usage frequency: ${(questionUsageFrequency * 100).toFixed(1)}% of sentences`
+      : null,
+    dominantOpening ? `Opening sentence structure (dominant): ${dominantOpening}` : null,
+    openingDistribution.length > 0
+      ? `Opening sentence structure distribution: ${openingDistribution.join(", ")}`
+      : null,
+    openingExamples.length > 0
+      ? `Opening sentence examples: ${openingExamples.map((example) => `"${example}"`).join(" | ")}`
+      : null,
+  ].filter((line): line is string => Boolean(line));
+
+  return lines.length > 0 ? lines.join("\n") : "MISSING";
 }
 
 function assignFormulaComponentsToBeats(
@@ -913,6 +1024,200 @@ function parseJsonFromLLM(text: string): ScriptJSON {
   return JSON.parse(jsonStr) as ScriptJSON;
 }
 
+function buildVoFullFromScriptJson(scriptJson: ScriptJSON): string {
+  const directVo = asString(scriptJson?.vo_full);
+  if (directVo) return directVo;
+  if (!Array.isArray(scriptJson?.scenes)) return "";
+  return scriptJson.scenes
+    .map((scene) => {
+      const sceneObj = asObject(scene) ?? {};
+      return asString(sceneObj.vo) ?? "";
+    })
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+}
+
+type NumericExtractionOptions = {
+  excludeTimingReferences?: boolean;
+  excludeSingleDigit?: boolean;
+};
+
+function isTimingAdjacent(text: string, start: number, end: number): boolean {
+  const before = text.slice(Math.max(0, start - 16), start).toLowerCase();
+  const after = text.slice(end, Math.min(text.length, end + 16)).toLowerCase();
+
+  if (/^\s*-?\s*(?:s|sec|secs|second|seconds)\b/.test(after)) {
+    return true;
+  }
+  if (/(?:\b|\s)(?:s|sec|secs|second|seconds)\s*-?\s*$/.test(before)) {
+    return true;
+  }
+
+  return false;
+}
+
+function extractNumericTokens(value: string, options: NumericExtractionOptions = {}): string[] {
+  const { excludeTimingReferences = false, excludeSingleDigit = false } = options;
+  const tokens: string[] = [];
+  const regex = /\d+(?:\.\d+)?%?/g;
+  let match: RegExpExecArray | null = null;
+
+  while ((match = regex.exec(value)) !== null) {
+    const token = String(match[0] ?? "");
+    if (!token) continue;
+
+    const start = match.index;
+    const end = start + token.length;
+    const isPercent = token.endsWith("%");
+    const numericPart = isPercent ? token.slice(0, -1) : token;
+    const parsed = Number(numericPart);
+
+    if (excludeTimingReferences && isTimingAdjacent(value, start, end)) {
+      continue;
+    }
+
+    if (
+      excludeSingleDigit &&
+      !isPercent &&
+      Number.isFinite(parsed) &&
+      Math.abs(parsed) < 10
+    ) {
+      continue;
+    }
+
+    tokens.push(token);
+  }
+
+  return tokens;
+}
+
+function normalizeNumericToken(value: string): string {
+  const trimmed = String(value).trim();
+  if (!trimmed) return "";
+  const isPercent = trimmed.endsWith("%");
+  const numericPart = isPercent ? trimmed.slice(0, -1) : trimmed;
+  const parsed = Number(numericPart);
+  if (!Number.isFinite(parsed)) {
+    return trimmed.toLowerCase();
+  }
+  const normalizedNumber = String(parsed);
+  return isPercent ? `${normalizedNumber}%` : normalizedNumber;
+}
+
+function tokenizeSemanticKeywords(input: string): string[] {
+  const STOP_WORDS = new Set([
+    "a", "an", "the", "and", "or", "but", "for", "of", "to", "in", "on", "at", "with", "from",
+    "by", "is", "are", "was", "were", "be", "been", "this", "that", "these", "those", "it",
+    "its", "as", "if", "so", "than", "then", "you", "your", "yours", "we", "our", "ours", "i",
+    "me", "my", "mine", "they", "their", "theirs", "he", "she", "his", "her", "him", "them",
+  ]);
+
+  const tokens = String(input)
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 3 && !STOP_WORDS.has(token));
+
+  return Array.from(new Set(tokens));
+}
+
+function countWords(value: string): number {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) return 0;
+  return normalized.split(/\s+/).length;
+}
+
+export function validateScriptAgainstGates(args: {
+  scriptJson: ScriptJSON;
+  copyReadyPhrases: string[];
+  verifiedNumericClaims: string[];
+  successLooksLikeQuote: string;
+}): ScriptValidationReport {
+  const voFull = buildVoFullFromScriptJson(args.scriptJson);
+  const voLower = voFull.toLowerCase();
+  const scenes = Array.isArray(args.scriptJson?.scenes) ? args.scriptJson.scenes : [];
+  const finalScene = scenes.length > 0 ? asObject(scenes[scenes.length - 1]) : null;
+  const finalBeatVo = asString(finalScene?.vo) ?? "";
+
+  const normalizedCopyReadyPhrases = Array.from(
+    new Set(
+      (args.copyReadyPhrases ?? [])
+        .map((phrase) => asString(phrase) ?? "")
+        .filter(Boolean),
+    ),
+  );
+  const matchedPhrases = normalizedCopyReadyPhrases.filter((phrase) =>
+    voLower.includes(phrase.toLowerCase()),
+  );
+  const gate1Passed = matchedPhrases.length >= 2;
+
+  const verifiedNumberSet = new Set(
+    (args.verifiedNumericClaims ?? [])
+      .flatMap((claim) => extractNumericTokens(claim))
+      .map((token) => normalizeNumericToken(token))
+      .filter(Boolean),
+  );
+  const extractedNumbers = extractNumericTokens(voFull, {
+    excludeTimingReferences: true,
+    excludeSingleDigit: true,
+  }).map((token) => normalizeNumericToken(token));
+  const unmatchedNumbers = Array.from(
+    new Set(
+      extractedNumbers.filter((token) => token && !verifiedNumberSet.has(token)),
+    ),
+  );
+  const gate2Passed = unmatchedNumbers.length === 0;
+
+  const successKeywords = tokenizeSemanticKeywords(args.successLooksLikeQuote ?? "");
+  const finalBeatKeywords = new Set(tokenizeSemanticKeywords(finalBeatVo));
+  const overlapKeywords = successKeywords.filter((token) => finalBeatKeywords.has(token));
+  const gate3Passed = successKeywords.length === 0 ? true : overlapKeywords.length > 0;
+
+  const warnings: string[] = [];
+  if (!gate1Passed) {
+    warnings.push(
+      `Copy-ready language gate failed: matched ${matchedPhrases.length}/2 required phrases in vo_full.`,
+    );
+  }
+  if (!gate2Passed) {
+    warnings.push(
+      `Verified numeric claims gate failed: unverified numbers found (${unmatchedNumbers.join(", ")}).`,
+    );
+  }
+  if (!gate3Passed) {
+    warnings.push("Final beat outcome gate failed: final beat does not overlap success outcome language.");
+  }
+
+  const passedCount = [gate1Passed, gate2Passed, gate3Passed].filter(Boolean).length;
+  const qualityScore = Math.max(0, Math.min(100, Math.round((passedCount / 3) * 100)));
+
+  return {
+    gatesPassed: warnings.length === 0,
+    warnings,
+    qualityScore,
+    gateResults: {
+      copyReadyPhrases: {
+        passed: gate1Passed,
+        required: 2,
+        matchedCount: matchedPhrases.length,
+        matchedPhrases,
+      },
+      verifiedNumericClaims: {
+        passed: gate2Passed,
+        extractedNumbers,
+        unmatchedNumbers,
+      },
+      finalBeatOutcomeOverlap: {
+        passed: gate3Passed,
+        overlapKeywords,
+        matchedKeywordCount: overlapKeywords.length,
+      },
+    },
+  };
+}
+
 /**
  * Build script prompt from avatar, product intel, and pattern brain.
  */
@@ -926,7 +1231,12 @@ function buildScriptPrompt(args: {
   patterns: Pattern[];
   antiPatterns: AntiPattern[];
   stackingRules: StackingRule[];
-}): { system: string; prompt: string; promptInjections: PromptInjectionValues } {
+}): {
+  system: string;
+  prompt: string;
+  promptInjections: PromptInjectionValues;
+  validationInputs: ScriptValidationInputs;
+} {
   const {
     productName,
     avatar,
@@ -1097,20 +1407,26 @@ function buildScriptPrompt(args: {
     ...beatPlanBase,
     beats: assignFormulaComponentsToBeats(beatPlanBase.beats, transferFormula),
   };
+  const psychologicalMechanism = extractPsychologicalMechanism(patternRawJson) || "MISSING";
+  const voiceCadenceConstraint = buildVoiceCadenceConstraint(patternRawJson);
   const schemaTimingPlan = buildDefaultBeatPlan(targetDuration, beatCount);
   const dynamicWordCeiling = Math.round((targetDuration / 60) * 135 * 0.9);
-  const perBeatWords = Math.max(4, Math.round(dynamicWordCeiling / beatCount));
-  const perBeatMinWords = Math.max(3, Math.floor(perBeatWords * 0.75));
-  const perBeatMaxWords = Math.max(perBeatMinWords + 1, Math.ceil(perBeatWords * 1.25));
-  const beatWordGuideLines = Array.from({ length: beatCount }, (_, index) =>
-    `- Beat ${index + 1}: ~${perBeatMinWords}-${perBeatMaxWords} words`
-  ).join("\n");
   const beatStructureLines = beatPlan.beats
     .map((beat, index) => {
-      const formulaComponent = beat.formulaComponent || "MISSING_FORMULA_COMPONENT";
-      return `BEAT ${index + 1} — ${beat.label} (${beat.duration}) | FORMULA REQUIREMENT: ${formulaComponent} | Write VO that executes this formula component specifically. This is not optional context. This beat must deliver ${formulaComponent} or the psychological contract with the viewer breaks.`;
+      return `- Beat ${index + 1}: ${beat.label} (${beat.duration})`;
     })
     .join("\n");
+  const formulaComponentsPerBeatLines = beatPlan.beats
+    .map((beat, index) => {
+      const component = asString(beat.formulaComponent);
+      return component ? `- Beat ${index + 1}: ${component}` : null;
+    })
+    .filter((line): line is string => Boolean(line))
+    .join("\n");
+  const tier1FormulaSection = formulaComponentsPerBeatLines
+    ? `formulaComponentsPerBeat:
+${formulaComponentsPerBeatLines}`
+    : "";
   const outputSceneSchema = schemaTimingPlan
     .map(
       (timedBeat, index) => {
@@ -1120,73 +1436,41 @@ function buildScriptPrompt(args: {
     )
     .join(",\n");
 
+  // Tiered prompt contract:
+  // Tier 1 = hard architectural constraints, Tier 2 = pass/fail quality gates, Tier 3 = flexible guidance.
   const system =
-    "You are an expert TikTok direct-response creative director who has studied thousands of high-converting UGC ads. You understand scroll psychology, pattern interrupts, and what makes someone stop, watch, and buy in under 32 seconds. You write scripts where every word earns its place. You know the difference between content that entertains and content that converts. Output ONLY valid JSON. No markdown. No explanation. No preamble.";
+    "You are a TikTok conversion copywriter. You write 30-second UGC scripts that stop scrolls and drive purchases. Every word earns its place. Output ONLY valid JSON. No markdown. No preamble.";
 
-  const prompt = `INPUTS
-Product: ${productName}
-Mechanism: ${mechanismProcess}
-Avatar: ${avatarAge}yo ${avatarGender}, ${avatarJob}
-Psycho: ${psychographics}
-Goal: ${goal}
-Blocker: ${blockerFear}
-Blocker quote: "${blockerQuote}"
-Verified numeric claims from product intelligence:
-${verifiedNumericClaims.length > 0 ? verifiedNumericClaims.map((claim, idx) => `${idx + 1}. ${claim}`).join('\n') : "None provided"}
-
-REQUIRED CUSTOMER LANGUAGE (MANDATORY)
-copy_ready_phrases:
-${copyReadyPhrasesList}
-success_looks_like quote:
-"${successLooksLikeQuote || "MISSING"}"
-buy_trigger quote:
-"${buyTriggerQuote || "MISSING"}"
-buy_trigger situation:
-"${buyTriggerSituation || "MISSING"}"
-life_stage:
-"${lifeStage || "MISSING"}"
-urgency_level:
-"${urgencyLevel || "MISSING"}"
-top competitor_landmines quote:
-"${competitorLandmineTopQuote || "MISSING"}"
-
-PATTERN INTELLIGENCE
-Hook: ${hookPatternName} (${hookPattern?.occurrence_rate || 'unknown'} occurrence)
-Example: "${hookPatternExample}"
-Timing: ${hookPattern?.timing || '0-3s'}
-Visual: ${hookPattern?.visual_notes || 'N/A'}
-
-Proof: ${proofPatternName} (${proofPattern?.occurrence_rate || 'unknown'} occurrence)
-How: ${proofPatternDescription}
-Timing: ${proofPattern?.timing || ''}
-Visual: ${proofPattern?.visual_notes || ''}
-
-Synergy: ${amplifySynergy}
-WHY synergy works: ${amplifyRule?.baseline_comparison || amplifyRule?.reason || 'patterns reinforce belief and reduce friction'}
-
-EXECUTION RULES
-Duration: ${targetDuration}s (${beatCount}-beat UGC flow)
-Beat plan source: ${beatPlan.source}
-${beatCount}-beat structure:
+  const prompt = `TIER 1 - STRUCTURE (NON-NEGOTIABLE)
+targetDuration: ${targetDuration}
+beatCount: ${beatCount}
+dynamicWordCeiling: ${dynamicWordCeiling}
+beatStructureLines:
 ${beatStructureLines}
+${tier1FormulaSection}
+Break any Tier 1 rule and the output is unusable. These are architectural constraints.
 
-VO: ${dynamicWordCeiling} words max @ 135 WPM (90% density target)
-${beatWordGuideLines}
+TIER 2 - QUALITY GATES (GO/NO-GO)
+copyReadyPhrases minimum: include at least 2 phrases verbatim or near-verbatim.
+copyReadyPhrases list:
+${copyReadyPhrasesList}
+verifiedNumericClaims (use these or use no numbers):
+${verifiedNumericClaims.length > 0 ? verifiedNumericClaims.map((claim, idx) => `${idx + 1}. ${claim}`).join('\n') : "None provided"}
+finalBeatOutcome requirement:
+"${successLooksLikeQuote || "MISSING"}"
+Pass all three gates or the script fails review.
 
-CLAIM SAFETY RULES
-- Specific numeric claims in the script must come from the "Verified numeric claims from product intelligence" list above.
-- All claims require a verified source in the product intelligence data.
-- If no claim exists, use qualitative customer language instead.
-- Do not invent claims or statistics.
-- Do not invent performance statistics, percentages, timeframes, or quantified outcomes.
-- If no relevant numeric claim exists for a beat, use emotional language instead of fabricated numbers.
-
-MANDATORY LANGUAGE RULES
-- At least two phrases from copy_ready_phrases must appear verbatim or near-verbatim in the final script.
-- The Payoff beat must echo the emotional outcome from success_looks_like.
-- The Problem Agitation beat must use language patterns from competitor_landmines failures, not generic supplement frustration.
-- The Personal Context beat must reference the specific high-stakes situation that triggers purchase (for example: deadline pressure, project-based cognitive demand, performance under pressure). Generic "working professional" framing is not acceptable. The viewer must recognize their exact situation within 3 seconds.
-- If the beat labels differ, apply the Payoff rule to the final beat and apply the Problem Agitation rule to the beat that escalates pain/tension.
+TIER 3 - GUIDANCE (INFORM DON'T DICTATE)
+productName: ${productName}
+mechanismProcess: ${mechanismProcess}
+avatarDetails: ${avatarAge}yo ${avatarGender}, ${avatarJob}
+buyTriggerSituation: "${buyTriggerSituation || "MISSING"}"
+psychologicalMechanism: ${psychologicalMechanism}
+hookPatternExample: "${hookPatternExample || "MISSING"}"
+competitorLandmineTopQuote: "${competitorLandmineTopQuote || "MISSING"}"
+voiceCadence:
+${voiceCadenceConstraint}
+Use Tier 3 to inform tone and style. Flex for creative flow when needed.
 
 OUTPUT SCHEMA
 {
@@ -1224,6 +1508,12 @@ Return ONLY JSON.`;
       lifeStage,
       urgencyLevel,
       competitorLandmineTopQuote,
+      voiceCadenceConstraint,
+    },
+    validationInputs: {
+      copyReadyPhrases,
+      verifiedNumericClaims,
+      successLooksLikeQuote,
     },
   };
 }
@@ -1649,7 +1939,7 @@ export async function runScriptGeneration(args: {
     throw new Error('No patterns found in pattern brain for this project.');
   }
 
-  const { system, prompt, promptInjections } = buildScriptPrompt({
+  const { system, prompt, promptInjections, validationInputs } = buildScriptPrompt({
     productName: project.name,
     avatar: (avatar?.persona as any) ?? {},
     productIntel: productIntelPayload,
@@ -1692,19 +1982,29 @@ export async function runScriptGeneration(args: {
   );
   const responseText = await callAnthropic(system, prompt);
   const scriptJson = parseJsonFromLLM(responseText);
+  const validationReport = validateScriptAgainstGates({
+    scriptJson,
+    copyReadyPhrases: validationInputs.copyReadyPhrases,
+    verifiedNumericClaims: validationInputs.verifiedNumericClaims,
+    successLooksLikeQuote: validationInputs.successLooksLikeQuote,
+  });
+  const voFull = buildVoFullFromScriptJson(scriptJson);
+  const derivedWordCount = countWords(voFull);
 
   const updatedScript = await prisma.script.update({
     where: { id: scriptRecord.id },
     data: {
       rawJson: {
         ...(scriptJson as Record<string, unknown>),
+        vo_full: voFull,
         targetDuration: selectedTargetDuration,
         beatCount: selectedBeatCount,
+        validationReport,
       } as any,
       wordCount:
         typeof scriptJson.word_count === 'number'
           ? scriptJson.word_count
-          : null,
+          : derivedWordCount,
       status: ScriptStatus.READY,
     },
   });
@@ -1712,6 +2012,7 @@ export async function runScriptGeneration(args: {
   return {
     script: updatedScript,
     researchSources,
+    validationReport,
   };
 }
 
@@ -1732,13 +2033,18 @@ export async function startScriptGenerationJob(projectId: string, job: Job) {
     const generation = await runScriptGeneration({ projectId, jobId: job.id });
     const script = generation.script;
     const researchSources = generation.researchSources ?? {};
+    const validationReport = generation.validationReport ?? null;
+    const warningCount = Array.isArray(validationReport?.warnings)
+      ? validationReport.warnings.length
+      : 0;
     const completionSummary = {
-      summary: `Script generated (scriptId=${script.id}, words=${script.wordCount ?? 'unknown'})`,
+      summary: `Script generated (scriptId=${script.id}, words=${script.wordCount ?? 'unknown'})${warningCount > 0 ? ` | ${warningCount} quality warning${warningCount === 1 ? "" : "s"}` : ""}`,
       scriptId: script.id,
       customerAnalysisRunDate: researchSources.customerAnalysisRunDate ?? null,
       patternAnalysisRunDate: researchSources.patternAnalysisRunDate ?? null,
       productIntelDate: researchSources.productIntelDate ?? null,
       researchSources,
+      validationReport,
     };
 
     // Persist result metadata in the same completion transition.
