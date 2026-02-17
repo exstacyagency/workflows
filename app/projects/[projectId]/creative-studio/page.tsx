@@ -62,6 +62,16 @@ type ScriptBeat = {
   beat: string;
   duration: string | number | null;
   vo: string;
+  aiDataQuality?: "partial" | "minimal" | null;
+};
+
+type GeneratedBeatDataQuality = "full" | "partial" | "minimal";
+
+type GenerateBeatResponse = {
+  vo: string;
+  dataQuality: GeneratedBeatDataQuality;
+  beatLabel: string;
+  insertionIndex: number;
 };
 
 type ScriptDetails = {
@@ -71,6 +81,8 @@ type ScriptDetails = {
   wordCount: number | null;
   createdAt: string;
 };
+
+const DEFAULT_SCRIPT_TARGET_DURATION_SECONDS = 30;
 
 type ScriptRunSummarySource = {
   present: boolean;
@@ -86,6 +98,260 @@ type ScriptRunSummary = {
   patternAnalysis: ScriptRunSummarySource;
   productCollection: ScriptRunSummarySource;
 };
+
+type AddBeatExpansionProps = {
+  afterIndex: number;
+  disabled: boolean;
+  onWriteYourself: (afterIndex: number, beatLabel: string) => void;
+  onGenerateWithAi: (afterIndex: number, beatLabel: string) => Promise<void>;
+};
+
+function defaultInsertBeatLabel(afterIndex: number): string {
+  return `Beat ${afterIndex + 2}`;
+}
+
+function AddBeatExpansion({
+  afterIndex,
+  disabled,
+  onWriteYourself,
+  onGenerateWithAi,
+}: AddBeatExpansionProps) {
+  const [expanded, setExpanded] = useState(false);
+  const [label, setLabel] = useState(() => defaultInsertBeatLabel(afterIndex));
+  const [selectedOption, setSelectedOption] = useState<"write" | "ai" | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!expanded && !loading) {
+      setLabel(defaultInsertBeatLabel(afterIndex));
+    }
+  }, [afterIndex, expanded, loading]);
+
+  useEffect(() => {
+    console.log("[CreativeStudio] add-beat expansion state", {
+      afterIndex,
+      expanded,
+      selectedOption,
+    });
+  }, [afterIndex, expanded, selectedOption]);
+
+  function normalizedLabel(): string {
+    const trimmed = label.trim();
+    return trimmed || defaultInsertBeatLabel(afterIndex);
+  }
+
+  function handleToggleExpanded() {
+    setExpanded((previous) => {
+      const next = !previous;
+      console.log("[CreativeStudio] toggle add-beat expansion", {
+        afterIndex,
+        expanded: next,
+      });
+      if (!next) {
+        setError(null);
+        setSelectedOption(null);
+        setLoading(false);
+        setLabel(defaultInsertBeatLabel(afterIndex));
+      }
+      return next;
+    });
+  }
+
+  function handleWriteYourself() {
+    if (disabled || loading) return;
+    setSelectedOption("write");
+    setError(null);
+    onWriteYourself(afterIndex, normalizedLabel());
+    setExpanded(false);
+    setSelectedOption(null);
+    setLabel(defaultInsertBeatLabel(afterIndex));
+  }
+
+  async function runGenerateWithAi() {
+    if (disabled || loading) return;
+    setSelectedOption("ai");
+    setError(null);
+    setLoading(true);
+    try {
+      await onGenerateWithAi(afterIndex, normalizedLabel());
+      setExpanded(false);
+      setSelectedOption(null);
+      setLabel(defaultInsertBeatLabel(afterIndex));
+    } catch (err: any) {
+      setError(err?.message || "Failed to generate beat");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (!expanded) {
+    return (
+      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <button
+          type="button"
+          onClick={handleToggleExpanded}
+          disabled={disabled}
+          style={{
+            border: "1px solid #334155",
+            backgroundColor: "#0f172a",
+            color: disabled ? "#64748b" : "#cbd5e1",
+            padding: "4px 8px",
+            borderRadius: 6,
+            fontSize: 12,
+            cursor: disabled ? "not-allowed" : "pointer",
+          }}
+        >
+          + Add Beat Below
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        border: "1px solid #334155",
+        backgroundColor: "#020617",
+        borderRadius: 8,
+        padding: 10,
+        display: "grid",
+        gap: 8,
+      }}
+    >
+      <input
+        type="text"
+        value={label}
+        onChange={(event) => {
+          setLabel(event.target.value);
+          setError(null);
+        }}
+        placeholder="Beat label"
+        disabled={disabled || loading}
+        style={{
+          width: "100%",
+          boxSizing: "border-box",
+          borderRadius: 8,
+          border: "1px solid #334155",
+          backgroundColor: "#0f172a",
+          color: "#e2e8f0",
+          padding: "7px 9px",
+          fontSize: 13,
+        }}
+      />
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+        <button
+          type="button"
+          onClick={handleWriteYourself}
+          disabled={disabled || loading}
+          style={{
+            border: "1px solid #334155",
+            backgroundColor: selectedOption === "write" ? "#1e293b" : "#0f172a",
+            color: disabled || loading ? "#64748b" : "#cbd5e1",
+            padding: "5px 10px",
+            borderRadius: 6,
+            fontSize: 12,
+            fontWeight: 600,
+            cursor: disabled || loading ? "not-allowed" : "pointer",
+          }}
+        >
+          Write Yourself
+        </button>
+        <button
+          type="button"
+          onClick={() => void runGenerateWithAi()}
+          disabled={disabled || loading}
+          style={{
+            border: "none",
+            backgroundColor: disabled || loading ? "#1e293b" : "#0ea5e9",
+            color: disabled || loading ? "#94a3b8" : "#ffffff",
+            padding: "5px 10px",
+            borderRadius: 6,
+            fontSize: 12,
+            fontWeight: 600,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            cursor: disabled || loading ? "not-allowed" : "pointer",
+          }}
+        >
+          {loading ? (
+            <>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                style={{ width: 14, height: 14, animation: "spin 1s linear infinite" }}
+              >
+                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" style={{ opacity: 0.25 }} />
+                <path
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  style={{ opacity: 0.75 }}
+                />
+              </svg>
+              Generating...
+            </>
+          ) : (
+            "Generate with AI"
+          )}
+        </button>
+        <button
+          type="button"
+          onClick={handleToggleExpanded}
+          disabled={disabled || loading}
+          style={{
+            border: "1px solid #334155",
+            backgroundColor: "transparent",
+            color: disabled || loading ? "#64748b" : "#94a3b8",
+            padding: "5px 10px",
+            borderRadius: 6,
+            fontSize: 12,
+            fontWeight: 600,
+            cursor: disabled || loading ? "not-allowed" : "pointer",
+          }}
+        >
+          Cancel
+        </button>
+      </div>
+      {error && (
+        <div
+          style={{
+            borderRadius: 6,
+            border: "1px solid rgba(239, 68, 68, 0.4)",
+            backgroundColor: "rgba(239, 68, 68, 0.1)",
+            color: "#fca5a5",
+            fontSize: 12,
+            padding: "8px 10px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 8,
+          }}
+        >
+          <span>{error}</span>
+          <button
+            type="button"
+            onClick={() => void runGenerateWithAi()}
+            disabled={disabled || loading}
+            style={{
+              border: "1px solid rgba(239, 68, 68, 0.45)",
+              backgroundColor: "rgba(239, 68, 68, 0.12)",
+              color: disabled || loading ? "#64748b" : "#fecaca",
+              borderRadius: 6,
+              padding: "4px 8px",
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: disabled || loading ? "not-allowed" : "pointer",
+            }}
+          >
+            Retry
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function CreativeStudioPage() {
   const params = useParams();
@@ -462,6 +728,11 @@ export default function CreativeStudioPage() {
       const beatValue = parsed.beat;
       const voValue = parsed.vo;
       const durationValue = parsed.duration;
+      const aiDataQualityValue = parsed.aiDataQuality;
+      const aiDataQuality =
+        aiDataQualityValue === "partial" || aiDataQualityValue === "minimal"
+          ? aiDataQualityValue
+          : null;
       return {
         beat: cleanScriptBeatLabel(
           typeof beatValue === "string" && beatValue.trim() ? beatValue.trim() : `Beat ${index + 1}`
@@ -471,7 +742,178 @@ export default function CreativeStudioPage() {
             ? durationValue
             : null,
         vo: typeof voValue === "string" ? voValue : "",
+        aiDataQuality,
       };
+    });
+  }
+
+  function normalizeScriptTargetDuration(rawJson: unknown): number {
+    if (!rawJson || typeof rawJson !== "object") return DEFAULT_SCRIPT_TARGET_DURATION_SECONDS;
+    const value = (rawJson as Record<string, unknown>).targetDuration;
+    const parsed =
+      typeof value === "number"
+        ? value
+        : typeof value === "string"
+          ? Number(value)
+          : Number.NaN;
+    if (!Number.isFinite(parsed)) return DEFAULT_SCRIPT_TARGET_DURATION_SECONDS;
+    const rounded = Math.round(parsed);
+    if (rounded < 1 || rounded > 180) return DEFAULT_SCRIPT_TARGET_DURATION_SECONDS;
+    return rounded;
+  }
+
+  function normalizeScriptBeatCount(rawJson: unknown, fallback: number): number {
+    if (!rawJson || typeof rawJson !== "object") return fallback;
+    const value = (rawJson as Record<string, unknown>).beatCount;
+    const parsed =
+      typeof value === "number"
+        ? value
+        : typeof value === "string"
+          ? Number(value)
+          : Number.NaN;
+    if (!Number.isFinite(parsed)) return fallback;
+    const rounded = Math.round(parsed);
+    if (rounded < 1 || rounded > 20) return fallback;
+    return rounded;
+  }
+
+  function formatSecondsForBeatDuration(value: number): string {
+    const rounded = Math.round(value * 10) / 10;
+    if (Number.isInteger(rounded)) return String(rounded);
+    return rounded.toFixed(1).replace(/\.0$/, "");
+  }
+
+  function buildEvenBeatDurations(targetDuration: number, beatCount: number): string[] {
+    if (beatCount <= 0) return [];
+    const secondsPerBeat = targetDuration / beatCount;
+    let start = 0;
+    const durations: string[] = [];
+
+    for (let i = 0; i < beatCount; i++) {
+      const end = i === beatCount - 1 ? targetDuration : start + secondsPerBeat;
+      durations.push(`${formatSecondsForBeatDuration(start)}-${formatSecondsForBeatDuration(end)}s`);
+      start = end;
+    }
+    return durations;
+  }
+
+  function redistributeBeatDurations(beats: ScriptBeat[], targetDuration: number): ScriptBeat[] {
+    if (beats.length === 0) return [];
+    const durations = buildEvenBeatDurations(targetDuration, beats.length);
+    return beats.map((beat, index) => ({
+      ...beat,
+      beat: String(beat.beat || `Beat ${index + 1}`).trim() || `Beat ${index + 1}`,
+      duration: durations[index] ?? beat.duration ?? null,
+    }));
+  }
+
+  function formatSceneDuration(value: string | number | null): string {
+    if (value == null) return "No timing";
+    if (typeof value === "number") return `${value}s`;
+    const normalized = value.trim();
+    if (!normalized) return "No timing";
+    return normalized.endsWith("s") ? normalized : `${normalized}s`;
+  }
+
+  function applyBeatStructureChange(updater: (prev: ScriptBeat[]) => ScriptBeat[]) {
+    setScriptPanelDraftBeats((prev) => {
+      const next = updater(prev);
+      const targetDuration = normalizeScriptTargetDuration(scriptPanelData?.rawJson);
+      return redistributeBeatDurations(next, targetDuration);
+    });
+  }
+
+  function normalizeInsertBeatLabel(rawValue: string, afterIndex: number): string {
+    const normalized = rawValue.trim();
+    if (normalized) return normalized;
+    return defaultInsertBeatLabel(afterIndex);
+  }
+
+  function insertBeatAtIndex(
+    insertionIndex: number,
+    beatLabel: string,
+    vo: string,
+    dataQuality?: GeneratedBeatDataQuality | null,
+  ) {
+    applyBeatStructureChange((prev) => {
+      const next = [...prev];
+      next.splice(insertionIndex, 0, {
+        beat: beatLabel,
+        duration: null,
+        vo,
+        aiDataQuality:
+          dataQuality === "partial" || dataQuality === "minimal" ? dataQuality : null,
+      });
+      return next;
+    });
+  }
+
+  function handleInsertBeatWriteYourself(afterIndex: number, rawBeatLabel: string) {
+    if (scriptPanelSaving) return;
+    const insertionIndex = afterIndex + 1;
+    const beatLabel = normalizeInsertBeatLabel(rawBeatLabel, afterIndex);
+    insertBeatAtIndex(insertionIndex, beatLabel, "");
+  }
+
+  async function handleInsertBeatGenerateWithAi(afterIndex: number, rawBeatLabel: string) {
+    if (!scriptPanelOpenId || !scriptPanelData || scriptPanelSaving) {
+      throw new Error("Script editor is not ready yet. Try again.");
+    }
+
+    const insertionIndex = afterIndex + 1;
+    const beatLabel = normalizeInsertBeatLabel(rawBeatLabel, afterIndex);
+    const targetDuration = normalizeScriptTargetDuration(scriptPanelData.rawJson);
+    const beatCount = normalizeScriptBeatCount(scriptPanelData.rawJson, scriptPanelDraftBeats.length + 1);
+    const existingScenes = scriptPanelDraftBeats.map((scene, index) => ({
+      beat: String(scene.beat || `Beat ${index + 1}`).trim() || `Beat ${index + 1}`,
+      vo: typeof scene.vo === "string" ? scene.vo : "",
+    }));
+
+    try {
+      const response = await fetch(`/api/scripts/${scriptPanelOpenId}/generate-beat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          beatLabel,
+          insertionIndex,
+          existingScenes,
+          targetDuration,
+          beatCount,
+        }),
+      });
+      const data = (await response.json().catch(() => ({}))) as Partial<GenerateBeatResponse> & {
+        error?: string;
+      };
+      if (!response.ok) {
+        throw new Error(data?.error || "Failed to generate beat");
+      }
+
+      const generatedVo = typeof data.vo === "string" ? data.vo.trim() : "";
+      if (!generatedVo) {
+        throw new Error("AI returned an empty beat. Try again.");
+      }
+
+      insertBeatAtIndex(insertionIndex, beatLabel, generatedVo, data.dataQuality ?? null);
+    } catch (err: any) {
+      throw new Error(err?.message || "Failed to generate beat");
+    }
+  }
+
+  function handleDeleteBeat(index: number) {
+    applyBeatStructureChange((prev) => {
+      if (prev.length <= 1) return prev;
+      return prev.filter((_, idx) => idx !== index);
+    });
+  }
+
+  function handleMoveBeat(index: number, direction: "up" | "down") {
+    applyBeatStructureChange((prev) => {
+      const next = [...prev];
+      const targetIndex = direction === "up" ? index - 1 : index + 1;
+      if (targetIndex < 0 || targetIndex >= next.length) return prev;
+      const [moved] = next.splice(index, 1);
+      next.splice(targetIndex, 0, moved);
+      return next;
     });
   }
 
@@ -519,11 +961,18 @@ export default function CreativeStudioPage() {
     setScriptPanelSaving(true);
     setScriptPanelError(null);
     try {
+      const targetDuration = normalizeScriptTargetDuration(scriptPanelData?.rawJson);
+      const recalculatedScenes = redistributeBeatDurations(scriptPanelDraftBeats, targetDuration);
+      const payloadScenes = recalculatedScenes.map((scene) => ({
+        beat: scene.beat,
+        duration: scene.duration,
+        vo: scene.vo,
+      }));
       const res = await fetch(`/api/projects/${projectId}/scripts/${scriptPanelOpenId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          scenes: scriptPanelDraftBeats,
+          scenes: payloadScenes,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -1432,59 +1881,198 @@ export default function CreativeStudioPage() {
                       <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
                         {(scriptPanelEditMode ? scriptPanelDraftBeats : extractScriptBeats(scriptPanelData.rawJson)).map(
                           (scene, sceneIndex) => (
-                            <div
-                              key={`${scene.beat}-${sceneIndex}`}
-                              style={{
-                                border: "1px solid #334155",
-                                borderRadius: 8,
-                                backgroundColor: "#0b1220",
-                                padding: 10,
-                              }}
-                            >
+                            <div key={`${sceneIndex}-${scene.beat}`}>
                               <div
                                 style={{
-                                  display: "flex",
-                                  justifyContent: "space-between",
-                                  alignItems: "center",
-                                  marginBottom: 8,
+                                  border: "1px solid #334155",
+                                  borderRadius: 8,
+                                  backgroundColor: "#0b1220",
+                                  padding: 10,
                                 }}
                               >
-                                <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "#e2e8f0" }}>
-                                  {scene.beat}
-                                </p>
-                                <span style={{ fontSize: 12, color: "#94a3b8" }}>
-                                  {scene.duration != null && String(scene.duration).trim() !== ""
-                                    ? `${scene.duration}s`
-                                    : "No timing"}
-                                </span>
-                              </div>
-                              {scriptPanelEditMode ? (
-                                <textarea
-                                  value={scene.vo}
-                                  onChange={(e) =>
-                                    setScriptPanelDraftBeats((prev) =>
-                                      prev.map((beat, idx) =>
-                                        idx === sceneIndex ? { ...beat, vo: e.target.value } : beat
-                                      )
-                                    )
-                                  }
-                                  rows={4}
+                                <div
                                   style={{
-                                    width: "100%",
-                                    boxSizing: "border-box",
-                                    borderRadius: 8,
-                                    border: "1px solid #334155",
-                                    backgroundColor: "#0f172a",
-                                    color: "#e2e8f0",
-                                    padding: 10,
-                                    fontSize: 13,
-                                    resize: "vertical",
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    alignItems: "center",
+                                    marginBottom: 8,
+                                    gap: 10,
                                   }}
-                                />
-                              ) : (
-                                <p style={{ margin: 0, fontSize: 13, lineHeight: 1.5, color: "#cbd5e1", whiteSpace: "pre-wrap" }}>
-                                  {scene.vo || "No spoken words"}
-                                </p>
+                                >
+                                  {scriptPanelEditMode ? (
+                                    <input
+                                      type="text"
+                                      value={scene.beat}
+                                      onChange={(e) =>
+                                        setScriptPanelDraftBeats((prev) =>
+                                          prev.map((beat, idx) =>
+                                            idx === sceneIndex ? { ...beat, beat: e.target.value } : beat
+                                          )
+                                        )
+                                      }
+                                      style={{
+                                        flex: 1,
+                                        minWidth: 140,
+                                        borderRadius: 8,
+                                        border: "1px solid #334155",
+                                        backgroundColor: "#0f172a",
+                                        color: "#e2e8f0",
+                                        padding: "6px 8px",
+                                        fontSize: 13,
+                                        fontWeight: 600,
+                                      }}
+                                      placeholder={`Beat ${sceneIndex + 1}`}
+                                    />
+                                  ) : (
+                                    <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "#e2e8f0" }}>
+                                      {scene.beat}
+                                    </p>
+                                  )}
+                                  <span style={{ fontSize: 12, color: "#94a3b8", whiteSpace: "nowrap" }}>
+                                    {formatSceneDuration(scene.duration)}
+                                  </span>
+                                  {scene.aiDataQuality === "partial" && (
+                                    <span
+                                      style={{
+                                        fontSize: 11,
+                                        color: "#fef08a",
+                                        border: "1px solid rgba(234, 179, 8, 0.55)",
+                                        backgroundColor: "rgba(234, 179, 8, 0.12)",
+                                        borderRadius: 999,
+                                        padding: "2px 8px",
+                                        whiteSpace: "nowrap",
+                                      }}
+                                    >
+                                      Limited research data.
+                                    </span>
+                                  )}
+                                  {scene.aiDataQuality === "minimal" && (
+                                    <span
+                                      style={{
+                                        fontSize: 11,
+                                        color: "#fdba74",
+                                        border: "1px solid rgba(249, 115, 22, 0.55)",
+                                        backgroundColor: "rgba(249, 115, 22, 0.12)",
+                                        borderRadius: 999,
+                                        padding: "2px 8px",
+                                        whiteSpace: "nowrap",
+                                      }}
+                                    >
+                                      No research data — review carefully.
+                                    </span>
+                                  )}
+                                  {scriptPanelEditMode && (
+                                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleMoveBeat(sceneIndex, "up")}
+                                        disabled={sceneIndex === 0 || scriptPanelSaving}
+                                        style={{
+                                          border: "1px solid #334155",
+                                          backgroundColor: "#0f172a",
+                                          color: sceneIndex === 0 || scriptPanelSaving ? "#64748b" : "#cbd5e1",
+                                          padding: "4px 8px",
+                                          borderRadius: 6,
+                                          fontSize: 12,
+                                          cursor:
+                                            sceneIndex === 0 || scriptPanelSaving ? "not-allowed" : "pointer",
+                                        }}
+                                      >
+                                        ↑
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleMoveBeat(sceneIndex, "down")}
+                                        disabled={sceneIndex === scriptPanelDraftBeats.length - 1 || scriptPanelSaving}
+                                        style={{
+                                          border: "1px solid #334155",
+                                          backgroundColor: "#0f172a",
+                                          color:
+                                            sceneIndex === scriptPanelDraftBeats.length - 1 || scriptPanelSaving
+                                              ? "#64748b"
+                                              : "#cbd5e1",
+                                          padding: "4px 8px",
+                                          borderRadius: 6,
+                                          fontSize: 12,
+                                          cursor:
+                                            sceneIndex === scriptPanelDraftBeats.length - 1 || scriptPanelSaving
+                                              ? "not-allowed"
+                                              : "pointer",
+                                        }}
+                                      >
+                                        ↓
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteBeat(sceneIndex)}
+                                        disabled={scriptPanelDraftBeats.length <= 1 || scriptPanelSaving}
+                                        style={{
+                                          border: "1px solid rgba(239, 68, 68, 0.5)",
+                                          backgroundColor: "rgba(239, 68, 68, 0.12)",
+                                          color:
+                                            scriptPanelDraftBeats.length <= 1 || scriptPanelSaving
+                                              ? "#64748b"
+                                              : "#fecaca",
+                                          padding: "4px 8px",
+                                          borderRadius: 6,
+                                          fontSize: 12,
+                                          cursor:
+                                            scriptPanelDraftBeats.length <= 1 || scriptPanelSaving
+                                              ? "not-allowed"
+                                              : "pointer",
+                                        }}
+                                      >
+                                        Delete
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                                {scriptPanelEditMode ? (
+                                  <textarea
+                                    value={scene.vo}
+                                    onChange={(e) =>
+                                      setScriptPanelDraftBeats((prev) =>
+                                        prev.map((beat, idx) =>
+                                          idx === sceneIndex ? { ...beat, vo: e.target.value } : beat
+                                        )
+                                      )
+                                    }
+                                    rows={4}
+                                    style={{
+                                      width: "100%",
+                                      boxSizing: "border-box",
+                                      borderRadius: 8,
+                                      border: "1px solid #334155",
+                                      backgroundColor: "#0f172a",
+                                      color: "#e2e8f0",
+                                      padding: 10,
+                                      fontSize: 13,
+                                      resize: "vertical",
+                                    }}
+                                  />
+                                ) : (
+                                  <p
+                                    style={{
+                                      margin: 0,
+                                      fontSize: 13,
+                                      lineHeight: 1.5,
+                                      color: "#cbd5e1",
+                                      whiteSpace: "pre-wrap",
+                                    }}
+                                  >
+                                    {scene.vo || "No spoken words"}
+                                  </p>
+                                )}
+                              </div>
+                              {scriptPanelEditMode && (
+                                <div style={{ marginTop: 8 }}>
+                                  <AddBeatExpansion
+                                    afterIndex={sceneIndex}
+                                    disabled={scriptPanelSaving}
+                                    onWriteYourself={handleInsertBeatWriteYourself}
+                                    onGenerateWithAi={handleInsertBeatGenerateWithAi}
+                                  />
+                                </div>
                               )}
                             </div>
                           )
