@@ -93,6 +93,7 @@ type BeatPlanEntry = {
   label: string;
   duration: string;
   guidance?: string;
+  formulaComponent?: string;
 };
 
 type StructuredProductIntelRow = {
@@ -512,6 +513,101 @@ function buildBeatPlanFromPatternData(
   }
 
   return { beats: fallbackBeats, source: "default" };
+}
+
+function extractTransferFormula(rawPatternJson: unknown): string | null {
+  const root = asObject(rawPatternJson);
+  const patternsRoot = asObject(root?.patterns);
+  const prescriptiveGuidance =
+    asObject(patternsRoot?.prescriptiveGuidance) ||
+    asObject(root?.prescriptiveGuidance);
+
+  return (
+    asString(prescriptiveGuidance?.transferFormula) ||
+    asString(prescriptiveGuidance?.transfer_formula) ||
+    null
+  );
+}
+
+function assignFormulaComponentsToBeats(
+  beats: BeatPlanEntry[],
+  transferFormula: string | null | undefined,
+): BeatPlanEntry[] {
+  const normalizedFormula = asString(transferFormula);
+  if (!normalizedFormula) {
+    return beats;
+  }
+
+  const formulaComponents = normalizedFormula
+    .split(" + ")
+    .map((part) => part.split("=")[0]?.trim() ?? "")
+    .filter(Boolean);
+  if (!formulaComponents.length || beats.length === 0) {
+    return beats;
+  }
+
+  const mappedBeats = beats.map((beat) => ({ ...beat }));
+  const beatTotal = mappedBeats.length;
+  const componentTotal = formulaComponents.length;
+
+  if (beatTotal === 1) {
+    mappedBeats[0].formulaComponent = formulaComponents.join(" + ");
+    return mappedBeats;
+  }
+
+  if (componentTotal === 1) {
+    for (const beat of mappedBeats) {
+      beat.formulaComponent = formulaComponents[0];
+    }
+    return mappedBeats;
+  }
+
+  mappedBeats[0].formulaComponent = formulaComponents[0];
+  mappedBeats[beatTotal - 1].formulaComponent = formulaComponents[componentTotal - 1];
+
+  const middleBeatTotal = Math.max(0, beatTotal - 2);
+  if (middleBeatTotal === 0) {
+    return mappedBeats;
+  }
+
+  const middleComponents = formulaComponents.slice(1, -1);
+  if (middleComponents.length === 0) {
+    for (let beatIndex = 1; beatIndex < beatTotal - 1; beatIndex += 1) {
+      mappedBeats[beatIndex].formulaComponent = formulaComponents[0];
+    }
+    return mappedBeats;
+  }
+
+  if (componentTotal > beatTotal) {
+    let cursor = 0;
+    for (let beatIndex = 1; beatIndex < beatTotal - 1; beatIndex += 1) {
+      const remainingComponents = middleComponents.length - cursor;
+      const remainingMiddleBeats = beatTotal - beatIndex - 1;
+      if (remainingComponents <= 0) {
+        mappedBeats[beatIndex].formulaComponent = middleComponents[middleComponents.length - 1];
+        continue;
+      }
+      const absorbCount = Math.ceil(remainingComponents / remainingMiddleBeats);
+      const absorbed = middleComponents.slice(cursor, cursor + absorbCount);
+      mappedBeats[beatIndex].formulaComponent = absorbed.join(" + ");
+      cursor += absorbCount;
+    }
+    return mappedBeats;
+  }
+
+  for (let beatIndex = 1; beatIndex < beatTotal - 1; beatIndex += 1) {
+    const middlePosition = beatIndex - 1;
+    const mappedComponentIndex = Math.floor(
+      (middlePosition * middleComponents.length) / middleBeatTotal,
+    );
+    const sourceIndex = Math.min(
+      middleComponents.length - 1,
+      Math.max(0, mappedComponentIndex),
+    );
+    mappedBeats[beatIndex].formulaComponent = middleComponents[sourceIndex];
+  }
+
+  return mappedBeats;
 }
 
 async function loadStructuredProductIntel(projectId: string): Promise<StructuredProductIntelRow | null> {
@@ -991,7 +1087,16 @@ function buildScriptPrompt(args: {
   const copyReadyPhrasesList = copyReadyPhrases.length
     ? copyReadyPhrases.map((phrase, index) => `${index + 1}. "${phrase}"`).join("\n")
     : "MISSING";
-  const beatPlan = buildBeatPlanFromPatternData(patternRawJson, targetDuration, beatCount);
+  const beatPlanBase = buildBeatPlanFromPatternData(
+    patternRawJson,
+    targetDuration,
+    beatCount,
+  );
+  const transferFormula = extractTransferFormula(patternRawJson);
+  const beatPlan = {
+    ...beatPlanBase,
+    beats: assignFormulaComponentsToBeats(beatPlanBase.beats, transferFormula),
+  };
   const schemaTimingPlan = buildDefaultBeatPlan(targetDuration, beatCount);
   const dynamicWordCeiling = Math.round((targetDuration / 60) * 135 * 0.9);
   const perBeatWords = Math.max(4, Math.round(dynamicWordCeiling / beatCount));
@@ -1002,8 +1107,8 @@ function buildScriptPrompt(args: {
   ).join("\n");
   const beatStructureLines = beatPlan.beats
     .map((beat, index) => {
-      const guidanceSuffix = beat.guidance ? ` — ${beat.guidance}` : "";
-      return `- Beat ${index + 1} (${beat.duration}): ${beat.label}${guidanceSuffix}`;
+      const formulaComponent = beat.formulaComponent || "MISSING_FORMULA_COMPONENT";
+      return `BEAT ${index + 1} — ${beat.label} (${beat.duration}) | FORMULA REQUIREMENT: ${formulaComponent} | Write VO that executes this formula component specifically. This is not optional context. This beat must deliver ${formulaComponent} or the psychological contract with the viewer breaks.`;
     })
     .join("\n");
   const outputSceneSchema = schemaTimingPlan
