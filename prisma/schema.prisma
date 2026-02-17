@@ -106,6 +106,7 @@ model SpendEvent {
 model ResearchRun {
   id        String    @id @default(uuid())
   projectId String
+  name      String?
   status    RunStatus @default(IN_PROGRESS)
   createdAt DateTime  @default(now())
   jobs      Job[]

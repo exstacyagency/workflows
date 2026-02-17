@@ -1,0 +1,2 @@
+ALTER TABLE "research_run"
+ADD COLUMN IF NOT EXISTS "name" TEXT;

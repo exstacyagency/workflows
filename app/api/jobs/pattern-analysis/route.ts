@@ -66,8 +66,28 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    let effectiveRunId = runId;
-    if (!effectiveRunId) {
+    const normalizedRequestedRunId = String(runId ?? "").trim();
+    let effectiveRunId = normalizedRequestedRunId || undefined;
+    let existingRunFound = false;
+    if (effectiveRunId) {
+      const existingRun = await prisma.researchRun.findUnique({
+        where: { id: effectiveRunId },
+        select: { id: true, projectId: true },
+      });
+      if (!existingRun) {
+        return NextResponse.json(
+          { error: "runId not found for this project" },
+          { status: 400 }
+        );
+      }
+      if (existingRun.projectId !== projectId) {
+        return NextResponse.json(
+          { error: "runId does not belong to this project" },
+          { status: 400 }
+        );
+      }
+      existingRunFound = true;
+    } else {
       const latestAdCollection = await prisma.job.findFirst({
         where: {
           projectId,
@@ -84,6 +104,11 @@ export async function POST(req: NextRequest) {
       });
       effectiveRunId = latestAdCollection?.runId ?? undefined;
     }
+    console.log("[pattern-analysis] run resolution", {
+      payloadRunId: normalizedRequestedRunId || null,
+      existingRunFound,
+      attachedRunId: effectiveRunId ?? null,
+    });
 
     if (!effectiveRunId) {
       return NextResponse.json(
