@@ -35,6 +35,7 @@ import { runAdOcrCollection } from "../lib/adOcrCollectionService.ts";
 import { runAdQualityGate } from "../lib/adQualityGateService.ts";
 import { runPatternAnalysis } from "../lib/patternAnalysisService.ts";
 import { startScriptGenerationJob } from "../lib/scriptGenerationService.ts";
+import { generateStoryboard } from "../lib/storyboardGenerationService.ts";
 import { startVideoPromptGenerationJob } from "../lib/videoPromptGenerationService.ts";
 import { runVideoImageGenerationJob } from "../lib/videoImageGenerationService.ts";
 import { runVideoGenerationJob } from "../lib/videoGenerationService.ts";
@@ -45,9 +46,9 @@ import { rollbackQuota } from "../lib/billing/usage.ts";
 import { updateJobStatus } from "@/lib/jobs/updateJobStatus";
 
 console.log("=== WORKER ENVIRONMENT CHECK ===");
-console.log("ANTHROPIC_API_KEY present:", !!process.env.ANTHROPIC_API_KEY);
-console.log("ANTHROPIC_API_KEY length:", process.env.ANTHROPIC_API_KEY?.length || 0);
-console.log("NODE_ENV:", process.env.NODE_ENV);
+console.log("ANTHROPIC_API_KEY present:", !!cfg.raw("ANTHROPIC_API_KEY"));
+console.log("ANTHROPIC_API_KEY length:", cfg.raw("ANTHROPIC_API_KEY")?.length || 0);
+console.log("NODE_ENV:", cfg.raw("NODE_ENV"));
 console.log("================================");
 
 function writeLog(line: string) {
@@ -64,8 +65,8 @@ const pipelineContext: PipelineContext = {
 
 // Inline getRuntimeMode logic (must be JS, not TS)
 function getRuntimeMode() {
-  const nodeEnv = process.env.NODE_ENV;
-  const explicitMode = process.env.MODE;
+  const nodeEnv = cfg.raw("NODE_ENV");
+  const explicitMode = cfg.raw("MODE");
   if (nodeEnv === "production") {
     if (explicitMode === "prod" || explicitMode === "beta") {
       return explicitMode;
@@ -81,7 +82,7 @@ writeLog(`[BOOT] Runtime mode: ${runtimeMode}`);
 if (pipelineContext.mode === "alpha") {
   writeLog("[PIPELINE] Running in ALPHA mode");
 }
-if (pipelineContext.mode === "alpha" && process.env.NODE_ENV === "production") {
+if (pipelineContext.mode === "alpha" && cfg.raw("NODE_ENV") === "production") {
   throw new Error("INVALID CONFIG: MODE=alpha cannot run with NODE_ENV=production");
 }
 
@@ -406,7 +407,7 @@ async function runJob(
     throw new Error(`Invalid job state: ${job.status}`);
   }
 
-  if (context.mode === "alpha" && process.env.NODE_ENV === "production") {
+  if (context.mode === "alpha" && cfg.raw("NODE_ENV") === "production") {
     throw new Error("INVALID CONFIG: MODE=alpha cannot run with NODE_ENV=production");
   }
 
@@ -420,7 +421,7 @@ async function runJob(
         writeLog("=== CUSTOMER_RESEARCH JOB ===");
         writeLog("Checking Apify token...");
         writeLog(
-          `process.env.APIFY_API_TOKEN: ${process.env.APIFY_API_TOKEN ? "exists" : "missing"}`,
+          `APIFY_API_TOKEN: ${cfg.raw("APIFY_API_TOKEN") ? "exists" : "missing"}`,
         );
 
         const apifyToken = cfg.raw("APIFY_API_TOKEN");
@@ -682,32 +683,35 @@ async function runJob(
 
       case JobType.STORYBOARD_GENERATION: {
         const scriptId = String(payload?.scriptId ?? "").trim();
+        if (!scriptId) {
+          await rollbackJobQuotaIfNeeded({ jobId, projectId: job.projectId, payload });
+          await markFailed({ jobId, error: "Invalid payload: missing scriptId" });
+          return;
+        }
 
         try {
-          const storyboard = await prisma.storyboard.create({
-            data: {
-              projectId: job.projectId,
-              jobId: job.id,
-              scriptId: scriptId || null,
-            },
-          });
-
-          // Persist reference for downstream jobs
-          await prisma.job.update({
-            where: { id: job.id },
-            data: {
-              resultSummary: {
-                storyboardId: storyboard.id,
-              },
-            },
-          });
+          const result = await generateStoryboard(scriptId);
+          const warningCount = Array.isArray(result.validationReport?.warnings)
+            ? result.validationReport.warnings.length
+            : 0;
 
           await markCompleted({
             jobId,
             result: {
               ok: true,
-              storyboardId: storyboard.id,
-              scriptId: scriptId || null,
+              storyboardId: result.storyboardId,
+              scriptId,
+              panelCount: result.panelCount,
+              targetDuration: result.targetDuration,
+              validationReport: result.validationReport,
+            },
+            summary: {
+              summary: `Generated ${result.panelCount} panels for ${result.targetDuration}s video.${warningCount > 0 ? ` ${warningCount} quality warning${warningCount === 1 ? "" : "s"}.` : ""}`,
+              storyboardId: result.storyboardId,
+              scriptId,
+              panelCount: result.panelCount,
+              targetDuration: result.targetDuration,
+              validationReport: result.validationReport,
             },
           });
         } catch (e: any) {
@@ -1014,12 +1018,12 @@ async function startWorker() {
 
   writeLog("=== WORKER ENV CHECK ===");
   writeLog(
-    `APIFY_API_TOKEN: ${process.env.APIFY_API_TOKEN ? "✓ Present" : "✗ Missing"}`,
+    `APIFY_API_TOKEN: ${cfg.raw("APIFY_API_TOKEN") ? "✓ Present" : "✗ Missing"}`,
   );
   writeLog(
-    `ANTHROPIC_API_KEY: ${process.env.ANTHROPIC_API_KEY ? "✓ Present" : "✗ Missing"}`,
+    `ANTHROPIC_API_KEY: ${cfg.raw("ANTHROPIC_API_KEY") ? "✓ Present" : "✗ Missing"}`,
   );
-  writeLog(`NODE_ENV: ${process.env.NODE_ENV}`);
+  writeLog(`NODE_ENV: ${cfg.raw("NODE_ENV")}`);
   writeLog("========================");
   writeLog("Starting job polling in 5 seconds...");
   await new Promise((resolve) => setTimeout(resolve, STARTUP_POST_ENV_DELAY_MS));

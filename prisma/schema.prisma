@@ -269,6 +269,7 @@ model StoryboardScene {
   id           String     @id @default(uuid())
   storyboardId String
   sceneNumber  Int
+  panelType    PanelType? @default(ON_CAMERA)
   rawJson      Json?
   status       String     @default("pending")
   createdAt    DateTime   @default(now())
@@ -514,4 +515,9 @@ enum RunStatus {
   IN_PROGRESS
   COMPLETED
   FAILED
+}
+
+enum PanelType {
+  ON_CAMERA
+  B_ROLL_ONLY
 }
