@@ -159,10 +159,236 @@ function safeObject(value: unknown): Record<string, any> {
   return isPlainObject(value) ? value : {};
 }
 
-function normalizePatternOutput(payload: any) {
+function splitTranscriptIntoSentences(transcript: string): string[] {
+  const normalized = transcript
+    .replace(/\r?\n+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized) return [];
+
+  const sentences = normalized
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+
+  return sentences.length > 0 ? sentences : [normalized];
+}
+
+function countWords(text: string): number {
+  const matches = text.match(/[A-Za-z0-9']+/g);
+  return matches ? matches.length : 0;
+}
+
+function roundTo(value: number, digits = 3): number {
+  const base = 10 ** digits;
+  return Math.round(value * base) / base;
+}
+
+function classifyOpeningSentenceStructure(sentence: string): string {
+  const normalized = sentence.trim();
+  if (!normalized) return "unknown";
+  const lower = normalized.toLowerCase();
+
+  if (normalized.includes("?")) return "question";
+  if (normalized.includes("!")) return "exclamation";
+  if (/^(i\s|i'm\s|i’ve\s|i've\s|i thought|i used to|i was)\b/.test(lower)) {
+    return "first_person_confession";
+  }
+  if (/^(stop|don't|do not|never|try|imagine|watch|meet)\b/.test(lower)) {
+    return "imperative_command";
+  }
+  if (/^(when|if|because|before|after|once)\b/.test(lower)) {
+    return "conditional_setup";
+  }
+  return "declarative_statement";
+}
+
+function analyzeTranscriptCadence(transcript: string) {
+  const sentences = splitTranscriptIntoSentences(transcript);
+  const sentenceLengths = sentences.map((sentence) => countWords(sentence));
+  const sentenceCount = sentenceLengths.length;
+  const totalWords = sentenceLengths.reduce((sum, len) => sum + len, 0);
+  const averageSentenceLength = sentenceCount > 0 ? totalWords / sentenceCount : 0;
+  const sentenceLengthVariance =
+    sentenceCount > 0
+      ? sentenceLengths.reduce((sum, len) => {
+          const delta = len - averageSentenceLength;
+          return sum + delta * delta;
+        }, 0) / sentenceCount
+      : 0;
+
+  const ellipses = (transcript.match(/\.\.\./g) || []).length;
+  const withoutEllipses = transcript.replace(/\.\.\./g, "");
+  const periods = (withoutEllipses.match(/\./g) || []).length;
+  const dashes = (transcript.match(/—|–| - /g) || []).length;
+  const questionMarks = (transcript.match(/\?/g) || []).length;
+  const questionSentences = sentences.filter((sentence) => sentence.includes("?")).length;
+  const openingSentence = sentences[0] ?? "";
+  const openingSentenceStructure = classifyOpeningSentenceStructure(openingSentence);
+
+  return {
+    sentenceCount,
+    totalWords,
+    averageSentenceLength: roundTo(averageSentenceLength, 2),
+    sentenceLengthVariance: roundTo(sentenceLengthVariance, 2),
+    pauseIndicators: {
+      periods,
+      dashes,
+      ellipses,
+      total: periods + dashes + ellipses,
+    },
+    questionUsageFrequency: sentenceCount > 0 ? roundTo(questionSentences / sentenceCount, 3) : 0,
+    questionMarks,
+    openingSentence,
+    openingSentenceStructure,
+    sentenceLengths,
+  };
+}
+
+type VoiceCadenceAdMetrics = {
+  adId: string;
+  averageSentenceLength: number;
+  sentenceLengthVariance: number;
+  pauseIndicators: {
+    periods: number;
+    dashes: number;
+    ellipses: number;
+    total: number;
+  };
+  questionUsageFrequency: number;
+  openingSentenceStructure: string;
+  openingSentence: string;
+  sentenceCount: number;
+  totalWords: number;
+  questionMarks: number;
+  sentenceLengths: number[];
+};
+
+function buildVoiceCadenceGuidance(
+  winningAds: any[],
+  transcriptByAdId: Map<string, string>,
+): Record<string, any> {
+  const perWinningAd = winningAds
+    .map((entry: any, index: number) => {
+      const winningAd = safeObject(entry);
+      const adId =
+        firstString(winningAd?.adId, winningAd?.id, winningAd?.assetId) ||
+        `winning_ad_${index + 1}`;
+      const transcript =
+        firstString(winningAd?.fullTranscript, winningAd?.transcript, winningAd?.script) ||
+        transcriptByAdId.get(adId) ||
+        "";
+
+      if (!transcript) return null;
+      const cadence = analyzeTranscriptCadence(transcript);
+      return {
+        adId,
+        averageSentenceLength: cadence.averageSentenceLength,
+        sentenceLengthVariance: cadence.sentenceLengthVariance,
+        pauseIndicators: cadence.pauseIndicators,
+        questionUsageFrequency: cadence.questionUsageFrequency,
+        openingSentenceStructure: cadence.openingSentenceStructure,
+        openingSentence: cadence.openingSentence,
+        sentenceCount: cadence.sentenceCount,
+        totalWords: cadence.totalWords,
+        questionMarks: cadence.questionMarks,
+        sentenceLengths: cadence.sentenceLengths,
+      };
+    })
+    .filter(
+      (entry: VoiceCadenceAdMetrics | null): entry is VoiceCadenceAdMetrics =>
+        entry !== null
+    );
+
+  if (perWinningAd.length === 0) {
+    return {
+      source: "winning_ad_transcripts",
+      adsWithTranscript: 0,
+      averageSentenceLength: 0,
+      sentenceLengthVariance: 0,
+      pauseIndicators: {
+        periods: 0,
+        dashes: 0,
+        ellipses: 0,
+        total: 0,
+      },
+      questionUsageFrequency: 0,
+      openingSentenceStructure: {
+        dominant: "unknown",
+        distribution: {},
+        examples: [],
+      },
+      perWinningAd: [],
+    };
+  }
+
+  let totalSentences = 0;
+  let totalWords = 0;
+  let periods = 0;
+  let dashes = 0;
+  let ellipses = 0;
+  let totalQuestions = 0;
+  const allSentenceLengths: number[] = [];
+  const openingCounts: Record<string, number> = {};
+
+  for (const ad of perWinningAd) {
+    if (!ad) continue;
+    totalSentences += Number(ad?.sentenceCount || 0);
+    totalWords += Number(ad?.totalWords || 0);
+    periods += Number(ad?.pauseIndicators?.periods || 0);
+    dashes += Number(ad?.pauseIndicators?.dashes || 0);
+    ellipses += Number(ad?.pauseIndicators?.ellipses || 0);
+    totalQuestions += Number(ad?.questionMarks || 0);
+    const lengths = Array.isArray(ad?.sentenceLengths) ? ad.sentenceLengths : [];
+    allSentenceLengths.push(
+      ...lengths
+        .map((entry) => Number(entry))
+        .filter((entry) => Number.isFinite(entry)),
+    );
+    const openingKey = ad?.openingSentenceStructure || "unknown";
+    openingCounts[openingKey] = (openingCounts[openingKey] || 0) + 1;
+  }
+
+  const averageSentenceLength = totalSentences > 0 ? totalWords / totalSentences : 0;
+  const sentenceLengthVariance =
+    allSentenceLengths.length > 0
+      ? allSentenceLengths.reduce((sum, len) => {
+          const delta = len - averageSentenceLength;
+          return sum + delta * delta;
+        }, 0) / allSentenceLengths.length
+      : 0;
+  const dominantOpening = Object.entries(openingCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "unknown";
+
+  return {
+    source: "winning_ad_transcripts",
+    adsWithTranscript: perWinningAd.length,
+    averageSentenceLength: roundTo(averageSentenceLength, 2),
+    sentenceLengthVariance: roundTo(sentenceLengthVariance, 2),
+    pauseIndicators: {
+      periods,
+      dashes,
+      ellipses,
+      total: periods + dashes + ellipses,
+    },
+    questionUsageFrequency: totalSentences > 0 ? roundTo(totalQuestions / totalSentences, 3) : 0,
+    openingSentenceStructure: {
+      dominant: dominantOpening,
+      distribution: openingCounts,
+      examples: perWinningAd
+        .map((ad) => asString(ad?.openingSentence))
+        .filter((entry): entry is string => Boolean(entry))
+        .slice(0, 3),
+    },
+    perWinningAd,
+  };
+}
+
+function normalizePatternOutput(payload: any, transcriptByAdId: Map<string, string>) {
   const winningAds = safeArray(payload?.winningAds);
   const prescriptiveGuidance = safeObject(payload?.prescriptiveGuidance);
   const avoidPatterns = safeArray(payload?.avoidPatterns);
+  const voiceCadence = buildVoiceCadenceGuidance(winningAds, transcriptByAdId);
+  prescriptiveGuidance.voiceCadence = voiceCadence;
 
   const hookPatterns = safeArray(payload?.hookPatterns);
   const messagePatterns = safeArray(payload?.messagePatterns);
@@ -353,6 +579,13 @@ Output JSON:
     "body": "Second-by-second content map (e.g., 3-8s: establish authority, 12-13s: introduce solution)",
     "cta": "Exact CTA structure with example phrase",
     "textOverlays": "When to show text, exact phrasing patterns",
+    "voiceCadence": {
+      "averageSentenceLength": 11.2,
+      "sentenceLengthVariance": 9.8,
+      "pauseIndicators": { "periods": 14, "dashes": 3, "ellipses": 2 },
+      "questionUsageFrequency": 0.18,
+      "openingSentenceStructure": "first_person_confession"
+    },
     "visualFlow": "Shot sequence that maximizes retention",
     // psychologicalMechanism: Name the cognitive trigger the pattern exploits.
     "psychologicalMechanism": "Name the specific cognitive trigger used (e.g., pattern interrupt, loss aversion, social proof cascade, authority transfer, time compression, confession dissonance)",
@@ -484,7 +717,15 @@ export async function runPatternAnalysis(args: {
     : [];
   const outputText = textBlocks.map((block: any) => String(block.text ?? "")).join("\n");
   const parsed = extractJsonFromText(outputText);
-  const patterns = normalizePatternOutput(parsed);
+  const transcriptByAdId = new Map<string, string>(
+    completeAds
+      .map((ad) => {
+        const transcript = asString(ad.rawJson?.transcript);
+        return transcript ? [ad.id, transcript] : null;
+      })
+      .filter((entry): entry is [string, string] => Boolean(entry)),
+  );
+  const patterns = normalizePatternOutput(parsed, transcriptByAdId);
 
   const summary = patterns.winningAds.length > 0
     ? `Identified ${patterns.winningAds.length} winning ads and ${patterns.avoidPatterns.length} avoid patterns`

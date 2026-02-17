@@ -3,6 +3,7 @@ import { cfg } from "@/lib/config";
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import prisma from '../../../../lib/prisma';
+import { JobStatus, JobType, Prisma, ScriptStatus } from "@prisma/client";
 import { getSessionUserId } from '../../../../lib/getSessionUserId';
 import { requireProjectOwner } from '../../../../lib/requireProjectOwner';
 import { assertMinPlan, UpgradeRequiredError } from '../../../../lib/billing/requirePlan';
@@ -12,6 +13,7 @@ import { reserveQuota, rollbackQuota, QuotaExceededError } from '../../../../lib
 const BodySchema = z.object({
   projectId: z.string().min(1),
   scriptId: z.string().optional(),
+  runId: z.string().optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -43,7 +45,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { projectId, scriptId } = parsed.data;
+    const { projectId, scriptId: rawScriptId, runId: rawRunId } = parsed.data;
 
     const auth = await requireProjectOwner(projectId);
     if (auth.error) {
@@ -64,6 +66,111 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Billing check failed' }, { status: 500 });
     }
 
+    // Rate limit to prevent spam
+    if (cfg.raw("NODE_ENV") === 'production') {
+      const rateCheck = await checkRateLimit(projectId);
+      if (!rateCheck.allowed) {
+        return NextResponse.json(
+          { error: `Rate limit exceeded: ${rateCheck.reason}` },
+          { status: 429 },
+        );
+      }
+    }
+
+    const requestedRunId = String(rawRunId ?? "").trim();
+    let effectiveRunId: string | null = null;
+    if (requestedRunId) {
+      const run = await prisma.researchRun.findUnique({
+        where: { id: requestedRunId },
+        select: { id: true, projectId: true },
+      });
+      if (!run || run.projectId !== projectId) {
+        return NextResponse.json(
+          { error: 'runId not found for this project' },
+          { status: 400 }
+        );
+      }
+      effectiveRunId = run.id;
+    }
+
+    const requestedScriptId = String(rawScriptId ?? "").trim();
+    const script = requestedScriptId
+      ? await prisma.script.findFirst({
+          where: {
+            id: requestedScriptId,
+            projectId,
+          },
+          select: { id: true },
+        })
+      : await prisma.script.findFirst({
+          where: {
+            projectId,
+            status: ScriptStatus.READY,
+          },
+          orderBy: { createdAt: 'desc' },
+          select: { id: true },
+        });
+
+    if (!script) {
+      return NextResponse.json(
+        {
+          error: requestedScriptId
+            ? 'scriptId is invalid for this project'
+            : 'No ready script found. Generate script first.',
+        },
+        { status: 400 }
+      );
+    }
+
+    // Idempotency: one storyboard generation job per (projectId, scriptIdUsed)
+    const scriptIdUsed = script.id;
+    const idempotencyKey = JSON.stringify([
+      projectId,
+      JobType.STORYBOARD_GENERATION,
+      scriptIdUsed,
+    ]);
+
+    const existing = await prisma.job.findFirst({
+      where: {
+        projectId,
+        userId,
+        type: JobType.STORYBOARD_GENERATION,
+        idempotencyKey,
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, status: true, runId: true },
+    });
+
+    if (existing) {
+      // SECURITY_SWEEP expects deterministic "skipped" semantics even for reuse.
+      if (securitySweep) {
+        return NextResponse.json(
+          {
+            ok: true,
+            jobId: existing.id,
+            runId: existing.runId ?? effectiveRunId,
+            scriptIdUsed,
+            reused: true,
+            started: false,
+            skipped: true,
+            reason: 'SECURITY_SWEEP',
+          },
+          { status: 200 }
+        );
+      }
+      return NextResponse.json(
+        {
+          ok: true,
+          jobId: existing.id,
+          runId: existing.runId ?? effectiveRunId,
+          scriptIdUsed,
+          reused: true,
+          started: existing.status === JobStatus.PENDING || existing.status === JobStatus.RUNNING,
+        },
+        { status: 200 },
+      );
+    }
+
     // Quota: storyboard generation consumes researchQueries (same bucket as other research-y jobs).
     try {
       reservation = await reserveQuota(userId, planId, 'researchQueries', 1);
@@ -77,64 +184,45 @@ export async function POST(req: NextRequest) {
       throw err;
     }
 
-    // Rate limit to prevent spam
-    if (cfg.raw("NODE_ENV") === 'production') {
-      const rateCheck = await checkRateLimit(projectId);
-      if (!rateCheck.allowed) {
-        return NextResponse.json(
-          { error: `Rate limit exceeded: ${rateCheck.reason}` },
-          { status: 429 },
-        );
-      }
-    }
-
-    // Idempotency: one storyboard per (projectId, scriptIdUsed)
-    const scriptIdUsed = scriptId ?? null;
-    const idempotencyKey = JSON.stringify([
+    const payload = {
       projectId,
-      'STORYBOARD_GENERATION',
-      scriptIdUsed,
-    ]);
+      scriptId: scriptIdUsed,
+      idempotencyKey,
+      ...(effectiveRunId ? { runId: effectiveRunId } : {}),
+      ...(reservation ? { quotaReservation: reservation } : {}),
+      ...(securitySweep ? { skipped: true, reason: 'SECURITY_SWEEP' } : {}),
+    };
 
-    const existing = await prisma.storyboard.findFirst({
-      where: {
+    const job = await prisma.job.create({
+      data: {
         projectId,
-        scriptId: scriptIdUsed,
+        userId,
+        type: JobType.STORYBOARD_GENERATION,
+        status: securitySweep ? JobStatus.COMPLETED : JobStatus.PENDING,
+        idempotencyKey,
+        payload,
+        ...(effectiveRunId ? { runId: effectiveRunId } : {}),
+        ...(securitySweep
+          ? {
+              resultSummary: 'Skipped: SECURITY_SWEEP',
+              error: Prisma.JsonNull,
+            }
+          : {}),
       },
-      orderBy: { createdAt: 'desc' },
-      select: { id: true },
-    });
-
-    if (existing?.id) {
-      // SECURITY_SWEEP expects deterministic "skipped" semantics even for reuse.
-      if (securitySweep) {
-        return NextResponse.json(
-          { ok: true, storyboardId: existing.id, scriptIdUsed, reused: true, skipped: true, reason: 'SECURITY_SWEEP' },
-          { status: 200 }
-        );
-      }
-      return NextResponse.json(
-        { ok: true, storyboardId: existing.id, scriptIdUsed, reused: true },
-        { status: 200 },
-      );
-    }
-
-    // SECURITY_SWEEP: after plan+quota, do deterministic creation without downstream model calls.
-    // This route already only creates a DB record, so we can still create it and mark skipped.
-    const storyboard = await prisma.storyboard.create({
-      data: { projectId, scriptId: scriptIdUsed },
-      select: { id: true },
+      select: { id: true, runId: true },
     });
 
     return NextResponse.json(
       {
         ok: true,
-        storyboardId: storyboard.id,
+        jobId: job.id,
+        runId: job.runId ?? effectiveRunId,
         scriptIdUsed,
         reused: false,
+        started: !securitySweep,
         ...(securitySweep ? { skipped: true, reason: 'SECURITY_SWEEP' } : {}),
       },
-      { status: 200 },
+      { status: securitySweep ? 200 : 202 },
     );
   } catch (err: any) {
     console.error(err);

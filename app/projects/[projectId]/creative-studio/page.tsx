@@ -62,6 +62,7 @@ type ScriptBeat = {
   beat: string;
   duration: string | number | null;
   vo: string;
+  aiDataQuality?: "full" | "partial" | "minimal" | null;
 };
 
 type ScriptDetails = {
@@ -86,6 +87,233 @@ type ScriptRunSummary = {
   patternAnalysis: ScriptRunSummarySource;
   productCollection: ScriptRunSummarySource;
 };
+
+type ValidationReport = {
+  gatesPassed: boolean;
+  warnings: string[];
+  qualityScore: number;
+};
+
+type StoryboardPanel = {
+  panelType: "ON_CAMERA" | "B_ROLL_ONLY";
+  beatLabel: string;
+  startTime: string;
+  endTime: string;
+  vo: string;
+  characterAction: string | null;
+  environment: string | null;
+  cameraDirection: string;
+  productPlacement: string;
+  bRollSuggestions: string[];
+  transitionType: string;
+};
+
+type StoryboardDetails = {
+  id: string;
+  projectId: string;
+  scriptId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  panels: StoryboardPanel[];
+  validationReport?: ValidationReport | null;
+};
+
+type AddBeatComposerProps = {
+  beatIndex: number;
+  disabled: boolean;
+  onWriteYourself: (beatLabel: string, insertionIndex: number) => void;
+  onGenerateWithAi: (beatLabel: string, insertionIndex: number) => Promise<void>;
+};
+
+function AddBeatComposer({
+  beatIndex,
+  disabled,
+  onWriteYourself,
+  onGenerateWithAi,
+}: AddBeatComposerProps) {
+  const [expanded, setExpanded] = useState(false);
+  const [beatLabel, setBeatLabel] = useState("");
+  const [selectedOption, setSelectedOption] = useState<"write" | "ai" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const insertionIndex = beatIndex + 1;
+
+  function normalizeLabel() {
+    const typed = beatLabel.trim();
+    return typed || `Beat ${insertionIndex + 1}`;
+  }
+
+  function resetExpansion() {
+    setExpanded(false);
+    setBeatLabel("");
+    setSelectedOption(null);
+    setError(null);
+    setGenerating(false);
+  }
+
+  function handleToggleExpanded() {
+    setExpanded((prev) => {
+      const next = !prev;
+      console.log("[ScriptEdit] add-beat expansion toggle", {
+        beatIndex,
+        insertionIndex,
+        expanded: next,
+      });
+      return next;
+    });
+    setError(null);
+  }
+
+  function handleWriteYourself() {
+    if (disabled) return;
+    const label = normalizeLabel();
+    setSelectedOption("write");
+    onWriteYourself(label, insertionIndex);
+    resetExpansion();
+  }
+
+  async function handleGenerateWithAi() {
+    if (disabled || generating) return;
+    const label = normalizeLabel();
+    setSelectedOption("ai");
+    setGenerating(true);
+    setError(null);
+    try {
+      await onGenerateWithAi(label, insertionIndex);
+      resetExpansion();
+    } catch (err: any) {
+      setError(err?.message || "Failed to generate beat. Try again.");
+      setGenerating(false);
+    }
+  }
+
+  return (
+    <div style={{ marginTop: 8 }}>
+      {!expanded ? (
+        <button
+          type="button"
+          onClick={handleToggleExpanded}
+          disabled={disabled}
+          style={{
+            border: "1px solid #334155",
+            backgroundColor: "#0b1220",
+            color: "#cbd5e1",
+            borderRadius: 8,
+            padding: "6px 10px",
+            fontSize: 12,
+            fontWeight: 600,
+            cursor: disabled ? "not-allowed" : "pointer",
+          }}
+        >
+          Add Beat Below
+        </button>
+      ) : (
+        <div
+          style={{
+            border: "1px solid #334155",
+            borderRadius: 8,
+            backgroundColor: "#020617",
+            padding: 10,
+            display: "grid",
+            gap: 8,
+          }}
+        >
+          <input
+            type="text"
+            value={beatLabel}
+            onChange={(event) => setBeatLabel(event.target.value)}
+            placeholder={`Beat ${insertionIndex + 1}`}
+            disabled={disabled || generating}
+            style={{
+              width: "100%",
+              boxSizing: "border-box",
+              borderRadius: 8,
+              border: "1px solid #334155",
+              backgroundColor: "#0f172a",
+              color: "#e2e8f0",
+              padding: "8px 10px",
+              fontSize: 12,
+            }}
+          />
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              onClick={handleWriteYourself}
+              disabled={disabled || generating}
+              style={{
+                border: "1px solid #334155",
+                backgroundColor: selectedOption === "write" ? "#1e293b" : "#0b1220",
+                color: "#cbd5e1",
+                borderRadius: 8,
+                padding: "6px 10px",
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: disabled || generating ? "not-allowed" : "pointer",
+              }}
+            >
+              Write Yourself
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleGenerateWithAi()}
+              disabled={disabled || generating}
+              style={{
+                border: "none",
+                backgroundColor: generating ? "#1e293b" : "#0ea5e9",
+                color: generating ? "#94a3b8" : "#ffffff",
+                borderRadius: 8,
+                padding: "6px 10px",
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: disabled || generating ? "not-allowed" : "pointer",
+              }}
+            >
+              {generating ? "Generating..." : "Generate with AI"}
+            </button>
+            <button
+              type="button"
+              onClick={resetExpansion}
+              disabled={generating}
+              style={{
+                border: "1px solid #334155",
+                backgroundColor: "transparent",
+                color: "#94a3b8",
+                borderRadius: 8,
+                padding: "6px 10px",
+                fontSize: 12,
+                cursor: generating ? "not-allowed" : "pointer",
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+          {error && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ color: "#fca5a5", fontSize: 12 }}>{error}</span>
+              <button
+                type="button"
+                onClick={() => void handleGenerateWithAi()}
+                disabled={disabled || generating}
+                style={{
+                  border: "1px solid #334155",
+                  backgroundColor: "#0b1220",
+                  color: "#cbd5e1",
+                  borderRadius: 8,
+                  padding: "4px 8px",
+                  fontSize: 11,
+                  fontWeight: 600,
+                  cursor: disabled || generating ? "not-allowed" : "pointer",
+                }}
+              >
+                Retry
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function CreativeStudioPage() {
   const params = useParams();
@@ -123,6 +351,16 @@ export default function CreativeStudioPage() {
   const [scriptPanelEditMode, setScriptPanelEditMode] = useState(false);
   const [scriptPanelDraftBeats, setScriptPanelDraftBeats] = useState<ScriptBeat[]>([]);
   const [scriptPanelSaving, setScriptPanelSaving] = useState(false);
+  const [storyboardPanelData, setStoryboardPanelData] = useState<StoryboardDetails | null>(null);
+  const [storyboardPanelLoading, setStoryboardPanelLoading] = useState(false);
+  const [storyboardPanelError, setStoryboardPanelError] = useState<string | null>(null);
+  const [storyboardPanelId, setStoryboardPanelId] = useState<string | null>(null);
+  const [storyboardEditMode, setStoryboardEditMode] = useState(false);
+  const [storyboardDraftPanels, setStoryboardDraftPanels] = useState<StoryboardPanel[]>([]);
+  const [storyboardSaveError, setStoryboardSaveError] = useState<string | null>(null);
+  const [storyboardSaving, setStoryboardSaving] = useState(false);
+  const [storyboardRegeneratingIndex, setStoryboardRegeneratingIndex] = useState<number | null>(null);
+  const [storyboardRegenerateError, setStoryboardRegenerateError] = useState<string | null>(null);
   const [showRunManagerModal, setShowRunManagerModal] = useState(false);
   const [projectRunsById, setProjectRunsById] = useState<Record<string, ProjectRunMetadata>>({});
   const selectedProductRef = useRef<string | null>(selectedProductIdFromUrl);
@@ -336,13 +574,120 @@ export default function CreativeStudioPage() {
   }, [selectedRunId, sortedRuns]);
 
   const selectedRun = selectedRunId ? sortedRuns.find((run) => run.runId === selectedRunId) : null;
-  const selectedRunJobs = selectedRun?.jobs ?? [];
+  const selectedRunJobs = useMemo(() => selectedRun?.jobs ?? [], [selectedRun]);
   const hasSelectedRunWithJobs = Boolean(selectedRunId && selectedRunJobs.length > 0);
-  const jobsInActiveRun = hasSelectedRunWithJobs ? selectedRunJobs : [];
+  const jobsInActiveRun = useMemo(
+    () => (hasSelectedRunWithJobs ? selectedRunJobs : []),
+    [hasSelectedRunWithJobs, selectedRunJobs],
+  );
+  const latestCompletedStoryboardJob = useMemo(
+    () =>
+      jobsInActiveRun.find(
+        (job) => job.type === JobType.STORYBOARD_GENERATION && job.status === JobStatus.COMPLETED
+      ) ?? null,
+    [jobsInActiveRun],
+  );
+  const latestCompletedStoryboardId = useMemo(
+    () => getStoryboardIdFromJob(latestCompletedStoryboardJob),
+    [latestCompletedStoryboardJob],
+  );
 
   useEffect(() => {
     closeScriptPanel();
   }, [selectedRunId]);
+
+  useEffect(() => {
+    if (!latestCompletedStoryboardId) {
+      setStoryboardPanelId(null);
+      setStoryboardPanelData(null);
+      setStoryboardPanelLoading(false);
+      setStoryboardPanelError(null);
+      setStoryboardEditMode(false);
+      setStoryboardDraftPanels([]);
+      setStoryboardSaveError(null);
+      setStoryboardSaving(false);
+      setStoryboardRegeneratingIndex(null);
+      setStoryboardRegenerateError(null);
+      return;
+    }
+
+    let cancelled = false;
+    setStoryboardPanelId(latestCompletedStoryboardId);
+    setStoryboardPanelLoading(true);
+    setStoryboardPanelError(null);
+
+    void (async () => {
+      try {
+        const res = await fetch(`/api/storyboards/${latestCompletedStoryboardId}`, {
+          cache: "no-store",
+        });
+        const data = await res.json().catch(() => ({}));
+        const storyboardPayload =
+          data?.storyboard && typeof data.storyboard === "object"
+            ? (data.storyboard as Record<string, unknown>)
+            : null;
+        const panelsPayload = Array.isArray(storyboardPayload?.panels)
+          ? storyboardPayload.panels
+          : null;
+        const firstPanel =
+          panelsPayload && panelsPayload[0] && typeof panelsPayload[0] === "object"
+            ? (panelsPayload[0] as Record<string, unknown>)
+            : null;
+        console.log("[Creative][Storyboard] fetch response", {
+          storyboardId: latestCompletedStoryboardId,
+          httpStatus: res.status,
+          ok: res.ok,
+          data,
+        });
+        console.log("[Creative][Storyboard] payload shape", {
+          hasStoryboardObject: Boolean(storyboardPayload),
+          storyboardKeys: storyboardPayload ? Object.keys(storyboardPayload) : [],
+          panelsIsArray: Array.isArray(storyboardPayload?.panels),
+          panelsCount: panelsPayload?.length ?? 0,
+          firstPanelKeys: firstPanel ? Object.keys(firstPanel) : [],
+        });
+        if (!res.ok || !data?.storyboard) {
+          throw new Error(data?.error || "Failed to load storyboard panels");
+        }
+        if (cancelled) return;
+        const storyboard = data.storyboard as StoryboardDetails;
+        const normalizedPanels = Array.isArray(storyboard.panels)
+          ? storyboard.panels.map((panel, index) => normalizeStoryboardPanel(panel, index))
+          : [];
+        const validationReport = normalizeValidationReport(
+          (data?.storyboard as Record<string, unknown> | undefined)?.validationReport,
+        );
+        setStoryboardPanelData({
+          ...storyboard,
+          panels: normalizedPanels,
+          validationReport,
+        });
+        setStoryboardDraftPanels(normalizedPanels);
+        setStoryboardEditMode(false);
+        setStoryboardSaveError(null);
+        setStoryboardRegeneratingIndex(null);
+        setStoryboardRegenerateError(null);
+        if (!Array.isArray(storyboard.panels) || storyboard.panels.length === 0) {
+          setStoryboardPanelError("Storyboard generation failed to produce output.");
+        } else {
+          setStoryboardPanelError(null);
+        }
+      } catch (err: any) {
+        if (cancelled) return;
+        setStoryboardPanelData(null);
+        setStoryboardDraftPanels([]);
+        setStoryboardEditMode(false);
+        setStoryboardPanelError(err?.message || "Failed to load storyboard panels");
+      } finally {
+        if (cancelled) return;
+        setStoryboardPanelLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [latestCompletedStoryboardId]);
 
   const formatRunDate = (dateString: string) =>
     new Date(dateString).toLocaleString("en-US", {
@@ -366,6 +711,39 @@ export default function CreativeStudioPage() {
     return "Job completed";
   }
 
+  function normalizeValidationReport(value: unknown): ValidationReport | null {
+    if (!value || typeof value !== "object") return null;
+    const raw = value as Record<string, unknown>;
+    const warnings = Array.isArray(raw.warnings)
+      ? raw.warnings
+          .map((entry) => (typeof entry === "string" ? entry.trim() : String(entry ?? "").trim()))
+          .filter(Boolean)
+      : [];
+    const qualityScoreRaw = Number(raw.qualityScore);
+    const qualityScore = Number.isFinite(qualityScoreRaw)
+      ? Math.max(0, Math.min(100, Math.round(qualityScoreRaw)))
+      : 0;
+    const gatesPassed = Boolean(raw.gatesPassed);
+
+    return {
+      gatesPassed,
+      warnings,
+      qualityScore,
+    };
+  }
+
+  function getValidationReportFromResultSummary(resultSummary: unknown): ValidationReport | null {
+    if (!resultSummary || typeof resultSummary !== "object") return null;
+    const raw = resultSummary as Record<string, unknown>;
+    return normalizeValidationReport(raw.validationReport);
+  }
+
+  function getScriptValidationReportFromRawJson(rawJson: unknown): ValidationReport | null {
+    if (!rawJson || typeof rawJson !== "object") return null;
+    const root = rawJson as Record<string, unknown>;
+    return normalizeValidationReport(root.validationReport);
+  }
+
   function getScriptResearchSources(resultSummary: unknown): ScriptResearchSources | null {
     if (!resultSummary || typeof resultSummary !== "object") return null;
     const metadata = (resultSummary as Record<string, unknown>).researchSources;
@@ -385,6 +763,69 @@ export default function CreativeStudioPage() {
       minute: "2-digit",
       hour12: true,
     });
+  }
+
+  function formatStoryboardPanelTiming(panel: StoryboardPanel): string {
+    const start = String(panel.startTime || "").trim();
+    const end = String(panel.endTime || "").trim();
+    if (start && end) return `${start}-${end}`;
+    if (start) return start;
+    if (end) return end;
+    return "No timing";
+  }
+
+  function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPanel {
+    const raw = panel && typeof panel === "object" ? (panel as Record<string, unknown>) : {};
+    const asValue = (value: unknown) => (typeof value === "string" ? value.trim() : "");
+    const panelTypeRaw = asValue(raw.panelType);
+    const panelType = panelTypeRaw === "B_ROLL_ONLY" ? "B_ROLL_ONLY" : "ON_CAMERA";
+    const characterAction = asValue(raw.characterAction);
+    const environment = asValue(raw.environment);
+    return {
+      panelType,
+      beatLabel: asValue(raw.beatLabel) || `Beat ${index + 1}`,
+      startTime: asValue(raw.startTime),
+      endTime: asValue(raw.endTime),
+      vo: asValue(raw.vo),
+      characterAction: characterAction || null,
+      environment: environment || null,
+      cameraDirection: asValue(raw.cameraDirection),
+      productPlacement: asValue(raw.productPlacement),
+      bRollSuggestions: Array.isArray(raw.bRollSuggestions)
+        ? raw.bRollSuggestions
+            .map((entry) => (typeof entry === "string" ? entry.trim() : String(entry ?? "").trim()))
+            .filter(Boolean)
+        : [],
+      transitionType: asValue(raw.transitionType),
+    };
+  }
+
+  function createEmptyStoryboardPanel(index: number, previousPanel?: StoryboardPanel): StoryboardPanel {
+    const anchorTime = String(previousPanel?.endTime || previousPanel?.startTime || "0s").trim() || "0s";
+    return {
+      panelType: "ON_CAMERA",
+      beatLabel: `Beat ${index + 1}`,
+      startTime: anchorTime,
+      endTime: anchorTime,
+      vo: "",
+      characterAction: null,
+      environment: null,
+      cameraDirection: "",
+      productPlacement: "",
+      bRollSuggestions: [],
+      transitionType: "",
+    };
+  }
+
+  function bRollSuggestionsToTextarea(value: string[]): string {
+    return value.join("\n");
+  }
+
+  function parseBrollSuggestionsTextarea(value: string): string[] {
+    return value
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
   }
 
   function getSourceRowContent(source: ScriptRunSummarySource, fallback: string): {
@@ -438,6 +879,55 @@ export default function CreativeStudioPage() {
     return null;
   }
 
+  function getStoryboardIdFromJob(job: Job | null | undefined): string | null {
+    if (!job) return null;
+
+    const payload = job.payload && typeof job.payload === "object"
+      ? (job.payload as Record<string, unknown>)
+      : null;
+    const payloadResult =
+      payload?.result && typeof payload.result === "object"
+        ? (payload.result as Record<string, unknown>)
+        : null;
+
+    const fromPayloadResult =
+      typeof payloadResult?.storyboardId === "string" && payloadResult.storyboardId.trim()
+        ? payloadResult.storyboardId.trim()
+        : null;
+    if (fromPayloadResult) return fromPayloadResult;
+
+    const fromPayload =
+      typeof payload?.storyboardId === "string" && payload.storyboardId.trim()
+        ? payload.storyboardId.trim()
+        : null;
+    if (fromPayload) return fromPayload;
+
+    if (job.resultSummary && typeof job.resultSummary === "object") {
+      const summaryObj = job.resultSummary as Record<string, unknown>;
+      const fromSummaryObj =
+        typeof summaryObj.storyboardId === "string" && summaryObj.storyboardId.trim()
+          ? summaryObj.storyboardId.trim()
+          : null;
+      if (fromSummaryObj) return fromSummaryObj;
+      const nestedSummary =
+        summaryObj.summary && typeof summaryObj.summary === "object"
+          ? (summaryObj.summary as Record<string, unknown>)
+          : null;
+      const fromNestedSummary =
+        typeof nestedSummary?.storyboardId === "string" && nestedSummary.storyboardId.trim()
+          ? nestedSummary.storyboardId.trim()
+          : null;
+      if (fromNestedSummary) return fromNestedSummary;
+    }
+
+    if (typeof job.resultSummary === "string" && job.resultSummary.trim()) {
+      const match = job.resultSummary.match(/storyboardId=([^) ,]+)/);
+      if (match?.[1]) return match[1];
+    }
+
+    return null;
+  }
+
   function cleanScriptBeatLabel(rawBeat: string | null | undefined): string {
     const normalized = String(rawBeat ?? "").trim();
     if (!normalized) return "Hook";
@@ -473,6 +963,166 @@ export default function CreativeStudioPage() {
         vo: typeof voValue === "string" ? voValue : "",
       };
     });
+  }
+
+  function getScriptTargetDurationSeconds(rawJson: unknown, fallbackBeatCount: number): number {
+    const root = rawJson && typeof rawJson === "object" ? (rawJson as Record<string, unknown>) : {};
+    const candidateValues = [
+      root.targetDuration,
+      root.target_duration,
+      root.durationSeconds,
+      root.duration_seconds,
+    ];
+    for (const value of candidateValues) {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        return Math.round(parsed);
+      }
+    }
+
+    const fallbackCount = Math.max(1, fallbackBeatCount || 0);
+    return fallbackCount * 6;
+  }
+
+  function redistributeScriptBeatTiming(beats: ScriptBeat[], targetDuration: number): ScriptBeat[] {
+    if (!beats.length) return beats;
+    const perBeat = Number((targetDuration / beats.length).toFixed(2));
+    return beats.map((beat, index) => ({
+      ...beat,
+      beat: cleanScriptBeatLabel(beat.beat) || `Beat ${index + 1}`,
+      duration: perBeat,
+    }));
+  }
+
+  function updateScriptBeatLabel(sceneIndex: number, value: string) {
+    setScriptPanelDraftBeats((prev) =>
+      prev.map((beat, idx) =>
+        idx === sceneIndex
+          ? {
+              ...beat,
+              beat: value,
+            }
+          : beat,
+      ),
+    );
+  }
+
+  function updateScriptBeatVo(sceneIndex: number, value: string) {
+    setScriptPanelDraftBeats((prev) =>
+      prev.map((beat, idx) =>
+        idx === sceneIndex
+          ? {
+              ...beat,
+              vo: value,
+            }
+          : beat,
+      ),
+    );
+  }
+
+  function handleMoveScriptBeat(sceneIndex: number, direction: -1 | 1) {
+    const targetDuration = getScriptTargetDurationSeconds(
+      scriptPanelData?.rawJson,
+      scriptPanelDraftBeats.length,
+    );
+    setScriptPanelDraftBeats((prev) => {
+      const destinationIndex = sceneIndex + direction;
+      if (destinationIndex < 0 || destinationIndex >= prev.length) return prev;
+      const reordered = [...prev];
+      const [moved] = reordered.splice(sceneIndex, 1);
+      reordered.splice(destinationIndex, 0, moved);
+      return redistributeScriptBeatTiming(reordered, targetDuration);
+    });
+  }
+
+  function handleDeleteScriptBeat(sceneIndex: number) {
+    const targetDuration = getScriptTargetDurationSeconds(
+      scriptPanelData?.rawJson,
+      scriptPanelDraftBeats.length,
+    );
+    setScriptPanelDraftBeats((prev) => {
+      if (prev.length <= 1) return prev;
+      const filtered = prev.filter((_, idx) => idx !== sceneIndex);
+      return redistributeScriptBeatTiming(filtered, targetDuration);
+    });
+  }
+
+  function handleInsertBlankScriptBeat(beatLabel: string, insertionIndex: number) {
+    const targetDuration = getScriptTargetDurationSeconds(
+      scriptPanelData?.rawJson,
+      scriptPanelDraftBeats.length + 1,
+    );
+    setScriptPanelDraftBeats((prev) => {
+      const next = [...prev];
+      next.splice(insertionIndex, 0, {
+        beat: cleanScriptBeatLabel(beatLabel),
+        vo: "",
+        duration: null,
+        aiDataQuality: null,
+      });
+      return redistributeScriptBeatTiming(next, targetDuration);
+    });
+  }
+
+  async function handleInsertAiScriptBeat(beatLabel: string, insertionIndex: number): Promise<void> {
+    const activeScriptId = String(scriptPanelOpenId ?? "").trim();
+    if (!activeScriptId) {
+      throw new Error("Script panel is not active.");
+    }
+
+    const currentBeats = [...scriptPanelDraftBeats];
+    const targetDuration = getScriptTargetDurationSeconds(scriptPanelData?.rawJson, currentBeats.length + 1);
+    const nextBeatCount = Math.max(1, currentBeats.length + 1);
+    const normalizedLabel = cleanScriptBeatLabel(beatLabel) || `Beat ${insertionIndex + 1}`;
+
+    const res = await fetch(`/api/scripts/${activeScriptId}/generate-beat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        beatLabel: normalizedLabel,
+        insertionIndex,
+        existingScenes: currentBeats.map((scene) => ({
+          beat: scene.beat,
+          vo: scene.vo,
+          duration: scene.duration,
+        })),
+        targetDuration,
+        beatCount: nextBeatCount,
+      }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data?.error || "Failed to generate beat");
+    }
+
+    const vo = typeof data?.vo === "string" ? data.vo.trim() : "";
+    if (!vo) {
+      throw new Error("AI returned empty beat text.");
+    }
+
+    const dataQuality: "full" | "partial" | "minimal" =
+      data?.dataQuality === "full" || data?.dataQuality === "partial" || data?.dataQuality === "minimal"
+        ? data.dataQuality
+        : "minimal";
+
+    setScriptPanelDraftBeats((prev) => {
+      const next = [...prev];
+      next.splice(insertionIndex, 0, {
+        beat: normalizedLabel,
+        vo,
+        duration: null,
+        aiDataQuality: dataQuality,
+      });
+      return redistributeScriptBeatTiming(next, targetDuration);
+    });
+
+    if (dataQuality === "partial") {
+      toast("Limited research data used for this beat.", { icon: "⚠️" });
+    }
+    if (dataQuality === "minimal") {
+      toast("No research data found for this beat. Review carefully.", { icon: "⚠️" });
+    }
   }
 
   async function loadScriptPanel(scriptId: string) {
@@ -541,6 +1191,163 @@ export default function CreativeStudioPage() {
       toast.error(err?.message || "Failed to save script");
     } finally {
       setScriptPanelSaving(false);
+    }
+  }
+
+  function openStoryboardEditMode() {
+    setStoryboardDraftPanels(
+      Array.isArray(storyboardPanelData?.panels)
+        ? storyboardPanelData.panels.map((panel, index) => normalizeStoryboardPanel(panel, index))
+        : [],
+    );
+    setStoryboardEditMode(true);
+    setStoryboardSaveError(null);
+    setStoryboardRegenerateError(null);
+  }
+
+  function cancelStoryboardEditMode() {
+    setStoryboardDraftPanels(
+      Array.isArray(storyboardPanelData?.panels)
+        ? storyboardPanelData.panels.map((panel, index) => normalizeStoryboardPanel(panel, index))
+        : [],
+    );
+    setStoryboardEditMode(false);
+    setStoryboardSaveError(null);
+    setStoryboardRegenerateError(null);
+    setStoryboardRegeneratingIndex(null);
+  }
+
+  function updateStoryboardDraftPanel(
+    panelIndex: number,
+    updater: (panel: StoryboardPanel) => StoryboardPanel,
+  ) {
+    setStoryboardDraftPanels((prev) =>
+      prev.map((panel, index) => (index === panelIndex ? updater(panel) : panel)),
+    );
+  }
+
+  function handleAddStoryboardPanel(afterIndex: number) {
+    setStoryboardDraftPanels((prev) => {
+      const insertionIndex = afterIndex + 1;
+      const previousPanel = prev[afterIndex];
+      const next = [...prev];
+      next.splice(insertionIndex, 0, createEmptyStoryboardPanel(insertionIndex, previousPanel));
+      return next.map((panel, index) => ({
+        ...panel,
+        beatLabel: panel.beatLabel.trim() || `Beat ${index + 1}`,
+      }));
+    });
+  }
+
+  function handleDeleteStoryboardPanel(panelIndex: number) {
+    setStoryboardDraftPanels((prev) => {
+      if (prev.length <= 1) return prev;
+      return prev
+        .filter((_, index) => index !== panelIndex)
+        .map((panel, index) => ({
+          ...panel,
+          beatLabel: panel.beatLabel.trim() || `Beat ${index + 1}`,
+        }));
+    });
+  }
+
+  function handleMoveStoryboardPanel(panelIndex: number, direction: -1 | 1) {
+    setStoryboardDraftPanels((prev) => {
+      const destination = panelIndex + direction;
+      if (destination < 0 || destination >= prev.length) {
+        return prev;
+      }
+      const next = [...prev];
+      const [moved] = next.splice(panelIndex, 1);
+      next.splice(destination, 0, moved);
+      return next;
+    });
+  }
+
+  async function handleRegenerateStoryboardPanel(panelIndex: number) {
+    const activeStoryboardId = String(storyboardPanelId ?? "").trim();
+    if (!activeStoryboardId) return;
+
+    setStoryboardRegeneratingIndex(panelIndex);
+    setStoryboardRegenerateError(null);
+    try {
+      const res = await fetch(`/api/storyboards/${activeStoryboardId}/regenerate-panel`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ panelIndex }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.panel) {
+        throw new Error(data?.error || "Failed to regenerate panel");
+      }
+
+      const regeneratedPanel = normalizeStoryboardPanel(data.panel, panelIndex);
+      updateStoryboardDraftPanel(panelIndex, (panel) => ({
+        ...regeneratedPanel,
+        startTime: panel.startTime,
+        endTime: panel.endTime,
+        vo: panel.vo,
+      }));
+      toast.success(`Panel ${panelIndex + 1} regenerated.`);
+    } catch (err: any) {
+      setStoryboardRegenerateError(err?.message || "Failed to regenerate panel");
+      toast.error(err?.message || "Failed to regenerate panel");
+    } finally {
+      setStoryboardRegeneratingIndex(null);
+    }
+  }
+
+  async function handleSaveStoryboardEdits() {
+    const activeStoryboardId = String(storyboardPanelId ?? "").trim();
+    if (!activeStoryboardId) return;
+
+    if (!storyboardDraftPanels.length) {
+      setStoryboardSaveError("Storyboard must contain at least one panel.");
+      return;
+    }
+
+    setStoryboardSaving(true);
+    setStoryboardSaveError(null);
+    try {
+      const payloadPanels = storyboardDraftPanels.map((panel, index) =>
+        normalizeStoryboardPanel(panel, index),
+      );
+      const res = await fetch(`/api/storyboards/${activeStoryboardId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          panels: payloadPanels,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.storyboard) {
+        throw new Error(data?.error || "Failed to save storyboard");
+      }
+      const storyboard = data.storyboard as StoryboardDetails;
+      const normalizedPanels = Array.isArray(storyboard.panels)
+        ? storyboard.panels.map((panel, index) => normalizeStoryboardPanel(panel, index))
+        : [];
+      const validationReport = normalizeValidationReport(
+        (data?.storyboard as Record<string, unknown> | undefined)?.validationReport,
+      );
+      setStoryboardPanelData({
+        ...storyboard,
+        panels: normalizedPanels,
+        validationReport,
+      });
+      setStoryboardDraftPanels(normalizedPanels);
+      setStoryboardEditMode(false);
+      setStoryboardRegenerateError(null);
+      toast.success("Storyboard updated.");
+    } catch (err: any) {
+      setStoryboardSaveError(err?.message || "Failed to save storyboard");
+      toast.error(err?.message || "Failed to save storyboard");
+    } finally {
+      setStoryboardSaving(false);
     }
   }
 
@@ -675,6 +1482,30 @@ export default function CreativeStudioPage() {
 
       if (!endpoint) {
         throw new Error("Endpoint not configured for this step");
+      }
+
+      if (step.key === "video_prompts") {
+        const latestCompletedStoryboardJob = [...jobs]
+          .filter(
+            (job) =>
+              job.type === JobType.STORYBOARD_GENERATION &&
+              job.status === JobStatus.COMPLETED,
+          )
+          .sort(
+            (a, b) =>
+              new Date(b.updatedAt ?? b.createdAt).getTime() -
+              new Date(a.updatedAt ?? a.createdAt).getTime(),
+          )[0];
+        const storyboardId = getStoryboardIdFromJob(latestCompletedStoryboardJob);
+        if (!storyboardId) {
+          throw new Error(
+            "No completed storyboard found for this project. Run Create Storyboard first.",
+          );
+        }
+        payload = {
+          ...payload,
+          storyboardId,
+        };
       }
 
       console.log("[Creative] runStep request payload", {
@@ -1195,11 +2026,35 @@ export default function CreativeStudioPage() {
               step.key === "script" && step.status === "completed" && step.lastJob
                 ? getScriptResearchSources(step.lastJob.resultSummary)
                 : null;
+            const stepValidationReport =
+              step.lastJob && step.status === "completed"
+                ? getValidationReportFromResultSummary(step.lastJob.resultSummary)
+                : null;
             const scriptId =
               step.key === "script" && step.status === "completed" && step.lastJob
                 ? getScriptIdFromResultSummary(step.lastJob.resultSummary)
                 : null;
             const isScriptPanelOpen = Boolean(scriptId && scriptPanelOpenId === scriptId);
+            const scriptValidationReport =
+              step.key === "script" && isScriptPanelOpen && scriptPanelData
+                ? getScriptValidationReportFromRawJson(scriptPanelData.rawJson) ?? stepValidationReport
+                : stepValidationReport;
+            const storyboardId =
+              step.key === "storyboard" && step.lastJob
+                ? getStoryboardIdFromJob(step.lastJob)
+                : null;
+            const storyboardMatchesCurrentFetch =
+              Boolean(storyboardId && storyboardPanelId && storyboardId === storyboardPanelId);
+            const storyboardPanels =
+              storyboardMatchesCurrentFetch && storyboardPanelData?.panels
+                ? storyboardPanelData.panels
+                : [];
+            const storyboardValidationReport =
+              step.key === "storyboard"
+                ? storyboardMatchesCurrentFetch
+                  ? storyboardPanelData?.validationReport ?? stepValidationReport
+                  : stepValidationReport
+                : stepValidationReport;
             return (
             <div
               key={step.key}
@@ -1307,6 +2162,30 @@ export default function CreativeStudioPage() {
                 </p>
               )}
 
+              {step.status === "completed" &&
+                (stepValidationReport?.warnings?.length ?? 0) > 0 && (
+                  <div
+                    style={{
+                      marginTop: 10,
+                      border: "1px solid rgba(250, 204, 21, 0.4)",
+                      backgroundColor: "rgba(250, 204, 21, 0.08)",
+                      borderRadius: 8,
+                      padding: "8px 10px",
+                    }}
+                  >
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#fde68a" }}>
+                      Quality warnings (Score: {stepValidationReport?.qualityScore ?? 0}/100)
+                    </div>
+                    <div style={{ marginTop: 6, display: "grid", gap: 4 }}>
+                      {(stepValidationReport?.warnings ?? []).map((warning, warningIndex) => (
+                        <div key={`step-warning-${step.key}-${warningIndex}`} style={{ fontSize: 12, color: "#fde68a" }}>
+                          • {warning}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
               {step.key === "script" && step.status === "completed" && scriptId && (
                 <div style={{ marginTop: 10 }}>
                   <button
@@ -1350,6 +2229,37 @@ export default function CreativeStudioPage() {
                     <p style={{ margin: 0, color: "#fca5a5", fontSize: 13 }}>{scriptPanelError}</p>
                   ) : scriptPanelData ? (
                     <>
+                      {scriptValidationReport && (
+                        <div
+                          style={{
+                            marginBottom: 10,
+                            borderRadius: 8,
+                            border: "1px solid #334155",
+                            backgroundColor: "#0b1220",
+                            padding: "8px 10px",
+                          }}
+                        >
+                          <div style={{ fontSize: 12, fontWeight: 700, color: "#cbd5e1" }}>
+                            Validation score: {scriptValidationReport.qualityScore}/100
+                          </div>
+                          {scriptValidationReport.warnings.length > 0 ? (
+                            <div style={{ marginTop: 6, display: "grid", gap: 4 }}>
+                              {scriptValidationReport.warnings.map((warning, warningIndex) => (
+                                <div
+                                  key={`script-validation-warning-${warningIndex}`}
+                                  style={{ fontSize: 12, color: "#fde68a" }}
+                                >
+                                  • {warning}
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div style={{ marginTop: 6, fontSize: 12, color: "#6ee7b7" }}>
+                              All quality gates passed.
+                            </div>
+                          )}
+                        </div>
+                      )}
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
                         <div style={{ color: "#94a3b8", fontSize: 12 }}>
                           <div>Script ID: {scriptPanelData.id}</div>
@@ -1433,7 +2343,7 @@ export default function CreativeStudioPage() {
                         {(scriptPanelEditMode ? scriptPanelDraftBeats : extractScriptBeats(scriptPanelData.rawJson)).map(
                           (scene, sceneIndex) => (
                             <div
-                              key={`${scene.beat}-${sceneIndex}`}
+                              key={`script-beat-${sceneIndex}`}
                               style={{
                                 border: "1px solid #334155",
                                 borderRadius: 8,
@@ -1447,40 +2357,157 @@ export default function CreativeStudioPage() {
                                   justifyContent: "space-between",
                                   alignItems: "center",
                                   marginBottom: 8,
+                                  gap: 10,
                                 }}
                               >
-                                <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "#e2e8f0" }}>
-                                  {scene.beat}
-                                </p>
-                                <span style={{ fontSize: 12, color: "#94a3b8" }}>
-                                  {scene.duration != null && String(scene.duration).trim() !== ""
-                                    ? `${scene.duration}s`
-                                    : "No timing"}
-                                </span>
+                                {scriptPanelEditMode ? (
+                                  <input
+                                    type="text"
+                                    value={scene.beat}
+                                    onChange={(event) => updateScriptBeatLabel(sceneIndex, event.target.value)}
+                                    style={{
+                                      width: "100%",
+                                      boxSizing: "border-box",
+                                      borderRadius: 8,
+                                      border: "1px solid #334155",
+                                      backgroundColor: "#0f172a",
+                                      color: "#e2e8f0",
+                                      padding: "8px 10px",
+                                      fontSize: 13,
+                                      fontWeight: 600,
+                                    }}
+                                  />
+                                ) : (
+                                  <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "#e2e8f0" }}>
+                                    {scene.beat}
+                                  </p>
+                                )}
+                                <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                                  <span style={{ fontSize: 12, color: "#94a3b8" }}>
+                                    {scene.duration != null && String(scene.duration).trim() !== ""
+                                      ? `${scene.duration}s`
+                                      : "No timing"}
+                                  </span>
+                                  {scriptPanelEditMode && (
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleMoveScriptBeat(sceneIndex, -1)}
+                                        disabled={sceneIndex === 0 || scriptPanelSaving}
+                                        style={{
+                                          border: "1px solid #334155",
+                                          backgroundColor: "#0b1220",
+                                          color: "#cbd5e1",
+                                          borderRadius: 6,
+                                          padding: "4px 6px",
+                                          fontSize: 12,
+                                          cursor: sceneIndex === 0 || scriptPanelSaving ? "not-allowed" : "pointer",
+                                        }}
+                                      >
+                                        ↑
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleMoveScriptBeat(sceneIndex, 1)}
+                                        disabled={sceneIndex === scriptPanelDraftBeats.length - 1 || scriptPanelSaving}
+                                        style={{
+                                          border: "1px solid #334155",
+                                          backgroundColor: "#0b1220",
+                                          color: "#cbd5e1",
+                                          borderRadius: 6,
+                                          padding: "4px 6px",
+                                          fontSize: 12,
+                                          cursor:
+                                            sceneIndex === scriptPanelDraftBeats.length - 1 || scriptPanelSaving
+                                              ? "not-allowed"
+                                              : "pointer",
+                                        }}
+                                      >
+                                        ↓
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteScriptBeat(sceneIndex)}
+                                        disabled={scriptPanelDraftBeats.length <= 1 || scriptPanelSaving}
+                                        style={{
+                                          border: "1px solid rgba(239, 68, 68, 0.4)",
+                                          backgroundColor: "rgba(239, 68, 68, 0.15)",
+                                          color: "#fca5a5",
+                                          borderRadius: 6,
+                                          padding: "4px 8px",
+                                          fontSize: 11,
+                                          fontWeight: 600,
+                                          cursor:
+                                            scriptPanelDraftBeats.length <= 1 || scriptPanelSaving
+                                              ? "not-allowed"
+                                              : "pointer",
+                                        }}
+                                      >
+                                        Delete
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
                               </div>
                               {scriptPanelEditMode ? (
-                                <textarea
-                                  value={scene.vo}
-                                  onChange={(e) =>
-                                    setScriptPanelDraftBeats((prev) =>
-                                      prev.map((beat, idx) =>
-                                        idx === sceneIndex ? { ...beat, vo: e.target.value } : beat
-                                      )
-                                    )
-                                  }
-                                  rows={4}
-                                  style={{
-                                    width: "100%",
-                                    boxSizing: "border-box",
-                                    borderRadius: 8,
-                                    border: "1px solid #334155",
-                                    backgroundColor: "#0f172a",
-                                    color: "#e2e8f0",
-                                    padding: 10,
-                                    fontSize: 13,
-                                    resize: "vertical",
-                                  }}
-                                />
+                                <>
+                                  <textarea
+                                    value={scene.vo}
+                                    onChange={(event) => updateScriptBeatVo(sceneIndex, event.target.value)}
+                                    rows={4}
+                                    style={{
+                                      width: "100%",
+                                      boxSizing: "border-box",
+                                      borderRadius: 8,
+                                      border: "1px solid #334155",
+                                      backgroundColor: "#0f172a",
+                                      color: "#e2e8f0",
+                                      padding: 10,
+                                      fontSize: 13,
+                                      resize: "vertical",
+                                    }}
+                                  />
+                                  {scene.aiDataQuality === "partial" && (
+                                    <div
+                                      style={{
+                                        marginTop: 8,
+                                        display: "inline-flex",
+                                        borderRadius: 9999,
+                                        padding: "2px 8px",
+                                        fontSize: 11,
+                                        fontWeight: 600,
+                                        border: "1px solid #facc15",
+                                        color: "#fde68a",
+                                        backgroundColor: "rgba(250, 204, 21, 0.12)",
+                                      }}
+                                    >
+                                      Limited research data.
+                                    </div>
+                                  )}
+                                  {scene.aiDataQuality === "minimal" && (
+                                    <div
+                                      style={{
+                                        marginTop: 8,
+                                        display: "inline-flex",
+                                        borderRadius: 9999,
+                                        padding: "2px 8px",
+                                        fontSize: 11,
+                                        fontWeight: 600,
+                                        border: "1px solid #fb923c",
+                                        color: "#fdba74",
+                                        backgroundColor: "rgba(251, 146, 60, 0.15)",
+                                      }}
+                                    >
+                                      No research data — review carefully.
+                                    </div>
+                                  )}
+                                  <AddBeatComposer
+                                    beatIndex={sceneIndex}
+                                    disabled={scriptPanelSaving}
+                                    onWriteYourself={handleInsertBlankScriptBeat}
+                                    onGenerateWithAi={handleInsertAiScriptBeat}
+                                  />
+                                </>
                               ) : (
                                 <p style={{ margin: 0, fontSize: 13, lineHeight: 1.5, color: "#cbd5e1", whiteSpace: "pre-wrap" }}>
                                   {scene.vo || "No spoken words"}
@@ -1531,6 +2558,552 @@ export default function CreativeStudioPage() {
                     <div>Product intel: {formatMetadataDate(scriptSources.productIntelDate)}</div>
                   </div>
                 </details>
+              )}
+
+              {step.key === "storyboard" && step.status === "completed" && (
+                <div
+                  style={{
+                    marginTop: 12,
+                    borderRadius: 10,
+                    border: "1px solid #334155",
+                    backgroundColor: "#020617",
+                    padding: 12,
+                  }}
+                >
+                  {!storyboardId ? (
+                    <p style={{ margin: 0, color: "#fca5a5", fontSize: 13 }}>
+                      Storyboard generation failed to produce output.
+                    </p>
+                  ) : storyboardPanelLoading && storyboardMatchesCurrentFetch ? (
+                    <p style={{ margin: 0, color: "#94a3b8", fontSize: 13 }}>
+                      Loading storyboard panels...
+                    </p>
+                  ) : storyboardPanelError && storyboardMatchesCurrentFetch ? (
+                    <p style={{ margin: 0, color: "#fca5a5", fontSize: 13 }}>{storyboardPanelError}</p>
+                  ) : storyboardPanels.length === 0 ? (
+                    <p style={{ margin: 0, color: "#fca5a5", fontSize: 13 }}>
+                      Storyboard generation failed to produce output.
+                    </p>
+                  ) : (
+                    <>
+                      {storyboardValidationReport && (
+                        <div
+                          style={{
+                            marginBottom: 10,
+                            borderRadius: 8,
+                            border: "1px solid #334155",
+                            backgroundColor: "#0b1220",
+                            padding: "8px 10px",
+                          }}
+                        >
+                          <div style={{ fontSize: 12, fontWeight: 700, color: "#cbd5e1" }}>
+                            Validation score: {storyboardValidationReport.qualityScore}/100
+                          </div>
+                          {storyboardValidationReport.warnings.length > 0 ? (
+                            <div style={{ marginTop: 6, display: "grid", gap: 4 }}>
+                              {storyboardValidationReport.warnings.map((warning, warningIndex) => (
+                                <div
+                                  key={`storyboard-validation-warning-${warningIndex}`}
+                                  style={{ fontSize: 12, color: "#fde68a" }}
+                                >
+                                  • {warning}
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div style={{ marginTop: 6, fontSize: 12, color: "#6ee7b7" }}>
+                              All quality gates passed.
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          gap: 8,
+                          marginBottom: 10,
+                        }}
+                      >
+                        <span style={{ color: "#94a3b8", fontSize: 12 }}>
+                          {storyboardEditMode
+                            ? `${storyboardDraftPanels.length} panel(s) in edit mode`
+                            : `${storyboardPanels.length} panel(s)`}
+                        </span>
+                        {!storyboardEditMode ? (
+                          <button
+                            type="button"
+                            onClick={openStoryboardEditMode}
+                            style={{
+                              border: "1px solid #334155",
+                              backgroundColor: "#0f172a",
+                              color: "#cbd5e1",
+                              padding: "6px 10px",
+                              borderRadius: 8,
+                              fontSize: 12,
+                              fontWeight: 600,
+                              cursor: "pointer",
+                            }}
+                          >
+                            Edit Storyboard
+                          </button>
+                        ) : (
+                          <div style={{ display: "flex", gap: 8 }}>
+                            <button
+                              type="button"
+                              onClick={cancelStoryboardEditMode}
+                              disabled={storyboardSaving}
+                              style={{
+                                border: "1px solid #334155",
+                                backgroundColor: "#0b1220",
+                                color: "#cbd5e1",
+                                padding: "6px 10px",
+                                borderRadius: 8,
+                                fontSize: 12,
+                                fontWeight: 600,
+                                cursor: storyboardSaving ? "not-allowed" : "pointer",
+                              }}
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleSaveStoryboardEdits()}
+                              disabled={storyboardSaving}
+                              style={{
+                                border: "none",
+                                backgroundColor: storyboardSaving ? "#1e293b" : "#0ea5e9",
+                                color: storyboardSaving ? "#64748b" : "#ffffff",
+                                padding: "6px 10px",
+                                borderRadius: 8,
+                                fontSize: 12,
+                                fontWeight: 600,
+                                cursor: storyboardSaving ? "not-allowed" : "pointer",
+                              }}
+                            >
+                              {storyboardSaving ? "Saving..." : "Save Storyboard"}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      {storyboardSaveError && (
+                        <p style={{ margin: "0 0 8px 0", color: "#fca5a5", fontSize: 12 }}>{storyboardSaveError}</p>
+                      )}
+                      {storyboardRegenerateError && (
+                        <p style={{ margin: "0 0 8px 0", color: "#fca5a5", fontSize: 12 }}>
+                          {storyboardRegenerateError}
+                        </p>
+                      )}
+
+                      <div style={{ display: "grid", gap: 10 }}>
+                        {(storyboardEditMode ? storyboardDraftPanels : storyboardPanels).map((panel, panelIndex) => (
+                          <div
+                            key={`${panel.beatLabel}-${panel.startTime}-${panel.endTime}-${panelIndex}`}
+                            style={{
+                              border: "1px solid #334155",
+                              borderRadius: 8,
+                              backgroundColor: "#0b1220",
+                              padding: 10,
+                            }}
+                          >
+                            <div
+                              style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "center",
+                                gap: 10,
+                                marginBottom: 8,
+                              }}
+                            >
+                              <p style={{ margin: 0, color: "#e2e8f0", fontSize: 13, fontWeight: 600 }}>
+                                {panel.panelType === "B_ROLL_ONLY"
+                                  ? "B-ROLL SEQUENCE"
+                                  : panel.beatLabel || `Beat ${panelIndex + 1}`}
+                              </p>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                <span style={{ color: "#94a3b8", fontSize: 12 }}>
+                                  {formatStoryboardPanelTiming(panel)}
+                                </span>
+                                {storyboardEditMode && (
+                                  <div style={{ display: "flex", gap: 6 }}>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleMoveStoryboardPanel(panelIndex, -1)}
+                                      disabled={panelIndex === 0 || storyboardSaving}
+                                      style={{
+                                        border: "1px solid #334155",
+                                        backgroundColor: "#0f172a",
+                                        color: "#cbd5e1",
+                                        padding: "2px 8px",
+                                        borderRadius: 6,
+                                        fontSize: 12,
+                                        cursor:
+                                          panelIndex === 0 || storyboardSaving ? "not-allowed" : "pointer",
+                                      }}
+                                    >
+                                      ↑
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleMoveStoryboardPanel(panelIndex, 1)}
+                                      disabled={
+                                        panelIndex === storyboardDraftPanels.length - 1 || storyboardSaving
+                                      }
+                                      style={{
+                                        border: "1px solid #334155",
+                                        backgroundColor: "#0f172a",
+                                        color: "#cbd5e1",
+                                        padding: "2px 8px",
+                                        borderRadius: 6,
+                                        fontSize: 12,
+                                        cursor:
+                                          panelIndex === storyboardDraftPanels.length - 1 || storyboardSaving
+                                            ? "not-allowed"
+                                            : "pointer",
+                                      }}
+                                    >
+                                      ↓
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteStoryboardPanel(panelIndex)}
+                                      disabled={storyboardDraftPanels.length <= 1 || storyboardSaving}
+                                      style={{
+                                        border: "1px solid rgba(239, 68, 68, 0.5)",
+                                        backgroundColor: "rgba(239, 68, 68, 0.15)",
+                                        color: "#fca5a5",
+                                        padding: "2px 8px",
+                                        borderRadius: 6,
+                                        fontSize: 12,
+                                        cursor:
+                                          storyboardDraftPanels.length <= 1 || storyboardSaving
+                                            ? "not-allowed"
+                                            : "pointer",
+                                      }}
+                                    >
+                                      Delete
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => void handleRegenerateStoryboardPanel(panelIndex)}
+                                      disabled={storyboardRegeneratingIndex === panelIndex || storyboardSaving}
+                                      style={{
+                                        border: "1px solid rgba(14, 165, 233, 0.5)",
+                                        backgroundColor: "rgba(14, 165, 233, 0.15)",
+                                        color: "#7dd3fc",
+                                        padding: "2px 8px",
+                                        borderRadius: 6,
+                                        fontSize: 12,
+                                        cursor:
+                                          storyboardRegeneratingIndex === panelIndex || storyboardSaving
+                                            ? "not-allowed"
+                                            : "pointer",
+                                      }}
+                                    >
+                                      {storyboardRegeneratingIndex === panelIndex
+                                        ? "Regenerating..."
+                                        : "Regenerate Panel"}
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            {storyboardEditMode ? (
+                              <div style={{ display: "grid", gap: 8 }}>
+                                <div>
+                                  <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>Panel Type</div>
+                                  <select
+                                    value={panel.panelType}
+                                    onChange={(e) =>
+                                      updateStoryboardDraftPanel(panelIndex, (prev) => ({
+                                        ...prev,
+                                        panelType: e.target.value === "B_ROLL_ONLY" ? "B_ROLL_ONLY" : "ON_CAMERA",
+                                      }))
+                                    }
+                                    style={{
+                                      width: "100%",
+                                      boxSizing: "border-box",
+                                      borderRadius: 8,
+                                      border: "1px solid #334155",
+                                      backgroundColor: "#0f172a",
+                                      color: "#e2e8f0",
+                                      padding: 8,
+                                      fontSize: 12,
+                                    }}
+                                  >
+                                    <option value="ON_CAMERA">On Camera</option>
+                                    <option value="B_ROLL_ONLY">B-roll Only</option>
+                                  </select>
+                                </div>
+                                <div>
+                                  <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>Beat Label</div>
+                                  <textarea
+                                    value={panel.beatLabel}
+                                    onChange={(e) =>
+                                      updateStoryboardDraftPanel(panelIndex, (prev) => ({
+                                        ...prev,
+                                        beatLabel: e.target.value,
+                                      }))
+                                    }
+                                    rows={2}
+                                    style={{
+                                      width: "100%",
+                                      boxSizing: "border-box",
+                                      borderRadius: 8,
+                                      border: "1px solid #334155",
+                                      backgroundColor: "#0f172a",
+                                      color: "#e2e8f0",
+                                      padding: 8,
+                                      fontSize: 12,
+                                      resize: "vertical",
+                                    }}
+                                  />
+                                </div>
+                                <div style={{ color: "#94a3b8", fontSize: 11 }}>
+                                  Timing: {formatStoryboardPanelTiming(panel)}
+                                </div>
+                                <div style={{ color: "#94a3b8", fontSize: 11 }}>VO</div>
+                                <textarea
+                                  value={panel.vo}
+                                  readOnly
+                                  rows={2}
+                                  style={{
+                                    width: "100%",
+                                    boxSizing: "border-box",
+                                    borderRadius: 8,
+                                    border: "1px solid #1e293b",
+                                    backgroundColor: "#020617",
+                                    color: "#94a3b8",
+                                    padding: 8,
+                                    fontSize: 12,
+                                    resize: "vertical",
+                                  }}
+                                />
+
+                                {panel.panelType !== "B_ROLL_ONLY" && (
+                                  <div>
+                                    <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>Character Action</div>
+                                    <textarea
+                                      value={panel.characterAction ?? ""}
+                                      onChange={(e) =>
+                                        updateStoryboardDraftPanel(panelIndex, (prev) => ({
+                                          ...prev,
+                                          characterAction: e.target.value.trim() ? e.target.value : null,
+                                        }))
+                                      }
+                                      rows={2}
+                                      style={{
+                                        width: "100%",
+                                        boxSizing: "border-box",
+                                        borderRadius: 8,
+                                        border: "1px solid #334155",
+                                        backgroundColor: "#0f172a",
+                                        color: "#e2e8f0",
+                                        padding: 8,
+                                        fontSize: 12,
+                                        resize: "vertical",
+                                      }}
+                                    />
+                                  </div>
+                                )}
+
+                                <div>
+                                  <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>Environment</div>
+                                  <textarea
+                                    value={panel.environment ?? ""}
+                                    onChange={(e) =>
+                                      updateStoryboardDraftPanel(panelIndex, (prev) => ({
+                                        ...prev,
+                                        environment: e.target.value.trim() ? e.target.value : null,
+                                      }))
+                                    }
+                                    rows={2}
+                                    style={{
+                                      width: "100%",
+                                      boxSizing: "border-box",
+                                      borderRadius: 8,
+                                      border: "1px solid #334155",
+                                      backgroundColor: "#0f172a",
+                                      color: "#e2e8f0",
+                                      padding: 8,
+                                      fontSize: 12,
+                                      resize: "vertical",
+                                    }}
+                                  />
+                                </div>
+
+                                <div>
+                                  <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>Camera Direction</div>
+                                  <textarea
+                                    value={panel.cameraDirection}
+                                    onChange={(e) =>
+                                      updateStoryboardDraftPanel(panelIndex, (prev) => ({
+                                        ...prev,
+                                        cameraDirection: e.target.value,
+                                      }))
+                                    }
+                                    rows={2}
+                                    style={{
+                                      width: "100%",
+                                      boxSizing: "border-box",
+                                      borderRadius: 8,
+                                      border: "1px solid #334155",
+                                      backgroundColor: "#0f172a",
+                                      color: "#e2e8f0",
+                                      padding: 8,
+                                      fontSize: 12,
+                                      resize: "vertical",
+                                    }}
+                                  />
+                                </div>
+
+                                <div>
+                                  <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>Product Placement</div>
+                                  <textarea
+                                    value={panel.productPlacement}
+                                    onChange={(e) =>
+                                      updateStoryboardDraftPanel(panelIndex, (prev) => ({
+                                        ...prev,
+                                        productPlacement: e.target.value,
+                                      }))
+                                    }
+                                    rows={2}
+                                    style={{
+                                      width: "100%",
+                                      boxSizing: "border-box",
+                                      borderRadius: 8,
+                                      border: "1px solid #334155",
+                                      backgroundColor: "#0f172a",
+                                      color: "#e2e8f0",
+                                      padding: 8,
+                                      fontSize: 12,
+                                      resize: "vertical",
+                                    }}
+                                  />
+                                </div>
+
+                                <div>
+                                  <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>Transition Type</div>
+                                  <textarea
+                                    value={panel.transitionType}
+                                    onChange={(e) =>
+                                      updateStoryboardDraftPanel(panelIndex, (prev) => ({
+                                        ...prev,
+                                        transitionType: e.target.value,
+                                      }))
+                                    }
+                                    rows={2}
+                                    style={{
+                                      width: "100%",
+                                      boxSizing: "border-box",
+                                      borderRadius: 8,
+                                      border: "1px solid #334155",
+                                      backgroundColor: "#0f172a",
+                                      color: "#e2e8f0",
+                                      padding: 8,
+                                      fontSize: 12,
+                                      resize: "vertical",
+                                    }}
+                                  />
+                                </div>
+
+                                <div>
+                                  <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>
+                                    {panel.panelType === "B_ROLL_ONLY"
+                                      ? "B-roll Shot Breakdown (one per line)"
+                                      : "B-roll Suggestions (one per line)"}
+                                  </div>
+                                  <textarea
+                                    value={bRollSuggestionsToTextarea(panel.bRollSuggestions)}
+                                    onChange={(e) =>
+                                      updateStoryboardDraftPanel(panelIndex, (prev) => ({
+                                        ...prev,
+                                        bRollSuggestions: parseBrollSuggestionsTextarea(e.target.value),
+                                      }))
+                                    }
+                                    rows={panel.panelType === "B_ROLL_ONLY" ? 8 : 3}
+                                    style={{
+                                      width: "100%",
+                                      boxSizing: "border-box",
+                                      borderRadius: 8,
+                                      border:
+                                        panel.panelType === "B_ROLL_ONLY"
+                                          ? "1px solid rgba(14, 165, 233, 0.6)"
+                                          : "1px solid #334155",
+                                      backgroundColor: "#0f172a",
+                                      color: "#e2e8f0",
+                                      padding: 8,
+                                      fontSize: 12,
+                                      resize: "vertical",
+                                    }}
+                                  />
+                                </div>
+
+                                <div style={{ marginTop: 2 }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAddStoryboardPanel(panelIndex)}
+                                    disabled={storyboardSaving}
+                                    style={{
+                                      border: "1px solid #334155",
+                                      backgroundColor: "#0f172a",
+                                      color: "#cbd5e1",
+                                      padding: "6px 10px",
+                                      borderRadius: 8,
+                                      fontSize: 12,
+                                      cursor: storyboardSaving ? "not-allowed" : "pointer",
+                                    }}
+                                  >
+                                    Add Panel Below
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div style={{ display: "grid", gap: 6, fontSize: 12, color: "#cbd5e1" }}>
+                                {panel.panelType === "B_ROLL_ONLY" ? (
+                                  <>
+                                    <div>
+                                      <strong style={{ color: "#f1f5f9" }}>B-roll Suggestions:</strong>
+                                      {panel.bRollSuggestions.length > 0 ? (
+                                        <div style={{ marginTop: 4, display: "grid", gap: 4 }}>
+                                          {panel.bRollSuggestions.map((suggestion, suggestionIndex) => (
+                                            <div key={`broll-${panelIndex}-${suggestionIndex}`}>• {suggestion}</div>
+                                          ))}
+                                        </div>
+                                      ) : (
+                                        " Not provided"
+                                      )}
+                                    </div>
+                                    <div><strong style={{ color: "#f1f5f9" }}>Camera Direction:</strong> {panel.cameraDirection || "Not provided"}</div>
+                                    <div><strong style={{ color: "#f1f5f9" }}>Product Placement:</strong> {panel.productPlacement || "Not provided"}</div>
+                                    <div><strong style={{ color: "#f1f5f9" }}>Transition Type:</strong> {panel.transitionType || "Not provided"}</div>
+                                  </>
+                                ) : (
+                                  <>
+                                    <div><strong style={{ color: "#f1f5f9" }}>Character Action:</strong> {panel.characterAction || "Not provided"}</div>
+                                    <div><strong style={{ color: "#f1f5f9" }}>Environment:</strong> {panel.environment || "Not provided"}</div>
+                                    <div><strong style={{ color: "#f1f5f9" }}>Camera Direction:</strong> {panel.cameraDirection || "Not provided"}</div>
+                                    <div><strong style={{ color: "#f1f5f9" }}>Product Placement:</strong> {panel.productPlacement || "Not provided"}</div>
+                                    <div>
+                                      <strong style={{ color: "#f1f5f9" }}>B-roll Suggestions:</strong>{" "}
+                                      {panel.bRollSuggestions.length > 0
+                                        ? panel.bRollSuggestions.join(", ")
+                                        : "Not provided"}
+                                    </div>
+                                    <div><strong style={{ color: "#f1f5f9" }}>Transition Type:</strong> {panel.transitionType || "Not provided"}</div>
+                                  </>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
               )}
 
               {step.status === "running" && (
