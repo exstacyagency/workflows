@@ -26,6 +26,9 @@ import {
 
 const ScriptGenerationSchema = ProjectJobSchema.extend({
   runId: z.string().optional(),
+  forceNew: z.boolean().optional(),
+  targetDuration: z.number().int().min(1).max(180).default(30),
+  beatCount: z.number().int().min(1).max(10).default(5),
 });
 
 export async function POST(req: NextRequest) {
@@ -132,6 +135,7 @@ export async function POST(req: NextRequest) {
     });
 
     const breakerTest = flag("FF_BREAKER_TEST");
+    const forceNew = parsed.data.forceNew === true;
     const selectedCustomerAnalysisJobId =
       typeof parsed.data.customerAnalysisJobId === "string"
         ? parsed.data.customerAnalysisJobId
@@ -140,13 +144,18 @@ export async function POST(req: NextRequest) {
       typeof parsed.data.productId === "string"
         ? parsed.data.productId
         : "none";
-    let idempotencyKey = `script-generation:${projectId}:${effectiveRunId}:${selectedProductId}:${selectedCustomerAnalysisJobId}`;
+    const selectedTargetDuration = Number(parsed.data.targetDuration);
+    const selectedBeatCount = Number(parsed.data.beatCount);
+    let idempotencyKey = `script-generation:${projectId}:${effectiveRunId}:${selectedProductId}:${selectedCustomerAnalysisJobId}:${selectedTargetDuration}:${selectedBeatCount}`;
     if (breakerTest) idempotencyKey += `:${Date.now()}`;
-    const bypassFailedIdempotencyRecord = async (jobId: string) => {
+    const bypassIdempotencyRecord = async (
+      jobId: string,
+      reason: "failed" | "completed_force_new",
+    ) => {
       await prisma.job.update({
         where: { id: jobId },
         data: {
-          idempotencyKey: `${idempotencyKey}:failed:${jobId}`,
+          idempotencyKey: `${idempotencyKey}:${reason}:${Date.now()}:${jobId}`,
         },
       });
     };
@@ -157,32 +166,34 @@ export async function POST(req: NextRequest) {
     });
 
     if (existingJob) {
-      if (securitySweep) {
-        if (existingJob.status !== JobStatus.COMPLETED) {
-          await prisma.job.update({
-            where: { id: existingJob.id },
-            data: {
-              status: JobStatus.COMPLETED,
-              resultSummary: "Skipped: SECURITY_SWEEP",
-              error: Prisma.JsonNull,
-            },
-          });
-        }
-        return NextResponse.json(
-          {
-            jobId: existingJob.id,
-            runId: existingJob.runId ?? effectiveRunId,
-            reused: true,
-            started: false,
-            skipped: true,
-            reason: "SECURITY_SWEEP",
-          },
-          { status: 200 },
-        );
-      }
       if (existingJob.status === JobStatus.FAILED) {
-        await bypassFailedIdempotencyRecord(existingJob.id);
+        await bypassIdempotencyRecord(existingJob.id, "failed");
+      } else if (forceNew && existingJob.status === JobStatus.COMPLETED) {
+        await bypassIdempotencyRecord(existingJob.id, "completed_force_new");
       } else {
+        if (securitySweep) {
+          if (existingJob.status !== JobStatus.COMPLETED) {
+            await prisma.job.update({
+              where: { id: existingJob.id },
+              data: {
+                status: JobStatus.COMPLETED,
+                resultSummary: "Skipped: SECURITY_SWEEP",
+                error: Prisma.JsonNull,
+              },
+            });
+          }
+          return NextResponse.json(
+            {
+              jobId: existingJob.id,
+              runId: existingJob.runId ?? effectiveRunId,
+              reused: true,
+              started: false,
+              skipped: true,
+              reason: "SECURITY_SWEEP",
+            },
+            { status: 200 },
+          );
+        }
         return NextResponse.json(
           {
             jobId: existingJob.id,
@@ -362,7 +373,10 @@ export async function POST(req: NextRequest) {
 
         if (existing) {
           if (existing.status === JobStatus.FAILED) {
-            await bypassFailedIdempotencyRecord(existing.id);
+            await bypassIdempotencyRecord(existing.id, "failed");
+            job = await createScriptGenerationJob();
+          } else if (forceNew && existing.status === JobStatus.COMPLETED) {
+            await bypassIdempotencyRecord(existing.id, "completed_force_new");
             job = await createScriptGenerationJob();
           } else {
             if (reservation && userIdForQuota) {
