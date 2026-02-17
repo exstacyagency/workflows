@@ -1,15 +1,18 @@
-import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
+import { NextRequest, NextResponse } from "next/server";
 import { JobStatus, JobType } from "@prisma/client";
 import { cfg } from "@/lib/config";
-import { getSessionUserId } from "@/lib/getSessionUserId";
 import { prisma } from "@/lib/prisma";
+import { getSessionUserId } from "@/lib/getSessionUserId";
 
-type SceneInput = {
-  beat?: unknown;
-  vo?: unknown;
-  duration?: unknown;
+export const runtime = "nodejs";
+
+type ExistingScene = {
+  beat: string;
+  vo: string;
 };
+
+type DataQuality = "full" | "partial" | "minimal";
 
 function asObject(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -17,9 +20,10 @@ function asObject(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
-function asString(value: unknown): string {
-  if (typeof value !== "string") return "";
-  return value.trim();
+function asString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
 }
 
 function asStringArray(value: unknown): string[] {
@@ -29,322 +33,458 @@ function asStringArray(value: unknown): string[] {
     .filter(Boolean);
 }
 
-function asPositiveInt(value: unknown, fallback: number): number {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return fallback;
-  const rounded = Math.round(parsed);
-  return rounded > 0 ? rounded : fallback;
+function firstStringInArray(value: unknown): string | null {
+  if (!Array.isArray(value)) return null;
+  for (const entry of value) {
+    const normalized = asString(entry);
+    if (normalized) return normalized;
+  }
+  return null;
 }
 
-function normalizeScenes(value: unknown): Array<{ beat: string; vo: string; duration: string }> {
-  if (!Array.isArray(value)) return [];
+function normalizeInt(value: unknown, fallback: number, min: number, max: number): number {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string"
+        ? Number(value)
+        : Number.NaN;
+  if (!Number.isFinite(parsed)) return fallback;
+  const rounded = Math.round(parsed);
+  if (rounded < min || rounded > max) return fallback;
+  return rounded;
+}
+
+function parseExistingScenes(value: unknown): ExistingScene[] | null {
+  if (!Array.isArray(value)) return null;
   return value.map((scene, index) => {
-    const raw = (scene ?? {}) as SceneInput;
+    const raw = asObject(scene) ?? {};
     const beat = asString(raw.beat) || `Beat ${index + 1}`;
-    const vo = asString(raw.vo);
-    const durationRaw = raw.duration;
-    const duration =
-      typeof durationRaw === "number" || typeof durationRaw === "string"
-        ? String(durationRaw).trim()
-        : "";
-    return { beat, vo, duration };
+    const vo = asString(raw.vo) || "";
+    return { beat, vo };
   });
 }
 
-function extractTextContent(response: any): string {
-  return Array.isArray(response?.content)
+function normalizeBeatLabel(value: unknown): string {
+  return asString(value) || "New Beat";
+}
+
+function formatExistingScenes(scenes: ExistingScene[]): string {
+  if (scenes.length === 0) return "No surrounding beats available.";
+  return scenes
+    .map((scene, index) => `${scene.beat || `Beat ${index + 1}`}: ${scene.vo || ""}`)
+    .join("\n");
+}
+
+function extractTextFromAnthropicResponse(response: any): string {
+  const text = Array.isArray(response?.content)
     ? response.content
         .filter((block: any) => block?.type === "text")
         .map((block: any) => String(block?.text ?? ""))
         .join("\n")
         .trim()
     : "";
+  return text;
 }
 
-function extractCustomerLanguage(personaRaw: unknown) {
-  const root = asObject(personaRaw) ?? {};
-  const avatar = asObject(root.avatar) ?? {};
-  const success = asObject(root.success_looks_like) ?? asObject(avatar.success_looks_like) ?? {};
-  const trigger = asObject(root.buy_trigger) ?? asObject(avatar.buy_trigger) ?? {};
-  const landmines = Array.isArray(root.competitor_landmines)
-    ? root.competitor_landmines
-    : Array.isArray(avatar.competitor_landmines)
-      ? avatar.competitor_landmines
-      : [];
-  const topLandmine = asObject(landmines[0]) ?? {};
+type CustomerLanguageSource = {
+  copyReadyPhrases: string[];
+  successLooksLikeQuote: string | null;
+  buyTriggerQuote: string | null;
+  competitorLandmineTopQuote: string | null;
+};
+
+function extractCustomerLanguage(personaInput: unknown): CustomerLanguageSource {
+  const persona = asObject(personaInput) ?? {};
+  const avatar = asObject(persona.avatar) ?? {};
+  const competitiveAnalysis =
+    asObject(persona.competitive_analysis) ?? asObject(avatar.competitive_analysis);
 
   const copyReadyPhrases = Array.from(
     new Set([
-      ...asStringArray(root.copy_ready_phrases),
+      ...asStringArray(persona.copy_ready_phrases),
       ...asStringArray(avatar.copy_ready_phrases),
+      ...asStringArray(persona.voc_phrases),
+      ...asStringArray(avatar.voc_phrases),
     ]),
   );
+
   const successLooksLike =
-    asString(success.quote) || asString(success.emotional_payoff) || asString(success.outcome);
-  const buyTrigger =
-    asString(trigger.quote) || asString(trigger.situation) || asString(trigger.trigger);
-  const competitorLandmine =
-    asString(topLandmine.quote) || asString(topLandmine.what_failed) || asString(topLandmine.impact);
+    asObject(persona.success_looks_like) ?? asObject(avatar.success_looks_like);
+  const successCriteria = asObject(avatar.success_criteria);
+  const successLooksLikeQuote =
+    asString(successLooksLike?.quote) ||
+    asString(successLooksLike?.emotional_payoff) ||
+    asString(successLooksLike?.outcome) ||
+    firstStringInArray(successCriteria?.supporting_quotes) ||
+    null;
+
+  const buyTrigger = asObject(persona.buy_trigger) ?? asObject(avatar.buy_trigger);
+  const buyTriggerQuote =
+    asString(buyTrigger?.quote) ||
+    firstStringInArray(buyTrigger?.supporting_quotes) ||
+    asString(buyTrigger?.trigger) ||
+    asString(buyTrigger?.situation) ||
+    null;
+
+  const competitorLandmines = Array.isArray(persona.competitor_landmines)
+    ? persona.competitor_landmines
+    : Array.isArray(avatar.competitor_landmines)
+      ? avatar.competitor_landmines
+      : [];
+  const topCompetitorLandmine = asObject(competitorLandmines[0]);
+
+  const competitorWeaknesses = Array.isArray(competitiveAnalysis?.competitor_weaknesses)
+    ? competitiveAnalysis.competitor_weaknesses
+    : [];
+  const topCompetitorWeakness = asObject(competitorWeaknesses[0]);
+
+  const competitorLandmineTopQuote =
+    asString(topCompetitorLandmine?.quote) ||
+    asString(topCompetitorLandmine?.impact) ||
+    asString(topCompetitorLandmine?.what_failed) ||
+    firstStringInArray(topCompetitorWeakness?.supporting_quotes) ||
+    null;
 
   return {
     copyReadyPhrases,
-    successLooksLike,
-    buyTrigger,
-    competitorLandmine,
+    successLooksLikeQuote,
+    buyTriggerQuote,
+    competitorLandmineTopQuote,
   };
 }
 
-function extractPatternGuidance(rawJson: unknown) {
-  const root = asObject(rawJson) ?? {};
-  const patternsRoot = asObject(root.patterns) ?? root;
-  const prescriptive = asObject(patternsRoot.prescriptiveGuidance) ?? asObject(root.prescriptiveGuidance) ?? {};
-  return {
-    psychologicalMechanism:
-      asString(prescriptive.psychologicalMechanism) ||
-      asString(prescriptive.psychological_mechanism),
-    transferFormula: asString(prescriptive.transferFormula) || asString(prescriptive.transfer_formula),
-  };
-}
-
-function extractProductIntel(payloadRaw: unknown): {
-  mechanismProcess: string;
-  specificClaims: string[];
-  keyFeatures: string[];
-} {
-  const payload = asObject(payloadRaw) ?? {};
-  const result = asObject(payload.result) ?? {};
-  const intel = asObject(result.intel) ?? {};
-
-  const mechanismProcess =
-    asString(intel.mechanismProcess) ||
-    asString(intel.mechanism_process) ||
-    asString(intel.process) ||
-    [asString(intel.usage), asString(intel.format), asString(intel.main_benefit)]
-      .filter((entry): entry is string => Boolean(entry))
-      .join("; ");
-  const specificClaims = asStringArray(
-    intel.specific_claims ?? intel.key_claims ?? intel.keyClaims,
-  );
-  const keyFeatures = asStringArray(
-    intel.key_features ?? intel.keyFeatures,
-  );
-
-  return {
-    mechanismProcess,
-    specificClaims,
-    keyFeatures,
-  };
+function computeDataQuality(flags: {
+  hasCustomer: boolean;
+  hasPattern: boolean;
+  hasProduct: boolean;
+}): DataQuality {
+  const count = [flags.hasCustomer, flags.hasPattern, flags.hasProduct].filter(Boolean).length;
+  if (count === 3) return "full";
+  if (count >= 1) return "partial";
+  return "minimal";
 }
 
 export async function POST(
   req: NextRequest,
   { params }: { params: { scriptId: string } },
 ) {
-  const userId = await getSessionUserId();
+  const userId = await getSessionUserId(req);
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  try {
-    const scriptId = String(params?.scriptId ?? "").trim();
-    if (!scriptId) {
-      return NextResponse.json({ error: "scriptId is required" }, { status: 400 });
-    }
+  const scriptId = String(params?.scriptId || "").trim();
+  if (!scriptId) {
+    return NextResponse.json({ error: "scriptId is required" }, { status: 400 });
+  }
 
-    const body = await req.json().catch(() => null);
-    const beatLabel = asString((body as Record<string, unknown> | null)?.beatLabel);
-    const insertionIndex = Number((body as Record<string, unknown> | null)?.insertionIndex);
-    const existingScenes = normalizeScenes((body as Record<string, unknown> | null)?.existingScenes);
-    const targetDuration = asPositiveInt((body as Record<string, unknown> | null)?.targetDuration, 30);
-    const beatCount = asPositiveInt((body as Record<string, unknown> | null)?.beatCount, 5);
+  const body = await req.json().catch(() => null);
+  if (!body || typeof body !== "object") {
+    return NextResponse.json({ error: "Invalid JSON payload" }, { status: 400 });
+  }
 
-    if (!beatLabel) {
-      return NextResponse.json({ error: "beatLabel is required" }, { status: 400 });
-    }
-    if (!Number.isInteger(insertionIndex) || insertionIndex < 0) {
-      return NextResponse.json({ error: "insertionIndex must be a non-negative integer" }, { status: 400 });
-    }
-    if (!Array.isArray((body as Record<string, unknown> | null)?.existingScenes)) {
-      return NextResponse.json({ error: "existingScenes array is required" }, { status: 400 });
-    }
+  const beatLabel = normalizeBeatLabel((body as Record<string, unknown>).beatLabel);
+  const insertionIndex = normalizeInt(
+    (body as Record<string, unknown>).insertionIndex,
+    0,
+    0,
+    999,
+  );
+  const existingScenes = parseExistingScenes((body as Record<string, unknown>).existingScenes);
+  if (!existingScenes) {
+    return NextResponse.json({ error: "existingScenes array is required" }, { status: 400 });
+  }
 
-    const script = await prisma.script.findFirst({
-      where: {
-        id: scriptId,
-        project: {
-          userId,
-        },
+  const targetDuration = normalizeInt(
+    (body as Record<string, unknown>).targetDuration,
+    30,
+    1,
+    180,
+  );
+  const beatCount = normalizeInt(
+    (body as Record<string, unknown>).beatCount,
+    5,
+    1,
+    20,
+  );
+
+  const script = await prisma.script.findFirst({
+    where: {
+      id: scriptId,
+      project: {
+        userId,
       },
+    },
+    select: {
+      id: true,
+      projectId: true,
+      jobId: true,
+    },
+  });
+  if (!script) {
+    return NextResponse.json({ error: "Script not found" }, { status: 404 });
+  }
+
+  if (!script.jobId) {
+    return NextResponse.json(
+      { error: "Script has no linked job; cannot resolve run context" },
+      { status: 400 },
+    );
+  }
+
+  const scriptJob = await prisma.job.findFirst({
+    where: {
+      id: script.jobId,
+      projectId: script.projectId,
+    },
+    select: {
+      id: true,
+      runId: true,
+    },
+  });
+  if (!scriptJob) {
+    return NextResponse.json({ error: "Linked script job not found" }, { status: 404 });
+  }
+
+  const runId = asString(scriptJob.runId);
+
+  let customerSource: CustomerLanguageSource = {
+    copyReadyPhrases: [],
+    successLooksLikeQuote: null,
+    buyTriggerQuote: null,
+    competitorLandmineTopQuote: null,
+  };
+
+  let psychologicalMechanism: string | null = null;
+  let transferFormula: string | null = null;
+
+  let mechanismProcess: string | null = null;
+  let specificClaims: string[] = [];
+  let keyFeatures: string[] = [];
+
+  if (runId) {
+    const latestCustomerAnalysisJob = await prisma.job.findFirst({
+      where: {
+        projectId: script.projectId,
+        runId,
+        type: JobType.CUSTOMER_ANALYSIS,
+        status: JobStatus.COMPLETED,
+      },
+      orderBy: { updatedAt: "desc" },
       select: {
         id: true,
-        projectId: true,
-        jobId: true,
-        rawJson: true,
-        job: {
-          select: {
-            runId: true,
-          },
-        },
+        resultSummary: true,
+        payload: true,
       },
     });
 
-    if (!script) {
-      return NextResponse.json({ error: "Script not found" }, { status: 404 });
-    }
+    if (latestCustomerAnalysisJob) {
+      const summary = asObject(latestCustomerAnalysisJob.resultSummary);
+      const payload = asObject(latestCustomerAnalysisJob.payload);
+      const payloadResult = asObject(payload?.result);
+      const summaryResult = asObject(summary?.result);
+      const summaryPersona = asObject(summary?.persona) ?? asObject(summaryResult?.persona);
+      const summaryAvatar = asObject(summary?.avatar) ?? asObject(summaryResult?.avatar);
 
-    const runId = script.job?.runId ?? null;
+      const summaryAvatarId = asString(summary?.avatarId);
+      const resultAvatarId = asString(payloadResult?.avatarId);
+      const avatarId = summaryAvatarId || resultAvatarId;
 
-    let avatarData: ReturnType<typeof extractCustomerLanguage> | null = null;
-    let patternData: ReturnType<typeof extractPatternGuidance> | null = null;
-    let productData: ReturnType<typeof extractProductIntel> | null = null;
-
-    if (runId) {
-      const customerAnalysisJob = await prisma.job.findFirst({
-        where: {
-          projectId: script.projectId,
-          runId,
-          type: JobType.CUSTOMER_ANALYSIS,
-          status: JobStatus.COMPLETED,
-        },
-        orderBy: { updatedAt: "desc" },
-        select: {
-          resultSummary: true,
-        },
-      });
-      const summary = asObject(customerAnalysisJob?.resultSummary) ?? {};
-      const avatarId = asString(summary.avatarId) || asString(summary.avatar_id);
+      let personaFromAvatarRecord: unknown = null;
       if (avatarId) {
-        const avatar = await prisma.customerAvatar.findFirst({
-          where: { id: avatarId, projectId: script.projectId },
-          select: {
-            persona: true,
+        const avatarRecord = await prisma.customerAvatar.findFirst({
+          where: {
+            id: avatarId,
+            projectId: script.projectId,
           },
+          select: { persona: true },
         });
-        if (avatar?.persona) {
-          avatarData = extractCustomerLanguage(avatar.persona);
-        }
+        personaFromAvatarRecord = avatarRecord?.persona ?? null;
       }
 
-      const patternResult = await prisma.adPatternResult.findFirst({
+      const persona =
+        personaFromAvatarRecord ||
+        summaryPersona ||
+        (summaryAvatar ? { avatar: summaryAvatar } : null) ||
+        payloadResult?.persona ||
+        null;
+      customerSource = extractCustomerLanguage(persona);
+    }
+
+    const latestPatternResult = await prisma.adPatternResult.findFirst({
+      where: {
+        projectId: script.projectId,
+        job: {
+          is: {
+            projectId: script.projectId,
+            runId,
+            type: JobType.PATTERN_ANALYSIS,
+            status: JobStatus.COMPLETED,
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      select: {
+        rawJson: true,
+      },
+    });
+
+    if (latestPatternResult) {
+      const patternRoot = asObject(latestPatternResult.rawJson);
+      const patternContainer = asObject(patternRoot?.patterns) ?? patternRoot;
+      const prescriptiveGuidance =
+        asObject(patternContainer?.prescriptiveGuidance) ||
+        asObject(patternRoot?.prescriptiveGuidance);
+
+      psychologicalMechanism = asString(prescriptiveGuidance?.psychologicalMechanism);
+      transferFormula = asString(prescriptiveGuidance?.transferFormula);
+    }
+
+    const latestProductCollectionJob = await prisma.job.findFirst({
+      where: {
+        projectId: script.projectId,
+        runId,
+        type: JobType.PRODUCT_DATA_COLLECTION,
+        status: JobStatus.COMPLETED,
+      },
+      orderBy: { updatedAt: "desc" },
+      select: {
+        id: true,
+        resultSummary: true,
+        payload: true,
+      },
+    });
+
+    if (latestProductCollectionJob) {
+      const payload = asObject(latestProductCollectionJob.payload);
+      const payloadResult = asObject(payload?.result);
+      const summary = asObject(latestProductCollectionJob.resultSummary);
+      const intel = asObject(payloadResult?.intel) ?? payloadResult;
+      const productIntelRecord = await prisma.productIntel.findFirst({
         where: {
           projectId: script.projectId,
-          job: {
-            is: {
-              projectId: script.projectId,
-              runId,
-              type: JobType.PATTERN_ANALYSIS,
-              status: JobStatus.COMPLETED,
-            },
-          },
+          jobId: latestProductCollectionJob.id,
         },
         orderBy: { createdAt: "desc" },
         select: {
-          rawJson: true,
+          keyClaims: true,
+          keyFeatures: true,
+          usp: true,
+          targetAudience: true,
         },
       });
-      if (patternResult?.rawJson) {
-        patternData = extractPatternGuidance(patternResult.rawJson);
-      }
 
-      const productCollectionJob = await prisma.job.findFirst({
-        where: {
-          projectId: script.projectId,
-          runId,
-          type: JobType.PRODUCT_DATA_COLLECTION,
-          status: JobStatus.COMPLETED,
-        },
-        orderBy: { updatedAt: "desc" },
-        select: {
-          payload: true,
-        },
-      });
-      if (productCollectionJob?.payload) {
-        productData = extractProductIntel(productCollectionJob.payload);
-      }
-    }
+      const mechanismArray = Array.isArray((intel as any)?.mechanism)
+        ? ((intel as any).mechanism as unknown[])
+        : [];
+      const firstMechanism = asObject(mechanismArray[0]);
+      const usage = asString((intel as any)?.usage);
+      const format = asString((intel as any)?.format);
+      const mainBenefit =
+        asString((intel as any)?.main_benefit) ||
+        asString((intel as any)?.mainBenefit);
 
-    const hasAvatarData = Boolean(
-      avatarData &&
-        (avatarData.copyReadyPhrases.length > 0 ||
-          avatarData.successLooksLike ||
-          avatarData.buyTrigger ||
-          avatarData.competitorLandmine),
-    );
-    const hasPatternData = Boolean(
-      patternData && (patternData.psychologicalMechanism || patternData.transferFormula),
-    );
-    const hasProductData = Boolean(
-      productData &&
-        (productData.mechanismProcess ||
-          productData.specificClaims.length > 0 ||
-          productData.keyFeatures.length > 0),
-    );
-    const populatedSourceCount = [hasAvatarData, hasPatternData, hasProductData].filter(Boolean).length;
-    const dataQuality =
-      populatedSourceCount === 3 ? "full" : populatedSourceCount > 0 ? "partial" : "minimal";
+      mechanismProcess =
+        asString(firstMechanism?.process) ||
+        asString(summary?.mechanismProcess) ||
+        asString(productIntelRecord?.usp) ||
+        asString(productIntelRecord?.targetAudience) ||
+        [usage, format, mainBenefit].filter(Boolean).join("; ") ||
+        null;
 
-    const safeBeatCount = Math.max(1, beatCount);
-    const secondsPerBeat = Math.max(1, Math.round(targetDuration / safeBeatCount));
-    const wordCeiling = Math.max(8, Math.round((secondsPerBeat / 60) * 135 * 0.9));
-    const surroundingBeats = existingScenes
-      .map((scene) => `${scene.beat || "Beat"}: ${scene.vo || ""}`)
-      .join("\n");
-
-    const promptSections: string[] = [];
-    promptSections.push(
-      `You are writing one beat for a UGC video script. The new beat is called ${beatLabel} and sits at position ${insertionIndex} of ${safeBeatCount}. It owns ${secondsPerBeat} seconds and must stay under ${wordCeiling} words. Here are the surrounding beats:\n${surroundingBeats}\nWrite VO that sounds like the same person who wrote the surrounding beats. Return only the VO text, nothing else.`,
-    );
-
-    if (hasPatternData && patternData) {
-      promptSections.push(
-        `The script has an established psychological contract with the viewer using these mechanisms: ${patternData.psychologicalMechanism || "unspecified"} and this formula: ${patternData.transferFormula || "unspecified"}. The new beat must honor this contract.`,
+      specificClaims = Array.from(
+        new Set(
+          asStringArray((intel as any)?.specific_claims).concat(
+            asStringArray((intel as any)?.specificClaims),
+            asStringArray((intel as any)?.keyClaims),
+            asStringArray((intel as any)?.key_claims),
+            asStringArray(summary?.specific_claims),
+            asStringArray(summary?.specificClaims),
+            asStringArray(productIntelRecord?.keyClaims),
+          ),
+        ),
+      );
+      keyFeatures = Array.from(
+        new Set(
+          asStringArray((intel as any)?.key_features).concat(
+            asStringArray((intel as any)?.keyFeatures),
+            asStringArray(summary?.key_features),
+            asStringArray(summary?.keyFeatures),
+            asStringArray(productIntelRecord?.keyFeatures),
+          ),
+        ),
       );
     }
-    if (hasAvatarData && avatarData) {
-      promptSections.push(
-        `Use language from these customer phrases where natural: ${avatarData.copyReadyPhrases.join(", ") || "none provided"}. The payoff emotional outcome is: ${avatarData.successLooksLike || "unspecified"}. The trigger situation is: ${avatarData.buyTrigger || "unspecified"}.`,
-      );
-    }
-    if (hasProductData && productData) {
-      promptSections.push(
-        `Reference product facts only from these verified sources. Mechanism: ${productData.mechanismProcess || "unspecified"}. Claims: ${productData.specificClaims.join("; ") || "none provided"}. Features: ${productData.keyFeatures.join(", ") || "none provided"}. Never invent statistics. If no numeric claim fits this beat use emotional language instead.`,
-      );
-    }
+  }
 
-    const anthropicApiKey = cfg.raw("ANTHROPIC_API_KEY");
-    if (!anthropicApiKey) {
-      return NextResponse.json({ error: "ANTHROPIC_API_KEY is not configured" }, { status: 500 });
-    }
+  const hasCustomer =
+    customerSource.copyReadyPhrases.length > 0 ||
+    Boolean(customerSource.successLooksLikeQuote) ||
+    Boolean(customerSource.buyTriggerQuote) ||
+    Boolean(customerSource.competitorLandmineTopQuote);
+  const hasPattern = Boolean(psychologicalMechanism || transferFormula);
+  const hasProduct =
+    Boolean(mechanismProcess) || specificClaims.length > 0 || keyFeatures.length > 0;
+  const dataQuality = computeDataQuality({ hasCustomer, hasPattern, hasProduct });
 
-    const anthropic = new Anthropic({
-      apiKey: anthropicApiKey,
-      timeout: 30_000,
-    });
+  const secondsPerBeat = Math.max(1, Math.round(targetDuration / beatCount));
+  const wordCeiling = Math.max(
+    8,
+    Math.round((secondsPerBeat / 60) * 135 * 0.9),
+  );
 
-    const response = await anthropic.messages.create({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 150,
-      messages: [{ role: "user", content: promptSections.join("\n\n") }],
-    });
+  const surroundingBeats = formatExistingScenes(existingScenes);
+  let prompt = `You are writing one beat for a UGC video script. The new beat is called "${beatLabel}" and sits at position ${insertionIndex} of ${beatCount}. It owns ${secondsPerBeat} seconds and must stay under ${wordCeiling} words. Here are the surrounding beats:
+${surroundingBeats}
+Write VO that sounds like the same person who wrote the surrounding beats. Return only the VO text, nothing else.`;
 
-    const vo = extractTextContent(response);
-    if (!vo) {
-      return NextResponse.json({ error: "Claude returned empty beat output" }, { status: 500 });
-    }
+  if (hasPattern) {
+    prompt += `\n\nThe script has an established psychological contract with the viewer using these mechanisms: ${psychologicalMechanism || "MISSING"} and this formula: ${transferFormula || "MISSING"}. The new beat must honor this contract.`;
+  }
 
+  if (hasCustomer) {
+    prompt += `\n\nUse language from these customer phrases where natural: ${customerSource.copyReadyPhrases.join(", ")}. The payoff emotional outcome is: ${customerSource.successLooksLikeQuote || "MISSING"}. The trigger situation is: ${customerSource.buyTriggerQuote || "MISSING"}.`;
+  }
+
+  if (hasProduct) {
+    prompt += `\n\nReference product facts only from these verified sources. Mechanism: ${mechanismProcess || "MISSING"}. Claims: ${specificClaims.join("; ")}. Features: ${keyFeatures.join(", ")}. Never invent statistics. If no numeric claim fits this beat use emotional language instead.`;
+  }
+
+  const anthropicApiKey = cfg.raw("ANTHROPIC_API_KEY");
+  if (!anthropicApiKey) {
     return NextResponse.json(
-      {
-        vo,
-        dataQuality,
-        beatLabel,
-        insertionIndex,
-      },
-      { status: 200 },
-    );
-  } catch (error: any) {
-    return NextResponse.json(
-      { error: error?.message ?? "Failed to generate beat" },
+      { error: "Anthropic is not configured" },
       { status: 500 },
     );
   }
+
+  let voText = "";
+  try {
+    const anthropic = new Anthropic({
+      apiKey: anthropicApiKey,
+      timeout: 30000,
+    });
+    const response = await anthropic.messages.create({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 150,
+      messages: [{ role: "user", content: prompt }],
+    });
+    voText = extractTextFromAnthropicResponse(response);
+  } catch (error: any) {
+    return NextResponse.json(
+      { error: `Anthropic call failed: ${String(error?.message ?? error)}` },
+      { status: 500 },
+    );
+  }
+
+  return NextResponse.json(
+    {
+      vo: voText,
+      dataQuality,
+      beatLabel,
+      insertionIndex,
+    },
+    { status: 200 },
+  );
 }
