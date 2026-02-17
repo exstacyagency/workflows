@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { getJobTypeLabel } from "@/lib/jobLabels";
+import RunManagementModal from "@/components/RunManagementModal";
 
 // Types
 type JobStatus = "NOT_STARTED" | "PENDING" | "RUNNING" | "COMPLETED" | "FAILED";
@@ -36,6 +37,12 @@ interface ProductOption {
   name: string;
   productProblemSolved?: string | null;
   amazonAsin?: string | null;
+}
+
+interface ProjectRunMetadata {
+  id: string;
+  name: string | null;
+  runNumber: number;
 }
 
 interface ResearchStep {
@@ -143,11 +150,13 @@ export default function ResearchHubPage() {
   });
   const selectedProductRef = useRef<string | null>(selectedProductId);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const [projectRunsById, setProjectRunsById] = useState<Record<string, ProjectRunMetadata>>({});
 
   // Modal states
   const [activeStepModal, setActiveStepModal] = useState<string | null>(null);
   const [pendingStep, setPendingStep] = useState<{ step: ResearchStep; trackKey: string } | null>(null);
   const [showNewRunModal, setShowNewRunModal] = useState(false);
+  const [showRunManagerModal, setShowRunManagerModal] = useState(false);
 
   useEffect(() => {
     selectedProductRef.current = selectedProductId;
@@ -217,13 +226,16 @@ export default function ResearchHubPage() {
         .filter((j) => j.status === "COMPLETED")
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       const lastJob = completedJobs[0];
-      const runNumber = runNumberByRunId.get(run.runId) ?? 0;
+      const fallbackRunNumber = runNumberByRunId.get(run.runId) ?? 0;
+      const metadata = projectRunsById[run.runId];
+      const runNumber = metadata?.runNumber || fallbackRunNumber;
+      const runLabel = metadata?.name?.trim() || `Run #${runNumber}`;
       const lastJobName = lastJob ? getRunJobName(lastJob) : "No jobs";
 
       return {
         ...run,
         runNumber,
-        displayLabel: `Run #${runNumber} - Last: ${lastJobName} ✓`,
+        displayLabel: `${runLabel} - Last: ${lastJobName} ✓`,
         jobCount: run.jobs.length,
       };
     });
@@ -345,12 +357,40 @@ export default function ResearchHubPage() {
     }
   }, [projectId, router]);
 
+  const loadProjectRuns = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/projects/${projectId}/runs`, { cache: "no-store" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data?.success) return;
+      const runList = Array.isArray(data.runs) ? data.runs : [];
+      const byId: Record<string, ProjectRunMetadata> = {};
+      for (const run of runList) {
+        const id = String(run?.id ?? "").trim();
+        if (!id) continue;
+        byId[id] = {
+          id,
+          name: typeof run?.name === "string" ? run.name : null,
+          runNumber: Number(run?.runNumber ?? 0) || 0,
+        };
+      }
+      setProjectRunsById(byId);
+    } catch {
+      // metadata enrichment is best-effort
+    }
+  }, [projectId]);
+
   // Load products on mount
   useEffect(() => {
     if (projectId) {
       loadProducts();
     }
   }, [loadProducts, projectId]);
+
+  useEffect(() => {
+    if (projectId) {
+      void loadProjectRuns();
+    }
+  }, [loadProjectRuns, projectId]);
 
   // Load jobs when selected product changes
   useEffect(() => {
@@ -722,10 +762,13 @@ export default function ResearchHubPage() {
     setRunningStep(step.id);
 
     try {
+      const activeRunId = String(selectedRunId ?? "").trim();
       const customPayload = {
         projectId,
         mainProductAsin: formData?.mainProductAsin,
         ...(selectedProductId ? { productId: selectedProductId } : {}),
+        // If a run is selected, pin jobs to it. If "No active run", omit runId so run-aware APIs create one.
+        ...(activeRunId ? { runId: activeRunId } : {}),
       };
       let payload: any = {
         ...formData,
@@ -733,22 +776,16 @@ export default function ResearchHubPage() {
       };
 
       const resolveAdRunId = () => {
-        if (currentRunId) return currentRunId;
-        if (selectedRunId) return selectedRunId;
-        const latestCollection = jobs
-          .filter((j) => {
-            const subtype = String(j.payload?.jobType || j.metadata?.jobType || "").trim();
-            return subtype === "ad_raw_collection" && j.status === "COMPLETED" && j.runId;
-          })
-          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
-        return latestCollection?.runId ?? null;
+        if (activeRunId) return activeRunId;
+        return null;
       };
 
       // Add step-specific data
       if (step.id === "customer-analysis") {
+        const analysisRunId = activeRunId || null;
         const currentRunResearchJob = jobs.find(
           (j) =>
-            j.runId === currentRunId &&
+            j.runId === analysisRunId &&
             j.type === "CUSTOMER_RESEARCH" &&
             j.status === "COMPLETED"
         );
@@ -756,7 +793,7 @@ export default function ResearchHubPage() {
         payload = {
           projectId,
           ...(selectedProductId ? { productId: selectedProductId } : {}),
-          runId: currentRunId,
+          ...(analysisRunId ? { runId: analysisRunId } : {}),
           productProblemSolved: currentRunResearchJob?.payload?.productProblemSolved,
           solutionKeywords: Array.isArray(currentRunResearchJob?.payload?.solutionKeywords)
             ? currentRunResearchJob?.payload?.solutionKeywords
@@ -795,6 +832,7 @@ export default function ResearchHubPage() {
       if (data.runId) {
         setCurrentRunId(data.runId);
         setSelectedRunId(data.runId);
+        void loadProjectRuns();
       }
 
       // Reload jobs to see the new job
@@ -901,6 +939,7 @@ export default function ResearchHubPage() {
       if (data?.runId) {
         setCurrentRunId(data.runId);
         setSelectedRunId(data.runId);
+        void loadProjectRuns();
       }
 
       setActiveStepModal(null);
@@ -919,6 +958,22 @@ export default function ResearchHubPage() {
     setStatusMessage("New research run started");
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
+
+  const handleRunsChanged = useCallback(
+    async (event: { type: "renamed" | "deleted"; runId: string }) => {
+      if (event.type === "deleted") {
+        if (selectedRunId === event.runId) {
+          setSelectedRunId(null);
+        }
+        if (currentRunId === event.runId) {
+          setCurrentRunId(null);
+        }
+      }
+      await loadProjectRuns();
+      await loadJobs(selectedProductId || undefined, { silent: true });
+    },
+    [currentRunId, loadJobs, loadProjectRuns, selectedProductId, selectedRunId],
+  );
 
   const handleViewStepData = (step: ResearchStep & { lastJob?: Job }) => {
     const payloadRunId = String(step.lastJob?.payload?.runId ?? "").trim();
@@ -1094,22 +1149,39 @@ export default function ResearchHubPage() {
                 No products found. Create one in the project dashboard first.
               </p>
             )}
-            <select
-              value={selectedRunId || "no-active"}
-              onChange={(e) => {
-                const value = e.target.value === "no-active" ? null : e.target.value;
-                setSelectedRunId(value);
-                setCurrentRunId(value);
-              }}
-              className="px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-            >
-              <option value="no-active">No active run</option>
-              {sortedRuns.map((run) => (
-                <option key={run.runId} value={run.runId}>
-                  {run.displayLabel} - {formatRunDate(run.createdAt)}
-                </option>
-              ))}
-            </select>
+            <div className="flex flex-col gap-2 md:flex-row md:items-center">
+              <select
+                value={selectedRunId || "no-active"}
+                onChange={(e) => {
+                  const value = e.target.value === "no-active" ? null : e.target.value;
+                  setSelectedRunId(value);
+                  setCurrentRunId(value);
+                }}
+                className="px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              >
+                <option value="no-active">No active run</option>
+                {sortedRuns.map((run) => (
+                  <option key={run.runId} value={run.runId}>
+                    {run.displayLabel} - {formatRunDate(run.createdAt)}
+                  </option>
+                ))}
+              </select>
+              <div style={{ position: "relative" }}>
+                <button
+                  type="button"
+                  onClick={() => setShowRunManagerModal(true)}
+                  className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-200 hover:bg-slate-700"
+                >
+                  Manage Runs
+                </button>
+                <RunManagementModal
+                  projectId={projectId}
+                  open={showRunManagerModal}
+                  onClose={() => setShowRunManagerModal(false)}
+                  onRunsChanged={handleRunsChanged}
+                />
+              </div>
+            </div>
             {selectedProductId && (
               <div className="mt-3">
                 <Link

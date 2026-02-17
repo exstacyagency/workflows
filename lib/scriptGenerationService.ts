@@ -65,6 +65,23 @@ type ScriptJSON = {
   [key: string]: any;
 };
 
+type PromptInjectionValues = {
+  productName: unknown;
+  mechanismProcess: unknown;
+  avatarAge: unknown;
+  avatarGender: unknown;
+  avatarJob: unknown;
+  psychographics: unknown;
+  goal: unknown;
+  blockerFear: unknown;
+  blockerQuote: unknown;
+  hookPatternName: unknown;
+  hookPatternExample: unknown;
+  proofPatternName: unknown;
+  proofPatternDescription: unknown;
+  amplifySynergy: unknown;
+};
+
 type StructuredProductIntelRow = {
   id: string;
   projectId: string;
@@ -149,6 +166,31 @@ function asStringArray(value: unknown): string[] {
   return value
     .map((entry) => (typeof entry === "string" ? entry.trim() : String(entry ?? "").trim()))
     .filter(Boolean);
+}
+
+function markMissingPromptFields(values: PromptInjectionValues): PromptInjectionValues {
+  const normalize = (value: unknown): unknown => {
+    if (value === undefined || value === null) return "MISSING";
+    if (typeof value === "string" && value.trim() === "") return "MISSING";
+    return value;
+  };
+
+  return {
+    productName: normalize(values.productName),
+    mechanismProcess: normalize(values.mechanismProcess),
+    avatarAge: normalize(values.avatarAge),
+    avatarGender: normalize(values.avatarGender),
+    avatarJob: normalize(values.avatarJob),
+    psychographics: normalize(values.psychographics),
+    goal: normalize(values.goal),
+    blockerFear: normalize(values.blockerFear),
+    blockerQuote: normalize(values.blockerQuote),
+    hookPatternName: normalize(values.hookPatternName),
+    hookPatternExample: normalize(values.hookPatternExample),
+    proofPatternName: normalize(values.proofPatternName),
+    proofPatternDescription: normalize(values.proofPatternDescription),
+    amplifySynergy: normalize(values.amplifySynergy),
+  };
 }
 
 function stripGuaranteesFromProductIntelInput(
@@ -585,7 +627,7 @@ function buildScriptPrompt(args: {
   patterns: Pattern[];
   antiPatterns: AntiPattern[];
   stackingRules: StackingRule[];
-}): { system: string; prompt: string } {
+}): { system: string; prompt: string; promptInjections: PromptInjectionValues } {
   const { productName, avatar, productIntel, patterns, antiPatterns, stackingRules } = args;
 
   const hookCandidates = patterns.filter(
@@ -657,30 +699,40 @@ function buildScriptPrompt(args: {
     (Array.isArray(productIntel?.keyClaims) ? productIntel.keyClaims[0] : undefined) ||
     'addresses root cause';
 
+  const avatarAge = avatarSnap.age ?? 30;
+  const avatarGender = avatarSnap.gender || 'person';
+  const avatarJob = avatarSnap.job || 'working professional';
+  const psychographics = psycho || 'cares about quality and results';
+  const hookPatternName = hookPattern?.pattern_name || 'Unknown';
+  const hookPatternExample = hookPattern?.example || '';
+  const proofPatternName = proofPattern?.pattern_name || 'Unknown';
+  const proofPatternDescription = proofPattern?.description || '';
+  const amplifySynergy = amplifyRule?.performance_delta || 'neutral';
+
   const system =
     "You are an expert TikTok direct-response creative director who has studied thousands of high-converting UGC ads. You understand scroll psychology, pattern interrupts, and what makes someone stop, watch, and buy in under 32 seconds. You write scripts where every word earns its place. You know the difference between content that entertains and content that converts. Output ONLY valid JSON. No markdown. No explanation. No preamble.";
 
   const prompt = `INPUTS
 Product: ${productName}
 Mechanism: ${mechanismProcess}
-Avatar: ${avatarSnap.age ?? 30}yo ${avatarSnap.gender || 'person'}, ${avatarSnap.job || 'working professional'}
-Psycho: ${psycho || 'cares about quality and results'}
+Avatar: ${avatarAge}yo ${avatarGender}, ${avatarJob}
+Psycho: ${psychographics}
 Goal: ${goal}
 Blocker: ${blockerFear}
 Blocker quote: "${blockerQuote}"
 
 PATTERN INTELLIGENCE
-Hook: ${hookPattern?.pattern_name || 'Unknown'} (${hookPattern?.occurrence_rate || 'unknown'} occurrence)
-Example: "${hookPattern?.example || ''}"
+Hook: ${hookPatternName} (${hookPattern?.occurrence_rate || 'unknown'} occurrence)
+Example: "${hookPatternExample}"
 Timing: ${hookPattern?.timing || '0-3s'}
 Visual: ${hookPattern?.visual_notes || 'N/A'}
 
-Proof: ${proofPattern?.pattern_name || 'Unknown'} (${proofPattern?.occurrence_rate || 'unknown'} occurrence)
-How: ${proofPattern?.description || ''}
+Proof: ${proofPatternName} (${proofPattern?.occurrence_rate || 'unknown'} occurrence)
+How: ${proofPatternDescription}
 Timing: ${proofPattern?.timing || ''}
 Visual: ${proofPattern?.visual_notes || ''}
 
-Synergy: ${amplifyRule?.performance_delta || 'neutral'}
+Synergy: ${amplifySynergy}
 WHY synergy works: ${amplifyRule?.baseline_comparison || amplifyRule?.reason || 'patterns reinforce belief and reduce friction'}
 
 EXECUTION RULES
@@ -734,7 +786,26 @@ OUTPUT SCHEMA
 
 Return ONLY JSON.`;
 
-  return { system, prompt };
+  return {
+    system,
+    prompt,
+    promptInjections: {
+      productName,
+      mechanismProcess,
+      avatarAge,
+      avatarGender,
+      avatarJob,
+      psychographics,
+      goal,
+      blockerFear,
+      blockerQuote,
+      hookPatternName,
+      hookPatternExample,
+      proofPatternName,
+      proofPatternDescription,
+      amplifySynergy,
+    },
+  };
 }
 
 type ScriptJobPayload = {
@@ -1129,7 +1200,7 @@ export async function runScriptGeneration(args: {
     throw new Error('No patterns found in pattern brain for this project.');
   }
 
-  const { system, prompt } = buildScriptPrompt({
+  const { system, prompt, promptInjections } = buildScriptPrompt({
     productName: project.name,
     avatar: (avatar?.persona as any) ?? {},
     productIntel: productIntelPayload,
@@ -1160,6 +1231,10 @@ export async function runScriptGeneration(args: {
     };
   }
 
+  console.log(
+    "[ScriptGeneration] Anthropic prompt injections",
+    markMissingPromptFields(promptInjections)
+  );
   const responseText = await callAnthropic(system, prompt);
   const scriptJson = parseJsonFromLLM(responseText);
 

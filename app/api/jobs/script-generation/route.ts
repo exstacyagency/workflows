@@ -13,6 +13,7 @@ import { enforceUserConcurrency } from "../../../../lib/jobGuards";
 import { runWithState } from "../../../../lib/jobRuntime";
 import { flag } from "../../../../lib/flags";
 import { getRequestId, logError, logInfo } from "../../../../lib/observability";
+import { z } from "zod";
 import {
   assertMinPlan,
   UpgradeRequiredError,
@@ -22,6 +23,10 @@ import {
   rollbackQuota,
   QuotaExceededError,
 } from "../../../../lib/billing/usage";
+
+const ScriptGenerationSchema = ProjectJobSchema.extend({
+  runId: z.string().optional(),
+});
 
 export async function POST(req: NextRequest) {
   const requestId = getRequestId(req);
@@ -44,7 +49,7 @@ export async function POST(req: NextRequest) {
     const ip =
       req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
 
-    const parsed = await parseJson(req, ProjectJobSchema);
+    const parsed = await parseJson(req, ScriptGenerationSchema);
     if (!parsed.success) {
       return NextResponse.json(
         { error: parsed.error, details: parsed.details },
@@ -89,6 +94,43 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const normalizedRequestedRunId = String(parsed.data.runId ?? "").trim();
+    let effectiveRunId = normalizedRequestedRunId;
+    let existingRunFound = false;
+
+    if (effectiveRunId) {
+      const existingRun = await prisma.researchRun.findUnique({
+        where: { id: effectiveRunId },
+        select: { id: true, projectId: true },
+      });
+      if (!existingRun) {
+        return NextResponse.json(
+          { error: "runId not found for this project" },
+          { status: 400 },
+        );
+      }
+      if (existingRun.projectId !== projectId) {
+        return NextResponse.json(
+          { error: "runId does not belong to this project" },
+          { status: 400 },
+        );
+      }
+      existingRunFound = true;
+    } else {
+      const run = await prisma.researchRun.create({
+        data: {
+          projectId,
+          status: "IN_PROGRESS",
+        },
+      });
+      effectiveRunId = run.id;
+    }
+    console.log("[script-generation] run resolution", {
+      payloadRunId: normalizedRequestedRunId || null,
+      existingRunFound,
+      attachedRunId: effectiveRunId,
+    });
+
     const breakerTest = flag("FF_BREAKER_TEST");
     const selectedCustomerAnalysisJobId =
       typeof parsed.data.customerAnalysisJobId === "string"
@@ -98,7 +140,7 @@ export async function POST(req: NextRequest) {
       typeof parsed.data.productId === "string"
         ? parsed.data.productId
         : "none";
-    let idempotencyKey = `script-generation:${projectId}:${selectedProductId}:${selectedCustomerAnalysisJobId}`;
+    let idempotencyKey = `script-generation:${projectId}:${effectiveRunId}:${selectedProductId}:${selectedCustomerAnalysisJobId}`;
     if (breakerTest) idempotencyKey += `:${Date.now()}`;
     const bypassFailedIdempotencyRecord = async (jobId: string) => {
       await prisma.job.update({
@@ -111,7 +153,7 @@ export async function POST(req: NextRequest) {
 
     const existingJob = await prisma.job.findFirst({
       where: { projectId, userId, idempotencyKey },
-      select: { id: true, status: true },
+      select: { id: true, status: true, runId: true },
     });
 
     if (existingJob) {
@@ -127,7 +169,14 @@ export async function POST(req: NextRequest) {
           });
         }
         return NextResponse.json(
-          { jobId: existingJob.id, reused: true, started: false, skipped: true, reason: "SECURITY_SWEEP" },
+          {
+            jobId: existingJob.id,
+            runId: existingJob.runId ?? effectiveRunId,
+            reused: true,
+            started: false,
+            skipped: true,
+            reason: "SECURITY_SWEEP",
+          },
           { status: 200 },
         );
       }
@@ -135,7 +184,11 @@ export async function POST(req: NextRequest) {
         await bypassFailedIdempotencyRecord(existingJob.id);
       } else {
         return NextResponse.json(
-          { jobId: existingJob.id, ok: existingJob.status === JobStatus.COMPLETED },
+          {
+            jobId: existingJob.id,
+            runId: existingJob.runId ?? effectiveRunId,
+            ok: existingJob.status === JobStatus.COMPLETED,
+          },
           { status: 200 },
         );
       }
@@ -167,7 +220,13 @@ export async function POST(req: NextRequest) {
           type: JobType.SCRIPT_GENERATION,
           status: JobStatus.COMPLETED,
           idempotencyKey,
-          payload: { ...parsed.data, skipped: true, reason: "SECURITY_SWEEP" },
+          runId: effectiveRunId,
+          payload: {
+            ...parsed.data,
+            runId: effectiveRunId,
+            skipped: true,
+            reason: "SECURITY_SWEEP",
+          },
           resultSummary: "Skipped: SECURITY_SWEEP",
           error: Prisma.JsonNull,
         },
@@ -188,7 +247,13 @@ export async function POST(req: NextRequest) {
       });
 
       return NextResponse.json(
-        { jobId: job.id, started: false, skipped: true, reason: "SECURITY_SWEEP" },
+        {
+          jobId: job.id,
+          runId: effectiveRunId,
+          started: false,
+          skipped: true,
+          reason: "SECURITY_SWEEP",
+        },
         { status: 200 },
       );
     }
@@ -214,7 +279,12 @@ export async function POST(req: NextRequest) {
           type: JobType.SCRIPT_GENERATION,
           status: JobStatus.COMPLETED,
           idempotencyKey,
-          payload: { ...parsed.data, skipped: true },
+          runId: effectiveRunId,
+          payload: {
+            ...parsed.data,
+            runId: effectiveRunId,
+            skipped: true,
+          },
           resultSummary: "Skipped: LLM not configured",
         },
       });
@@ -238,6 +308,7 @@ export async function POST(req: NextRequest) {
           ok: true,
           skipped: true,
           jobId: job.id,
+          runId: effectiveRunId,
           scripts: [{ id: script.id, text }],
         },
         { status: 200 },
@@ -271,7 +342,11 @@ export async function POST(req: NextRequest) {
           type: JobType.SCRIPT_GENERATION,
           status: JobStatus.RUNNING,
           idempotencyKey,
-          payload: parsed.data,
+          runId: effectiveRunId,
+          payload: {
+            ...parsed.data,
+            runId: effectiveRunId,
+          },
         },
       });
 
@@ -282,7 +357,7 @@ export async function POST(req: NextRequest) {
       if (err?.code === "P2002") {
         const existing = await prisma.job.findFirst({
           where: { projectId, userId, idempotencyKey },
-          select: { id: true, status: true },
+          select: { id: true, status: true, runId: true },
         });
 
         if (existing) {
@@ -299,7 +374,11 @@ export async function POST(req: NextRequest) {
               );
             }
             return NextResponse.json(
-              { jobId: existing.id, ok: existing.status === JobStatus.COMPLETED },
+              {
+                jobId: existing.id,
+                runId: existing.runId ?? effectiveRunId,
+                ok: existing.status === JobStatus.COMPLETED,
+              },
               { status: 200 },
             );
           }
@@ -328,7 +407,7 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json(
-      { jobId: job.id, ...state },
+      { jobId: job.id, runId: effectiveRunId, ...state },
       { status: state.ok ? 200 : 500 },
     );
   } catch (err: any) {

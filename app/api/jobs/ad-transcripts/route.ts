@@ -85,9 +85,29 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Get runId from request or find most recent completed ad collection job
-    let effectiveRunId = runId;
-    if (!effectiveRunId) {
+    // Use provided runId when valid for this project; otherwise fall back to latest completed ad collection run.
+    const normalizedRequestedRunId = String(runId ?? "").trim();
+    let effectiveRunId = normalizedRequestedRunId || undefined;
+    let existingRunFound = false;
+    if (effectiveRunId) {
+      const existingRun = await prisma.researchRun.findUnique({
+        where: { id: effectiveRunId },
+        select: { id: true, projectId: true },
+      });
+      if (!existingRun) {
+        return NextResponse.json(
+          { error: "runId not found for this project" },
+          { status: 400 }
+        );
+      }
+      if (existingRun.projectId !== projectId) {
+        return NextResponse.json(
+          { error: "runId does not belong to this project" },
+          { status: 400 }
+        );
+      }
+      existingRunFound = true;
+    } else {
       const latestCollection = await prisma.job.findFirst({
         where: {
           projectId,
@@ -104,6 +124,11 @@ export async function POST(req: NextRequest) {
       });
       effectiveRunId = latestCollection?.runId ?? undefined;
     }
+    console.log("[ad-transcripts] run resolution", {
+      payloadRunId: normalizedRequestedRunId || null,
+      existingRunFound,
+      attachedRunId: effectiveRunId ?? null,
+    });
 
     if (!effectiveRunId) {
       return NextResponse.json({ error: "No ads to process" }, { status: 400 });

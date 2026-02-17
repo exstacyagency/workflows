@@ -9,6 +9,8 @@ const anthropic = new Anthropic({
 
 const QUALITY_CONFIDENCE_THRESHOLD = 70;
 const MAX_ADS_FOR_ANALYSIS = 80;
+const PATTERN_ANALYSIS_SYSTEM_PROMPT =
+  "You are a performance creative analyst. Your primary job is to identify transferable psychological mechanisms, not product-specific tactics. Abstract every recommendation so it can generalize across categories, and ground guidance in clear cognitive triggers (for example: pattern interrupt, loss aversion, social proof cascade, authority transfer, time compression, confession dissonance).";
 
 type AdCompletenessArgs = {
   projectId: string;
@@ -249,7 +251,7 @@ function extractRetentionCurve(raw: Record<string, any>): string {
       if (second === null || value === null) return null;
       return [Math.round(second), value];
     })
-    .filter((row): row is [number, number] => Array.isArray(row));
+    .filter((row: unknown): row is [number, number] => Array.isArray(row));
   if (points.length === 0) return "N/A";
   return JSON.stringify(points);
 }
@@ -329,7 +331,7 @@ ${conversionLines}
     })
     .join("\n---\n");
 
-  return `Analyze these ${ads.length} TikTok ads. Return actionable creative templates, not abstract insights.
+  return `Analyze these ${ads.length} TikTok ads. Extract psychologically grounded, cross-category mechanisms.
 
 ${adBlocks}
 
@@ -351,7 +353,11 @@ Output JSON:
     "body": "Second-by-second content map (e.g., 3-8s: establish authority, 12-13s: introduce solution)",
     "cta": "Exact CTA structure with example phrase",
     "textOverlays": "When to show text, exact phrasing patterns",
-    "visualFlow": "Shot sequence that maximizes retention"
+    "visualFlow": "Shot sequence that maximizes retention",
+    // psychologicalMechanism: Name the cognitive trigger the pattern exploits.
+    "psychologicalMechanism": "Name the specific cognitive trigger used (e.g., pattern interrupt, loss aversion, social proof cascade, authority transfer, time compression, confession dissonance)",
+    // transferFormula: Provide a product-agnostic formula for reuse across categories.
+    "transferFormula": "[Abstract component 1] + [Abstract component 2] + [Abstract component 3] = [mechanism label]"
   },
   "avoidPatterns": [
     {
@@ -362,7 +368,7 @@ Output JSON:
   ]
 }
 
-Focus: Give script writers copy-paste templates. Include verbatim winning phrases. Map timing to specific actions.`;
+Focus: Prioritize adaptable mechanisms over category-specific tactics. Explain why each mechanism works psychologically and keep formulas product-agnostic.`;
 }
 
 async function loadAdsForRun(
@@ -469,6 +475,7 @@ export async function runPatternAnalysis(args: {
   const response: any = await anthropic.messages.create({
     model: "claude-sonnet-4-20250514",
     max_tokens: 4000,
+    system: PATTERN_ANALYSIS_SYSTEM_PROMPT,
     messages: [{ role: "user", content: analysisPrompt }],
   });
 
