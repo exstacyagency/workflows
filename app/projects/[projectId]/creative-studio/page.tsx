@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { JobStatus, JobType } from "@prisma/client";
 import toast, { Toaster } from "react-hot-toast";
 import Link from "next/link";
+import RunManagementModal from "@/components/RunManagementModal";
 
 type Job = {
   id: string;
@@ -32,6 +33,12 @@ type ResearchRunOption = {
   createdAt: string;
   updatedAt?: string;
   summary?: string | null;
+};
+
+type ProjectRunMetadata = {
+  id: string;
+  name: string | null;
+  runNumber: number;
 };
 
 type ProductionStep = {
@@ -96,6 +103,8 @@ export default function CreativeStudioPage() {
   const [scriptPanelEditMode, setScriptPanelEditMode] = useState(false);
   const [scriptPanelDraftBeats, setScriptPanelDraftBeats] = useState<ScriptBeat[]>([]);
   const [scriptPanelSaving, setScriptPanelSaving] = useState(false);
+  const [showRunManagerModal, setShowRunManagerModal] = useState(false);
+  const [projectRunsById, setProjectRunsById] = useState<Record<string, ProjectRunMetadata>>({});
   const selectedProductRef = useRef<string | null>(selectedProductIdFromUrl);
   const hasInitializedRunSelection = useRef(false);
 
@@ -124,6 +133,30 @@ export default function CreativeStudioPage() {
       setError(err.message);
     } finally {
       setLoading(false);
+    }
+  }, [projectId]);
+
+  const loadProjectRuns = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/projects/${projectId}/runs`, {
+        cache: "no-store",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) return;
+      const runList = Array.isArray(data.runs) ? data.runs : [];
+      const byId: Record<string, ProjectRunMetadata> = {};
+      for (const run of runList) {
+        const id = String(run?.id ?? "").trim();
+        if (!id) continue;
+        byId[id] = {
+          id,
+          name: typeof run?.name === "string" ? run.name : null,
+          runNumber: Number(run?.runNumber ?? 0) || 0,
+        };
+      }
+      setProjectRunsById(byId);
+    } catch {
+      // best-effort metadata enrichment; ignore failures
     }
   }, [projectId]);
 
@@ -165,6 +198,11 @@ export default function CreativeStudioPage() {
     if (!projectId) return;
     loadProducts();
   }, [projectId, loadProducts]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    void loadProjectRuns();
+  }, [loadProjectRuns, projectId]);
 
   useEffect(() => {
     if (!projectId) return;
@@ -242,16 +280,19 @@ export default function CreativeStudioPage() {
             .filter((j) => j.status === JobStatus.COMPLETED)
             .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
           const lastJob = completedJobs[0];
-          const runNumber = runNumberByRunId.get(run.runId) ?? 0;
+          const fallbackRunNumber = runNumberByRunId.get(run.runId) ?? 0;
+          const metadata = projectRunsById[run.runId];
+          const runNumber = metadata?.runNumber || fallbackRunNumber;
+          const runLabel = metadata?.name?.trim() || `Run #${runNumber}`;
           const lastJobName = lastJob ? getRunJobName(lastJob) : "No jobs";
           return {
             ...run,
             runNumber,
-            displayLabel: `Run #${runNumber} - Last: ${lastJobName} ✓`,
+            displayLabel: `${runLabel} - Last: ${lastJobName} ✓`,
             jobCount: run.jobs.length,
           };
         }),
-    [runGroupsList, runNumberByRunId]
+    [projectRunsById, runGroupsList, runNumberByRunId]
   );
 
   useEffect(() => {
@@ -579,6 +620,13 @@ export default function CreativeStudioPage() {
         throw new Error("Endpoint not configured for this step");
       }
 
+      console.log("[Creative] runStep request payload", {
+        step: step.key,
+        endpoint,
+        selectedRunId,
+        payload,
+      });
+
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -595,6 +643,7 @@ export default function CreativeStudioPage() {
       if (data?.runId) {
         setSelectedRunId(String(data.runId));
       }
+      void loadProjectRuns();
 
       // Reload jobs
       await loadJobs(selectedProductId);
@@ -726,6 +775,7 @@ export default function CreativeStudioPage() {
       if (data?.runId) {
         setSelectedRunId(String(data.runId));
       }
+      void loadProjectRuns();
       await loadJobs(selectedProductId);
       toast.success("Script uploaded successfully.");
       setShowScriptModal(false);
@@ -737,6 +787,17 @@ export default function CreativeStudioPage() {
       setScriptModalSubmitting(false);
     }
   }
+
+  const handleRunsChanged = useCallback(
+    async (event: { type: "renamed" | "deleted"; runId: string }) => {
+      if (event.type === "deleted" && selectedRunId === event.runId) {
+        setSelectedRunId(null);
+      }
+      await loadProjectRuns();
+      await loadJobs(selectedProductId);
+    },
+    [loadJobs, loadProjectRuns, selectedProductId, selectedRunId],
+  );
 
   function Spinner() {
     return (
@@ -890,21 +951,38 @@ export default function CreativeStudioPage() {
           </span>
         </div>
 
-        <select
-          value={selectedRunId || "no-active"}
-          onChange={(e) => {
-            const value = e.target.value === "no-active" ? null : e.target.value;
-            setSelectedRunId(value);
-          }}
-          className="w-full md:w-auto px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-300"
-        >
-          <option value="no-active">No active run</option>
-          {sortedRuns.map((run) => (
-            <option key={run.runId} value={run.runId}>
-              {run.displayLabel} - {formatRunDate(run.createdAt)}
-            </option>
-          ))}
-        </select>
+        <div className="flex flex-col gap-2 md:flex-row md:items-center">
+          <select
+            value={selectedRunId || "no-active"}
+            onChange={(e) => {
+              const value = e.target.value === "no-active" ? null : e.target.value;
+              setSelectedRunId(value);
+            }}
+            className="w-full md:w-auto px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-300"
+          >
+            <option value="no-active">No active run</option>
+            {sortedRuns.map((run) => (
+              <option key={run.runId} value={run.runId}>
+                {run.displayLabel} - {formatRunDate(run.createdAt)}
+              </option>
+            ))}
+          </select>
+          <div className="w-full md:w-auto" style={{ position: "relative" }}>
+            <button
+              type="button"
+              onClick={() => setShowRunManagerModal(true)}
+              className="w-full md:w-auto rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-200 hover:bg-slate-700"
+            >
+              Manage Runs
+            </button>
+            <RunManagementModal
+              projectId={projectId}
+              open={showRunManagerModal}
+              onClose={() => setShowRunManagerModal(false)}
+              onRunsChanged={handleRunsChanged}
+            />
+          </div>
+        </div>
 
         {selectedRun && (
           <div className="mt-3 text-sm text-slate-400">
