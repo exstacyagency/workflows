@@ -72,6 +72,21 @@ type ScriptDetails = {
   createdAt: string;
 };
 
+type ScriptRunSummarySource = {
+  present: boolean;
+  jobId: string | null;
+  completedAt: string | null;
+  avatarSummary?: string | null;
+  productName?: string | null;
+};
+
+type ScriptRunSummary = {
+  runId: string;
+  customerAnalysis: ScriptRunSummarySource;
+  patternAnalysis: ScriptRunSummarySource;
+  productCollection: ScriptRunSummarySource;
+};
+
 export default function CreativeStudioPage() {
   const params = useParams();
   const router = useRouter();
@@ -93,9 +108,14 @@ export default function CreativeStudioPage() {
   const [scriptResearchRuns, setScriptResearchRuns] = useState<ResearchRunOption[]>([]);
   const [scriptRunsLoading, setScriptRunsLoading] = useState(false);
   const [selectedScriptResearchJobId, setSelectedScriptResearchJobId] = useState("");
+  const [scriptTargetDuration, setScriptTargetDuration] = useState<number>(30);
+  const [scriptBeatCount, setScriptBeatCount] = useState<number>(5);
   const [scriptNoResearchAcknowledged, setScriptNoResearchAcknowledged] = useState(false);
   const [scriptModalSubmitting, setScriptModalSubmitting] = useState(false);
   const [scriptModalError, setScriptModalError] = useState<string | null>(null);
+  const [scriptRunSummary, setScriptRunSummary] = useState<ScriptRunSummary | null>(null);
+  const [scriptRunSummaryLoading, setScriptRunSummaryLoading] = useState(false);
+  const [scriptRunSummaryError, setScriptRunSummaryError] = useState<string | null>(null);
   const [scriptPanelOpenId, setScriptPanelOpenId] = useState<string | null>(null);
   const [scriptPanelLoading, setScriptPanelLoading] = useState(false);
   const [scriptPanelError, setScriptPanelError] = useState<string | null>(null);
@@ -240,6 +260,10 @@ export default function CreativeStudioPage() {
   );
 
   const runGroupsList = useMemo(() => Object.values(runGroups), [runGroups]);
+  const selectedScriptResearchRun = useMemo(
+    () => scriptResearchRuns.find((run) => run.jobId === selectedScriptResearchJobId) ?? null,
+    [scriptResearchRuns, selectedScriptResearchJobId],
+  );
 
   function getRunJobName(job: Job) {
     const names: Record<JobType, string> = {
@@ -363,6 +387,26 @@ export default function CreativeStudioPage() {
     });
   }
 
+  function getSourceRowContent(source: ScriptRunSummarySource, fallback: string): {
+    text: string;
+    missing: boolean;
+  } {
+    if (!source.present) {
+      return { text: "Missing for this run", missing: true };
+    }
+
+    const customText = fallback.trim();
+    if (customText) {
+      return { text: customText, missing: false };
+    }
+
+    if (source.completedAt) {
+      return { text: formatMetadataDate(source.completedAt), missing: false };
+    }
+
+    return { text: "Completed job found, but date unavailable", missing: true };
+  }
+
   function getErrorText(errorValue: unknown): string {
     if (typeof errorValue === "string" && errorValue.trim()) {
       return errorValue;
@@ -394,6 +438,20 @@ export default function CreativeStudioPage() {
     return null;
   }
 
+  function cleanScriptBeatLabel(rawBeat: string | null | undefined): string {
+    const normalized = String(rawBeat ?? "").trim();
+    if (!normalized) return "Hook";
+
+    const hasColonAndArrow =
+      normalized.includes(":") && (normalized.includes("->") || normalized.includes("→"));
+
+    if (hasColonAndArrow || normalized.length > 40) {
+      return "Hook";
+    }
+
+    return normalized;
+  }
+
   function extractScriptBeats(rawJson: unknown): ScriptBeat[] {
     if (!rawJson || typeof rawJson !== "object") return [];
     const rawScenes = (rawJson as Record<string, unknown>).scenes;
@@ -405,10 +463,9 @@ export default function CreativeStudioPage() {
       const voValue = parsed.vo;
       const durationValue = parsed.duration;
       return {
-        beat:
-          typeof beatValue === "string" && beatValue.trim()
-            ? beatValue.trim()
-            : `Beat ${index + 1}`,
+        beat: cleanScriptBeatLabel(
+          typeof beatValue === "string" && beatValue.trim() ? beatValue.trim() : `Beat ${index + 1}`
+        ),
         duration:
           typeof durationValue === "number" || typeof durationValue === "string"
             ? durationValue
@@ -664,9 +721,14 @@ export default function CreativeStudioPage() {
     setScriptResearchRuns([]);
     setScriptRunsLoading(false);
     setSelectedScriptResearchJobId("");
+    setScriptTargetDuration(30);
+    setScriptBeatCount(5);
     setScriptNoResearchAcknowledged(false);
     setScriptModalError(null);
     setScriptModalSubmitting(false);
+    setScriptRunSummary(null);
+    setScriptRunSummaryLoading(false);
+    setScriptRunSummaryError(null);
   }
 
   function handleStepRunClick(step: ProductionStep) {
@@ -689,6 +751,17 @@ export default function CreativeStudioPage() {
     return Array.isArray(data.runs) ? data.runs : [];
   }
 
+  const loadScriptRunSummary = useCallback(async (runId: string): Promise<ScriptRunSummary> => {
+    const res = await fetch(`/api/projects/${projectId}/run-summary/${runId}`, {
+      cache: "no-store",
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.success) {
+      throw new Error(data?.error || "Failed to load selected run summary");
+    }
+    return data as ScriptRunSummary;
+  }, [projectId]);
+
   async function handleChooseGenerateWithAi() {
     setScriptModalMode("ai");
     setScriptModalError(null);
@@ -709,6 +782,51 @@ export default function CreativeStudioPage() {
     }
   }
 
+  useEffect(() => {
+    if (scriptModalMode !== "ai") return;
+
+    if (!selectedScriptResearchJobId) {
+      setScriptRunSummary(null);
+      setScriptRunSummaryLoading(false);
+      setScriptRunSummaryError(null);
+      return;
+    }
+
+    const selectedResearchRun =
+      scriptResearchRuns.find((run) => run.jobId === selectedScriptResearchJobId) ?? null;
+    const selectedRunId = String(selectedResearchRun?.runId ?? "").trim();
+
+    if (!selectedRunId) {
+      setScriptRunSummary(null);
+      setScriptRunSummaryLoading(false);
+      setScriptRunSummaryError("Selected research run is missing runId.");
+      return;
+    }
+
+    let cancelled = false;
+    setScriptRunSummaryLoading(true);
+    setScriptRunSummaryError(null);
+
+    void (async () => {
+      try {
+        const summary = await loadScriptRunSummary(selectedRunId);
+        if (cancelled) return;
+        setScriptRunSummary(summary);
+      } catch (err: any) {
+        if (cancelled) return;
+        setScriptRunSummary(null);
+        setScriptRunSummaryError(err?.message || "Failed to load selected run summary");
+      } finally {
+        if (cancelled) return;
+        setScriptRunSummaryLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [loadScriptRunSummary, scriptModalMode, scriptResearchRuns, selectedScriptResearchJobId]);
+
   async function handleGenerateScriptWithAi() {
     const scriptStep = steps.find((step) => step.key === "script");
     if (!scriptStep) return;
@@ -724,11 +842,17 @@ export default function CreativeStudioPage() {
 
     setScriptModalSubmitting(true);
     setScriptModalError(null);
+    const scriptGenerationPayload: Record<string, unknown> = {
+      forceNew: true,
+      targetDuration: scriptTargetDuration,
+      beatCount: scriptBeatCount,
+      ...(selectedScriptResearchJobId
+        ? { customerAnalysisJobId: selectedScriptResearchJobId }
+        : {}),
+    };
     const ok = await runStep(
       scriptStep,
-      selectedScriptResearchJobId
-        ? { customerAnalysisJobId: selectedScriptResearchJobId }
-        : undefined
+      scriptGenerationPayload
     );
     setScriptModalSubmitting(false);
 
@@ -1611,14 +1735,153 @@ export default function CreativeStudioPage() {
                           })}
                         </select>
                         {selectedScriptResearchJobId && (
-                          <p style={{ margin: "8px 0 0 0", color: "#94a3b8", fontSize: 12 }}>
-                            Selected analysis job: {selectedScriptResearchJobId}
-                          </p>
+                          <div style={{ marginTop: 8 }}>
+                            <p style={{ margin: 0, color: "#94a3b8", fontSize: 12 }}>
+                              Selected analysis job: {selectedScriptResearchJobId}
+                            </p>
+                            {selectedScriptResearchRun?.runId && (
+                              <p style={{ margin: "4px 0 0 0", color: "#94a3b8", fontSize: 12 }}>
+                                Selected run: {selectedScriptResearchRun.runId}
+                              </p>
+                            )}
+
+                            {scriptRunSummaryLoading ? (
+                              <p style={{ margin: "10px 0 0 0", color: "#94a3b8", fontSize: 12 }}>
+                                Loading source summary...
+                              </p>
+                            ) : scriptRunSummaryError ? (
+                              <p style={{ margin: "10px 0 0 0", color: "#fca5a5", fontSize: 12 }}>
+                                {scriptRunSummaryError}
+                              </p>
+                            ) : scriptRunSummary ? (
+                              (() => {
+                                const customer = getSourceRowContent(
+                                  scriptRunSummary.customerAnalysis,
+                                  String(scriptRunSummary.customerAnalysis.avatarSummary ?? "")
+                                );
+                                const pattern = getSourceRowContent(
+                                  scriptRunSummary.patternAnalysis,
+                                  ""
+                                );
+                                const productLabel = String(
+                                  scriptRunSummary.productCollection.productName ?? ""
+                                ).trim();
+                                const productDate = scriptRunSummary.productCollection.completedAt
+                                  ? formatMetadataDate(scriptRunSummary.productCollection.completedAt)
+                                  : "";
+                                const product = getSourceRowContent(
+                                  scriptRunSummary.productCollection,
+                                  [productLabel, productDate].filter(Boolean).join(" • ")
+                                );
+                                const rows = [
+                                  { label: "Customer Analysis", value: customer.text, missing: customer.missing },
+                                  { label: "Pattern Analysis", value: pattern.text, missing: pattern.missing },
+                                  { label: "Product Collection", value: product.text, missing: product.missing },
+                                ];
+
+                                return (
+                                  <div
+                                    style={{
+                                      marginTop: 10,
+                                      border: "1px solid #334155",
+                                      borderRadius: 10,
+                                      backgroundColor: "#0b1220",
+                                      padding: "8px 10px",
+                                    }}
+                                  >
+                                    {rows.map((row) => (
+                                      <div
+                                        key={row.label}
+                                        style={{
+                                          display: "flex",
+                                          alignItems: "flex-start",
+                                          justifyContent: "space-between",
+                                          gap: 12,
+                                          padding: "6px 0",
+                                          borderBottom: row.label === "Product Collection" ? "none" : "1px solid #1e293b",
+                                        }}
+                                      >
+                                        <span style={{ color: "#cbd5e1", fontSize: 12, fontWeight: 600 }}>
+                                          {row.label}
+                                        </span>
+                                        <span
+                                          style={{
+                                            color: row.missing ? "#fde68a" : "#94a3b8",
+                                            fontSize: 12,
+                                            textAlign: "right",
+                                          }}
+                                        >
+                                          {row.missing ? `Warning: ${row.value}` : row.value}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                );
+                              })()
+                            ) : null}
+                          </div>
                         )}
                       </>
                     )}
                   </div>
                 )}
+                <div
+                  style={{
+                    marginTop: 12,
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: 10,
+                  }}
+                >
+                  <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <span style={{ color: "#cbd5e1", fontSize: 12, fontWeight: 600 }}>Duration</span>
+                    <select
+                      value={String(scriptTargetDuration)}
+                      onChange={(e) => setScriptTargetDuration(Number(e.target.value))}
+                      disabled={scriptModalSubmitting}
+                      style={{
+                        width: "100%",
+                        borderRadius: 10,
+                        border: "1px solid #334155",
+                        backgroundColor: "#020617",
+                        color: "#e2e8f0",
+                        padding: "8px 10px",
+                        fontSize: 13,
+                        boxSizing: "border-box",
+                      }}
+                    >
+                      {[15, 30, 45, 60].map((seconds) => (
+                        <option key={seconds} value={String(seconds)}>
+                          {seconds}s
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <span style={{ color: "#cbd5e1", fontSize: 12, fontWeight: 600 }}>Beats</span>
+                    <select
+                      value={String(scriptBeatCount)}
+                      onChange={(e) => setScriptBeatCount(Number(e.target.value))}
+                      disabled={scriptModalSubmitting}
+                      style={{
+                        width: "100%",
+                        borderRadius: 10,
+                        border: "1px solid #334155",
+                        backgroundColor: "#020617",
+                        color: "#e2e8f0",
+                        padding: "8px 10px",
+                        fontSize: 13,
+                        boxSizing: "border-box",
+                      }}
+                    >
+                      {[3, 4, 5, 6].map((count) => (
+                        <option key={count} value={String(count)}>
+                          {count}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
                 <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12 }}>
                   <button
                     type="button"

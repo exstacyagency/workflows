@@ -80,6 +80,19 @@ type PromptInjectionValues = {
   proofPatternName: unknown;
   proofPatternDescription: unknown;
   amplifySynergy: unknown;
+  copyReadyPhrases: unknown;
+  successLooksLikeQuote: unknown;
+  buyTriggerQuote: unknown;
+  buyTriggerSituation: unknown;
+  lifeStage: unknown;
+  urgencyLevel: unknown;
+  competitorLandmineTopQuote: unknown;
+};
+
+type BeatPlanEntry = {
+  label: string;
+  duration: string;
+  guidance?: string;
 };
 
 type StructuredProductIntelRow = {
@@ -168,6 +181,19 @@ function asStringArray(value: unknown): string[] {
     .filter(Boolean);
 }
 
+function firstStringInArray(value: unknown): string | null {
+  if (!Array.isArray(value)) return null;
+  for (const entry of value) {
+    const normalized = asString(entry);
+    if (normalized) return normalized;
+  }
+  return null;
+}
+
+function escapePromptJsonString(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
 function markMissingPromptFields(values: PromptInjectionValues): PromptInjectionValues {
   const normalize = (value: unknown): unknown => {
     if (value === undefined || value === null) return "MISSING";
@@ -190,6 +216,13 @@ function markMissingPromptFields(values: PromptInjectionValues): PromptInjection
     proofPatternName: normalize(values.proofPatternName),
     proofPatternDescription: normalize(values.proofPatternDescription),
     amplifySynergy: normalize(values.amplifySynergy),
+    copyReadyPhrases: normalize(values.copyReadyPhrases),
+    successLooksLikeQuote: normalize(values.successLooksLikeQuote),
+    buyTriggerQuote: normalize(values.buyTriggerQuote),
+    buyTriggerSituation: normalize(values.buyTriggerSituation),
+    lifeStage: normalize(values.lifeStage),
+    urgencyLevel: normalize(values.urgencyLevel),
+    competitorLandmineTopQuote: normalize(values.competitorLandmineTopQuote),
   };
 }
 
@@ -312,6 +345,173 @@ function normalizePatternInputs(rawJson: unknown): {
     antiPatterns,
     stackingRules: [],
   };
+}
+
+const DEFAULT_SCRIPT_TARGET_DURATION = 30;
+const DEFAULT_SCRIPT_BEAT_COUNT = 5;
+
+function normalizeTargetDurationValue(value: unknown): number {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string"
+        ? Number(value)
+        : Number.NaN;
+  const rounded = Number.isFinite(parsed) ? Math.round(parsed) : DEFAULT_SCRIPT_TARGET_DURATION;
+  if (rounded < 1 || rounded > 180) return DEFAULT_SCRIPT_TARGET_DURATION;
+  return rounded;
+}
+
+function normalizeBeatCountValue(value: unknown): number {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string"
+        ? Number(value)
+        : Number.NaN;
+  const rounded = Number.isFinite(parsed) ? Math.round(parsed) : DEFAULT_SCRIPT_BEAT_COUNT;
+  if (rounded < 1 || rounded > 10) return DEFAULT_SCRIPT_BEAT_COUNT;
+  return rounded;
+}
+
+function formatSecondsForPrompt(value: number): string {
+  const rounded = Math.round(value * 10) / 10;
+  if (Number.isInteger(rounded)) return String(rounded);
+  return rounded.toFixed(1).replace(/\.0$/, "");
+}
+
+function buildDefaultBeatLabels(beatCount: number): string[] {
+  if (beatCount <= 1) return ["Hook"];
+  if (beatCount === 2) return ["Hook", "Payoff"];
+
+  const middleLabelPool = [
+    "Personal Context",
+    "Problem Agitation",
+    "Product as Solution",
+    "Proof",
+    "CTA Bridge",
+    "Close",
+  ];
+
+  const labels = ["Hook"];
+  for (let i = 0; i < beatCount - 2; i++) {
+    labels.push(middleLabelPool[i] ?? `Beat ${i + 2}`);
+  }
+  labels.push("Payoff");
+  return labels;
+}
+
+function buildDefaultBeatPlan(targetDuration: number, beatCount: number): BeatPlanEntry[] {
+  const safeDuration = normalizeTargetDurationValue(targetDuration);
+  const safeBeatCount = normalizeBeatCountValue(beatCount);
+  const labels = buildDefaultBeatLabels(safeBeatCount);
+  const secondsPerBeat = safeDuration / safeBeatCount;
+  let start = 0;
+
+  return labels.map((label, index) => {
+    const end = index === safeBeatCount - 1 ? safeDuration : start + secondsPerBeat;
+    const entry: BeatPlanEntry = {
+      label,
+      duration: `${formatSecondsForPrompt(start)}-${formatSecondsForPrompt(end)}s`,
+    };
+    start = end;
+    return entry;
+  });
+}
+
+function parsePrescriptiveBodySegments(body: string): string[] {
+  const normalized = body
+    .split(/\r?\n|;/)
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+
+  if (normalized.length !== 1) return normalized;
+  return normalized[0]
+    .split(/\s*\|\s*|,\s*(?=\d)|,\s*(?=[A-Za-z]+\s*\d)/)
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+}
+
+function normalizeTimingDuration(value: Record<string, unknown>, fallback: string): string {
+  return (
+    asString(value.timing) ||
+    asString(value.time_range) ||
+    asString(value.window) ||
+    asString(value.duration) ||
+    fallback
+  );
+}
+
+function normalizeTimingLabel(value: Record<string, unknown>, fallback: string): string {
+  return (
+    asString(value.beat) ||
+    asString(value.phase) ||
+    asString(value.pattern_name) ||
+    asString(value.pattern) ||
+    asString(value.title) ||
+    fallback
+  );
+}
+
+function normalizeTimingGuidance(value: Record<string, unknown>): string | undefined {
+  return (
+    asString(value.description) ||
+    asString(value.reason) ||
+    asString(value.example) ||
+    asString(value.visual_notes) ||
+    undefined
+  );
+}
+
+function buildBeatPlanFromPatternData(
+  rawPatternJson: unknown,
+  targetDuration: number,
+  beatCount: number,
+): {
+  beats: BeatPlanEntry[];
+  source: "timingPatterns" | "prescriptiveGuidance.body" | "default";
+} {
+  const fallbackBeats = buildDefaultBeatPlan(targetDuration, beatCount);
+  const root = asObject(rawPatternJson);
+  const patternsRoot = asObject(root?.patterns);
+  const timingPatternsRaw = Array.isArray(patternsRoot?.timingPatterns)
+    ? patternsRoot?.timingPatterns
+    : [];
+  const timingPatterns = timingPatternsRaw
+    .map((entry) => asObject(entry))
+    .filter((entry): entry is Record<string, unknown> => Boolean(entry));
+
+  if (timingPatterns.length > 0) {
+    const mapped = timingPatterns
+      .slice(0, fallbackBeats.length)
+      .map((entry, index) => {
+        const fallback = fallbackBeats[index] ?? fallbackBeats[fallbackBeats.length - 1];
+        return {
+          label: normalizeTimingLabel(entry, fallback.label),
+          duration: normalizeTimingDuration(entry, fallback.duration),
+          guidance: normalizeTimingGuidance(entry),
+        };
+      });
+
+    while (mapped.length < fallbackBeats.length) {
+      mapped.push(fallbackBeats[mapped.length]);
+    }
+
+    return { beats: mapped, source: "timingPatterns" };
+  }
+
+  const prescriptiveGuidance = asObject(patternsRoot?.prescriptiveGuidance);
+  const bodyGuidance = asString(prescriptiveGuidance?.body);
+  if (bodyGuidance) {
+    const segments = parsePrescriptiveBodySegments(bodyGuidance);
+    const mapped = fallbackBeats.map((beat, index) => ({
+      ...beat,
+      guidance: segments[index] || segments[0] || undefined,
+    }));
+    return { beats: mapped, source: "prescriptiveGuidance.body" };
+  }
+
+  return { beats: fallbackBeats, source: "default" };
 }
 
 async function loadStructuredProductIntel(projectId: string): Promise<StructuredProductIntelRow | null> {
@@ -624,11 +824,24 @@ function buildScriptPrompt(args: {
   productName: string;
   avatar: any;
   productIntel: any;
+  patternRawJson: unknown;
+  targetDuration: number;
+  beatCount: number;
   patterns: Pattern[];
   antiPatterns: AntiPattern[];
   stackingRules: StackingRule[];
 }): { system: string; prompt: string; promptInjections: PromptInjectionValues } {
-  const { productName, avatar, productIntel, patterns, antiPatterns, stackingRules } = args;
+  const {
+    productName,
+    avatar,
+    productIntel,
+    patternRawJson,
+    targetDuration,
+    beatCount,
+    patterns,
+    antiPatterns,
+    stackingRules,
+  } = args;
 
   const hookCandidates = patterns.filter(
     p => p.category === 'Hook Structure' && String(p.occurrence_rate) === 'high',
@@ -698,6 +911,15 @@ function buildScriptPrompt(args: {
     productIntel?.tagline ||
     (Array.isArray(productIntel?.keyClaims) ? productIntel.keyClaims[0] : undefined) ||
     'addresses root cause';
+  const numericClaimCandidates = [
+    ...asStringArray(productIntel?.keyClaims),
+    ...asStringArray(productIntel?.keyFeatures),
+    asString(productIntel?.usp),
+    asString(productIntel?.tagline),
+  ].filter((entry): entry is string => Boolean(entry));
+  const verifiedNumericClaims = Array.from(
+    new Set(numericClaimCandidates.filter((claim) => /\d/.test(claim)))
+  );
 
   const avatarAge = avatarSnap.age ?? 30;
   const avatarGender = avatarSnap.gender || 'person';
@@ -708,6 +930,90 @@ function buildScriptPrompt(args: {
   const proofPatternName = proofPattern?.pattern_name || 'Unknown';
   const proofPatternDescription = proofPattern?.description || '';
   const amplifySynergy = amplifyRule?.performance_delta || 'neutral';
+  const avatarRoot = asObject(avatar) ?? {};
+  const avatarSection = asObject(avatarRoot.avatar) ?? {};
+  const avatarProfile = asObject(avatarSection.profile) ?? asObject(avatarRoot.profile);
+  const competitiveAnalysis = asObject(avatarRoot.competitive_analysis) ?? asObject(avatarSection.competitive_analysis);
+  const copyReadyPhrases = Array.from(
+    new Set([
+      ...asStringArray(avatarRoot.copy_ready_phrases),
+      ...asStringArray(avatarSection.copy_ready_phrases),
+      ...asStringArray(avatarRoot.voc_phrases),
+      ...asStringArray(avatarSection.voc_phrases),
+    ])
+  );
+  const successLooksLike = asObject(avatarRoot.success_looks_like) ?? asObject(avatarSection.success_looks_like);
+  const buyTrigger = asObject(avatarRoot.buy_trigger) ?? asObject(avatarSection.buy_trigger);
+  const competitorLandminesRaw = Array.isArray(avatarRoot.competitor_landmines)
+    ? avatarRoot.competitor_landmines
+    : Array.isArray(avatarSection.competitor_landmines)
+      ? avatarSection.competitor_landmines
+      : [];
+  const topCompetitorLandmine = asObject(competitorLandminesRaw[0]);
+  const competitorWeaknesses = Array.isArray(competitiveAnalysis?.competitor_weaknesses)
+    ? competitiveAnalysis.competitor_weaknesses
+    : [];
+  const topCompetitorWeakness = asObject(competitorWeaknesses[0]);
+  const successCriteria = asObject(avatarSection.success_criteria);
+  const successLooksLikeQuote =
+    asString(successLooksLike?.quote) ||
+    asString(successLooksLike?.emotional_payoff) ||
+    asString(successLooksLike?.outcome) ||
+    firstStringInArray(successCriteria?.supporting_quotes) ||
+    '';
+  const buyTriggerQuote =
+    asString(buyTrigger?.quote) ||
+    firstStringInArray(buyTrigger?.supporting_quotes) ||
+    asString(buyTrigger?.trigger) ||
+    asString(buyTrigger?.situation) ||
+    '';
+  const buyTriggerSituation =
+    asString(buyTrigger?.situation) ||
+    asString(buyTrigger?.trigger) ||
+    '';
+  const lifeStage =
+    asString(avatarSection.life_stage) ||
+    asString(avatarProfile?.life_stage) ||
+    asString(avatarRoot.life_stage) ||
+    '';
+  const urgencyLevel =
+    asString(avatarSection.urgency_level) ||
+    asString(avatarProfile?.decision_urgency) ||
+    asString(avatarProfile?.urgency_level) ||
+    asString(avatarRoot.urgency_level) ||
+    '';
+  const competitorLandmineTopQuote =
+    asString(topCompetitorLandmine?.quote) ||
+    asString(topCompetitorLandmine?.impact) ||
+    asString(topCompetitorLandmine?.what_failed) ||
+    firstStringInArray(topCompetitorWeakness?.supporting_quotes) ||
+    '';
+  const copyReadyPhrasesList = copyReadyPhrases.length
+    ? copyReadyPhrases.map((phrase, index) => `${index + 1}. "${phrase}"`).join("\n")
+    : "MISSING";
+  const beatPlan = buildBeatPlanFromPatternData(patternRawJson, targetDuration, beatCount);
+  const schemaTimingPlan = buildDefaultBeatPlan(targetDuration, beatCount);
+  const dynamicWordCeiling = Math.round((targetDuration / 60) * 135 * 0.9);
+  const perBeatWords = Math.max(4, Math.round(dynamicWordCeiling / beatCount));
+  const perBeatMinWords = Math.max(3, Math.floor(perBeatWords * 0.75));
+  const perBeatMaxWords = Math.max(perBeatMinWords + 1, Math.ceil(perBeatWords * 1.25));
+  const beatWordGuideLines = Array.from({ length: beatCount }, (_, index) =>
+    `- Beat ${index + 1}: ~${perBeatMinWords}-${perBeatMaxWords} words`
+  ).join("\n");
+  const beatStructureLines = beatPlan.beats
+    .map((beat, index) => {
+      const guidanceSuffix = beat.guidance ? ` — ${beat.guidance}` : "";
+      return `- Beat ${index + 1} (${beat.duration}): ${beat.label}${guidanceSuffix}`;
+    })
+    .join("\n");
+  const outputSceneSchema = schemaTimingPlan
+    .map(
+      (timedBeat, index) => {
+        const beat = beatPlan.beats[index] ?? timedBeat;
+        return `    {\n      "beat": "${escapePromptJsonString(beat.label)}",\n      "duration": "${escapePromptJsonString(timedBeat.duration)}",\n      "vo": "text"\n    }`;
+      }
+    )
+    .join(",\n");
 
   const system =
     "You are an expert TikTok direct-response creative director who has studied thousands of high-converting UGC ads. You understand scroll psychology, pattern interrupts, and what makes someone stop, watch, and buy in under 32 seconds. You write scripts where every word earns its place. You know the difference between content that entertains and content that converts. Output ONLY valid JSON. No markdown. No explanation. No preamble.";
@@ -720,6 +1026,24 @@ Psycho: ${psychographics}
 Goal: ${goal}
 Blocker: ${blockerFear}
 Blocker quote: "${blockerQuote}"
+Verified numeric claims from product intelligence:
+${verifiedNumericClaims.length > 0 ? verifiedNumericClaims.map((claim, idx) => `${idx + 1}. ${claim}`).join('\n') : "None provided"}
+
+REQUIRED CUSTOMER LANGUAGE (MANDATORY)
+copy_ready_phrases:
+${copyReadyPhrasesList}
+success_looks_like quote:
+"${successLooksLikeQuote || "MISSING"}"
+buy_trigger quote:
+"${buyTriggerQuote || "MISSING"}"
+buy_trigger situation:
+"${buyTriggerSituation || "MISSING"}"
+life_stage:
+"${lifeStage || "MISSING"}"
+urgency_level:
+"${urgencyLevel || "MISSING"}"
+top competitor_landmines quote:
+"${competitorLandmineTopQuote || "MISSING"}"
 
 PATTERN INTELLIGENCE
 Hook: ${hookPatternName} (${hookPattern?.occurrence_rate || 'unknown'} occurrence)
@@ -736,49 +1060,33 @@ Synergy: ${amplifySynergy}
 WHY synergy works: ${amplifyRule?.baseline_comparison || amplifyRule?.reason || 'patterns reinforce belief and reduce friction'}
 
 EXECUTION RULES
-Duration: 32s (5-beat UGC flow)
-5-beat structure:
-- Beat 1 (0-5s): Hook
-- Beat 2 (5-11s): Personal Context
-- Beat 3 (11-18s): Problem Agitation
-- Beat 4 (18-26s): Product as Solution
-- Beat 5 (26-32s): Payoff
+Duration: ${targetDuration}s (${beatCount}-beat UGC flow)
+Beat plan source: ${beatPlan.source}
+${beatCount}-beat structure:
+${beatStructureLines}
 
-VO: 72 words max @ 135 WPM
-- Beat 1: 6-10 words
-- Beat 2: 10-14 words
-- Beat 3: 12-16 words
-- Beat 4: 16-20 words
-- Beat 5: 8-12 words
+VO: ${dynamicWordCeiling} words max @ 135 WPM (90% density target)
+${beatWordGuideLines}
+
+CLAIM SAFETY RULES
+- Specific numeric claims in the script must come from the "Verified numeric claims from product intelligence" list above.
+- All claims require a verified source in the product intelligence data.
+- If no claim exists, use qualitative customer language instead.
+- Do not invent claims or statistics.
+- Do not invent performance statistics, percentages, timeframes, or quantified outcomes.
+- If no relevant numeric claim exists for a beat, use emotional language instead of fabricated numbers.
+
+MANDATORY LANGUAGE RULES
+- At least two phrases from copy_ready_phrases must appear verbatim or near-verbatim in the final script.
+- The Payoff beat must echo the emotional outcome from success_looks_like.
+- The Problem Agitation beat must use language patterns from competitor_landmines failures, not generic supplement frustration.
+- The Personal Context beat must reference the specific high-stakes situation that triggers purchase (for example: deadline pressure, project-based cognitive demand, performance under pressure). Generic "working professional" framing is not acceptable. The viewer must recognize their exact situation within 3 seconds.
+- If the beat labels differ, apply the Payoff rule to the final beat and apply the Problem Agitation rule to the beat that escalates pain/tension.
 
 OUTPUT SCHEMA
 {
   "scenes": [
-    {
-      "beat": "Hook",
-      "duration": "0-5s",
-      "vo": "text"
-    },
-    {
-      "beat": "Personal Context",
-      "duration": "5-11s",
-      "vo": "text"
-    },
-    {
-      "beat": "Problem Agitation",
-      "duration": "11-18s",
-      "vo": "text"
-    },
-    {
-      "beat": "Product as Solution",
-      "duration": "18-26s",
-      "vo": "text"
-    },
-    {
-      "beat": "Payoff",
-      "duration": "26-32s",
-      "vo": "text"
-    }
+${outputSceneSchema}
   ],
   "vo_full": "complete voiceover with scene markers",
   "word_count": number
@@ -804,16 +1112,37 @@ Return ONLY JSON.`;
       proofPatternName,
       proofPatternDescription,
       amplifySynergy,
+      copyReadyPhrases: copyReadyPhrases.join(" | "),
+      successLooksLikeQuote,
+      buyTriggerQuote,
+      buyTriggerSituation,
+      lifeStage,
+      urgencyLevel,
+      competitorLandmineTopQuote,
     },
   };
 }
 
 type ScriptJobPayload = {
   customerAnalysisJobId?: unknown;
+  targetDuration?: unknown;
+  beatCount?: unknown;
 };
 
-async function getRequestedCustomerAnalysisJobId(jobId?: string) {
-  if (!jobId) return null;
+type ScriptGenerationJobConfig = {
+  customerAnalysisJobId: string | null;
+  targetDuration: number;
+  beatCount: number;
+};
+
+async function getRequestedScriptGenerationConfig(jobId?: string): Promise<ScriptGenerationJobConfig> {
+  if (!jobId) {
+    return {
+      customerAnalysisJobId: null,
+      targetDuration: DEFAULT_SCRIPT_TARGET_DURATION,
+      beatCount: DEFAULT_SCRIPT_BEAT_COUNT,
+    };
+  }
   const job = await prisma.job.findUnique({
     where: { id: jobId },
     select: { payload: true },
@@ -826,7 +1155,13 @@ async function getRequestedCustomerAnalysisJobId(jobId?: string) {
     typeof payload?.customerAnalysisJobId === 'string'
       ? payload.customerAnalysisJobId.trim()
       : '';
-  return selectedId || null;
+  const targetDuration = normalizeTargetDurationValue(payload?.targetDuration);
+  const beatCount = normalizeBeatCountValue(payload?.beatCount);
+  return {
+    customerAnalysisJobId: selectedId || null,
+    targetDuration,
+    beatCount,
+  };
 }
 
 async function getAvatarForScript(
@@ -1139,8 +1474,10 @@ export async function runScriptGeneration(args: {
   projectId: string;
   jobId?: string;
   customerAnalysisJobId?: string;
+  targetDuration?: number;
+  beatCount?: number;
 }) {
-  const { projectId, jobId, customerAnalysisJobId } = args;
+  const { projectId, jobId, customerAnalysisJobId, targetDuration, beatCount } = args;
 
   // Load dependencies:
   const project = await prisma.project.findUnique({
@@ -1150,8 +1487,15 @@ export async function runScriptGeneration(args: {
     throw new Error('Project not found');
   }
 
+  const requestedConfig = await getRequestedScriptGenerationConfig(jobId);
   const selectedCustomerAnalysisJobId =
-    customerAnalysisJobId ?? (await getRequestedCustomerAnalysisJobId(jobId));
+    customerAnalysisJobId ?? requestedConfig.customerAnalysisJobId;
+  const selectedTargetDuration = normalizeTargetDurationValue(
+    targetDuration ?? requestedConfig.targetDuration
+  );
+  const selectedBeatCount = normalizeBeatCountValue(
+    beatCount ?? requestedConfig.beatCount
+  );
 
   const avatarSelection = await getAvatarForScript(projectId, selectedCustomerAnalysisJobId);
   const avatar = avatarSelection.avatar;
@@ -1204,6 +1548,9 @@ export async function runScriptGeneration(args: {
     productName: project.name,
     avatar: (avatar?.persona as any) ?? {},
     productIntel: productIntelPayload,
+    patternRawJson: patternResult?.rawJson ?? null,
+    targetDuration: selectedTargetDuration,
+    beatCount: selectedBeatCount,
     patterns,
     antiPatterns,
     stackingRules,
@@ -1216,7 +1563,10 @@ export async function runScriptGeneration(args: {
       mergedVideoUrl: null,
       upscaledVideoUrl: null,
       status: ScriptStatus.PENDING,
-      rawJson: {},
+      rawJson: {
+        targetDuration: selectedTargetDuration,
+        beatCount: selectedBeatCount,
+      },
       wordCount: 0,
     },
   });
@@ -1241,7 +1591,11 @@ export async function runScriptGeneration(args: {
   const updatedScript = await prisma.script.update({
     where: { id: scriptRecord.id },
     data: {
-      rawJson: scriptJson as any,
+      rawJson: {
+        ...(scriptJson as Record<string, unknown>),
+        targetDuration: selectedTargetDuration,
+        beatCount: selectedBeatCount,
+      } as any,
       wordCount:
         typeof scriptJson.word_count === 'number'
           ? scriptJson.word_count
