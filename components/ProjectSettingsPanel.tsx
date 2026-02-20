@@ -24,6 +24,22 @@ function extractErrorMessage(payload: unknown, fallback: string): string {
   return fallback;
 }
 
+function sanitizeImageUrl(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+
+  try {
+    const url = new URL(trimmed, typeof window !== "undefined" ? window.location.origin : "http://localhost");
+    const allowedProtocols = new Set(["http:", "https:"]);
+    if (!allowedProtocols.has(url.protocol)) {
+      return null;
+    }
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
 export function ProjectSettingsPanel({
   projectId,
   initialName,
@@ -197,14 +213,17 @@ export function ProjectSettingsPanel({
               className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-50 placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
               placeholder="https://..."
             />
-            {creatorReferenceImageUrl.trim() && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={creatorReferenceImageUrl}
-                alt="Creator reference"
-                className="h-28 w-full rounded-md object-cover border border-slate-700"
-              />
-            )}
+            {(() => {
+              const safeSrc = sanitizeImageUrl(creatorReferenceImageUrl);
+              return safeSrc ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={safeSrc}
+                  alt="Creator reference"
+                  className="h-28 w-full rounded-md object-cover border border-slate-700"
+                />
+              ) : null;
+            })()}
             <input
               type="file"
               accept="image/*"
