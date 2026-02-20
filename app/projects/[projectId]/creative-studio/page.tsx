@@ -412,6 +412,7 @@ export default function CreativeStudioPage() {
   >([]);
   const [imagePromptSaveError, setImagePromptSaveError] = useState<string | null>(null);
   const [imagePromptSaving, setImagePromptSaving] = useState(false);
+  const [cleaningOrphanedJobs, setCleaningOrphanedJobs] = useState(false);
   const [expandedCompletedStepKeys, setExpandedCompletedStepKeys] = useState<Record<string, boolean>>({});
   const [showRunManagerModal, setShowRunManagerModal] = useState(false);
   const [projectRunsById, setProjectRunsById] = useState<Record<string, ProjectRunMetadata>>({});
@@ -629,6 +630,10 @@ export default function CreativeStudioPage() {
   const selectedRun = selectedRunId ? sortedRuns.find((run) => run.runId === selectedRunId) : null;
   const selectedRunJobs = useMemo(() => selectedRun?.jobs ?? [], [selectedRun]);
   const hasSelectedRunWithJobs = Boolean(selectedRunId && selectedRunJobs.length > 0);
+  const orphanedJobsCount = useMemo(
+    () => jobs.filter((job) => !String(job.runId ?? "").trim()).length,
+    [jobs],
+  );
   const jobsInActiveRun = useMemo(
     () => (hasSelectedRunWithJobs ? selectedRunJobs : []),
     [hasSelectedRunWithJobs, selectedRunJobs],
@@ -664,6 +669,14 @@ export default function CreativeStudioPage() {
     () => getStoryboardIdFromJob(latestCompletedStoryboardJob),
     [latestCompletedStoryboardJob],
   );
+
+  useEffect(() => {
+    console.log("[Creative] selectedRunId state", {
+      selectedRunId: selectedRunId ?? null,
+      selectedRunFound: Boolean(selectedRun),
+      selectedRunJobCount: selectedRunJobs.length,
+    });
+  }, [selectedRun, selectedRunId, selectedRunJobs.length]);
 
   useEffect(() => {
     closeScriptPanel();
@@ -2163,6 +2176,11 @@ export default function CreativeStudioPage() {
         step: step.key,
         endpoint,
         selectedRunId,
+        activeRunId: activeRunId || null,
+        payloadRunId:
+          typeof payload?.runId === "string" && payload.runId.trim()
+            ? payload.runId
+            : null,
         payload,
       });
 
@@ -2472,6 +2490,35 @@ export default function CreativeStudioPage() {
     [loadJobs, loadProjectRuns, selectedProductId, selectedRunId],
   );
 
+  async function handleCleanupOrphanedJobs() {
+    if (cleaningOrphanedJobs || orphanedJobsCount <= 0) return;
+    const confirmed = window.confirm(
+      `Delete ${orphanedJobsCount} orphaned jobs? This cannot be undone.`,
+    );
+    if (!confirmed) return;
+
+    setCleaningOrphanedJobs(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/jobs/orphans`, {
+        method: "DELETE",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.error || `Server returned ${res.status}`);
+      }
+      const deletedCount = Number(data?.deletedCount ?? 0);
+      await loadJobs(selectedProductId);
+      await loadProjectRuns();
+      toast.success(`Deleted ${deletedCount} orphaned job${deletedCount === 1 ? "" : "s"}.`);
+    } catch (err: any) {
+      setError(err?.message || "Failed to clean up orphaned jobs");
+      toast.error(err?.message || "Failed to clean up orphaned jobs");
+    } finally {
+      setCleaningOrphanedJobs(false);
+    }
+  }
+
   function Spinner() {
     return (
       <svg
@@ -2642,6 +2689,10 @@ export default function CreativeStudioPage() {
             value={selectedRunId || "no-active"}
             onChange={(e) => {
               const value = e.target.value === "no-active" ? null : e.target.value;
+              console.log("[Creative] run dropdown change", {
+                selectedValue: e.target.value,
+                nextRunId: value,
+              });
               setSelectedRunId(value);
             }}
             className="w-full md:w-auto px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-300"
@@ -2668,6 +2719,22 @@ export default function CreativeStudioPage() {
               onRunsChanged={handleRunsChanged}
             />
           </div>
+          {orphanedJobsCount > 0 && (
+            <button
+              type="button"
+              onClick={() => void handleCleanupOrphanedJobs()}
+              disabled={cleaningOrphanedJobs}
+              className="w-full md:w-auto rounded-lg border border-red-500/60 bg-red-900/40 px-3 py-2 text-sm text-red-200 hover:bg-red-900/60"
+              style={{
+                cursor: cleaningOrphanedJobs ? "not-allowed" : "pointer",
+                opacity: cleaningOrphanedJobs ? 0.7 : 1,
+              }}
+            >
+              {cleaningOrphanedJobs
+                ? "Cleaning Orphaned Jobs..."
+                : `Clean Up Orphaned Jobs (${orphanedJobsCount})`}
+            </button>
+          )}
         </div>
 
         {selectedRun && (

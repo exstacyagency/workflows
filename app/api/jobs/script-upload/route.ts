@@ -9,6 +9,7 @@ import { logAudit } from "@/lib/logger";
 const BodySchema = z.object({
   projectId: z.string().min(1),
   productId: z.string().min(1).optional(),
+  runId: z.string().min(1).optional(),
   scriptText: z.string().min(1),
 });
 
@@ -35,6 +36,8 @@ export async function POST(req: NextRequest) {
     }
 
     const { projectId, productId, scriptText } = parsed.data;
+    const requestedRunId = String(parsed.data.runId ?? "").trim();
+    let effectiveRunId: string | null = null;
     const normalizedText = scriptText.trim();
     if (!normalizedText) {
       return NextResponse.json({ error: "scriptText is required" }, { status: 400 });
@@ -43,6 +46,16 @@ export async function POST(req: NextRequest) {
     const auth = await requireProjectOwner(projectId);
     if (auth.error) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+    if (requestedRunId) {
+      const existingRun = await prisma.researchRun.findUnique({
+        where: { id: requestedRunId },
+        select: { id: true, projectId: true },
+      });
+      if (!existingRun || existingRun.projectId !== projectId) {
+        return NextResponse.json({ error: "runId not found for this project" }, { status: 400 });
+      }
+      effectiveRunId = existingRun.id;
     }
 
     const idempotencyKey = `script-upload:${projectId}:${Date.now()}:${Math.random()
@@ -58,15 +71,17 @@ export async function POST(req: NextRequest) {
         type: JobType.SCRIPT_GENERATION,
         status: JobStatus.COMPLETED,
         idempotencyKey,
+        ...(effectiveRunId ? { runId: effectiveRunId } : {}),
         payload: {
           projectId,
           productId: productId ?? null,
+          ...(effectiveRunId ? { runId: effectiveRunId } : {}),
           source: "manual_upload",
           scriptLength: normalizedText.length,
         },
         resultSummary: `Script uploaded manually (words=${wordCount})`,
       },
-      select: { id: true },
+      select: { id: true, runId: true },
     });
 
     const script = await prisma.script.create({
@@ -98,7 +113,14 @@ export async function POST(req: NextRequest) {
     });
 
     return NextResponse.json(
-      { ok: true, uploaded: true, jobId: job.id, scriptId: script.id, wordCount },
+      {
+        ok: true,
+        uploaded: true,
+        jobId: job.id,
+        runId: job.runId ?? effectiveRunId,
+        scriptId: script.id,
+        wordCount,
+      },
       { status: 201 }
     );
   } catch (error: any) {
