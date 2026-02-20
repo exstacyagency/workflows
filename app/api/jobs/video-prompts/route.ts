@@ -1,8 +1,8 @@
 // app/api/jobs/video-prompts/route.ts
+import { randomUUID } from "crypto";
 import { cfg } from "@/lib/config";
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { startVideoPromptGenerationJob } from '../../../../lib/videoPromptGenerationService';
 import { prisma } from '../../../../lib/prisma';
 import { checkRateLimit } from '../../../../lib/rateLimiter';
 import { logAudit } from '../../../../lib/logger';
@@ -37,6 +37,7 @@ export async function POST(req: NextRequest) {
 
     const BodySchema = z.object({
       storyboardId: z.string().min(1),
+      attemptKey: z.string().trim().min(1).max(200).optional(),
     });
 
     const parsed = BodySchema.safeParse(body);
@@ -48,6 +49,9 @@ export async function POST(req: NextRequest) {
     }
 
     const storyboardId = parsed.data.storyboardId;
+    // Keep idempotency scoped to a single generation attempt.
+    // If client does not supply attemptKey, generate a unique nonce per request.
+    const attemptKey = parsed.data.attemptKey || `${Date.now()}-${randomUUID()}`;
 
     const storyboard = await prisma.storyboard.findUnique({
       where: { id: storyboardId },
@@ -100,6 +104,7 @@ export async function POST(req: NextRequest) {
       projectId,
       JobType.VIDEO_PROMPT_GENERATION,
       storyboardId,
+      attemptKey,
     ]);
     const existing = await findIdempotentJob({
       userId,
@@ -173,11 +178,7 @@ export async function POST(req: NextRequest) {
       },
     });
     jobId = job.id;
-
-    const result = await startVideoPromptGenerationJob({
-      storyboardId,
-      jobId: job.id,
-    });
+    reservation = null;
 
     await logAudit({
       userId,
@@ -190,10 +191,13 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    return NextResponse.json(result, { status: 200 });
+    return NextResponse.json(
+      { jobId: job.id, queued: true, reused: false },
+      { status: 200 },
+    );
   } catch (err: any) {
     console.error(err);
-    if (reservation) {
+    if (reservation && !jobId) {
       await rollbackQuota(userId, reservation.periodKey, 'videoJobs', 1);
     }
     await logAudit({

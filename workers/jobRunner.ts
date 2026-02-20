@@ -38,9 +38,11 @@ import { startScriptGenerationJob } from "../lib/scriptGenerationService.ts";
 import { generateStoryboard } from "../lib/storyboardGenerationService.ts";
 import { startVideoPromptGenerationJob } from "../lib/videoPromptGenerationService.ts";
 import { runVideoImageGenerationJob } from "../lib/videoImageGenerationService.ts";
+import { generateImagePromptsFromStoryboard } from "../lib/imagePromptGenerationService.ts";
 import { runVideoGenerationJob } from "../lib/videoGenerationService.ts";
 import { collectProductIntelWithWebFetch } from "../lib/productDataCollectionService.ts";
 import { analyzeProductData } from "../lib/productAnalysisService.ts";
+import { ensureCreatorLibraryTables } from "@/lib/creatorLibraryStore";
 import prisma from "../lib/prisma.ts";
 import { rollbackQuota } from "../lib/billing/usage.ts";
 import { updateJobStatus } from "@/lib/jobs/updateJobStatus";
@@ -337,8 +339,20 @@ async function handleProviderConfig(jobId: string, provider: string, requiredEnv
 async function claimNextJob() {
   const dueBefore = nowMs();
   const dueBeforeDate = new Date(dueBefore);
+  const excludedJobTypes: JobType[] = [];
+  const excludedTypePayloadCombinations = [
+    {
+      type: JobType.AD_PERFORMANCE,
+      payloadFields: ["jobType", "kind"],
+      excludedValues: ["ad_transcripts", "ad_transcript_collection"],
+    },
+  ];
   console.log('[Worker] claimNextJob called');
   console.log('[Worker] dueBefore:', dueBeforeDate.toISOString());
+  console.log('[Worker] claim exclusions:', {
+    excludedJobTypes,
+    excludedTypePayloadCombinations,
+  });
   console.log(
     '[Worker] Looking for jobs with status=PENDING and payload.nextRunAt <=',
     dueBeforeDate.toISOString(),
@@ -724,6 +738,10 @@ async function runJob(
       }
 
       case JobType.VIDEO_PROMPT_GENERATION: {
+        console.log("[Worker][VIDEO_PROMPT_GENERATION] Entry", {
+          jobId,
+          payload,
+        });
         const storyboardId = String(payload?.storyboardId ?? "").trim();
         if (!storyboardId) {
           await markFailed({ jobId, error: "Invalid payload: missing storyboardId" });
@@ -739,7 +757,29 @@ async function runJob(
           return;
         }
 
-        const result = await startVideoPromptGenerationJob({ storyboardId, jobId });
+        console.log("[Worker][VIDEO_PROMPT_GENERATION] About to execute video prompt generation", {
+          jobId,
+          storyboardId,
+        });
+
+        let result: Awaited<ReturnType<typeof startVideoPromptGenerationJob>>;
+        try {
+          result = await startVideoPromptGenerationJob({ storyboardId, jobId });
+          console.log("[Worker][VIDEO_PROMPT_GENERATION] Video prompt generation completed", {
+            jobId,
+            storyboardId,
+            success: true,
+            error: null,
+          });
+        } catch (error: any) {
+          console.log("[Worker][VIDEO_PROMPT_GENERATION] Video prompt generation completed", {
+            jobId,
+            storyboardId,
+            success: false,
+            error: String(error?.message ?? error),
+          });
+          throw error;
+        }
         await markCompleted({
           jobId,
           result,
@@ -777,11 +817,55 @@ async function runJob(
         return;
       }
 
-      case JobType.VIDEO_IMAGE_GENERATION: {
+      case "IMAGE_PROMPT_GENERATION" as JobType: {
         const storyboardId = String(payload?.storyboardId ?? "").trim();
-        const force = Boolean(payload?.force);
         if (!storyboardId) {
           const msg = "Invalid payload: missing storyboardId";
+          await markFailed({ jobId, error: msg });
+          await appendResultSummary(jobId, `Image prompt generation failed: ${msg}`);
+          return;
+        }
+
+        const storyboard = await prisma.storyboard.findFirst({
+          where: { projectId: job.projectId, id: storyboardId },
+          orderBy: { createdAt: "desc" },
+          select: { id: true },
+        });
+        if (!storyboard?.id) {
+          const msg = `Storyboard not found for id=${storyboardId}`;
+          await markFailed({ jobId, error: msg });
+          await appendResultSummary(jobId, `Image prompt generation failed: ${msg}`);
+          return;
+        }
+
+        try {
+          const result = await runWithMaxRuntime("IMAGE_PROMPT_GENERATION", async () => {
+            return generateImagePromptsFromStoryboard({ storyboardId, jobId });
+          });
+          await markCompleted({
+            jobId,
+            result,
+            summary: `Image prompts generated: ${result.count} scenes`,
+          });
+        } catch (e: any) {
+          const msg = String(e?.message ?? e ?? "Unknown error");
+          await markFailed({ jobId, error: e });
+          await appendResultSummary(jobId, `Image prompt generation failed: ${msg}`);
+        }
+        return;
+      }
+
+      case JobType.VIDEO_IMAGE_GENERATION: {
+        const storyboardId = String(payload?.storyboardId ?? "").trim();
+        const productId = String(payload?.productId ?? "").trim();
+        if (!storyboardId) {
+          const msg = "Invalid payload: missing storyboardId";
+          await markFailed({ jobId, error: msg });
+          await appendResultSummary(jobId, `Video images failed: ${msg}`);
+          return;
+        }
+        if (!productId) {
+          const msg = "Invalid payload: missing productId";
           await markFailed({ jobId, error: msg });
           await appendResultSummary(jobId, `Video images failed: ${msg}`);
           return;
@@ -794,6 +878,22 @@ async function runJob(
         });
         if (!storyboard?.id) {
           const msg = `Storyboard not found for id=${storyboardId}`;
+          await markFailed({ jobId, error: msg });
+          await appendResultSummary(jobId, `Video images failed: ${msg}`);
+          return;
+        }
+        await ensureCreatorLibraryTables();
+        const productRows = await prisma.$queryRaw<Array<{ creatorReferenceImageUrl: string | null }>>`
+          SELECT "creator_reference_image_url" AS "creatorReferenceImageUrl"
+          FROM "product"
+          WHERE "id" = ${productId}
+            AND "project_id" = ${job.projectId}
+          LIMIT 1
+        `;
+        const creatorReferenceImageUrl = String(productRows[0]?.creatorReferenceImageUrl ?? "").trim();
+        if (!creatorReferenceImageUrl) {
+          const msg =
+            "Image generation requires an active creator reference image. Set product.creatorReferenceImageUrl first.";
           await markFailed({ jobId, error: msg });
           await appendResultSummary(jobId, `Video images failed: ${msg}`);
           return;

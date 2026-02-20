@@ -202,7 +202,7 @@ export default function ResearchHubPage() {
       return "Ad Collection";
     }
 
-    const names: Record<JobType, string> = {
+    const names: Record<string, string> = {
       CUSTOMER_RESEARCH: "Customer Research",
       CUSTOMER_ANALYSIS: "Customer Analysis",
       AD_PERFORMANCE: "Ad Collection",
@@ -210,6 +210,14 @@ export default function ResearchHubPage() {
       PATTERN_ANALYSIS: "Pattern Analysis",
       PRODUCT_DATA_COLLECTION: "Product Collection",
       PRODUCT_ANALYSIS: "Product Analysis",
+      SCRIPT_GENERATION: "Generate Script",
+      STORYBOARD_GENERATION: "Create Storyboard",
+      IMAGE_PROMPT_GENERATION: "Generate Image Prompts",
+      VIDEO_PROMPT_GENERATION: "Generate Video Prompts",
+      VIDEO_IMAGE_GENERATION: "Generate Images",
+      VIDEO_GENERATION: "Generate Video",
+      VIDEO_REVIEW: "Review Video",
+      VIDEO_UPSCALER: "Upscale & Export",
     };
     return names[job.type] || job.type;
   };

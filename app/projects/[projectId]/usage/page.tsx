@@ -69,7 +69,7 @@ export default function UsagePage() {
   const getMockCost = (type: JobType, status: JobStatus): number => {
     if (status !== "COMPLETED") return 0;
 
-    const costs: Record<JobType, number> = {
+    const costs: Record<string, number> = {
       CUSTOMER_RESEARCH: 0.65,
       CUSTOMER_ANALYSIS: 0.15,
       AD_PERFORMANCE: 0.45,
@@ -77,6 +77,14 @@ export default function UsagePage() {
       PATTERN_ANALYSIS: 0.25,
       PRODUCT_DATA_COLLECTION: 0.35,
       PRODUCT_ANALYSIS: 0.20,
+      SCRIPT_GENERATION: 0.12,
+      STORYBOARD_GENERATION: 0.10,
+      IMAGE_PROMPT_GENERATION: 0.08,
+      VIDEO_PROMPT_GENERATION: 0.10,
+      VIDEO_IMAGE_GENERATION: 0.45,
+      VIDEO_GENERATION: 1.2,
+      VIDEO_REVIEW: 0.05,
+      VIDEO_UPSCALER: 0.4,
     };
 
     return costs[type] || 0;

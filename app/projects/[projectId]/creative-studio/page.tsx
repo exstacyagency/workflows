@@ -25,6 +25,7 @@ type ProductOption = {
   name: string;
   productProblemSolved?: string | null;
   amazonAsin?: string | null;
+  creatorReferenceImageUrl?: string | null;
 };
 
 type ResearchRunOption = {
@@ -399,6 +400,19 @@ export default function CreativeStudioPage() {
   const [storyboardSaving, setStoryboardSaving] = useState(false);
   const [storyboardRegeneratingIndex, setStoryboardRegeneratingIndex] = useState<number | null>(null);
   const [storyboardRegenerateError, setStoryboardRegenerateError] = useState<string | null>(null);
+  const [videoPromptEditMode, setVideoPromptEditMode] = useState(false);
+  const [videoPromptDrafts, setVideoPromptDrafts] = useState<string[]>([]);
+  const [videoPromptSaveError, setVideoPromptSaveError] = useState<string | null>(null);
+  const [videoPromptSaving, setVideoPromptSaving] = useState(false);
+  const [videoPromptRegeneratingIndex, setVideoPromptRegeneratingIndex] = useState<number | null>(null);
+  const [videoPromptRegenerateError, setVideoPromptRegenerateError] = useState<string | null>(null);
+  const [imagePromptEditMode, setImagePromptEditMode] = useState(false);
+  const [imagePromptDrafts, setImagePromptDrafts] = useState<
+    Array<{ firstFramePrompt: string; lastFramePrompt: string }>
+  >([]);
+  const [imagePromptSaveError, setImagePromptSaveError] = useState<string | null>(null);
+  const [imagePromptSaving, setImagePromptSaving] = useState(false);
+  const [expandedCompletedStepKeys, setExpandedCompletedStepKeys] = useState<Record<string, boolean>>({});
   const [showRunManagerModal, setShowRunManagerModal] = useState(false);
   const [projectRunsById, setProjectRunsById] = useState<Record<string, ProjectRunMetadata>>({});
   const selectedProductRef = useRef<string | null>(selectedProductIdFromUrl);
@@ -542,9 +556,10 @@ export default function CreativeStudioPage() {
   );
 
   function getRunJobName(job: Job) {
-    const names: Record<JobType, string> = {
+    const names: Record<string, string> = {
       SCRIPT_GENERATION: "Generate Script",
       STORYBOARD_GENERATION: "Create Storyboard",
+      IMAGE_PROMPT_GENERATION: "Generate Image Prompts",
       VIDEO_PROMPT_GENERATION: "Generate Video Prompts",
       VIDEO_IMAGE_GENERATION: "Generate Images",
       VIDEO_GENERATION: "Generate Video",
@@ -618,12 +633,32 @@ export default function CreativeStudioPage() {
     () => (hasSelectedRunWithJobs ? selectedRunJobs : []),
     [hasSelectedRunWithJobs, selectedRunJobs],
   );
+  const selectedProduct = useMemo(
+    () => products.find((p) => p.id === selectedProductId) ?? null,
+    [products, selectedProductId],
+  );
+  const hasSelectedProductCreatorReference = Boolean(
+    String(selectedProduct?.creatorReferenceImageUrl ?? "").trim(),
+  );
   const latestCompletedStoryboardJob = useMemo(
-    () =>
-      jobsInActiveRun.find(
-        (job) => job.type === JobType.STORYBOARD_GENERATION && job.status === JobStatus.COMPLETED
-      ) ?? null,
-    [jobsInActiveRun],
+    () => {
+      const sortByNewest = (a: Job, b: Job) =>
+        new Date(b.updatedAt ?? b.createdAt).getTime() - new Date(a.updatedAt ?? a.createdAt).getTime();
+      const inSelectedRun = jobsInActiveRun
+        .filter(
+          (job) => job.type === JobType.STORYBOARD_GENERATION && job.status === JobStatus.COMPLETED,
+        )
+        .sort(sortByNewest);
+      if (inSelectedRun[0]) return inSelectedRun[0];
+      return (
+        jobs
+          .filter(
+            (job) => job.type === JobType.STORYBOARD_GENERATION && job.status === JobStatus.COMPLETED,
+          )
+          .sort(sortByNewest)[0] ?? null
+      );
+    },
+    [jobs, jobsInActiveRun],
   );
   const latestCompletedStoryboardId = useMemo(
     () => getStoryboardIdFromJob(latestCompletedStoryboardJob),
@@ -632,6 +667,17 @@ export default function CreativeStudioPage() {
 
   useEffect(() => {
     closeScriptPanel();
+    setExpandedCompletedStepKeys({});
+    setVideoPromptEditMode(false);
+    setVideoPromptDrafts([]);
+    setVideoPromptSaveError(null);
+    setVideoPromptSaving(false);
+    setVideoPromptRegeneratingIndex(null);
+    setVideoPromptRegenerateError(null);
+    setImagePromptEditMode(false);
+    setImagePromptDrafts([]);
+    setImagePromptSaveError(null);
+    setImagePromptSaving(false);
   }, [selectedRunId]);
 
   useEffect(() => {
@@ -646,6 +692,16 @@ export default function CreativeStudioPage() {
       setStoryboardSaving(false);
       setStoryboardRegeneratingIndex(null);
       setStoryboardRegenerateError(null);
+      setVideoPromptEditMode(false);
+      setVideoPromptDrafts([]);
+      setVideoPromptSaveError(null);
+      setVideoPromptSaving(false);
+      setVideoPromptRegeneratingIndex(null);
+      setVideoPromptRegenerateError(null);
+      setImagePromptEditMode(false);
+      setImagePromptDrafts([]);
+      setImagePromptSaveError(null);
+      setImagePromptSaving(false);
       return;
     }
 
@@ -653,6 +709,16 @@ export default function CreativeStudioPage() {
     setStoryboardPanelId(latestCompletedStoryboardId);
     setStoryboardPanelLoading(true);
     setStoryboardPanelError(null);
+    setVideoPromptEditMode(false);
+    setVideoPromptDrafts([]);
+    setVideoPromptSaveError(null);
+    setVideoPromptSaving(false);
+    setVideoPromptRegeneratingIndex(null);
+    setVideoPromptRegenerateError(null);
+    setImagePromptEditMode(false);
+    setImagePromptDrafts([]);
+    setImagePromptSaveError(null);
+    setImagePromptSaving(false);
 
     void (async () => {
       try {
@@ -825,6 +891,9 @@ export default function CreativeStudioPage() {
       startTime: asValue(raw.startTime),
       endTime: asValue(raw.endTime),
       vo: asValue(raw.vo),
+      firstFramePrompt: asValue(raw.firstFramePrompt) || null,
+      lastFramePrompt: asValue(raw.lastFramePrompt) || null,
+      videoPrompt: asValue(raw.videoPrompt) || null,
       characterAction: characterAction || null,
       environment: environment || null,
       cameraDirection: asValue(raw.cameraDirection),
@@ -846,6 +915,9 @@ export default function CreativeStudioPage() {
       startTime: anchorTime,
       endTime: anchorTime,
       vo: "",
+      firstFramePrompt: null,
+      lastFramePrompt: null,
+      videoPrompt: null,
       characterAction: null,
       environment: null,
       cameraDirection: "",
@@ -1572,24 +1644,353 @@ export default function CreativeStudioPage() {
     }
   }
 
-  function getJobsForType(type: JobType): Job[] {
-    return jobsInActiveRun.filter((j) => j.type === type);
+  function buildVideoPromptDraftsFromPanels(panels: StoryboardPanel[]): string[] {
+    return panels.map((panel) => String(panel.videoPrompt ?? "").trim());
   }
 
-  function getStepStatus(type: JobType): ProductionStep["status"] {
-    const jobsOfType = getJobsForType(type);
-    if (jobsOfType.length === 0) return "not_started";
+  function buildImagePromptDraftsFromPanels(
+    panels: StoryboardPanel[],
+  ): Array<{ firstFramePrompt: string; lastFramePrompt: string }> {
+    return panels.map((panel) => ({
+      firstFramePrompt: String(panel.firstFramePrompt ?? "").trim(),
+      lastFramePrompt: String(panel.lastFramePrompt ?? "").trim(),
+    }));
+  }
 
+  function openImagePromptEditMode() {
+    const sourcePanels = Array.isArray(storyboardPanelData?.panels)
+      ? storyboardPanelData.panels.map((panel, index) => normalizeStoryboardPanel(panel, index))
+      : [];
+    setImagePromptDrafts(buildImagePromptDraftsFromPanels(sourcePanels));
+    setImagePromptEditMode(true);
+    setImagePromptSaveError(null);
+  }
+
+  function cancelImagePromptEditMode() {
+    const sourcePanels = Array.isArray(storyboardPanelData?.panels)
+      ? storyboardPanelData.panels.map((panel, index) => normalizeStoryboardPanel(panel, index))
+      : [];
+    setImagePromptDrafts(buildImagePromptDraftsFromPanels(sourcePanels));
+    setImagePromptEditMode(false);
+    setImagePromptSaveError(null);
+  }
+
+  function updateImagePromptDraft(
+    panelIndex: number,
+    patch: Partial<{ firstFramePrompt: string; lastFramePrompt: string }>,
+  ) {
+    setImagePromptDrafts((prev) =>
+      prev.map((entry, index) => (index === panelIndex ? { ...entry, ...patch } : entry)),
+    );
+  }
+
+  async function handleSaveImagePromptEdits() {
+    const activeStoryboardId = String(storyboardPanelId ?? "").trim();
+    if (!activeStoryboardId) return;
+
+    if (imagePromptDrafts.length === 0) {
+      setImagePromptSaveError("No scenes available to save.");
+      return;
+    }
+
+    setImagePromptSaving(true);
+    setImagePromptSaveError(null);
+    try {
+      const payloadPrompts = imagePromptDrafts.map((entry, panelIndex) => ({
+        panelIndex,
+        firstFramePrompt: String(entry.firstFramePrompt ?? "").trim(),
+        lastFramePrompt: String(entry.lastFramePrompt ?? "").trim(),
+      }));
+      const res = await fetch(`/api/storyboards/${activeStoryboardId}/image-prompts`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          prompts: payloadPrompts,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.error || "Failed to save image prompts");
+      }
+
+      const promptUpdates = Array.isArray(data?.prompts)
+        ? data.prompts
+            .map((entry: any) => ({
+              panelIndex: Number(entry?.panelIndex),
+              firstFramePrompt:
+                typeof entry?.firstFramePrompt === "string" ? entry.firstFramePrompt : "",
+              lastFramePrompt: typeof entry?.lastFramePrompt === "string" ? entry.lastFramePrompt : "",
+            }))
+            .filter(
+              (entry: { panelIndex: number; firstFramePrompt: string; lastFramePrompt: string }) =>
+                Number.isInteger(entry.panelIndex),
+            )
+        : payloadPrompts;
+
+      setStoryboardPanelData((prev) => {
+        if (!prev || !Array.isArray(prev.panels)) return prev;
+        const nextPanels = prev.panels.map((panel, panelIndex) => {
+          const updated = promptUpdates.find(
+            (entry: { panelIndex: number }) => entry.panelIndex === panelIndex,
+          );
+          if (!updated) return panel;
+          return {
+            ...panel,
+            firstFramePrompt: String(updated.firstFramePrompt ?? "").trim() || null,
+            lastFramePrompt: String(updated.lastFramePrompt ?? "").trim() || null,
+          };
+        });
+        return {
+          ...prev,
+          panels: nextPanels,
+        };
+      });
+      setImagePromptDrafts(
+        payloadPrompts.map((entry) => ({
+          firstFramePrompt: String(entry.firstFramePrompt ?? "").trim(),
+          lastFramePrompt: String(entry.lastFramePrompt ?? "").trim(),
+        })),
+      );
+      setImagePromptEditMode(false);
+      toast.success("Image prompts updated.");
+    } catch (err: any) {
+      setImagePromptSaveError(err?.message || "Failed to save image prompts");
+      toast.error(err?.message || "Failed to save image prompts");
+    } finally {
+      setImagePromptSaving(false);
+    }
+  }
+
+  function openVideoPromptEditMode() {
+    const sourcePanels = Array.isArray(storyboardPanelData?.panels)
+      ? storyboardPanelData.panels.map((panel, index) => normalizeStoryboardPanel(panel, index))
+      : [];
+    setVideoPromptDrafts(buildVideoPromptDraftsFromPanels(sourcePanels));
+    setVideoPromptEditMode(true);
+    setVideoPromptSaveError(null);
+    setVideoPromptRegenerateError(null);
+  }
+
+  function cancelVideoPromptEditMode() {
+    const sourcePanels = Array.isArray(storyboardPanelData?.panels)
+      ? storyboardPanelData.panels.map((panel, index) => normalizeStoryboardPanel(panel, index))
+      : [];
+    setVideoPromptDrafts(buildVideoPromptDraftsFromPanels(sourcePanels));
+    setVideoPromptEditMode(false);
+    setVideoPromptSaveError(null);
+    setVideoPromptRegenerateError(null);
+    setVideoPromptRegeneratingIndex(null);
+  }
+
+  function updateVideoPromptDraft(panelIndex: number, value: string) {
+    setVideoPromptDrafts((prev) => prev.map((entry, index) => (index === panelIndex ? value : entry)));
+  }
+
+  async function handleSaveVideoPromptEdits() {
+    const activeStoryboardId = String(storyboardPanelId ?? "").trim();
+    if (!activeStoryboardId) return;
+
+    if (videoPromptDrafts.length === 0) {
+      setVideoPromptSaveError("No scenes available to save.");
+      return;
+    }
+
+    setVideoPromptSaving(true);
+    setVideoPromptSaveError(null);
+    try {
+      const payloadPrompts = videoPromptDrafts.map((videoPrompt, panelIndex) => ({
+        panelIndex,
+        videoPrompt,
+      }));
+      const res = await fetch(`/api/storyboards/${activeStoryboardId}/video-prompts`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          prompts: payloadPrompts,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.error || "Failed to save video prompts");
+      }
+
+      const promptUpdates = Array.isArray(data?.prompts)
+        ? data.prompts
+            .map((entry: any) => ({
+              panelIndex: Number(entry?.panelIndex),
+              videoPrompt: typeof entry?.videoPrompt === "string" ? entry.videoPrompt : "",
+            }))
+            .filter((entry: { panelIndex: number; videoPrompt: string }) => Number.isInteger(entry.panelIndex))
+        : payloadPrompts.map((entry) => ({
+            panelIndex: entry.panelIndex,
+            videoPrompt: String(entry.videoPrompt ?? "").trim(),
+          }));
+
+      setStoryboardPanelData((prev) => {
+        if (!prev || !Array.isArray(prev.panels)) return prev;
+        const nextPanels = prev.panels.map((panel, panelIndex) => {
+          const updated = promptUpdates.find((entry: { panelIndex: number }) => entry.panelIndex === panelIndex);
+          if (!updated) return panel;
+          return {
+            ...panel,
+            videoPrompt: String(updated.videoPrompt ?? "").trim() || null,
+          };
+        });
+        return {
+          ...prev,
+          panels: nextPanels,
+        };
+      });
+      setVideoPromptDrafts(
+        payloadPrompts.map((entry) => String(entry.videoPrompt ?? "").trim()),
+      );
+      setVideoPromptEditMode(false);
+      setVideoPromptRegenerateError(null);
+      toast.success("Video prompts updated.");
+    } catch (err: any) {
+      setVideoPromptSaveError(err?.message || "Failed to save video prompts");
+      toast.error(err?.message || "Failed to save video prompts");
+    } finally {
+      setVideoPromptSaving(false);
+    }
+  }
+
+  async function handleRegenerateVideoPrompt(panelIndex: number) {
+    const activeStoryboardId = String(storyboardPanelId ?? "").trim();
+    if (!activeStoryboardId) return;
+
+    setVideoPromptRegeneratingIndex(panelIndex);
+    setVideoPromptRegenerateError(null);
+    try {
+      const res = await fetch(`/api/storyboards/${activeStoryboardId}/regenerate-panel`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ panelIndex, target: "video_prompt" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || typeof data?.videoPrompt !== "string") {
+        throw new Error(data?.error || "Failed to regenerate video prompt");
+      }
+
+      const regeneratedPrompt = data.videoPrompt.trim();
+      updateVideoPromptDraft(panelIndex, regeneratedPrompt);
+      setStoryboardPanelData((prev) => {
+        if (!prev || !Array.isArray(prev.panels)) return prev;
+        const nextPanels = prev.panels.map((panel, index) =>
+          index === panelIndex
+            ? {
+                ...panel,
+                videoPrompt: regeneratedPrompt || null,
+              }
+            : panel,
+        );
+        return {
+          ...prev,
+          panels: nextPanels,
+        };
+      });
+      toast.success(`Video prompt ${panelIndex + 1} regenerated.`);
+    } catch (err: any) {
+      setVideoPromptRegenerateError(err?.message || "Failed to regenerate video prompt");
+      toast.error(err?.message || "Failed to regenerate video prompt");
+    } finally {
+      setVideoPromptRegeneratingIndex(null);
+    }
+  }
+
+  type PipelineJobDiagnostics = {
+    activeRunJobs: Job[];
+    allJobs: Job[];
+    effectiveJobs: Job[];
+    source: "selected_run" | "all_runs";
+    status: ProductionStep["status"];
+  };
+
+  function sortJobsByRecency(rows: Job[]): Job[] {
+    return [...rows].sort(
+      (a, b) =>
+        new Date(b.updatedAt ?? b.createdAt).getTime() - new Date(a.updatedAt ?? a.createdAt).getTime(),
+    );
+  }
+
+  function deriveStepStatus(jobsOfType: Job[]): ProductionStep["status"] {
+    if (jobsOfType.length === 0) return "not_started";
     const latest = jobsOfType[0];
-    if (latest.status === JobStatus.RUNNING) return "running";
+    if (latest.status === JobStatus.RUNNING || latest.status === JobStatus.PENDING) return "running";
     if (latest.status === JobStatus.COMPLETED) return "completed";
     if (latest.status === JobStatus.FAILED) return "failed";
     return "not_started";
   }
 
-  function hasCompletedJob(type: JobType): boolean {
-    return jobsInActiveRun.some((j) => j.type === type && j.status === JobStatus.COMPLETED);
+  const pipelineJobDiagnosticsByType = useMemo(() => {
+    const diagnostics = new Map<JobType, PipelineJobDiagnostics>();
+    for (const jobType of PIPELINE_STEP_TYPES) {
+      const activeRunJobs = sortJobsByRecency(jobsInActiveRun.filter((job) => job.type === jobType));
+      const allJobs = sortJobsByRecency(jobs.filter((job) => job.type === jobType));
+      const effectiveJobs = activeRunJobs.length > 0 ? activeRunJobs : allJobs;
+      diagnostics.set(jobType, {
+        activeRunJobs,
+        allJobs,
+        effectiveJobs,
+        source: activeRunJobs.length > 0 ? "selected_run" : "all_runs",
+        status: deriveStepStatus(effectiveJobs),
+      });
+    }
+    return diagnostics;
+  }, [jobs, jobsInActiveRun]);
+
+  useEffect(() => {
+    for (const jobType of PIPELINE_STEP_TYPES) {
+      const diagnostics = pipelineJobDiagnosticsByType.get(jobType);
+      if (!diagnostics) continue;
+      console.log("[Creative][Pipeline] step status calculation", {
+        jobType,
+        selectedRunId,
+        activeRunJobs: diagnostics.activeRunJobs.map((job) => ({
+          id: job.id,
+          status: job.status,
+          runId: job.runId ?? null,
+          createdAt: job.createdAt,
+        })),
+        allJobs: diagnostics.allJobs.map((job) => ({
+          id: job.id,
+          status: job.status,
+          runId: job.runId ?? null,
+          createdAt: job.createdAt,
+        })),
+        source: diagnostics.source,
+        calculatedStatus: diagnostics.status,
+      });
+    }
+  }, [pipelineJobDiagnosticsByType, selectedRunId]);
+
+  function getJobsForType(type: JobType): Job[] {
+    return pipelineJobDiagnosticsByType.get(type)?.effectiveJobs ?? [];
   }
+
+  function getStepStatus(type: JobType): ProductionStep["status"] {
+    return pipelineJobDiagnosticsByType.get(type)?.status ?? "not_started";
+  }
+
+  function hasCompletedJob(type: JobType): boolean {
+    return getJobsForType(type).some((job) => job.status === JobStatus.COMPLETED);
+  }
+
+  function isStaleRunningJob(job: Job | undefined): boolean {
+    if (!job || job.status !== JobStatus.RUNNING) return false;
+    const updatedAtMs = Date.parse(job.updatedAt);
+    if (!Number.isFinite(updatedAtMs)) return false;
+    return Date.now() - updatedAtMs > STALE_RUNNING_JOB_MS;
+  }
+
+  const imagePromptLastJob = getJobsForType("IMAGE_PROMPT_GENERATION" as JobType)[0];
+  const isImagePromptJobStuck = isStaleRunningJob(imagePromptLastJob);
 
   // Build production pipeline with dependencies
   const steps: ProductionStep[] = [
@@ -1613,33 +2014,51 @@ export default function CreativeStudioPage() {
       lastJob: getJobsForType(JobType.STORYBOARD_GENERATION)[0],
     },
     {
-      key: "video_prompts",
-      label: "Generate Video Prompts",
-      jobType: JobType.VIDEO_PROMPT_GENERATION,
-      status: getStepStatus(JobType.VIDEO_PROMPT_GENERATION),
-      canRun: hasCompletedJob(JobType.STORYBOARD_GENERATION),
-      locked: !hasCompletedJob(JobType.STORYBOARD_GENERATION),
-      lockReason: "Create storyboard first",
-      lastJob: getJobsForType(JobType.VIDEO_PROMPT_GENERATION)[0],
+      key: "image_prompts",
+      label: "Generate Image Prompts",
+      jobType: "IMAGE_PROMPT_GENERATION" as JobType,
+      status: isImagePromptJobStuck
+        ? "failed"
+        : getStepStatus("IMAGE_PROMPT_GENERATION" as JobType),
+      canRun: isImagePromptJobStuck || hasCompletedJob(JobType.STORYBOARD_GENERATION),
+      locked: isImagePromptJobStuck ? false : !hasCompletedJob(JobType.STORYBOARD_GENERATION),
+      lockReason: isImagePromptJobStuck ? undefined : "Create storyboard first",
+      lastJob: imagePromptLastJob,
     },
     {
       key: "video_images",
       label: "Generate Images",
       jobType: JobType.VIDEO_IMAGE_GENERATION,
       status: getStepStatus(JobType.VIDEO_IMAGE_GENERATION),
-      canRun: hasCompletedJob(JobType.VIDEO_PROMPT_GENERATION),
-      locked: !hasCompletedJob(JobType.VIDEO_PROMPT_GENERATION),
-      lockReason: "Generate prompts first",
+      canRun:
+        hasCompletedJob("IMAGE_PROMPT_GENERATION" as JobType) &&
+        hasSelectedProductCreatorReference,
+      locked:
+        !hasCompletedJob("IMAGE_PROMPT_GENERATION" as JobType) ||
+        !hasSelectedProductCreatorReference,
+      lockReason: !hasCompletedJob("IMAGE_PROMPT_GENERATION" as JobType)
+        ? "Generate image prompts first"
+        : "Set an active creator face in product settings first",
       lastJob: getJobsForType(JobType.VIDEO_IMAGE_GENERATION)[0],
+    },
+    {
+      key: "video_prompts",
+      label: "Generate Video Prompts",
+      jobType: JobType.VIDEO_PROMPT_GENERATION,
+      status: getStepStatus(JobType.VIDEO_PROMPT_GENERATION),
+      canRun: hasCompletedJob(JobType.VIDEO_IMAGE_GENERATION),
+      locked: !hasCompletedJob(JobType.VIDEO_IMAGE_GENERATION),
+      lockReason: "Generate images first",
+      lastJob: getJobsForType(JobType.VIDEO_PROMPT_GENERATION)[0],
     },
     {
       key: "video",
       label: "Generate Video",
       jobType: JobType.VIDEO_GENERATION,
       status: getStepStatus(JobType.VIDEO_GENERATION),
-      canRun: hasCompletedJob(JobType.VIDEO_IMAGE_GENERATION),
-      locked: !hasCompletedJob(JobType.VIDEO_IMAGE_GENERATION),
-      lockReason: "Generate images first",
+      canRun: hasCompletedJob(JobType.VIDEO_PROMPT_GENERATION),
+      locked: !hasCompletedJob(JobType.VIDEO_PROMPT_GENERATION),
+      lockReason: "Generate prompts first",
       lastJob: getJobsForType(JobType.VIDEO_GENERATION)[0],
     },
     {
@@ -1673,6 +2092,12 @@ export default function CreativeStudioPage() {
       setError("Select or create a product first.");
       return false;
     }
+    if (step.key === "video_images" && !hasSelectedProductCreatorReference) {
+      setError(
+        "Set an active creator face in product settings before generating images.",
+      );
+      return false;
+    }
 
     setSubmitting(step.key);
     setError(null);
@@ -1692,6 +2117,7 @@ export default function CreativeStudioPage() {
       const endpointMap: Record<string, string> = {
         script: "/api/jobs/script-generation",
         storyboard: "/api/jobs/storyboard-generation",
+        image_prompts: "/api/jobs/image-prompts",
         video_prompts: "/api/jobs/video-prompts",
         video_images: "/api/jobs/video-images",
         video: "/api/jobs/video-generation",
@@ -1705,7 +2131,11 @@ export default function CreativeStudioPage() {
         throw new Error("Endpoint not configured for this step");
       }
 
-      if (step.key === "video_prompts") {
+      if (
+        step.key === "video_prompts" ||
+        step.key === "video_images" ||
+        step.key === "image_prompts"
+      ) {
         const latestCompletedStoryboardJob = [...jobs]
           .filter(
             (job) =>
@@ -1783,10 +2213,77 @@ export default function CreativeStudioPage() {
     setScriptRunSummaryError(null);
   }
 
+  function isViewableCompletedStep(step: ProductionStep): boolean {
+    return (
+      step.status === "completed" &&
+      (step.key === "storyboard" || step.key === "image_prompts" || step.key === "video_prompts")
+    );
+  }
+
+  function isCompletedStepOutputExpanded(stepKey: string): boolean {
+    return Boolean(expandedCompletedStepKeys[stepKey]);
+  }
+
+  function toggleCompletedStepOutput(stepKey: string) {
+    setExpandedCompletedStepKeys((prev) => ({
+      ...prev,
+      [stepKey]: !prev[stepKey],
+    }));
+  }
+
+  async function refreshStoryboardForOutput(storyboardId: string) {
+    const targetId = String(storyboardId || "").trim();
+    if (!targetId) return;
+    setStoryboardPanelId(targetId);
+    setStoryboardPanelLoading(true);
+    setStoryboardPanelError(null);
+    try {
+      const res = await fetch(`/api/storyboards/${targetId}`, {
+        cache: "no-store",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.storyboard) {
+        throw new Error(data?.error || "Failed to load storyboard panels");
+      }
+      const storyboard = data.storyboard as StoryboardDetails;
+      const normalizedPanels = Array.isArray(storyboard.panels)
+        ? storyboard.panels.map((panel, index) => normalizeStoryboardPanel(panel, index))
+        : [];
+      const validationReport = normalizeValidationReport(
+        (data?.storyboard as Record<string, unknown> | undefined)?.validationReport,
+      );
+      setStoryboardPanelData({
+        ...storyboard,
+        panels: normalizedPanels,
+        validationReport,
+      });
+      if (normalizedPanels.length === 0) {
+        setStoryboardPanelError("Storyboard generation failed to produce output.");
+      } else {
+        setStoryboardPanelError(null);
+      }
+    } catch (err: any) {
+      setStoryboardPanelData(null);
+      setStoryboardPanelError(err?.message || "Failed to load storyboard panels");
+    } finally {
+      setStoryboardPanelLoading(false);
+    }
+  }
+
   function handleStepRunClick(step: ProductionStep) {
     if (step.key === "script") {
       resetScriptModal();
       setShowScriptModal(true);
+      return;
+    }
+    if (isViewableCompletedStep(step) && !isCompletedStepOutputExpanded(step.key)) {
+      if (step.key === "image_prompts") {
+        const targetStoryboardId = String(storyboardPanelId || latestCompletedStoryboardId || "").trim();
+        if (targetStoryboardId) {
+          void refreshStoryboardForOutput(targetStoryboardId);
+        }
+      }
+      toggleCompletedStepOutput(step.key);
       return;
     }
     void runStep(step);
@@ -2044,8 +2541,6 @@ export default function CreativeStudioPage() {
     );
   }
 
-  const selectedProduct = products.find((p) => p.id === selectedProductId) ?? null;
-
   return (
     <div className="px-6 py-6 space-y-6 max-w-4xl">
       {/* Header */}
@@ -2116,6 +2611,21 @@ export default function CreativeStudioPage() {
       {error && (
         <div className="rounded-lg bg-red-500/10 border border-red-500/50 p-4">
           <p className="text-sm text-red-300">{error}</p>
+        </div>
+      )}
+
+      {!hasSelectedProductCreatorReference && selectedProductId && (
+        <div className="rounded-lg bg-amber-500/10 border border-amber-500/50 p-4">
+          <p className="text-sm text-amber-200">
+            Image generation is locked for this product. Set an active creator face in product
+            settings first.
+          </p>
+          <Link
+            href={`/projects/${projectId}/products`}
+            className="mt-2 inline-flex items-center text-xs font-medium text-amber-300 hover:text-amber-200"
+          >
+            Open Product Settings
+          </Link>
         </div>
       )}
 
@@ -2260,10 +2770,13 @@ export default function CreativeStudioPage() {
               step.key === "script" && isScriptPanelOpen && scriptPanelData
                 ? getScriptValidationReportFromRawJson(scriptPanelData.rawJson) ?? stepValidationReport
                 : stepValidationReport;
-            const storyboardId =
-              step.key === "storyboard" && step.lastJob
-                ? getStoryboardIdFromJob(step.lastJob)
-                : null;
+            const isStoryboardRelatedStep =
+              step.key === "storyboard" || step.key === "image_prompts" || step.key === "video_prompts";
+            const storyboardId = isStoryboardRelatedStep
+              ? (step.key === "storyboard" && step.lastJob
+                  ? getStoryboardIdFromJob(step.lastJob)
+                  : latestCompletedStoryboardId)
+              : null;
             const storyboardMatchesCurrentFetch =
               Boolean(storyboardId && storyboardPanelId && storyboardId === storyboardPanelId);
             const storyboardPanels =
@@ -2276,6 +2789,51 @@ export default function CreativeStudioPage() {
                   ? storyboardPanelData?.validationReport ?? stepValidationReport
                   : stepValidationReport
                 : stepValidationReport;
+            const isViewableCompleted = isViewableCompletedStep(step);
+            const isOutputExpanded = isViewableCompleted && isCompletedStepOutputExpanded(step.key);
+            const imagePromptRows =
+              step.key === "image_prompts"
+                ? storyboardPanels.map((panel, panelIndex) => ({
+                    panelIndex,
+                    sceneNumber: panelIndex + 1,
+                    vo: String(panel.vo ?? "").trim(),
+                    firstFramePrompt: String(panel.firstFramePrompt ?? "").trim(),
+                    lastFramePrompt: String(panel.lastFramePrompt ?? "").trim(),
+                  }))
+                : [];
+            const videoPromptRows =
+              step.key === "video_prompts"
+                ? storyboardPanels
+                    .map((panel, panelIndex) => ({
+                      panelIndex,
+                      panelType: panel.panelType,
+                      prompt: String(panel.videoPrompt ?? "").trim(),
+                    }))
+                : [];
+            const isOutputViewMode = isViewableCompleted && !isOutputExpanded;
+            const usesBottomOutputToggle = isViewableCompleted;
+            const isStuckImagePromptStep =
+              step.key === "image_prompts" && isStaleRunningJob(step.lastJob);
+            const isPrimaryActionDisabled = usesBottomOutputToggle
+              ? !step.canRun || step.locked || step.status === "running" || submitting === step.key
+              : isOutputViewMode
+                ? submitting === step.key
+                : !step.canRun || step.locked || step.status === "running" || submitting === step.key;
+            const primaryActionLabel = submitting === step.key
+              ? "Starting..."
+              : usesBottomOutputToggle
+                ? step.status === "completed"
+                  ? "Re-run"
+                  : step.status === "running"
+                    ? "Running"
+                    : "Run"
+                : isOutputViewMode
+                  ? "View Output"
+                  : step.status === "completed"
+                    ? "Re-run"
+                    : step.status === "running"
+                      ? "Running"
+                      : "Run";
             return (
             <div
               key={step.key}
@@ -2330,27 +2888,28 @@ export default function CreativeStudioPage() {
                 </div>
                 <div style={{ minWidth: 130, display: "flex", justifyContent: "flex-end" }}>
                   <button
-                    onClick={() => handleStepRunClick(step)}
-                    disabled={
-                      !step.canRun ||
-                      step.locked ||
-                      step.status === "running" ||
-                      submitting === step.key
-                    }
+                    onClick={() => {
+                      if (usesBottomOutputToggle) {
+                        void runStep(step);
+                        return;
+                      }
+                      handleStepRunClick(step);
+                    }}
+                    disabled={isPrimaryActionDisabled}
                     style={{
                       padding: "8px 16px",
                       borderRadius: 8,
                       border: "none",
                       backgroundColor:
-                        !step.canRun || step.locked || step.status === "running" || submitting === step.key
+                        isPrimaryActionDisabled
                           ? "#1e293b"
                           : "#0ea5e9",
                       color:
-                        !step.canRun || step.locked || step.status === "running" || submitting === step.key
+                        isPrimaryActionDisabled
                           ? "#64748b"
                           : "#ffffff",
                       cursor:
-                        !step.canRun || step.locked || step.status === "running" || submitting === step.key
+                        isPrimaryActionDisabled
                           ? "not-allowed"
                           : "pointer",
                       fontSize: 14,
@@ -2362,19 +2921,19 @@ export default function CreativeStudioPage() {
                     }}
                   >
                     {submitting === step.key && <Spinner />}
-                    {submitting === step.key
-                      ? "Starting..."
-                      : step.status === "completed"
-                        ? "Re-run"
-                        : step.status === "running"
-                          ? "Running"
-                          : "Run"}
+                    {primaryActionLabel}
                   </button>
                 </div>
               </div>
 
               {step.locked && (
                 <p style={{ marginTop: 12, marginBottom: 0, fontSize: 12, color: "#64748b" }}>🔒 {step.lockReason}</p>
+              )}
+
+              {isStuckImagePromptStep && (
+                <p style={{ marginTop: 12, marginBottom: 0, fontSize: 12, color: "#fbbf24" }}>
+                  Previous job stuck - click to retry
+                </p>
               )}
 
               {step.lastJob && step.status !== "failed" && step.status !== "running" && (
@@ -2406,6 +2965,27 @@ export default function CreativeStudioPage() {
                     </div>
                   </div>
                 )}
+
+              {usesBottomOutputToggle && (
+                <div style={{ marginTop: 10 }}>
+                  <button
+                    type="button"
+                    onClick={() => toggleCompletedStepOutput(step.key)}
+                    style={{
+                      border: "1px solid #334155",
+                      backgroundColor: "#0b1220",
+                      color: "#cbd5e1",
+                      padding: "6px 10px",
+                      borderRadius: 8,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {isOutputExpanded ? "Hide Output" : "View Output"}
+                  </button>
+                </div>
+              )}
 
               {step.key === "script" && step.status === "completed" && scriptId && (
                 <div style={{ marginTop: 10 }}>
@@ -2803,7 +3383,7 @@ export default function CreativeStudioPage() {
                 </details>
               )}
 
-              {step.key === "storyboard" && step.status === "completed" && (
+              {step.key === "storyboard" && step.status === "completed" && isOutputExpanded && (
                 <div
                   style={{
                     marginTop: 12,
@@ -2860,75 +3440,10 @@ export default function CreativeStudioPage() {
                           )}
                         </div>
                       )}
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          gap: 8,
-                          marginBottom: 10,
-                        }}
-                      >
-                        <span style={{ color: "#94a3b8", fontSize: 12 }}>
-                          {storyboardEditMode
-                            ? `${storyboardDraftPanels.length} panel(s) in edit mode`
-                            : `${storyboardPanels.length} panel(s)`}
-                        </span>
-                        {!storyboardEditMode ? (
-                          <button
-                            type="button"
-                            onClick={openStoryboardEditMode}
-                            style={{
-                              border: "1px solid #334155",
-                              backgroundColor: "#0f172a",
-                              color: "#cbd5e1",
-                              padding: "6px 10px",
-                              borderRadius: 8,
-                              fontSize: 12,
-                              fontWeight: 600,
-                              cursor: "pointer",
-                            }}
-                          >
-                            Edit Storyboard
-                          </button>
-                        ) : (
-                          <div style={{ display: "flex", gap: 8 }}>
-                            <button
-                              type="button"
-                              onClick={cancelStoryboardEditMode}
-                              disabled={storyboardSaving}
-                              style={{
-                                border: "1px solid #334155",
-                                backgroundColor: "#0b1220",
-                                color: "#cbd5e1",
-                                padding: "6px 10px",
-                                borderRadius: 8,
-                                fontSize: 12,
-                                fontWeight: 600,
-                                cursor: storyboardSaving ? "not-allowed" : "pointer",
-                              }}
-                            >
-                              Cancel
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => void handleSaveStoryboardEdits()}
-                              disabled={storyboardSaving}
-                              style={{
-                                border: "none",
-                                backgroundColor: storyboardSaving ? "#1e293b" : "#0ea5e9",
-                                color: storyboardSaving ? "#64748b" : "#ffffff",
-                                padding: "6px 10px",
-                                borderRadius: 8,
-                                fontSize: 12,
-                                fontWeight: 600,
-                                cursor: storyboardSaving ? "not-allowed" : "pointer",
-                              }}
-                            >
-                              {storyboardSaving ? "Saving..." : "Save Storyboard"}
-                            </button>
-                          </div>
-                        )}
+                      <div style={{ marginBottom: 10, color: "#94a3b8", fontSize: 12 }}>
+                        {storyboardEditMode
+                          ? `${storyboardDraftPanels.length} panel(s) in edit mode`
+                          : `${storyboardPanels.length} panel(s)`}
                       </div>
 
                       {storyboardSaveError && (
@@ -3343,6 +3858,512 @@ export default function CreativeStudioPage() {
                             )}
                           </div>
                         ))}
+                      </div>
+                      <div
+                        style={{
+                          marginTop: 10,
+                          display: "flex",
+                          justifyContent: "flex-start",
+                          alignItems: "center",
+                          gap: 8,
+                        }}
+                      >
+                        {!storyboardEditMode ? (
+                          <button
+                            type="button"
+                            onClick={openStoryboardEditMode}
+                            style={{
+                              border: "1px solid #334155",
+                              backgroundColor: "#0b1220",
+                              color: "#cbd5e1",
+                              padding: "6px 10px",
+                              borderRadius: 8,
+                              fontSize: 12,
+                              fontWeight: 600,
+                              cursor: "pointer",
+                            }}
+                          >
+                            Edit Storyboard
+                          </button>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={cancelStoryboardEditMode}
+                              disabled={storyboardSaving}
+                              style={{
+                                border: "1px solid #334155",
+                                backgroundColor: "#0b1220",
+                                color: storyboardSaving ? "#64748b" : "#cbd5e1",
+                                padding: "6px 10px",
+                                borderRadius: 8,
+                                fontSize: 12,
+                                fontWeight: 600,
+                                cursor: storyboardSaving ? "not-allowed" : "pointer",
+                              }}
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleSaveStoryboardEdits()}
+                              disabled={storyboardSaving}
+                              style={{
+                                border: "1px solid #334155",
+                                backgroundColor: "#0b1220",
+                                color: storyboardSaving ? "#64748b" : "#cbd5e1",
+                                padding: "6px 10px",
+                                borderRadius: 8,
+                                fontSize: 12,
+                                fontWeight: 600,
+                                cursor: storyboardSaving ? "not-allowed" : "pointer",
+                              }}
+                            >
+                              {storyboardSaving ? "Saving..." : "Save Storyboard"}
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {step.key === "image_prompts" && step.status === "completed" && isOutputExpanded && (
+                <div
+                  style={{
+                    marginTop: 12,
+                    borderRadius: 10,
+                    border: "1px solid #334155",
+                    backgroundColor: "#020617",
+                    padding: 12,
+                  }}
+                >
+                  {!storyboardId ? (
+                    <p style={{ margin: 0, color: "#fca5a5", fontSize: 13 }}>
+                      No storyboard found for this completed run.
+                    </p>
+                  ) : storyboardPanelLoading && storyboardMatchesCurrentFetch ? (
+                    <p style={{ margin: 0, color: "#94a3b8", fontSize: 13 }}>
+                      Loading generated image prompts...
+                    </p>
+                  ) : storyboardPanelError && storyboardMatchesCurrentFetch ? (
+                    <p style={{ margin: 0, color: "#fca5a5", fontSize: 13 }}>{storyboardPanelError}</p>
+                  ) : imagePromptRows.length === 0 ? (
+                    <p style={{ margin: 0, color: "#fca5a5", fontSize: 13 }}>
+                      No storyboard scenes available for image prompts.
+                    </p>
+                  ) : (
+                    <>
+                      <div style={{ marginBottom: 10, color: "#94a3b8", fontSize: 12 }}>
+                        {imagePromptEditMode
+                          ? `${imagePromptDrafts.length} scene prompt pair(s) in edit mode`
+                          : `${imagePromptRows.length} scene prompt pair(s)`}
+                      </div>
+
+                      {imagePromptSaveError && (
+                        <p style={{ margin: "0 0 8px 0", color: "#fca5a5", fontSize: 12 }}>
+                          {imagePromptSaveError}
+                        </p>
+                      )}
+
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+                          gap: 10,
+                        }}
+                      >
+                        {imagePromptRows.map((row) => {
+                          const draft = imagePromptDrafts[row.panelIndex] ?? {
+                            firstFramePrompt: row.firstFramePrompt,
+                            lastFramePrompt: row.lastFramePrompt,
+                          };
+                          const firstFramePrompt = imagePromptEditMode
+                            ? String(draft.firstFramePrompt ?? "")
+                            : row.firstFramePrompt;
+                          const lastFramePrompt = imagePromptEditMode
+                            ? String(draft.lastFramePrompt ?? "")
+                            : row.lastFramePrompt;
+
+                          return (
+                            <div
+                              key={`image-prompt-${row.panelIndex}`}
+                              style={{
+                                border: "1px solid #334155",
+                                borderRadius: 8,
+                                backgroundColor: "#0b1220",
+                                padding: 10,
+                                display: "grid",
+                                gap: 8,
+                              }}
+                            >
+                              <div style={{ color: "#94a3b8", fontSize: 11, fontWeight: 600 }}>
+                                Scene {row.sceneNumber}
+                              </div>
+                              <div style={{ color: "#94a3b8", fontSize: 11 }}>VO Context</div>
+                              <p
+                                style={{
+                                  margin: 0,
+                                  color: "#cbd5e1",
+                                  fontSize: 12,
+                                  lineHeight: 1.5,
+                                  backgroundColor: "#020617",
+                                  border: "1px solid #1e293b",
+                                  borderRadius: 8,
+                                  padding: 8,
+                                }}
+                              >
+                                {row.vo || "No VO available."}
+                              </p>
+
+                              <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
+                                <div>
+                                  <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>
+                                    First Frame Prompt
+                                  </div>
+                                  {imagePromptEditMode ? (
+                                    <textarea
+                                      value={firstFramePrompt}
+                                      onChange={(event) =>
+                                        updateImagePromptDraft(row.panelIndex, {
+                                          firstFramePrompt: event.target.value,
+                                        })
+                                      }
+                                      disabled={imagePromptSaving}
+                                      rows={3}
+                                      style={{
+                                        width: "100%",
+                                        boxSizing: "border-box",
+                                        borderRadius: 8,
+                                        border: "1px solid #334155",
+                                        backgroundColor: "#0f172a",
+                                        color: "#e2e8f0",
+                                        padding: 8,
+                                        fontSize: 12,
+                                        resize: "vertical",
+                                      }}
+                                    />
+                                  ) : (
+                                    <div
+                                      style={{
+                                        color: "#e2e8f0",
+                                        fontSize: 13,
+                                        lineHeight: 1.5,
+                                        backgroundColor: "#020617",
+                                        border: "1px solid #1e293b",
+                                        borderRadius: 8,
+                                        padding: 8,
+                                        minHeight: 64,
+                                      }}
+                                    >
+                                      {firstFramePrompt || "No prompt generated yet."}
+                                    </div>
+                                  )}
+                                </div>
+
+                                <div>
+                                  <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>
+                                    Last Frame Prompt
+                                  </div>
+                                  {imagePromptEditMode ? (
+                                    <textarea
+                                      value={lastFramePrompt}
+                                      onChange={(event) =>
+                                        updateImagePromptDraft(row.panelIndex, {
+                                          lastFramePrompt: event.target.value,
+                                        })
+                                      }
+                                      disabled={imagePromptSaving}
+                                      rows={3}
+                                      style={{
+                                        width: "100%",
+                                        boxSizing: "border-box",
+                                        borderRadius: 8,
+                                        border: "1px solid #334155",
+                                        backgroundColor: "#0f172a",
+                                        color: "#e2e8f0",
+                                        padding: 8,
+                                        fontSize: 12,
+                                        resize: "vertical",
+                                      }}
+                                    />
+                                  ) : (
+                                    <div
+                                      style={{
+                                        color: "#e2e8f0",
+                                        fontSize: 13,
+                                        lineHeight: 1.5,
+                                        backgroundColor: "#020617",
+                                        border: "1px solid #1e293b",
+                                        borderRadius: 8,
+                                        padding: 8,
+                                        minHeight: 64,
+                                      }}
+                                    >
+                                      {lastFramePrompt || "No prompt generated yet."}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <div
+                        style={{
+                          marginTop: 10,
+                          display: "flex",
+                          justifyContent: "flex-start",
+                          alignItems: "center",
+                          gap: 8,
+                        }}
+                      >
+                        {!imagePromptEditMode ? (
+                          <button
+                            type="button"
+                            onClick={openImagePromptEditMode}
+                            style={{
+                              border: "1px solid #334155",
+                              backgroundColor: "#0b1220",
+                              color: "#cbd5e1",
+                              padding: "6px 10px",
+                              borderRadius: 8,
+                              fontSize: 12,
+                              fontWeight: 600,
+                              cursor: "pointer",
+                            }}
+                          >
+                            Edit Image Prompts
+                          </button>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={cancelImagePromptEditMode}
+                              disabled={imagePromptSaving}
+                              style={{
+                                border: "1px solid #334155",
+                                backgroundColor: "#0b1220",
+                                color: imagePromptSaving ? "#64748b" : "#cbd5e1",
+                                padding: "6px 10px",
+                                borderRadius: 8,
+                                fontSize: 12,
+                                fontWeight: 600,
+                                cursor: imagePromptSaving ? "not-allowed" : "pointer",
+                              }}
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleSaveImagePromptEdits()}
+                              disabled={imagePromptSaving}
+                              style={{
+                                border: "1px solid #334155",
+                                backgroundColor: "#0b1220",
+                                color: imagePromptSaving ? "#64748b" : "#cbd5e1",
+                                padding: "6px 10px",
+                                borderRadius: 8,
+                                fontSize: 12,
+                                fontWeight: 600,
+                                cursor: imagePromptSaving ? "not-allowed" : "pointer",
+                              }}
+                            >
+                              {imagePromptSaving ? "Saving..." : "Save Image Prompts"}
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {step.key === "video_prompts" && step.status === "completed" && isOutputExpanded && (
+                <div
+                  style={{
+                    marginTop: 12,
+                    borderRadius: 10,
+                    border: "1px solid #334155",
+                    backgroundColor: "#020617",
+                    padding: 12,
+                  }}
+                >
+                  {!storyboardId ? (
+                    <p style={{ margin: 0, color: "#fca5a5", fontSize: 13 }}>
+                      No storyboard found for this completed run.
+                    </p>
+                  ) : storyboardPanelLoading && storyboardMatchesCurrentFetch ? (
+                    <p style={{ margin: 0, color: "#94a3b8", fontSize: 13 }}>
+                      Loading generated video prompts...
+                    </p>
+                  ) : storyboardPanelError && storyboardMatchesCurrentFetch ? (
+                    <p style={{ margin: 0, color: "#fca5a5", fontSize: 13 }}>{storyboardPanelError}</p>
+                  ) : videoPromptRows.length === 0 ? (
+                    <p style={{ margin: 0, color: "#fca5a5", fontSize: 13 }}>
+                      No storyboard scenes available for video prompts.
+                    </p>
+                  ) : (
+                    <>
+                      <div style={{ marginBottom: 10, color: "#94a3b8", fontSize: 12 }}>
+                        {videoPromptEditMode
+                          ? `${videoPromptDrafts.length} prompt(s) in edit mode`
+                          : `${videoPromptRows.length} scene prompt(s)`}
+                      </div>
+
+                      {videoPromptSaveError && (
+                        <p style={{ margin: "0 0 8px 0", color: "#fca5a5", fontSize: 12 }}>{videoPromptSaveError}</p>
+                      )}
+                      {videoPromptRegenerateError && (
+                        <p style={{ margin: "0 0 8px 0", color: "#fca5a5", fontSize: 12 }}>
+                          {videoPromptRegenerateError}
+                        </p>
+                      )}
+
+                      <div style={{ display: "grid", gap: 10 }}>
+                        {videoPromptRows.map((row) => {
+                          const promptValue = videoPromptEditMode
+                            ? String(videoPromptDrafts[row.panelIndex] ?? row.prompt)
+                            : row.prompt;
+
+                          return (
+                            <div
+                              key={`video-prompt-${row.panelIndex}`}
+                              style={{
+                                border: "1px solid #334155",
+                                borderRadius: 8,
+                                backgroundColor: "#0b1220",
+                                padding: 10,
+                                display: "grid",
+                                gap: 8,
+                              }}
+                            >
+                              <div style={{ color: "#94a3b8", fontSize: 11 }}>
+                                Scene {row.panelIndex + 1} •{" "}
+                                {row.panelType === "B_ROLL_ONLY" ? "B-roll" : "On camera"}
+                              </div>
+                              {videoPromptEditMode ? (
+                                <>
+                                  <textarea
+                                    value={promptValue}
+                                    onChange={(event) =>
+                                      updateVideoPromptDraft(row.panelIndex, event.target.value)
+                                    }
+                                    disabled={videoPromptSaving}
+                                    rows={3}
+                                    style={{
+                                      width: "100%",
+                                      boxSizing: "border-box",
+                                      borderRadius: 8,
+                                      border: "1px solid #334155",
+                                      backgroundColor: "#0f172a",
+                                      color: "#e2e8f0",
+                                      padding: 8,
+                                      fontSize: 12,
+                                      resize: "vertical",
+                                    }}
+                                  />
+                                  <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                                    <button
+                                      type="button"
+                                      onClick={() => void handleRegenerateVideoPrompt(row.panelIndex)}
+                                      disabled={
+                                        videoPromptRegeneratingIndex === row.panelIndex || videoPromptSaving
+                                      }
+                                      style={{
+                                        border: "1px solid rgba(14, 165, 233, 0.5)",
+                                        backgroundColor: "rgba(14, 165, 233, 0.15)",
+                                        color: "#7dd3fc",
+                                        padding: "4px 10px",
+                                        borderRadius: 6,
+                                        fontSize: 12,
+                                        cursor:
+                                          videoPromptRegeneratingIndex === row.panelIndex || videoPromptSaving
+                                            ? "not-allowed"
+                                            : "pointer",
+                                      }}
+                                    >
+                                      {videoPromptRegeneratingIndex === row.panelIndex
+                                        ? "Regenerating..."
+                                        : "Regenerate"}
+                                    </button>
+                                  </div>
+                                </>
+                              ) : (
+                                <p style={{ margin: 0, color: "#e2e8f0", fontSize: 13, lineHeight: 1.5 }}>
+                                  {promptValue || "No prompt generated yet."}
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div
+                        style={{
+                          marginTop: 10,
+                          display: "flex",
+                          justifyContent: "flex-start",
+                          alignItems: "center",
+                          gap: 8,
+                        }}
+                      >
+                        {!videoPromptEditMode ? (
+                          <button
+                            type="button"
+                            onClick={openVideoPromptEditMode}
+                            style={{
+                              border: "1px solid #334155",
+                              backgroundColor: "#0b1220",
+                              color: "#cbd5e1",
+                              padding: "6px 10px",
+                              borderRadius: 8,
+                              fontSize: 12,
+                              fontWeight: 600,
+                              cursor: "pointer",
+                            }}
+                          >
+                            Edit Video Prompts
+                          </button>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={cancelVideoPromptEditMode}
+                              disabled={videoPromptSaving}
+                              style={{
+                                border: "1px solid #334155",
+                                backgroundColor: "#0b1220",
+                                color: videoPromptSaving ? "#64748b" : "#cbd5e1",
+                                padding: "6px 10px",
+                                borderRadius: 8,
+                                fontSize: 12,
+                                fontWeight: 600,
+                                cursor: videoPromptSaving ? "not-allowed" : "pointer",
+                              }}
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleSaveVideoPromptEdits()}
+                              disabled={videoPromptSaving}
+                              style={{
+                                border: "1px solid #334155",
+                                backgroundColor: "#0b1220",
+                                color: videoPromptSaving ? "#64748b" : "#cbd5e1",
+                                padding: "6px 10px",
+                                borderRadius: 8,
+                                fontSize: 12,
+                                fontWeight: 600,
+                                cursor: videoPromptSaving ? "not-allowed" : "pointer",
+                              }}
+                            >
+                              {videoPromptSaving ? "Saving..." : "Save Video Prompts"}
+                            </button>
+                          </>
+                        )}
                       </div>
                     </>
                   )}

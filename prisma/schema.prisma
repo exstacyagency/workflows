@@ -36,28 +36,30 @@ model TestSession {
 }
 
 model Project {
-  id                   String                @id @default(uuid())
-  userId               String
-  name                 String
-  description          String?
-  createdAt            DateTime              @default(now())
-  updatedAt            DateTime              @updatedAt
-  adAssets             AdAsset[]
-  adPatternReferences  AdPatternReference[]
-  adPatternResults     AdPatternResult[]
-  amazonReviews        AmazonReview[]
-  auditLogs            AuditLog[]
-  characters           Character[]
-  customerAvatars      CustomerAvatar[]
-  jobs                 Job[]
-  product              product[]
-  productIntels        ProductIntel[]
-  productIntelligences ProductIntelligence[]
-  user                 User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  researchRows         ResearchRow[]
-  researchRuns         ResearchRun[]
-  scripts              Script[]
-  storyboards          Storyboard[]
+  id                       String                @id @default(uuid())
+  userId                   String
+  name                     String
+  description              String?
+  creatorReferenceImageUrl String?
+  productReferenceImageUrl String?
+  createdAt                DateTime              @default(now())
+  updatedAt                DateTime              @updatedAt
+  adAssets                 AdAsset[]
+  adPatternReferences      AdPatternReference[]
+  adPatternResults         AdPatternResult[]
+  amazonReviews            AmazonReview[]
+  auditLogs                AuditLog[]
+  characters               Character[]
+  customerAvatars          CustomerAvatar[]
+  jobs                     Job[]
+  product                  product[]
+  productIntels            ProductIntel[]
+  productIntelligences     ProductIntelligence[]
+  user                     User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  researchRows             ResearchRow[]
+  researchRuns             ResearchRun[]
+  scripts                  Script[]
+  storyboards              Storyboard[]
 
   @@unique([userId, name])
   @@index([userId])
@@ -250,16 +252,17 @@ model Script {
 }
 
 model Storyboard {
-  id        String            @id @default(uuid())
-  projectId String
-  jobId     String?
-  scriptId  String?
-  createdAt DateTime          @default(now())
-  updatedAt DateTime          @updatedAt
-  job       Job?              @relation(fields: [jobId], references: [id])
-  project   Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  script    Script?           @relation(fields: [scriptId], references: [id])
-  scenes    StoryboardScene[]
+  id           String            @id @default(uuid())
+  projectId    String
+  jobId        String?
+  scriptId     String?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  job          Job?              @relation(fields: [jobId], references: [id])
+  project      Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  script       Script?           @relation(fields: [scriptId], references: [id])
+  scenes       StoryboardScene[]
+  imagePrompts ImagePrompt[]
 
   @@index([projectId])
   @@map("storyboard")
@@ -278,6 +281,20 @@ model StoryboardScene {
 
   @@index([storyboardId])
   @@map("storyboard_scene")
+}
+
+model ImagePrompt {
+  id           String     @id @default(uuid())
+  storyboardId String
+  sceneNumber  Int
+  prompt       String
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  storyboard   Storyboard @relation(fields: [storyboardId], references: [id], onDelete: Cascade)
+
+  @@unique([storyboardId, sceneNumber])
+  @@index([storyboardId])
+  @@map("image_prompt")
 }
 
 model Character {
@@ -422,17 +439,32 @@ model Usage {
 }
 
 model product {
-  id                     String   @id
-  project_id             String
-  name                   String
-  product_problem_solved String?
-  amazon_asin            String?
-  created_at             DateTime @default(now()) @db.Timestamptz(6)
-  updated_at             DateTime @default(now()) @db.Timestamptz(6)
-  project                Project  @relation(fields: [project_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id                       String           @id
+  project_id               String
+  name                     String
+  product_problem_solved   String?
+  amazon_asin              String?
+  creatorReferenceImageUrl String?          @map("creator_reference_image_url")
+  created_at               DateTime         @default(now()) @db.Timestamptz(6)
+  updated_at               DateTime         @default(now()) @db.Timestamptz(6)
+  creatorLibraries         CreatorLibrary[]
+  project                  Project          @relation(fields: [project_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([project_id, name], map: "product_project_name_unique")
   @@index([project_id])
+}
+
+model CreatorLibrary {
+  id        String   @id @default(uuid())
+  productId String   @map("product_id")
+  imageUrl  String   @map("image_url")
+  prompt    String
+  isActive  Boolean  @default(false) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  product   product  @relation(fields: [productId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([productId])
+  @@map("creator_library")
 }
 
 enum JobType {
@@ -441,6 +473,7 @@ enum JobType {
   PATTERN_ANALYSIS
   SCRIPT_GENERATION
   STORYBOARD_GENERATION
+  IMAGE_PROMPT_GENERATION
   VIDEO_PROMPT_GENERATION
   VIDEO_IMAGE_GENERATION
   VIDEO_GENERATION
