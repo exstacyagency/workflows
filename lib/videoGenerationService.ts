@@ -41,10 +41,22 @@ type SceneLike = {
   durationSec: number;
   aspectRatio: string;
   rawJson: unknown;
+  panelType?: 'ON_CAMERA' | 'B_ROLL_ONLY' | null;
   videoPrompt: string | null;
   firstFrameUrl: string | null;
   lastFrameUrl: string | null;
   videoUrl: string | null;
+};
+
+type ProjectReferenceImages = {
+  creatorReferenceImageUrl: string | null;
+  productReferenceImageUrl: string | null;
+};
+
+type SceneReferenceFrame = {
+  kind: 'creator' | 'product';
+  role: 'subject' | 'product';
+  url: string;
 };
 
 type JobLike = {
@@ -72,6 +84,70 @@ function asObject(value: unknown) {
     return value as Record<string, any>;
   }
   return {};
+}
+
+function normalizeUrl(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function normalizeReferenceFrames(value: unknown): SceneReferenceFrame[] {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((entry) => {
+      const raw = asObject(entry);
+      const kind = raw.kind === 'creator' || raw.kind === 'product' ? raw.kind : null;
+      const role = raw.role === 'subject' || raw.role === 'product' ? raw.role : null;
+      const url = normalizeUrl(raw.url);
+      if (!kind || !role || !url) return null;
+      return { kind, role, url };
+    })
+    .filter((entry): entry is SceneReferenceFrame => Boolean(entry));
+}
+
+function resolveScenePanelType(scene: SceneLike, raw: Record<string, any>): 'ON_CAMERA' | 'B_ROLL_ONLY' {
+  if (raw.panelType === 'B_ROLL_ONLY' || scene.panelType === 'B_ROLL_ONLY') {
+    return 'B_ROLL_ONLY';
+  }
+  return 'ON_CAMERA';
+}
+
+function buildSceneReferenceFrames(args: {
+  scene: SceneLike;
+  raw: Record<string, any>;
+  projectReferenceImages: ProjectReferenceImages;
+}): SceneReferenceFrame[] {
+  const panelType = resolveScenePanelType(args.scene, args.raw);
+
+  const rawFrames = normalizeReferenceFrames(args.raw.referenceFrames);
+  const creatorFromRaw = rawFrames.find((frame) => frame.kind === 'creator')?.url;
+  const productFromRaw = rawFrames.find((frame) => frame.kind === 'product')?.url;
+
+  const creatorReferenceImageUrl = normalizeUrl(
+    creatorFromRaw ?? args.raw.creatorReferenceImageUrl ?? args.projectReferenceImages.creatorReferenceImageUrl,
+  );
+  const productReferenceImageUrl = normalizeUrl(
+    productFromRaw ?? args.raw.productReferenceImageUrl ?? args.projectReferenceImages.productReferenceImageUrl,
+  );
+
+  const frames: SceneReferenceFrame[] = [];
+  if (panelType !== 'B_ROLL_ONLY' && creatorReferenceImageUrl) {
+    frames.push({
+      kind: 'creator',
+      role: 'subject',
+      url: creatorReferenceImageUrl,
+    });
+  }
+  if (productReferenceImageUrl) {
+    frames.push({
+      kind: 'product',
+      role: 'product',
+      url: productReferenceImageUrl,
+    });
+  }
+  return frames;
 }
 
 function wait(ms: number) {
@@ -118,13 +194,57 @@ function collectResultUrls(data: KieJobResponse): string[] {
 async function createKieVideoJob(params: {
   prompt: string;
   imageInputs: string[];
+  referenceFrames?: SceneReferenceFrame[];
   durationSec: number;
   aspectRatio: string;
   fps: number;
 }): Promise<string> {
-  const { prompt, imageInputs, durationSec, aspectRatio, fps } = params;
+  const { prompt, imageInputs, referenceFrames = [], durationSec, aspectRatio, fps } = params;
 
-  const body = {
+  const parseTaskId = (data: any): string => {
+    const taskId =
+      data?.taskId ??
+      data?.id ??
+      data?.data?.taskId ??
+      data?.data?.id ??
+      data?.result?.taskId;
+    if (!taskId) {
+      let compact = '';
+      try {
+        compact = JSON.stringify(data);
+      } catch {
+        compact = String(data);
+      }
+      throw new Error(`KIE createTask missing taskId: ${compact}`);
+    }
+
+    return String(taskId);
+  };
+
+  const postCreateTask = async (body: Record<string, any>): Promise<string> => {
+    const res = await fetch(`${KIE_BASE}/jobs/createTask`, {
+      method: 'POST',
+      headers: getKieHeaders(),
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`KIE createTask failed: ${res.status} ${text}`);
+    }
+
+    const text = await res.text();
+    let data: any = null;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      throw new Error(`KIE createTask invalid JSON: ${text}`);
+    }
+
+    return parseTaskId(data);
+  };
+
+  const baseBody: Record<string, any> = {
     model: KIE_VIDEO_MODEL,
     input: {
       prompt,
@@ -135,42 +255,34 @@ async function createKieVideoJob(params: {
     },
   };
 
-  const res = await fetch(`${KIE_BASE}/jobs/createTask`, {
-    method: 'POST',
-    headers: getKieHeaders(),
-    body: JSON.stringify(body),
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`KIE createTask failed: ${res.status} ${text}`);
+  if (referenceFrames.length === 0) {
+    return postCreateTask(baseBody);
   }
 
-  const text = await res.text();
-  let data: any = null;
+  const bodyWithReferences: Record<string, any> = {
+    ...baseBody,
+    input: {
+      ...baseBody.input,
+      reference_frames: referenceFrames.map((frame) => ({
+        kind: frame.kind,
+        role: frame.role,
+        url: frame.url,
+      })),
+    },
+  };
+
   try {
-    data = JSON.parse(text);
-  } catch {
-    throw new Error(`KIE createTask invalid JSON: ${text}`);
-  }
-
-  const taskId =
-    data?.taskId ??
-    data?.id ??
-    data?.data?.taskId ??
-    data?.data?.id ??
-    data?.result?.taskId;
-  if (!taskId) {
-    let compact = '';
-    try {
-      compact = JSON.stringify(data);
-    } catch {
-      compact = String(data);
+    return await postCreateTask(bodyWithReferences);
+  } catch (error: any) {
+    const message = String(error?.message ?? error);
+    const isRequestShapeError =
+      message.includes('KIE createTask failed: 400') ||
+      message.includes('KIE createTask failed: 422');
+    if (!isRequestShapeError) {
+      throw error;
     }
-    throw new Error(`KIE createTask missing taskId: ${compact}`);
+    return postCreateTask(baseBody);
   }
-
-  return String(taskId);
 }
 
 async function pollKieVideoJob(
@@ -213,8 +325,11 @@ async function pollKieVideoJob(
   throw new Error('KIE job did not complete in time');
 }
 
-async function generateVideoForScene(scene: SceneLike): Promise<SceneVideoResult> {
-  const raw = (scene as any).rawJson ?? {};
+async function generateVideoForScene(
+  scene: SceneLike,
+  projectReferenceImages: ProjectReferenceImages,
+): Promise<SceneVideoResult> {
+  const raw = asObject((scene as any).rawJson);
   const prompt = String((scene as any).videoPrompt ?? raw.videoPrompt ?? '').trim();
   if (!prompt) {
     throw new Error(`Scene ${(scene as any).id} missing videoPrompt`);
@@ -229,11 +344,20 @@ async function generateVideoForScene(scene: SceneLike): Promise<SceneVideoResult
   const durationSec = Number((scene as any).durationSec ?? raw.durationSec ?? raw.duration ?? DEFAULT_DURATION_SEC) || DEFAULT_DURATION_SEC;
   const fps = Number(DEFAULT_FPS) || 24;
   const aspectRatio = String((scene as any).aspectRatio ?? raw.aspectRatio ?? '9:16');
-  const imageInputs = [firstFrame, lastFrame];
+  const referenceFrames = buildSceneReferenceFrames({
+    scene,
+    raw,
+    projectReferenceImages,
+  });
+  // Kling uses `image_input`; append creator/product references after first/last anchors.
+  const imageInputs = Array.from(
+    new Set([firstFrame, lastFrame, ...referenceFrames.map((frame) => frame.url)]),
+  );
 
   const taskId = await createKieVideoJob({
     prompt,
     imageInputs,
+    referenceFrames,
     durationSec,
     aspectRatio,
     fps,
@@ -252,6 +376,7 @@ async function generateVideoForScene(scene: SceneLike): Promise<SceneVideoResult
       model: KIE_VIDEO_MODEL,
       prompt,
       imageInputs,
+      referenceFrames,
       durationSec,
       fps,
       aspectRatio,
@@ -354,6 +479,23 @@ export async function runVideoGenerationJob(job: JobLike): Promise<RunResult> {
     throw new Error('Script not found');
   }
 
+  const projectRows = await prisma.$queryRaw<Array<{
+    creatorReferenceImageUrl: string | null;
+    productReferenceImageUrl: string | null;
+  }>>`
+    SELECT
+      "creatorReferenceImageUrl" AS "creatorReferenceImageUrl",
+      "productReferenceImageUrl" AS "productReferenceImageUrl"
+    FROM "project"
+    WHERE "id" = ${projectId}
+    LIMIT 1
+  `;
+  const project = projectRows[0];
+  const projectReferenceImages: ProjectReferenceImages = {
+    creatorReferenceImageUrl: normalizeUrl(project?.creatorReferenceImageUrl),
+    productReferenceImageUrl: normalizeUrl(project?.productReferenceImageUrl),
+  };
+
   const scenes = storyboard.scenes.sort((a, b) => a.sceneNumber - b.sceneNumber);
   const existingUrls = scenes
     .map(scene => (scene as any).videoUrl ?? (scene.rawJson as any)?.videoUrl ?? (scene.rawJson as any)?.video_url)
@@ -386,7 +528,10 @@ export async function runVideoGenerationJob(job: JobLike): Promise<RunResult> {
 
   const results: SceneVideoResult[] = [];
   for (const scene of targetScenes) {
-    const result = await generateVideoForScene(scene as unknown as SceneLike);
+    const result = await generateVideoForScene(
+      scene as unknown as SceneLike,
+      projectReferenceImages,
+    );
     results.push(result);
   }
 
