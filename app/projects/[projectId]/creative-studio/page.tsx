@@ -26,6 +26,7 @@ type ProductOption = {
   productProblemSolved?: string | null;
   amazonAsin?: string | null;
   creatorReferenceImageUrl?: string | null;
+  productReferenceImageUrl?: string | null;
 };
 
 type ResearchRunOption = {
@@ -1377,7 +1378,10 @@ export default function CreativeStudioPage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ panelIndex }),
+        body: JSON.stringify({
+          panelIndex,
+          ...(selectedProductId ? { productId: selectedProductId } : {}),
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.panel) {
@@ -1679,7 +1683,11 @@ export default function CreativeStudioPage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ panelIndex, target: "video_prompt" }),
+        body: JSON.stringify({
+          panelIndex,
+          target: "video_prompt",
+          ...(selectedProductId ? { productId: selectedProductId } : {}),
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || typeof data?.videoPrompt !== "string") {

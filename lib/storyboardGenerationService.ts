@@ -35,6 +35,11 @@ type StoryboardPromptContext = {
   mechanismProcess: string | null;
 };
 
+type ProductReferenceImages = {
+  creatorReferenceImageUrl: string | null;
+  productReferenceImageUrl: string | null;
+};
+
 // Tiered storyboard prompt contract:
 // Tier 1 = fixed structural constraints, Tier 2 = pass/fail quality gates, Tier 3 = optional creative guidance.
 const STORYBOARD_SYSTEM_PROMPT =
@@ -50,6 +55,36 @@ function asString(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+async function loadProductReferenceImages(args: {
+  projectId: string;
+  productId: string | null;
+}): Promise<ProductReferenceImages> {
+  if (!args.productId) {
+    return {
+      creatorReferenceImageUrl: null,
+      productReferenceImageUrl: null,
+    };
+  }
+
+  const rows = await prisma.$queryRaw<Array<{
+    creatorReferenceImageUrl: string | null;
+    productReferenceImageUrl: string | null;
+  }>>`
+    SELECT
+      "creator_reference_image_url" AS "creatorReferenceImageUrl",
+      "product_reference_image_url" AS "productReferenceImageUrl"
+    FROM "product"
+    WHERE "id" = ${args.productId}
+      AND "project_id" = ${args.projectId}
+    LIMIT 1
+  `;
+
+  return {
+    creatorReferenceImageUrl: asString(rows[0]?.creatorReferenceImageUrl),
+    productReferenceImageUrl: asString(rows[0]?.productReferenceImageUrl),
+  };
 }
 
 function asStringArray(value: unknown): string[] {
@@ -226,6 +261,8 @@ function buildStoryboardUserPrompt(args: {
   buyTriggerSituation: string | null;
   mechanismProcess: string | null;
   visualFlowPattern: string | null;
+  creatorReferenceImageUrl: string | null;
+  productReferenceImageUrl: string | null;
 }): string {
   const {
     beatCount,
@@ -236,6 +273,8 @@ function buildStoryboardUserPrompt(args: {
     buyTriggerSituation,
     mechanismProcess,
     visualFlowPattern,
+    creatorReferenceImageUrl,
+    productReferenceImageUrl,
   } = args;
   const beatLines = beats
     .map(
@@ -276,7 +315,10 @@ environmentContext:
 - buyTriggerSituation: ${buyTriggerSituation || "MISSING"}
 mechanismProcess: ${mechanismProcess || "MISSING"}
 visualFlowPattern: ${visualFlowPattern || "MISSING"}
+creatorReferenceImageUrl: ${creatorReferenceImageUrl || "MISSING"}
+productReferenceImageUrl: ${productReferenceImageUrl || "MISSING"}
 Use Tier 3 for creative decisions. Don't force it if the shot doesn't support it.
+If reference image URLs are present, keep subject/product appearance consistent with them.
 
 Output JSON schema:
 {
@@ -513,7 +555,10 @@ async function loadStoryboardPromptContextForScriptRun(args: {
   };
 }
 
-export async function generateStoryboard(scriptId: string): Promise<{
+export async function generateStoryboard(
+  scriptId: string,
+  opts?: { productId?: string | null },
+): Promise<{
   storyboardId: string;
   panelCount: number;
   targetDuration: number;
@@ -533,6 +578,7 @@ export async function generateStoryboard(scriptId: string): Promise<{
       job: {
         select: {
           runId: true,
+          payload: true,
         },
       },
     },
@@ -557,6 +603,14 @@ export async function generateStoryboard(scriptId: string): Promise<{
   });
 
   const scriptRunId = script.job?.runId ?? null;
+  const scriptJobPayload = asObject(script.job?.payload) ?? {};
+  const explicitProductId = asString(opts?.productId) || null;
+  const productIdFromScriptPayload = asString(scriptJobPayload.productId) || null;
+  const effectiveProductId = explicitProductId || productIdFromScriptPayload;
+  const productReferenceImages = await loadProductReferenceImages({
+    projectId: script.projectId,
+    productId: effectiveProductId,
+  });
   const promptContext = await loadStoryboardPromptContextForScriptRun({
     projectId: script.projectId,
     runId: scriptRunId,
@@ -570,6 +624,8 @@ export async function generateStoryboard(scriptId: string): Promise<{
     buyTriggerSituation: promptContext.buyTriggerSituation,
     mechanismProcess: promptContext.mechanismProcess,
     visualFlowPattern: promptContext.visualFlowPattern,
+    creatorReferenceImageUrl: productReferenceImages.creatorReferenceImageUrl,
+    productReferenceImageUrl: productReferenceImages.productReferenceImageUrl,
   });
   const response = await anthropic.messages.create({
     model: "claude-sonnet-4-5-20250929",
@@ -630,6 +686,15 @@ export async function generateStoryboard(scriptId: string): Promise<{
 
     for (let index = 0; index < panels.length; index += 1) {
       const panel = panels[index];
+      const panelWithReferences: Record<string, unknown> = {
+        ...panel,
+        ...(productReferenceImages.creatorReferenceImageUrl
+          ? { creatorReferenceImageUrl: productReferenceImages.creatorReferenceImageUrl }
+          : {}),
+        ...(productReferenceImages.productReferenceImageUrl
+          ? { productReferenceImageUrl: productReferenceImages.productReferenceImageUrl }
+          : {}),
+      };
       await tx.storyboardScene.create({
         data: {
           storyboardId: storyboard.id,
@@ -637,7 +702,7 @@ export async function generateStoryboard(scriptId: string): Promise<{
           // TODO: Restore after panelType migration runs.
           // panelType: panel.panelType,
           status: "ready",
-          rawJson: panel as unknown as Prisma.InputJsonValue,
+          rawJson: panelWithReferences as Prisma.InputJsonValue,
         },
       });
     }

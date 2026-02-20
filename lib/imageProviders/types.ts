@@ -25,6 +25,8 @@ export type CreateVideoImagesInput = {
 export type CreateVideoImagesOutput = {
   taskId: string;
   raw: unknown;
+  httpStatus?: number;
+  responseText?: string;
 };
 
 export type GetTaskOutput = {
@@ -33,6 +35,8 @@ export type GetTaskOutput = {
   images?: Array<{ frameIndex: number; url: string }>;
   errorMessage?: string;
   raw: unknown;
+  httpStatus?: number;
+  responseText?: string;
 };
 
 export interface VideoImageProvider {

@@ -13,6 +13,7 @@ import { reserveQuota, rollbackQuota, QuotaExceededError } from '../../../../lib
 const BodySchema = z.object({
   projectId: z.string().min(1),
   scriptId: z.string().optional(),
+  productId: z.string().optional(),
   runId: z.string().optional(),
 });
 
@@ -45,7 +46,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { projectId, scriptId: rawScriptId, runId: rawRunId } = parsed.data;
+    const {
+      projectId,
+      scriptId: rawScriptId,
+      productId: rawProductId,
+      runId: rawRunId,
+    } = parsed.data;
 
     const auth = await requireProjectOwner(projectId);
     if (auth.error) {
@@ -78,7 +84,9 @@ export async function POST(req: NextRequest) {
     }
 
     const requestedRunId = String(rawRunId ?? "").trim();
+    const requestedProductId = String(rawProductId ?? "").trim();
     let effectiveRunId: string | null = null;
+    let effectiveProductId: string | null = null;
     if (requestedRunId) {
       const run = await prisma.researchRun.findUnique({
         where: { id: requestedRunId },
@@ -91,6 +99,23 @@ export async function POST(req: NextRequest) {
         );
       }
       effectiveRunId = run.id;
+    }
+
+    if (requestedProductId) {
+      const productRows = await prisma.$queryRaw<Array<{ id: string }>>`
+        SELECT "id"
+        FROM "product"
+        WHERE "id" = ${requestedProductId}
+          AND "project_id" = ${projectId}
+        LIMIT 1
+      `;
+      if (!productRows[0]?.id) {
+        return NextResponse.json(
+          { error: "productId not found for this project" },
+          { status: 400 }
+        );
+      }
+      effectiveProductId = requestedProductId;
     }
 
     const requestedScriptId = String(rawScriptId ?? "").trim();
@@ -128,6 +153,7 @@ export async function POST(req: NextRequest) {
       projectId,
       JobType.STORYBOARD_GENERATION,
       scriptIdUsed,
+      effectiveProductId ?? "no_product",
     ]);
 
     const existing = await prisma.job.findFirst({
@@ -187,6 +213,7 @@ export async function POST(req: NextRequest) {
     const payload = {
       projectId,
       scriptId: scriptIdUsed,
+      ...(effectiveProductId ? { productId: effectiveProductId } : {}),
       idempotencyKey,
       ...(effectiveRunId ? { runId: effectiveRunId } : {}),
       ...(reservation ? { quotaReservation: reservation } : {}),

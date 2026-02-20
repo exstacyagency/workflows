@@ -14,6 +14,11 @@ type PromptPair = {
   lastFramePrompt: string;
 };
 
+type ProductReferenceImages = {
+  creatorReferenceImageUrl: string | null;
+  productReferenceImageUrl: string | null;
+};
+
 function asObject(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -23,6 +28,34 @@ function asObject(value: unknown): Record<string, unknown> | null {
 function asString(value: unknown): string {
   if (typeof value !== "string") return "";
   return value.trim();
+}
+
+async function loadProductReferenceImages(args: {
+  projectId: string;
+  productId: string | null;
+}): Promise<ProductReferenceImages> {
+  if (!args.productId) {
+    return {
+      creatorReferenceImageUrl: null,
+      productReferenceImageUrl: null,
+    };
+  }
+  const rows = await prisma.$queryRaw<Array<{
+    creatorReferenceImageUrl: string | null;
+    productReferenceImageUrl: string | null;
+  }>>`
+    SELECT
+      "creator_reference_image_url" AS "creatorReferenceImageUrl",
+      "product_reference_image_url" AS "productReferenceImageUrl"
+    FROM "product"
+    WHERE "id" = ${args.productId}
+      AND "project_id" = ${args.projectId}
+    LIMIT 1
+  `;
+  return {
+    creatorReferenceImageUrl: asString(rows[0]?.creatorReferenceImageUrl) || null,
+    productReferenceImageUrl: asString(rows[0]?.productReferenceImageUrl) || null,
+  };
 }
 
 function normalizePrompt(value: unknown): string {
@@ -84,11 +117,15 @@ function buildUserPrompt(args: {
   characterAction: string;
   environment: string;
   cameraDirection: string;
+  creatorReferenceImageUrl: string | null;
+  productReferenceImageUrl: string | null;
 }) {
   return `Scene ${args.sceneNumber}
 characterAction: ${args.characterAction || "N/A"}
 environment: ${args.environment || "N/A"}
 cameraDirection: ${args.cameraDirection || "N/A"}
+creatorReferenceImageUrl: ${args.creatorReferenceImageUrl || "N/A"}
+productReferenceImageUrl: ${args.productReferenceImageUrl || "N/A"}
 
 Return strict JSON:
 {"firstFramePrompt":"...","lastFramePrompt":"..."}`;
@@ -100,6 +137,8 @@ async function generatePromptPairForScene(args: {
   characterAction: string;
   environment: string;
   cameraDirection: string;
+  creatorReferenceImageUrl: string | null;
+  productReferenceImageUrl: string | null;
 }): Promise<PromptPair> {
   const fallback = buildFallbackPromptPair(args);
 
@@ -138,7 +177,11 @@ async function generatePromptPairForScene(args: {
   }
 }
 
-export async function generateImagePromptsFromStoryboard(args: { storyboardId: string; jobId?: string }) {
+export async function generateImagePromptsFromStoryboard(args: {
+  storyboardId: string;
+  jobId?: string;
+  productId?: string | null;
+}) {
   console.log("[imagePromptGeneration] generateImagePromptsFromStoryboard entry", {
     storyboardId: args.storyboardId,
     jobId: args.jobId ?? null,
@@ -149,6 +192,16 @@ export async function generateImagePromptsFromStoryboard(args: { storyboardId: s
       where: { id: args.storyboardId },
       select: {
         id: true,
+        projectId: true,
+        script: {
+          select: {
+            job: {
+              select: {
+                payload: true,
+              },
+            },
+          },
+        },
         scenes: {
           orderBy: { sceneNumber: "asc" },
           select: {
@@ -172,6 +225,16 @@ export async function generateImagePromptsFromStoryboard(args: { storyboardId: s
     if (!storyboard.scenes.length) {
       throw new Error("Storyboard has no scenes");
     }
+
+    const scriptJobPayload = asObject(storyboard.script?.job?.payload) ?? {};
+    const effectiveProductId =
+      asString(args.productId) ||
+      asString(scriptJobPayload.productId) ||
+      null;
+    const productReferenceImages = await loadProductReferenceImages({
+      projectId: storyboard.projectId,
+      productId: effectiveProductId,
+    });
 
     const anthropicApiKey = cfg.raw("ANTHROPIC_API_KEY");
     if (!anthropicApiKey) {
@@ -199,6 +262,8 @@ export async function generateImagePromptsFromStoryboard(args: { storyboardId: s
           characterAction,
           environment,
           cameraDirection,
+          creatorReferenceImageUrl: productReferenceImages.creatorReferenceImageUrl,
+          productReferenceImageUrl: productReferenceImages.productReferenceImageUrl,
         },
       });
 
@@ -208,6 +273,8 @@ export async function generateImagePromptsFromStoryboard(args: { storyboardId: s
         characterAction,
         environment,
         cameraDirection,
+        creatorReferenceImageUrl: productReferenceImages.creatorReferenceImageUrl,
+        productReferenceImageUrl: productReferenceImages.productReferenceImageUrl,
       });
 
       console.log("[imagePromptGeneration] before scene write", {
@@ -222,6 +289,12 @@ export async function generateImagePromptsFromStoryboard(args: { storyboardId: s
         data: {
           rawJson: {
             ...raw,
+            ...(productReferenceImages.creatorReferenceImageUrl
+              ? { creatorReferenceImageUrl: productReferenceImages.creatorReferenceImageUrl }
+              : {}),
+            ...(productReferenceImages.productReferenceImageUrl
+              ? { productReferenceImageUrl: productReferenceImages.productReferenceImageUrl }
+              : {}),
             firstFramePrompt: pair.firstFramePrompt,
             lastFramePrompt: pair.lastFramePrompt,
           } as any,

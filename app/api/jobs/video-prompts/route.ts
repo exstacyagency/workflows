@@ -37,6 +37,7 @@ export async function POST(req: NextRequest) {
 
     const BodySchema = z.object({
       storyboardId: z.string().min(1),
+      productId: z.string().trim().min(1).max(200).optional(),
       attemptKey: z.string().trim().min(1).max(200).optional(),
       runId: z.string().trim().min(1).max(200).optional(),
     });
@@ -50,7 +51,9 @@ export async function POST(req: NextRequest) {
     }
 
     const storyboardId = parsed.data.storyboardId;
+    const requestedProductId = parsed.data.productId ? String(parsed.data.productId).trim() : "";
     const requestedRunId = parsed.data.runId ? String(parsed.data.runId).trim() : "";
+    let effectiveProductId: string | null = null;
     let effectiveRunId: string | null = null;
     // Keep idempotency scoped to a single generation attempt.
     // If client does not supply attemptKey, generate a unique nonce per request.
@@ -80,6 +83,20 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "runId not found for this project" }, { status: 400 });
       }
       effectiveRunId = run.id;
+    }
+
+    if (requestedProductId) {
+      const productRows = await prisma.$queryRaw<Array<{ id: string }>>`
+        SELECT "id"
+        FROM "product"
+        WHERE "id" = ${requestedProductId}
+          AND "project_id" = ${projectId}
+        LIMIT 1
+      `;
+      if (!productRows[0]?.id) {
+        return NextResponse.json({ error: "productId not found for this project" }, { status: 400 });
+      }
+      effectiveProductId = requestedProductId;
     }
 
     // Plan check AFTER ownership to avoid leaking project existence via 402.
@@ -118,6 +135,7 @@ export async function POST(req: NextRequest) {
       projectId,
       JobType.VIDEO_PROMPT_GENERATION,
       storyboardId,
+      effectiveProductId ?? "no_product",
       effectiveRunId ?? "no_run",
       attemptKey,
     ]);
@@ -172,6 +190,7 @@ export async function POST(req: NextRequest) {
           ...(effectiveRunId ? { runId: effectiveRunId } : {}),
           payload: {
             storyboardId,
+            ...(effectiveProductId ? { productId: effectiveProductId } : {}),
             idempotencyKey,
             ...(effectiveRunId ? { runId: effectiveRunId } : {}),
           },
@@ -213,6 +232,7 @@ export async function POST(req: NextRequest) {
         ...(effectiveRunId ? { runId: effectiveRunId } : {}),
         payload: {
           storyboardId,
+          ...(effectiveProductId ? { productId: effectiveProductId } : {}),
           idempotencyKey,
           ...(effectiveRunId ? { runId: effectiveRunId } : {}),
         },
