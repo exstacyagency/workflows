@@ -3,6 +3,7 @@ import { JobStatus } from '@prisma/client';
 import { notFound } from 'next/navigation';
 import { getJobTypeLabel } from '@/lib/jobLabels';
 import { ProjectProductsPanel } from '@/components/ProjectProductsPanel';
+import { ProjectSettingsPanel } from '@/components/ProjectSettingsPanel';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -39,6 +40,11 @@ type ProductListItem = {
   createdAt: Date;
 };
 
+type ProjectReferenceImages = {
+  creatorReferenceImageUrl: string | null;
+  productReferenceImageUrl: string | null;
+};
+
 async function ensureProductsTable() {
   await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS "product" (
@@ -47,6 +53,7 @@ async function ensureProductsTable() {
       "name" text NOT NULL,
       "product_problem_solved" text,
       "amazon_asin" text,
+      "creator_reference_image_url" text,
       "created_at" timestamptz NOT NULL DEFAULT now(),
       "updated_at" timestamptz NOT NULL DEFAULT now(),
       CONSTRAINT "product_project_name_unique" UNIQUE ("project_id", "name")
@@ -55,6 +62,10 @@ async function ensureProductsTable() {
   await prisma.$executeRawUnsafe(
     `CREATE INDEX IF NOT EXISTS "product_project_id_idx" ON "product" ("project_id");`
   );
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "product"
+    ADD COLUMN IF NOT EXISTS "creator_reference_image_url" text;
+  `);
 }
 
 export default async function ProjectDashboardPage({ params }: Params) {
@@ -80,6 +91,19 @@ export default async function ProjectDashboardPage({ params }: Params) {
   if (!project) {
     notFound();
   }
+
+  const referenceRows = await prisma.$queryRaw<ProjectReferenceImages[]>`
+    SELECT
+      "creatorReferenceImageUrl" AS "creatorReferenceImageUrl",
+      "productReferenceImageUrl" AS "productReferenceImageUrl"
+    FROM "project"
+    WHERE "id" = ${projectId}
+    LIMIT 1
+  `;
+  const referenceImages = referenceRows[0] ?? {
+    creatorReferenceImageUrl: null,
+    productReferenceImageUrl: null,
+  };
 
   await ensureProductsTable();
 
@@ -136,6 +160,14 @@ export default async function ProjectDashboardPage({ params }: Params) {
           name: product.name,
           createdAt: product.createdAt.toISOString(),
         }))}
+      />
+
+      <ProjectSettingsPanel
+        projectId={projectId}
+        initialName={project.name}
+        initialDescription={project.description}
+        initialCreatorReferenceImageUrl={referenceImages.creatorReferenceImageUrl}
+        initialProductReferenceImageUrl={referenceImages.productReferenceImageUrl}
       />
 
       <section className="grid gap-4 lg:grid-cols-2">

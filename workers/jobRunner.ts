@@ -38,6 +38,7 @@ import { startScriptGenerationJob } from "../lib/scriptGenerationService.ts";
 import { generateStoryboard } from "../lib/storyboardGenerationService.ts";
 import { startVideoPromptGenerationJob } from "../lib/videoPromptGenerationService.ts";
 import { runVideoImageGenerationJob } from "../lib/videoImageGenerationService.ts";
+import { generateImagePromptsFromStoryboard } from "../lib/imagePromptGenerationService.ts";
 import { runVideoGenerationJob } from "../lib/videoGenerationService.ts";
 import { collectProductIntelWithWebFetch } from "../lib/productDataCollectionService.ts";
 import { analyzeProductData } from "../lib/productAnalysisService.ts";
@@ -813,6 +814,44 @@ async function runJob(
           await appendResultSummary(jobId, "Queued video images job");
         }
 
+        return;
+      }
+
+      case "IMAGE_PROMPT_GENERATION" as JobType: {
+        const storyboardId = String(payload?.storyboardId ?? "").trim();
+        if (!storyboardId) {
+          const msg = "Invalid payload: missing storyboardId";
+          await markFailed({ jobId, error: msg });
+          await appendResultSummary(jobId, `Image prompt generation failed: ${msg}`);
+          return;
+        }
+
+        const storyboard = await prisma.storyboard.findFirst({
+          where: { projectId: job.projectId, id: storyboardId },
+          orderBy: { createdAt: "desc" },
+          select: { id: true },
+        });
+        if (!storyboard?.id) {
+          const msg = `Storyboard not found for id=${storyboardId}`;
+          await markFailed({ jobId, error: msg });
+          await appendResultSummary(jobId, `Image prompt generation failed: ${msg}`);
+          return;
+        }
+
+        try {
+          const result = await runWithMaxRuntime("IMAGE_PROMPT_GENERATION", async () => {
+            return generateImagePromptsFromStoryboard({ storyboardId, jobId });
+          });
+          await markCompleted({
+            jobId,
+            result,
+            summary: `Image prompts generated: ${result.count} scenes`,
+          });
+        } catch (e: any) {
+          const msg = String(e?.message ?? e ?? "Unknown error");
+          await markFailed({ jobId, error: e });
+          await appendResultSummary(jobId, `Image prompt generation failed: ${msg}`);
+        }
         return;
       }
 

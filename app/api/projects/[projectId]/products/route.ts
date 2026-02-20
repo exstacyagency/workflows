@@ -9,6 +9,7 @@ type ProductRow = {
   name: string;
   productProblemSolved: string | null;
   amazonAsin: string | null;
+  creatorReferenceImageUrl: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -39,6 +40,7 @@ async function ensureProductsTable() {
       "name" text NOT NULL,
       "product_problem_solved" text,
       "amazon_asin" text,
+      "creator_reference_image_url" text,
       "created_at" timestamptz NOT NULL DEFAULT now(),
       "updated_at" timestamptz NOT NULL DEFAULT now(),
       CONSTRAINT "product_project_name_unique" UNIQUE ("project_id", "name")
@@ -47,6 +49,10 @@ async function ensureProductsTable() {
   await prisma.$executeRawUnsafe(
     `CREATE INDEX IF NOT EXISTS "product_project_id_idx" ON "product" ("project_id");`
   );
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "product"
+    ADD COLUMN IF NOT EXISTS "creator_reference_image_url" text;
+  `);
 }
 
 export async function GET(
@@ -72,6 +78,7 @@ export async function GET(
         "name",
         "product_problem_solved" AS "productProblemSolved",
         "amazon_asin" AS "amazonAsin",
+        "creator_reference_image_url" AS "creatorReferenceImageUrl",
         "created_at" AS "createdAt",
         "updated_at" AS "updatedAt"
       FROM "product"
@@ -147,6 +154,7 @@ export async function POST(
         "name",
         "product_problem_solved" AS "productProblemSolved",
         "amazon_asin" AS "amazonAsin",
+        "creator_reference_image_url" AS "creatorReferenceImageUrl",
         "created_at" AS "createdAt",
         "updated_at" AS "updatedAt"
     `;
