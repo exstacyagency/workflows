@@ -50,7 +50,9 @@ export function ProjectSettingsPanel({
   const [name, setName] = useState(initialName);
   const [description, setDescription] = useState(initialDescription ?? "");
   const [creatorReferenceImageUrl, setCreatorReferenceImageUrl] = useState(initialCreatorReferenceImageUrl ?? "");
-  const [productReferenceImageUrl, setProductReferenceImageUrl] = useState(initialProductReferenceImageUrl ?? "");
+  const [productReferenceImageUrl, setProductReferenceImageUrl] = useState(
+    sanitizeImageUrl(initialProductReferenceImageUrl ?? "") ?? ""
+  );
   const [savedName, setSavedName] = useState(initialName);
   const [savedDescription, setSavedDescription] = useState(initialDescription ?? "");
   const [savedCreatorReferenceImageUrl, setSavedCreatorReferenceImageUrl] = useState(initialCreatorReferenceImageUrl ?? "");
@@ -244,7 +246,9 @@ export function ProjectSettingsPanel({
             <label className="block text-xs font-semibold text-slate-200">Product Reference Image</label>
             <input
               value={productReferenceImageUrl}
-              onChange={(event) => setProductReferenceImageUrl(event.target.value)}
+              onChange={(event) =>
+                setProductReferenceImageUrl(sanitizeImageUrl(event.target.value) ?? "")
+              }
               className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-50 placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
               placeholder="https://..."
             />
