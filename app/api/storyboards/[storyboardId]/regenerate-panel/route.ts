@@ -5,6 +5,11 @@ import { getSessionUserId } from "@/lib/getSessionUserId";
 import { prisma } from "@/lib/prisma";
 
 type PanelTypeValue = "ON_CAMERA" | "B_ROLL_ONLY";
+type RegenerateTarget = "panel_direction" | "video_prompt";
+
+const VIDEO_PROMPT_SYSTEM_PROMPT =
+  "You write Kling AI video prompts. Translate storyboard direction into camera-ready prompts under 200 characters. Be specific. Every word earns its place.";
+const VIDEO_PROMPT_MODEL = cfg.raw("ANTHROPIC_MODEL") || "claude-sonnet-4-5-20250929";
 
 type StoryboardPanel = {
   panelType: PanelTypeValue;
@@ -150,6 +155,49 @@ Output JSON schema:
 Keep the same voice and continuity with surrounding panels. Return ONLY valid JSON.`;
 }
 
+function normalizeKlingPrompt(text: string): string {
+  const normalized = String(text ?? "").replace(/\s+/g, " ").trim();
+  if (normalized.length <= 200) return normalized;
+  return normalized.slice(0, 200).trimEnd();
+}
+
+function formatDurationLabel(durationSec: number): string {
+  const rounded = Number.isFinite(durationSec) ? Math.round(durationSec * 10) / 10 : 8;
+  return Number.isInteger(rounded) ? String(rounded) : String(rounded);
+}
+
+function toDurationSec(raw: Record<string, unknown> | null): number {
+  const rawDuration = Number(raw?.durationSec);
+  if (Number.isFinite(rawDuration) && rawDuration > 0) return rawDuration;
+  return 8;
+}
+
+function buildVideoPromptRegenerationPrompt(args: {
+  sceneNumber: number;
+  durationSec: number;
+  panel: StoryboardPanel;
+  hasCreatorRef: boolean;
+  hasProductRef: boolean;
+}): string {
+  const { sceneNumber, durationSec, panel, hasCreatorRef, hasProductRef } = args;
+  return `Scene ${sceneNumber}, ${formatDurationLabel(durationSec)}s.
+
+VO: ${panel.vo || "N/A"}
+
+Panel type: ${panel.panelType}
+
+Character: ${panel.characterAction || "N/A"}
+Environment: ${panel.environment || "N/A"}
+Camera: ${panel.cameraDirection || "N/A"}
+Product placement: ${panel.productPlacement || "N/A"}
+B-roll shots: ${panel.bRollSuggestions.length > 0 ? panel.bRollSuggestions.join("; ") : "N/A"}
+
+${hasCreatorRef ? "Subject from creator reference image." : ""}
+${hasProductRef ? "Product from product reference image." : ""}
+
+Write a Kling prompt. Specify subject, exact action with timing, camera movement, lighting. Under 200 chars. No fluff.`;
+}
+
 export async function POST(
   req: NextRequest,
   { params }: { params: { storyboardId: string } },
@@ -166,10 +214,13 @@ export async function POST(
     }
 
     const body = await req.json().catch(() => null);
-    const panelIndex = Number((body as Record<string, unknown> | null)?.panelIndex);
+    const bodyObject = asObject(body) ?? {};
+    const panelIndex = Number(bodyObject.panelIndex);
     if (!Number.isInteger(panelIndex) || panelIndex < 0) {
       return NextResponse.json({ error: "panelIndex must be a non-negative integer" }, { status: 400 });
     }
+    const targetRaw = asString(bodyObject.target || bodyObject.mode).toLowerCase();
+    const target: RegenerateTarget = targetRaw === "video_prompt" ? "video_prompt" : "panel_direction";
 
     const storyboard = await prisma.storyboard.findFirst({
       where: {
@@ -178,6 +229,12 @@ export async function POST(
       },
       select: {
         id: true,
+        project: {
+          select: {
+            creatorReferenceImageUrl: true,
+            productReferenceImageUrl: true,
+          },
+        },
         scenes: {
           orderBy: { sceneNumber: "asc" },
           select: {
@@ -216,6 +273,48 @@ export async function POST(
       apiKey: anthropicApiKey,
       timeout: 30_000,
     });
+
+    if (target === "video_prompt") {
+      const sceneNumber = storyboard.scenes[panelIndex]?.sceneNumber ?? panelIndex + 1;
+      const targetRawJson = asObject(storyboard.scenes[panelIndex]?.rawJson) ?? {};
+      const durationSec = toDurationSec(targetRawJson);
+      const hasCreatorRef =
+        targetPanel.panelType !== "B_ROLL_ONLY" &&
+        Boolean(asString(storyboard.project?.creatorReferenceImageUrl));
+      const hasProductRef = Boolean(asString(storyboard.project?.productReferenceImageUrl));
+
+      const response = await anthropic.messages.create({
+        model: VIDEO_PROMPT_MODEL,
+        max_tokens: 200,
+        system: VIDEO_PROMPT_SYSTEM_PROMPT,
+        messages: [
+          {
+            role: "user",
+            content: buildVideoPromptRegenerationPrompt({
+              sceneNumber,
+              durationSec,
+              panel: targetPanel,
+              hasCreatorRef,
+              hasProductRef,
+            }),
+          },
+        ],
+      });
+
+      const promptText = extractTextContent(response);
+      if (!promptText) {
+        throw new Error("Claude returned an empty video prompt.");
+      }
+
+      return NextResponse.json(
+        {
+          success: true,
+          panelIndex,
+          videoPrompt: normalizeKlingPrompt(promptText),
+        },
+        { status: 200 },
+      );
+    }
 
     const response = await anthropic.messages.create({
       model: "claude-haiku-4-5-20251001",

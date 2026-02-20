@@ -7,6 +7,7 @@ import { requireProjectOwner } from "@/lib/requireProjectOwner";
 import { checkRateLimit } from "@/lib/rateLimiter";
 import { assertMinPlan, UpgradeRequiredError } from "@/lib/billing/requirePlan";
 import { reserveQuota, rollbackQuota, QuotaExceededError } from "@/lib/billing/usage";
+import { ensureCreatorLibraryTables, findOwnedProductById } from "@/lib/creatorLibraryStore";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -63,6 +64,10 @@ export async function POST(req: Request) {
     if (!projectId) {
       return NextResponse.json({ error: "Missing projectId" }, { status: 400 });
     }
+    const productId = String(body?.productId || "").trim();
+    if (!productId) {
+      return NextResponse.json({ error: "Missing productId" }, { status: 400 });
+    }
 
     const storyboardId = String(body?.storyboardId || "");
     if (!storyboardId) {
@@ -77,6 +82,20 @@ export async function POST(req: Request) {
     const auth = await requireProjectOwner(projectId);
     if (auth.error) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+    await ensureCreatorLibraryTables();
+    const ownedProduct = await findOwnedProductById(productId, userId);
+    if (!ownedProduct || ownedProduct.projectId !== projectId) {
+      return NextResponse.json({ error: "Product not found for this project" }, { status: 404 });
+    }
+    if (!String(ownedProduct.creatorReferenceImageUrl ?? "").trim()) {
+      return NextResponse.json(
+        {
+          error:
+            "Image generation requires an active creator reference image. Set product.creatorReferenceImageUrl first.",
+        },
+        { status: 409 },
+      );
     }
 
     const storyboard = await prisma.storyboard.findFirst({
@@ -142,6 +161,7 @@ export async function POST(req: Request) {
 
     const payload = {
       projectId,
+      productId,
       storyboardId,
       providerId: result.providerId,
       taskGroupId: result.taskGroupId,
@@ -183,6 +203,7 @@ export async function POST(req: Request) {
     // Return group identifiers so clients can poll without needing a single taskId.
     return NextResponse.json({
       ok: true,
+      jobId,
       providerId: result.providerId,
       idempotencyKey: result.idempotencyKey,
       taskGroupId: result.taskGroupId,

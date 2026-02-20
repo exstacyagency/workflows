@@ -37,13 +37,36 @@ function buildPublicUrl(key: string): string {
   return `https://${bucket}.s3.${region}.amazonaws.com/${key}`;
 }
 
+export async function uploadPublicObject(args: {
+  key: string;
+  body: Uint8Array;
+  contentType: string;
+  cacheControl?: string;
+}): Promise<string | null> {
+  const client = getS3Client();
+  if (!client || !bucket) {
+    return null;
+  }
+
+  await client.send(
+    new PutObjectCommand({
+      Bucket: bucket,
+      Key: args.key,
+      Body: args.body,
+      ContentType: args.contentType,
+      CacheControl: args.cacheControl,
+    })
+  );
+
+  return buildPublicUrl(args.key);
+}
+
 export async function uploadFrame(
   localPath: string,
   assetId: string,
   timestamp: number
 ): Promise<string | null> {
-  const client = getS3Client();
-  if (!client || !bucket) {
+  if (!getS3Client() || !bucket) {
     if (!warnedMissing) {
       warnedMissing = true;
       console.warn("[OCR Debug] S3 frame upload skipped: missing AWS/S3 env configuration");
@@ -54,15 +77,9 @@ export async function uploadFrame(
   const safeSecond = Number.isFinite(timestamp) ? Math.max(0, Math.round(timestamp)) : 0;
   const key = `frames/${assetId}/${safeSecond}.png`;
   const body = await readFile(localPath);
-
-  await client.send(
-    new PutObjectCommand({
-      Bucket: bucket,
-      Key: key,
-      Body: body,
-      ContentType: "image/png",
-    })
-  );
-
-  return buildPublicUrl(key);
+  return uploadPublicObject({
+    key,
+    body,
+    contentType: "image/png",
+  });
 }
