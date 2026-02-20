@@ -196,6 +196,7 @@ export async function POST(req: NextRequest) {
   const forwardedBody = {
     projectId,
     productId,
+    ...(runId ? { runId } : {}),
     storyboardId: storyboard.id,
     prompts,
     force: body.force === true,
@@ -217,3 +218,4 @@ export async function POST(req: NextRequest) {
   const startData = await startResponse.json().catch(() => ({}));
   return NextResponse.json(startData, { status: startResponse.status });
 }
+  const runId = asString(body.runId);

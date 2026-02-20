@@ -83,6 +83,16 @@ export async function POST(req: Request) {
     if (auth.error) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
+    if (requestedRunId) {
+      const run = await prisma.researchRun.findUnique({
+        where: { id: requestedRunId },
+        select: { id: true, projectId: true },
+      });
+      if (!run || run.projectId !== projectId) {
+        return NextResponse.json({ error: "runId not found for this project" }, { status: 400 });
+      }
+      effectiveRunId = run.id;
+    }
     await ensureCreatorLibraryTables();
     const ownedProduct = await findOwnedProductById(productId, userId);
     if (!ownedProduct || ownedProduct.projectId !== projectId) {
@@ -158,10 +168,12 @@ export async function POST(req: Request) {
       where: { type: "VIDEO_IMAGE_GENERATION", projectId, idempotencyKey: result.idempotencyKey },
       orderBy: { createdAt: "desc" },
     });
+    let attachedRunId: string | null = effectiveRunId;
 
     const payload = {
       projectId,
       productId,
+      ...(effectiveRunId ? { runId: effectiveRunId } : {}),
       storyboardId,
       providerId: result.providerId,
       taskGroupId: result.taskGroupId,
@@ -175,10 +187,12 @@ export async function POST(req: Request) {
 
     if (existing) {
       jobId = existing.id;
+      attachedRunId = effectiveRunId ?? (existing.runId ?? null);
       await prisma.job.update({
         where: { id: existing.id },
         data: {
           status: "RUNNING" as any,
+          ...(effectiveRunId ? { runId: effectiveRunId } : {}),
           error: null,
           payload: payload as any,
           resultSummary: null,
@@ -191,6 +205,7 @@ export async function POST(req: Request) {
           status: "RUNNING" as any,
           projectId,
           userId,
+          ...(effectiveRunId ? { runId: effectiveRunId } : {}),
           idempotencyKey: result.idempotencyKey,
           payload: payload as any,
           resultSummary: null,
@@ -198,12 +213,14 @@ export async function POST(req: Request) {
         } as any,
       });
       jobId = job.id;
+      attachedRunId = effectiveRunId ?? null;
     }
 
     // Return group identifiers so clients can poll without needing a single taskId.
     return NextResponse.json({
       ok: true,
       jobId,
+      runId: attachedRunId,
       providerId: result.providerId,
       idempotencyKey: result.idempotencyKey,
       taskGroupId: result.taskGroupId,
@@ -223,3 +240,5 @@ export async function POST(req: Request) {
     );
   }
 }
+    const requestedRunId = String(body?.runId || "").trim();
+    let effectiveRunId: string | null = null;

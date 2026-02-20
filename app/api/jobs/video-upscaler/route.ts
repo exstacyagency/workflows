@@ -27,6 +27,7 @@ export async function POST(req: NextRequest) {
   const ip =
     req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null;
   let planId: 'FREE' | 'GROWTH' | 'SCALE' = 'FREE';
+  let effectiveRunId: string | null = null;
 
   try {
     const parsed = await parseJson(req, StoryboardJobSchema);
@@ -36,7 +37,7 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       );
     }
-    const { storyboardId } = parsed.data;
+    const { storyboardId, runId } = parsed.data;
 
     const storyboard = await prisma.storyboard.findUnique({
       where: { id: storyboardId },
@@ -55,6 +56,17 @@ export async function POST(req: NextRequest) {
     const auth = await requireProjectOwner(projectId);
     if (auth.error) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+    const requestedRunId = String(runId ?? "").trim();
+    if (requestedRunId) {
+      const existingRun = await prisma.researchRun.findUnique({
+        where: { id: requestedRunId },
+        select: { id: true, projectId: true },
+      });
+      if (!existingRun || existingRun.projectId !== projectId) {
+        return NextResponse.json({ error: "runId not found for this project" }, { status: 400 });
+      }
+      effectiveRunId = existingRun.id;
     }
 
     // Plan check AFTER ownership to avoid leaking project existence via 402.
@@ -101,6 +113,7 @@ export async function POST(req: NextRequest) {
       projectId,
       JobType.VIDEO_UPSCALER,
       storyboardId,
+      effectiveRunId ?? "no_run",
     ]);
     const existing = await findIdempotentJob({
       userId,
@@ -111,11 +124,21 @@ export async function POST(req: NextRequest) {
     if (existing) {
       if (securitySweep) {
         return NextResponse.json(
-          { jobId: existing.id, reused: true, started: false, skipped: true, reason: "SECURITY_SWEEP" },
+          {
+            jobId: existing.id,
+            runId: existing.runId ?? effectiveRunId,
+            reused: true,
+            started: false,
+            skipped: true,
+            reason: "SECURITY_SWEEP",
+          },
           { status: 200 },
         );
       }
-      return NextResponse.json({ jobId: existing.id, reused: true }, { status: 200 });
+      return NextResponse.json(
+        { jobId: existing.id, runId: existing.runId ?? effectiveRunId, reused: true },
+        { status: 200 },
+      );
     }
 
     try {
@@ -137,7 +160,12 @@ export async function POST(req: NextRequest) {
         type: JobType.VIDEO_UPSCALER,
         status: JobStatus.PENDING,
         idempotencyKey,
-        payload: { storyboardId, idempotencyKey },
+        ...(effectiveRunId ? { runId: effectiveRunId } : {}),
+        payload: {
+          storyboardId,
+          idempotencyKey,
+          ...(effectiveRunId ? { runId: effectiveRunId } : {}),
+        },
         resultSummary: securitySweep ? "Skipped: SECURITY_SWEEP" : undefined,
         error: Prisma.JsonNull,
       },
@@ -155,7 +183,14 @@ export async function POST(req: NextRequest) {
         metadata: { type: 'video-upscaler', skipped: true, reason: 'SECURITY_SWEEP' },
       });
       return NextResponse.json(
-        { ok: true, jobId, started: false, skipped: true, reason: "SECURITY_SWEEP" },
+        {
+          ok: true,
+          jobId,
+          runId: effectiveRunId,
+          started: false,
+          skipped: true,
+          reason: "SECURITY_SWEEP",
+        },
         { status: 200 },
       );
     }
@@ -178,10 +213,11 @@ export async function POST(req: NextRequest) {
       ip,
       metadata: {
         type: 'video-upscaler',
+        runId: effectiveRunId,
       },
     });
 
-    return NextResponse.json(result, { status: 200 });
+    return NextResponse.json({ ...result, runId: effectiveRunId }, { status: 200 });
   } catch (err: any) {
     console.error(err);
     if (reservation) {
