@@ -38,6 +38,7 @@ export async function POST(req: NextRequest) {
     const BodySchema = z.object({
       storyboardId: z.string().min(1),
       attemptKey: z.string().trim().min(1).max(200).optional(),
+      runId: z.string().trim().min(1).max(200).optional(),
     });
 
     const parsed = BodySchema.safeParse(body);
@@ -49,6 +50,8 @@ export async function POST(req: NextRequest) {
     }
 
     const storyboardId = parsed.data.storyboardId;
+    const requestedRunId = parsed.data.runId ? String(parsed.data.runId).trim() : "";
+    let effectiveRunId: string | null = null;
     // Keep idempotency scoped to a single generation attempt.
     // If client does not supply attemptKey, generate a unique nonce per request.
     const attemptKey = parsed.data.attemptKey || `${Date.now()}-${randomUUID()}`;
@@ -67,6 +70,17 @@ export async function POST(req: NextRequest) {
 
     const deny = await requireProjectOwner404(projectId);
     if (deny) return deny;
+
+    if (requestedRunId) {
+      const run = await prisma.researchRun.findUnique({
+        where: { id: requestedRunId },
+        select: { id: true, projectId: true },
+      });
+      if (!run || run.projectId !== projectId) {
+        return NextResponse.json({ error: "runId not found for this project" }, { status: 400 });
+      }
+      effectiveRunId = run.id;
+    }
 
     // Plan check AFTER ownership to avoid leaking project existence via 402.
     try {
@@ -104,6 +118,7 @@ export async function POST(req: NextRequest) {
       projectId,
       JobType.VIDEO_PROMPT_GENERATION,
       storyboardId,
+      effectiveRunId ?? "no_run",
       attemptKey,
     ]);
     const existing = await findIdempotentJob({
@@ -116,11 +131,21 @@ export async function POST(req: NextRequest) {
       // Deterministic smoke semantics: reused jobs in SECURITY_SWEEP should still report skipped.
       if (securitySweep) {
         return NextResponse.json(
-          { jobId: existing.id, reused: true, started: false, skipped: true, reason: "SECURITY_SWEEP" },
+          {
+            jobId: existing.id,
+            runId: existing.runId ?? effectiveRunId,
+            reused: true,
+            started: false,
+            skipped: true,
+            reason: "SECURITY_SWEEP",
+          },
           { status: 200 }
         );
       }
-      return NextResponse.json({ jobId: existing.id, reused: true }, { status: 200 });
+      return NextResponse.json(
+        { jobId: existing.id, runId: existing.runId ?? effectiveRunId, reused: true },
+        { status: 200 },
+      );
     }
 
     try {
@@ -144,11 +169,16 @@ export async function POST(req: NextRequest) {
           type: JobType.VIDEO_PROMPT_GENERATION,
           status: JobStatus.PENDING,
           idempotencyKey,
-          payload: { storyboardId, idempotencyKey },
+          ...(effectiveRunId ? { runId: effectiveRunId } : {}),
+          payload: {
+            storyboardId,
+            idempotencyKey,
+            ...(effectiveRunId ? { runId: effectiveRunId } : {}),
+          },
           resultSummary: "Skipped: SECURITY_SWEEP",
           error: Prisma.JsonNull,
         },
-        select: { id: true },
+        select: { id: true, runId: true },
       });
       jobId = job.id;
 
@@ -162,7 +192,13 @@ export async function POST(req: NextRequest) {
       });
 
       return NextResponse.json(
-        { jobId, started: false, skipped: true, reason: "SECURITY_SWEEP" },
+        {
+          jobId,
+          runId: job.runId ?? effectiveRunId,
+          started: false,
+          skipped: true,
+          reason: "SECURITY_SWEEP",
+        },
         { status: 200 }
       );
     }
@@ -174,8 +210,14 @@ export async function POST(req: NextRequest) {
         type: JobType.VIDEO_PROMPT_GENERATION,
         status: JobStatus.PENDING,
         idempotencyKey,
-        payload: { storyboardId, idempotencyKey },
+        ...(effectiveRunId ? { runId: effectiveRunId } : {}),
+        payload: {
+          storyboardId,
+          idempotencyKey,
+          ...(effectiveRunId ? { runId: effectiveRunId } : {}),
+        },
       },
+      select: { id: true, runId: true },
     });
     jobId = job.id;
     reservation = null;
@@ -192,7 +234,7 @@ export async function POST(req: NextRequest) {
     });
 
     return NextResponse.json(
-      { jobId: job.id, queued: true, reused: false },
+      { jobId: job.id, runId: job.runId ?? effectiveRunId, queued: true, reused: false },
       { status: 200 },
     );
   } catch (err: any) {

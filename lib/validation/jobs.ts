@@ -22,6 +22,11 @@ export const StoryboardJobSchema = z.object({
     .string()
     .min(1, 'storyboardId is required')
     .max(128, 'storyboardId too long'),
+  runId: z
+    .string()
+    .min(1, 'runId is required')
+    .max(128, 'runId too long')
+    .optional(),
   force: z.boolean().optional(),
 });
 

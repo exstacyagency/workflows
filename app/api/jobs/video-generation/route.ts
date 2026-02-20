@@ -16,6 +16,7 @@ const BodySchema = z.object({
   projectId: z.string().min(1),
   scriptId: z.string().min(1),
   storyboardId: z.string().min(1),
+  runId: z.string().trim().min(1).max(200).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -64,10 +65,22 @@ export async function POST(req: NextRequest) {
     }
 
     const { projectId, scriptId, storyboardId } = parsed.data;
+    const requestedRunId = parsed.data.runId ? String(parsed.data.runId).trim() : "";
+    let effectiveRunId: string | null = null;
 
     const auth = await requireProjectOwner(projectId);
     if (auth.error) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+    if (requestedRunId) {
+      const run = await prisma.researchRun.findUnique({
+        where: { id: requestedRunId },
+        select: { id: true, projectId: true },
+      });
+      if (!run || run.projectId !== projectId) {
+        return NextResponse.json({ error: "runId not found for this project" }, { status: 400 });
+      }
+      effectiveRunId = run.id;
     }
 
     try {
@@ -144,6 +157,7 @@ export async function POST(req: NextRequest) {
         "VIDEO_GENERATION",
         storyboardId,
         scriptId,
+        effectiveRunId ?? "no_run",
       ]);
 
       // If an existing job exists, reuse it but still mark skipped for sweep-mode determinism.
@@ -154,13 +168,14 @@ export async function POST(req: NextRequest) {
           idempotencyKey,
         },
         orderBy: { createdAt: "desc" },
-        select: { id: true },
+        select: { id: true, runId: true },
       });
       if (existingAny?.id) {
         return NextResponse.json(
           {
             ok: true,
             jobId: existingAny.id,
+            runId: existingAny.runId ?? effectiveRunId,
             reused: true,
             started: false,
             skipped: true,
@@ -194,11 +209,13 @@ export async function POST(req: NextRequest) {
           type: JobType.VIDEO_GENERATION,
           status: JobStatus.PENDING,
           idempotencyKey,
+          ...(effectiveRunId ? { runId: effectiveRunId } : {}),
           payload: {
             projectId,
             storyboardId,
             scriptId,
             idempotencyKey,
+            ...(effectiveRunId ? { runId: effectiveRunId } : {}),
             quotaReservation: {
               periodKey: reservationPeriodKey,
               metric: "videoJobs",
@@ -217,6 +234,7 @@ export async function POST(req: NextRequest) {
         {
           ok: true,
           jobId,
+          runId: effectiveRunId,
           stage: "SECURITY_SWEEP",
           reused: false,
           started: false,
@@ -264,6 +282,7 @@ export async function POST(req: NextRequest) {
       "VIDEO_GENERATION",
       storyboardId,
       scriptId,
+      effectiveRunId ?? "no_run",
     ]);
 
     const existing = await prisma.job.findFirst({
@@ -274,12 +293,15 @@ export async function POST(req: NextRequest) {
         status: { in: [JobStatus.PENDING, JobStatus.RUNNING] },
       },
       orderBy: { createdAt: "desc" },
-      select: { id: true },
+      select: { id: true, runId: true },
     });
 
     if (existing?.id) {
       await rollbackReservation();
-      return NextResponse.json({ ok: true, jobId: existing.id, reused: true }, { status: 200 });
+      return NextResponse.json(
+        { ok: true, jobId: existing.id, runId: existing.runId ?? effectiveRunId, reused: true },
+        { status: 200 },
+      );
     }
 
     try {
@@ -290,11 +312,13 @@ export async function POST(req: NextRequest) {
           type: JobType.VIDEO_GENERATION,
           status: JobStatus.PENDING,
           idempotencyKey,
+          ...(effectiveRunId ? { runId: effectiveRunId } : {}),
           payload: {
             projectId,
             storyboardId,
             scriptId,
             idempotencyKey,
+            ...(effectiveRunId ? { runId: effectiveRunId } : {}),
             quotaReservation: {
               periodKey: reservationPeriodKey,
               metric: "videoJobs",
@@ -317,7 +341,7 @@ export async function POST(req: NextRequest) {
           idempotencyKey,
         },
         orderBy: { createdAt: "desc" },
-        select: { id: true },
+        select: { id: true, runId: true },
       });
       if (raced?.id) {
         if (reservationPeriodKey && reservationUserId && reservationAmount > 0) {
@@ -330,7 +354,10 @@ export async function POST(req: NextRequest) {
           reservationPeriodKey = null;
           reservationAmount = 0;
         }
-        return NextResponse.json({ ok: true, jobId: raced.id, reused: true }, { status: 200 });
+        return NextResponse.json(
+          { ok: true, jobId: raced.id, runId: raced.runId ?? effectiveRunId, reused: true },
+          { status: 200 },
+        );
       }
       if (reservationPeriodKey && reservationUserId && reservationAmount > 0) {
         await rollbackQuota(
@@ -353,7 +380,7 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json(
-      { ok: true, jobId, stage: "VIDEO_PROMPTS_ENQUEUED", reused: false },
+      { ok: true, jobId, runId: effectiveRunId, stage: "VIDEO_PROMPTS_ENQUEUED", reused: false },
       { status: 200 },
     );
   } catch (err: any) {
