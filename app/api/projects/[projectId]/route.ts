@@ -33,34 +33,19 @@ export async function GET(
   return NextResponse.json(project, { status: 200 })
 }
 
-const nullableUrlField = z
-  .union([z.string().trim().url().max(2048), z.literal(""), z.null()])
-  .optional();
-
 const UpdateProjectSchema = z
   .object({
     name: z.string().trim().min(1).max(200).optional(),
     description: z.string().max(2000).nullable().optional(),
-    creatorReferenceImageUrl: nullableUrlField,
-    productReferenceImageUrl: nullableUrlField,
   })
   .refine(
     (value) =>
       value.name !== undefined ||
-      value.description !== undefined ||
-      value.creatorReferenceImageUrl !== undefined ||
-      value.productReferenceImageUrl !== undefined,
+      value.description !== undefined,
     { message: "At least one field is required" },
   );
 
 function normalizeNullableString(value: string | null | undefined): string | null | undefined {
-  if (value === undefined) return undefined;
-  if (value === null) return null;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
-
-function normalizeNullableUrl(value: string | null | undefined): string | null | undefined {
   if (value === undefined) return undefined;
   if (value === null) return null;
   const trimmed = value.trim();
@@ -120,8 +105,6 @@ export async function PATCH(
     data.description = normalizedDescription;
   }
 
-  const normalizedCreatorUrl = normalizeNullableUrl(parsed.data.creatorReferenceImageUrl);
-  const normalizedProductUrl = normalizeNullableUrl(parsed.data.productReferenceImageUrl);
   if (Object.keys(data).length > 0) {
     await db.project.update({
       where: { id: project.id },
@@ -129,36 +112,16 @@ export async function PATCH(
     });
   }
 
-  if (normalizedCreatorUrl !== undefined) {
-    await db.$executeRaw`
-      UPDATE "project"
-      SET "creatorReferenceImageUrl" = ${normalizedCreatorUrl}, "updatedAt" = CURRENT_TIMESTAMP
-      WHERE "id" = ${project.id}
-    `;
-  }
-
-  if (normalizedProductUrl !== undefined) {
-    await db.$executeRaw`
-      UPDATE "project"
-      SET "productReferenceImageUrl" = ${normalizedProductUrl}, "updatedAt" = CURRENT_TIMESTAMP
-      WHERE "id" = ${project.id}
-    `;
-  }
-
   const rows = await db.$queryRaw<Array<{
     id: string;
     name: string;
     description: string | null;
-    creatorReferenceImageUrl: string | null;
-    productReferenceImageUrl: string | null;
     updatedAt: Date;
   }>>`
     SELECT
       "id",
       "name",
       "description",
-      "creatorReferenceImageUrl" AS "creatorReferenceImageUrl",
-      "productReferenceImageUrl" AS "productReferenceImageUrl",
       "updatedAt" AS "updatedAt"
     FROM "project"
     WHERE "id" = ${project.id}

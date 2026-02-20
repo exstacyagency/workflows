@@ -697,6 +697,7 @@ async function runJob(
 
       case JobType.STORYBOARD_GENERATION: {
         const scriptId = String(payload?.scriptId ?? "").trim();
+        const productId = String(payload?.productId ?? "").trim() || null;
         if (!scriptId) {
           await rollbackJobQuotaIfNeeded({ jobId, projectId: job.projectId, payload });
           await markFailed({ jobId, error: "Invalid payload: missing scriptId" });
@@ -704,7 +705,7 @@ async function runJob(
         }
 
         try {
-          const result = await generateStoryboard(scriptId);
+          const result = await generateStoryboard(scriptId, { productId });
           const warningCount = Array.isArray(result.validationReport?.warnings)
             ? result.validationReport.warnings.length
             : 0;
@@ -743,6 +744,7 @@ async function runJob(
           payload,
         });
         const storyboardId = String(payload?.storyboardId ?? "").trim();
+        const productId = String(payload?.productId ?? "").trim() || null;
         if (!storyboardId) {
           await markFailed({ jobId, error: "Invalid payload: missing storyboardId" });
           return;
@@ -764,7 +766,7 @@ async function runJob(
 
         let result: Awaited<ReturnType<typeof startVideoPromptGenerationJob>>;
         try {
-          result = await startVideoPromptGenerationJob({ storyboardId, jobId });
+          result = await startVideoPromptGenerationJob({ storyboardId, jobId, productId });
           console.log("[Worker][VIDEO_PROMPT_GENERATION] Video prompt generation completed", {
             jobId,
             storyboardId,
@@ -819,6 +821,7 @@ async function runJob(
 
       case "IMAGE_PROMPT_GENERATION" as JobType: {
         const storyboardId = String(payload?.storyboardId ?? "").trim();
+        const productId = String(payload?.productId ?? "").trim() || null;
         if (!storyboardId) {
           const msg = "Invalid payload: missing storyboardId";
           await markFailed({ jobId, error: msg });
@@ -840,7 +843,7 @@ async function runJob(
 
         try {
           const result = await runWithMaxRuntime("IMAGE_PROMPT_GENERATION", async () => {
-            return generateImagePromptsFromStoryboard({ storyboardId, jobId });
+            return generateImagePromptsFromStoryboard({ storyboardId, jobId, productId });
           });
           await markCompleted({
             jobId,

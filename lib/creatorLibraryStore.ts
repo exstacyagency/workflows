@@ -5,6 +5,7 @@ export type OwnedProductRow = {
   projectId: string;
   name: string;
   creatorReferenceImageUrl: string | null;
+  productReferenceImageUrl: string | null;
 };
 
 export type CreatorLibraryRow = {
@@ -25,6 +26,7 @@ export async function ensureCreatorLibraryTables() {
       "product_problem_solved" text,
       "amazon_asin" text,
       "creator_reference_image_url" text,
+      "product_reference_image_url" text,
       "created_at" timestamptz NOT NULL DEFAULT now(),
       "updated_at" timestamptz NOT NULL DEFAULT now(),
       CONSTRAINT "product_project_name_unique" UNIQUE ("project_id", "name")
@@ -36,6 +38,10 @@ export async function ensureCreatorLibraryTables() {
   await prisma.$executeRawUnsafe(`
     ALTER TABLE "product"
     ADD COLUMN IF NOT EXISTS "creator_reference_image_url" text;
+  `);
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "product"
+    ADD COLUMN IF NOT EXISTS "product_reference_image_url" text;
   `);
 
   await prisma.$executeRawUnsafe(`
@@ -62,7 +68,8 @@ export async function findOwnedProductById(
       p."id",
       p."project_id" AS "projectId",
       p."name",
-      p."creator_reference_image_url" AS "creatorReferenceImageUrl"
+      p."creator_reference_image_url" AS "creatorReferenceImageUrl",
+      p."product_reference_image_url" AS "productReferenceImageUrl"
     FROM "product" p
     INNER JOIN "project" pr ON pr."id" = p."project_id"
     WHERE p."id" = ${productId}
