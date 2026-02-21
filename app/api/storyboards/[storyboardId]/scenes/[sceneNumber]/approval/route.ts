@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionUserId } from "@/lib/getSessionUserId";
 import { prisma } from "@/lib/prisma";
-import { ensureStoryboardSceneApprovalColumn } from "@/lib/creatorLibraryStore";
+import { ensureStoryboardSceneApprovalColumn } from "@/lib/productStore";
 
 function asObject(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
