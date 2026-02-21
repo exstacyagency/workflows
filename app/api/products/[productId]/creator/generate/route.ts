@@ -4,25 +4,52 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { cfg } from "@/lib/config";
 import { getSessionUserId } from "@/lib/getSessionUserId";
+import { MAX_POLL_ATTEMPTS, POLL_INTERVAL_MS } from "@/lib/imageProviders/kieImage";
 import {
   CreatorLibraryRow,
   ensureCreatorLibraryTables,
   findOwnedProductById,
   toCreatorLibraryResponse,
 } from "@/lib/creatorLibraryStore";
+import { getProvider } from "@/lib/imageProviders/registry";
 import { prisma } from "@/lib/prisma";
 
 const GenerateCreatorSchema = z.object({
   creatorDescription: z.string().trim().min(1, "creatorDescription is required").max(2000),
 });
 
+const CREATOR_NEUTRAL_STYLE =
+  "Professional neutral headshot, straight-on camera angle, even studio lighting, neutral expression, plain background, business casual attire, forward-facing pose";
 const CREATOR_PROMPT_SYSTEM =
-  "Write photorealistic headshot prompts. Direct eye contact. Natural expression. Professional lighting. Trustworthy but approachable. 150 chars max.";
+  `Write a photorealistic creator-reference headshot prompt optimized for Kling consistency. Base style: "${CREATOR_NEUTRAL_STYLE}". Keep output neutral and professional. Avoid emotion words like smile, warm, approachable. Return one prompt line only.`;
+
+function readPositiveIntEnv(name: string, fallback: number, min = 1): number {
+  const raw = cfg.raw(name);
+  const parsed = Number(raw);
+  if (Number.isFinite(parsed) && parsed >= min) {
+    return Math.floor(parsed);
+  }
+  if (raw != null && String(raw).trim() !== "") {
+    console.warn(`[creator.generate] Invalid ${name}=${String(raw)}. Using fallback ${fallback}.`);
+  }
+  return fallback;
+}
+
+const KIE_CREATOR_POLL_INTERVAL_MS = readPositiveIntEnv(
+  "KIE_CREATOR_POLL_INTERVAL_MS",
+  POLL_INTERVAL_MS,
+  POLL_INTERVAL_MS,
+);
+const KIE_CREATOR_POLL_MAX_ATTEMPTS = readPositiveIntEnv(
+  "KIE_CREATOR_POLL_MAX_ATTEMPTS",
+  MAX_POLL_ATTEMPTS,
+  MAX_POLL_ATTEMPTS,
+);
 
 function normalizePrompt(text: string): string {
   const normalized = String(text ?? "").replace(/\s+/g, " ").trim();
-  if (normalized.length <= 150) return normalized;
-  return normalized.slice(0, 150).trimEnd();
+  if (normalized.length <= 320) return normalized;
+  return normalized.slice(0, 320).trimEnd();
 }
 
 function extractTextContent(response: any): string {
@@ -37,7 +64,7 @@ function extractTextContent(response: any): string {
 
 function fallbackPrompt(description: string): string {
   return normalizePrompt(
-    `${description}. Photorealistic headshot, direct eye contact, natural expression, professional lighting, approachable and trustworthy.`,
+    `${CREATOR_NEUTRAL_STYLE}. Subject demographics: ${description}.`,
   );
 }
 
@@ -60,7 +87,7 @@ async function generateCreatorPrompt(description: string): Promise<string> {
       messages: [
         {
           role: "user",
-          content: `Creator description: ${description}\n\nReturn one prompt line under 150 characters.`,
+          content: `Creator description: ${description}\n\nReturn one prompt line using the neutral professional reference-headshot style.`,
         },
       ],
     });
@@ -75,71 +102,133 @@ async function generateCreatorPrompt(description: string): Promise<string> {
   }
 }
 
-function extractImageUrl(payload: any): string {
-  const candidates: unknown[] = [
-    payload?.imageUrl,
-    payload?.image_url,
-    payload?.url,
-    payload?.data?.imageUrl,
-    payload?.data?.image_url,
-    payload?.data?.url,
-    Array.isArray(payload?.images) ? payload.images[0] : null,
-    Array.isArray(payload?.data?.images) ? payload.data.images[0] : null,
-    Array.isArray(payload?.output) ? payload.output[0] : null,
-  ];
-
-  for (const candidate of candidates) {
-    if (typeof candidate === "string" && candidate.trim()) {
-      return candidate.trim();
-    }
-    if (candidate && typeof candidate === "object") {
-      const record = candidate as Record<string, unknown>;
-      const nested = [record.url, record.imageUrl, record.image_url];
-      for (const value of nested) {
-        if (typeof value === "string" && value.trim()) {
-          return value.trim();
-        }
-      }
-    }
-  }
-
-  throw new Error(
-    "Midjourney response missing image URL. Configure MIDJOURNEY_API_URL to a synchronous endpoint that returns imageUrl.",
-  );
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function generateCreatorImageWithMidjourney(prompt: string): Promise<string> {
-  const apiUrl = cfg.raw("MIDJOURNEY_API_URL");
-  const apiKey = cfg.raw("MIDJOURNEY_API_KEY");
+async function generateCreatorImageWithKie(prompt: string, productId: string): Promise<string> {
+  const kieApiBaseUrl = cfg.raw("KIE_API_BASE_URL") ?? null;
+  const kieCreatePath = cfg.raw("KIE_CREATE_PATH") ?? null;
+  const kieStatusPath = cfg.raw("KIE_STATUS_PATH") ?? null;
+  const hasKieApiKey = Boolean(cfg.raw("KIE_API_KEY"));
 
-  if (!apiUrl || !apiKey) {
-    throw new Error("MIDJOURNEY_API_URL and MIDJOURNEY_API_KEY must be set.");
-  }
-
-  const response = await fetch(apiUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
+  console.log("[creator.generate] KIE creator generation function start", {
+    timestamp: new Date().toISOString(),
+    productId,
+    prompt,
+  });
+  console.log("[creator.generate] KIE endpoint/auth configuration", {
+    timestamp: new Date().toISOString(),
+    kieApiBaseUrl,
+    kieCreatePath,
+    kieStatusPath,
+    hasKieApiKey,
+  });
+  console.log("[creator.generate] Starting KIE creator image generation", {
+    productId,
+    pollIntervalMs: KIE_CREATOR_POLL_INTERVAL_MS,
+    pollMaxAttempts: KIE_CREATOR_POLL_MAX_ATTEMPTS,
+  });
+  const provider = getProvider(cfg.raw("VIDEO_IMAGE_PROVIDER_ID"));
+  const createPayload = {
+    storyboardId: `creator:${productId}`,
+    idempotencyKey: JSON.stringify(["CREATOR_FACE_GENERATION", productId, Date.now()]),
+    force: true,
+    prompts: [{ frameIndex: 0, prompt }],
+    options: {
+      purpose: "creator_library",
+      productId,
     },
-    body: JSON.stringify({
-      prompt,
-    }),
+  };
+  console.log("[creator.generate] KIE createTask request payload", {
+    timestamp: new Date().toISOString(),
+    productId,
+    payload: createPayload,
   });
 
-  const rawText = await response.text();
-  if (!response.ok) {
-    throw new Error(`Midjourney request failed: ${response.status} ${rawText}`);
-  }
-
-  let payload: any = null;
+  let createResult: Awaited<ReturnType<typeof provider.createTask>>;
   try {
-    payload = rawText ? JSON.parse(rawText) : null;
-  } catch {
-    throw new Error(`Midjourney response was not valid JSON: ${rawText || "<empty>"}`);
+    createResult = await provider.createTask(createPayload);
+  } catch (error: any) {
+    console.log("[creator.generate] KIE createTask failed before taskId extraction", {
+      timestamp: new Date().toISOString(),
+      productId,
+      error,
+    });
+    throw error;
   }
 
-  return extractImageUrl(payload);
+  console.log("[creator.generate] KIE createTask raw response", {
+    timestamp: new Date().toISOString(),
+    productId,
+    statusCode: createResult.httpStatus ?? null,
+    bodyText: createResult.responseText ?? null,
+    bodyJson: createResult.raw,
+  });
+  const hasTaskId = Boolean(createResult.taskId && String(createResult.taskId).trim());
+  console.log("[creator.generate] KIE task ID extraction", {
+    timestamp: new Date().toISOString(),
+    productId,
+    hasTaskId,
+    taskId: createResult.taskId ?? null,
+  });
+  if (!hasTaskId) {
+    throw new Error("KIE createTask did not return a task ID.");
+  }
+
+  let attemptsMade = 0;
+  for (let attempt = 0; attempt < KIE_CREATOR_POLL_MAX_ATTEMPTS; attempt += 1) {
+    attemptsMade = attempt + 1;
+    let task: Awaited<ReturnType<typeof provider.getTask>>;
+    try {
+      task = await provider.getTask(createResult.taskId);
+    } catch (error: any) {
+      console.log("[creator.generate] KIE polling attempt failed", {
+        timestamp: new Date().toISOString(),
+        productId,
+        taskId: createResult.taskId,
+        attemptNumber: attemptsMade,
+        maxAttempts: KIE_CREATOR_POLL_MAX_ATTEMPTS,
+        error,
+      });
+      throw error;
+    }
+    console.log("[creator.generate] KIE polling attempt result", {
+      timestamp: new Date().toISOString(),
+      productId,
+      taskId: createResult.taskId,
+      attemptNumber: attemptsMade,
+      maxAttempts: KIE_CREATOR_POLL_MAX_ATTEMPTS,
+      statusCode: task.httpStatus ?? null,
+      status: task.status,
+      bodyText: task.responseText ?? null,
+      bodyJson: task.raw,
+      errorMessage: task.errorMessage ?? null,
+      imageCount: task.images?.length ?? 0,
+    });
+    if (task.status === "SUCCEEDED") {
+      const imageUrl = task.images?.[0]?.url?.trim();
+      if (!imageUrl) {
+        throw new Error("KIE task succeeded but returned no image URL.");
+      }
+      return imageUrl;
+    }
+    if (task.status === "FAILED") {
+      throw new Error(task.errorMessage || "KIE image generation task failed.");
+    }
+    await wait(KIE_CREATOR_POLL_INTERVAL_MS);
+  }
+
+  console.log("[creator.generate] KIE creator generation timed out", {
+    timestamp: new Date().toISOString(),
+    productId,
+    taskId: createResult.taskId,
+    attemptsMade,
+    configuredMaxAttempts: KIE_CREATOR_POLL_MAX_ATTEMPTS,
+  });
+  throw new Error(
+    `KIE image generation timed out after ${attemptsMade} polling attempts.`,
+  );
 }
 
 export async function POST(req: NextRequest, { params }: { params: { productId: string } }) {
@@ -165,7 +254,7 @@ export async function POST(req: NextRequest, { params }: { params: { productId: 
     }
 
     const generatedPrompt = await generateCreatorPrompt(parsed.data.creatorDescription);
-    const imageUrl = await generateCreatorImageWithMidjourney(generatedPrompt);
+    const imageUrl = await generateCreatorImageWithKie(generatedPrompt, product.id);
 
     const libraryId = randomUUID();
     const rows = await prisma.$queryRaw<CreatorLibraryRow[]>`

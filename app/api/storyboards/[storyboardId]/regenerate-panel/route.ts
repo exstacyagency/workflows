@@ -216,6 +216,7 @@ export async function POST(
     const body = await req.json().catch(() => null);
     const bodyObject = asObject(body) ?? {};
     const panelIndex = Number(bodyObject.panelIndex);
+    const requestedProductId = asString(bodyObject.productId);
     if (!Number.isInteger(panelIndex) || panelIndex < 0) {
       return NextResponse.json({ error: "panelIndex must be a non-negative integer" }, { status: 400 });
     }
@@ -229,10 +230,14 @@ export async function POST(
       },
       select: {
         id: true,
-        project: {
+        projectId: true,
+        script: {
           select: {
-            creatorReferenceImageUrl: true,
-            productReferenceImageUrl: true,
+            job: {
+              select: {
+                payload: true,
+              },
+            },
           },
         },
         scenes: {
@@ -249,6 +254,27 @@ export async function POST(
 
     if (!storyboard) {
       return NextResponse.json({ error: "Storyboard not found" }, { status: 404 });
+    }
+
+    const scriptJobPayload = asObject(storyboard.script?.job?.payload) ?? {};
+    const effectiveProductId = requestedProductId || asString(scriptJobPayload.productId);
+    let creatorReferenceImageUrl = "";
+    let productReferenceImageUrl = "";
+    if (effectiveProductId) {
+      const productRows = await prisma.$queryRaw<Array<{
+        creatorReferenceImageUrl: string | null;
+        productReferenceImageUrl: string | null;
+      }>>`
+        SELECT
+          "creator_reference_image_url" AS "creatorReferenceImageUrl",
+          "product_reference_image_url" AS "productReferenceImageUrl"
+        FROM "product"
+        WHERE "id" = ${effectiveProductId}
+          AND "project_id" = ${storyboard.projectId}
+        LIMIT 1
+      `;
+      creatorReferenceImageUrl = asString(productRows[0]?.creatorReferenceImageUrl);
+      productReferenceImageUrl = asString(productRows[0]?.productReferenceImageUrl);
     }
 
     const panels = storyboard.scenes.map((scene) =>
@@ -280,8 +306,8 @@ export async function POST(
       const durationSec = toDurationSec(targetRawJson);
       const hasCreatorRef =
         targetPanel.panelType !== "B_ROLL_ONLY" &&
-        Boolean(asString(storyboard.project?.creatorReferenceImageUrl));
-      const hasProductRef = Boolean(asString(storyboard.project?.productReferenceImageUrl));
+        Boolean(creatorReferenceImageUrl);
+      const hasProductRef = Boolean(productReferenceImageUrl);
 
       const response = await anthropic.messages.create({
         model: VIDEO_PROMPT_MODEL,

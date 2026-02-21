@@ -30,8 +30,10 @@ export async function POST(req: NextRequest) {
     }
     const projectId = asString(body.projectId);
     const storyboardId = asString(body.storyboardId);
+    const requestedProductId = asString(body.productId);
     const requestedRunId = asString(body.runId);
     let effectiveRunId: string | null = null;
+    let effectiveProductId: string | null = null;
 
     if (!projectId) {
       return NextResponse.json({ error: "projectId is required" }, { status: 400 });
@@ -52,6 +54,20 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "runId not found for this project" }, { status: 400 });
       }
       effectiveRunId = existingRun.id;
+    }
+
+    if (requestedProductId) {
+      const productRows = await prisma.$queryRaw<Array<{ id: string }>>`
+        SELECT "id"
+        FROM "product"
+        WHERE "id" = ${requestedProductId}
+          AND "project_id" = ${projectId}
+        LIMIT 1
+      `;
+      if (!productRows[0]?.id) {
+        return NextResponse.json({ error: "productId not found for this project" }, { status: 400 });
+      }
+      effectiveProductId = requestedProductId;
     }
 
     const storyboard = await prisma.storyboard.findFirst({
@@ -83,6 +99,7 @@ export async function POST(req: NextRequest) {
         payload: {
           projectId,
           storyboardId,
+          ...(effectiveProductId ? { productId: effectiveProductId } : {}),
           ...(effectiveRunId ? { runId: effectiveRunId } : {}),
           idempotencyKey,
         },

@@ -6,11 +6,7 @@ type ProjectSettingsPanelProps = {
   projectId: string;
   initialName: string;
   initialDescription: string | null;
-  initialCreatorReferenceImageUrl: string | null;
-  initialProductReferenceImageUrl: string | null;
 };
-
-type ReferenceKind = "creator" | "product";
 
 function toNullableTrimmed(value: string): string | null {
   const trimmed = value.trim();
@@ -44,8 +40,6 @@ export function ProjectSettingsPanel({
   projectId,
   initialName,
   initialDescription,
-  initialCreatorReferenceImageUrl,
-  initialProductReferenceImageUrl,
 }: ProjectSettingsPanelProps) {
   const [name, setName] = useState(initialName);
   const [description, setDescription] = useState(initialDescription ?? "");
@@ -55,32 +49,13 @@ export function ProjectSettingsPanel({
   );
   const [savedName, setSavedName] = useState(initialName);
   const [savedDescription, setSavedDescription] = useState(initialDescription ?? "");
-  const [savedCreatorReferenceImageUrl, setSavedCreatorReferenceImageUrl] = useState(initialCreatorReferenceImageUrl ?? "");
-  const [savedProductReferenceImageUrl, setSavedProductReferenceImageUrl] = useState(initialProductReferenceImageUrl ?? "");
-  const [creatorFile, setCreatorFile] = useState<File | null>(null);
-  const [productFile, setProductFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
-  const [uploadingKind, setUploadingKind] = useState<ReferenceKind | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
   const hasPendingChanges = useMemo(() => {
-    return (
-      name !== savedName ||
-      description !== savedDescription ||
-      creatorReferenceImageUrl !== savedCreatorReferenceImageUrl ||
-      productReferenceImageUrl !== savedProductReferenceImageUrl
-    );
-  }, [
-    creatorReferenceImageUrl,
-    description,
-    name,
-    productReferenceImageUrl,
-    savedCreatorReferenceImageUrl,
-    savedDescription,
-    savedName,
-    savedProductReferenceImageUrl,
-  ]);
+    return name !== savedName || description !== savedDescription;
+  }, [description, name, savedDescription, savedName]);
 
   async function handleSave(event: FormEvent) {
     event.preventDefault();
@@ -95,8 +70,6 @@ export function ProjectSettingsPanel({
         body: JSON.stringify({
           name: name.trim(),
           description: toNullableTrimmed(description),
-          creatorReferenceImageUrl: toNullableTrimmed(creatorReferenceImageUrl),
-          productReferenceImageUrl: toNullableTrimmed(productReferenceImageUrl),
         }),
       });
 
@@ -107,8 +80,6 @@ export function ProjectSettingsPanel({
 
       setSavedName(name);
       setSavedDescription(description);
-      setSavedCreatorReferenceImageUrl(creatorReferenceImageUrl);
-      setSavedProductReferenceImageUrl(productReferenceImageUrl);
       setNotice("Project settings saved.");
     } catch (err: any) {
       setError(err?.message || "Failed to save project settings");
@@ -117,70 +88,11 @@ export function ProjectSettingsPanel({
     }
   }
 
-  async function handleUpload(kind: ReferenceKind) {
-    const file = kind === "creator" ? creatorFile : productFile;
-    if (!file) {
-      setError(`Select a ${kind} image first`);
-      return;
-    }
-
-    setUploadingKind(kind);
-    setError(null);
-    setNotice(null);
-
-    try {
-      const formData = new FormData();
-      formData.append("kind", kind);
-      formData.append("file", file);
-
-      const response = await fetch(`/api/projects/${projectId}/reference-images`, {
-        method: "POST",
-        body: formData,
-      });
-
-      const payload = (await response.json().catch(() => null)) as
-        | {
-            kind?: ReferenceKind;
-            url?: string;
-            project?: {
-              creatorReferenceImageUrl?: string | null;
-              productReferenceImageUrl?: string | null;
-            };
-            error?: string;
-          }
-        | null;
-
-      if (!response.ok) {
-        throw new Error(extractErrorMessage(payload, "Failed to upload image"));
-      }
-
-      const creatorUrl = payload?.project?.creatorReferenceImageUrl ?? payload?.url ?? null;
-      const productUrl = payload?.project?.productReferenceImageUrl ?? payload?.url ?? null;
-
-      if (kind === "creator" && creatorUrl) {
-        setCreatorReferenceImageUrl(creatorUrl);
-        setSavedCreatorReferenceImageUrl(creatorUrl);
-        setCreatorFile(null);
-      }
-      if (kind === "product" && productUrl) {
-        setProductReferenceImageUrl(productUrl);
-        setSavedProductReferenceImageUrl(productUrl);
-        setProductFile(null);
-      }
-
-      setNotice(`${kind === "creator" ? "Creator" : "Product"} reference image uploaded.`);
-    } catch (err: any) {
-      setError(err?.message || "Failed to upload image");
-    } finally {
-      setUploadingKind(null);
-    }
-  }
-
   return (
     <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-5 space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold text-slate-100">Project Settings</h2>
-        <span className="text-[11px] text-slate-500">Reference images feed prompt + Kling video generation</span>
+        <span className="text-[11px] text-slate-500">Name and description only</span>
       </div>
 
       {error && <p className="text-xs text-red-400">{error}</p>}

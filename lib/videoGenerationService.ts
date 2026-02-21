@@ -48,7 +48,7 @@ type SceneLike = {
   videoUrl: string | null;
 };
 
-type ProjectReferenceImages = {
+type ProductReferenceImages = {
   creatorReferenceImageUrl: string | null;
   productReferenceImageUrl: string | null;
 };
@@ -92,6 +92,11 @@ function normalizeUrl(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+function asString(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return value.trim();
+}
+
 function normalizeReferenceFrames(value: unknown): SceneReferenceFrame[] {
   if (!Array.isArray(value)) return [];
 
@@ -117,7 +122,7 @@ function resolveScenePanelType(scene: SceneLike, raw: Record<string, any>): 'ON_
 function buildSceneReferenceFrames(args: {
   scene: SceneLike;
   raw: Record<string, any>;
-  projectReferenceImages: ProjectReferenceImages;
+  productReferenceImages: ProductReferenceImages;
 }): SceneReferenceFrame[] {
   const panelType = resolveScenePanelType(args.scene, args.raw);
 
@@ -126,10 +131,10 @@ function buildSceneReferenceFrames(args: {
   const productFromRaw = rawFrames.find((frame) => frame.kind === 'product')?.url;
 
   const creatorReferenceImageUrl = normalizeUrl(
-    creatorFromRaw ?? args.raw.creatorReferenceImageUrl ?? args.projectReferenceImages.creatorReferenceImageUrl,
+    creatorFromRaw ?? args.raw.creatorReferenceImageUrl ?? args.productReferenceImages.creatorReferenceImageUrl,
   );
   const productReferenceImageUrl = normalizeUrl(
-    productFromRaw ?? args.raw.productReferenceImageUrl ?? args.projectReferenceImages.productReferenceImageUrl,
+    productFromRaw ?? args.raw.productReferenceImageUrl ?? args.productReferenceImages.productReferenceImageUrl,
   );
 
   const frames: SceneReferenceFrame[] = [];
@@ -327,7 +332,7 @@ async function pollKieVideoJob(
 
 async function generateVideoForScene(
   scene: SceneLike,
-  projectReferenceImages: ProjectReferenceImages,
+  productReferenceImages: ProductReferenceImages,
 ): Promise<SceneVideoResult> {
   const raw = asObject((scene as any).rawJson);
   const prompt = String((scene as any).videoPrompt ?? raw.videoPrompt ?? '').trim();
@@ -347,7 +352,7 @@ async function generateVideoForScene(
   const referenceFrames = buildSceneReferenceFrames({
     scene,
     raw,
-    projectReferenceImages,
+    productReferenceImages,
   });
   // Kling uses `image_input`; append creator/product references after first/last anchors.
   const imageInputs = Array.from(
@@ -381,6 +386,36 @@ async function generateVideoForScene(
       fps,
       aspectRatio,
     },
+  };
+}
+
+async function loadProductReferenceImages(args: {
+  projectId: string;
+  productId: string | null;
+}): Promise<ProductReferenceImages> {
+  if (!args.productId) {
+    return {
+      creatorReferenceImageUrl: null,
+      productReferenceImageUrl: null,
+    };
+  }
+
+  const productRows = await prisma.$queryRaw<Array<{
+    creatorReferenceImageUrl: string | null;
+    productReferenceImageUrl: string | null;
+  }>>`
+    SELECT
+      "creator_reference_image_url" AS "creatorReferenceImageUrl",
+      "product_reference_image_url" AS "productReferenceImageUrl"
+    FROM "product"
+    WHERE "id" = ${args.productId}
+      AND "project_id" = ${args.projectId}
+    LIMIT 1
+  `;
+
+  return {
+    creatorReferenceImageUrl: normalizeUrl(productRows[0]?.creatorReferenceImageUrl),
+    productReferenceImageUrl: normalizeUrl(productRows[0]?.productReferenceImageUrl),
   };
 }
 
@@ -445,6 +480,7 @@ export async function runVideoGenerationJob(job: JobLike): Promise<RunResult> {
   const projectId = String(payload.projectId ?? '').trim();
   const storyboardId = String(payload.storyboardId ?? '').trim();
   const scriptId = String(payload.scriptId ?? '').trim();
+  const payloadProductId = asString(payload.productId) || null;
 
   const missing: string[] = [];
   if (!projectId) missing.push('projectId');
@@ -473,28 +509,25 @@ export async function runVideoGenerationJob(job: JobLike): Promise<RunResult> {
 
   const script = await prisma.script.findFirst({
     where: { id: scriptId, projectId },
-    select: { id: true, mergedVideoUrl: true },
+    select: {
+      id: true,
+      mergedVideoUrl: true,
+      job: {
+        select: {
+          payload: true,
+        },
+      },
+    },
   });
   if (!script) {
     throw new Error('Script not found');
   }
-
-  const projectRows = await prisma.$queryRaw<Array<{
-    creatorReferenceImageUrl: string | null;
-    productReferenceImageUrl: string | null;
-  }>>`
-    SELECT
-      "creatorReferenceImageUrl" AS "creatorReferenceImageUrl",
-      "productReferenceImageUrl" AS "productReferenceImageUrl"
-    FROM "project"
-    WHERE "id" = ${projectId}
-    LIMIT 1
-  `;
-  const project = projectRows[0];
-  const projectReferenceImages: ProjectReferenceImages = {
-    creatorReferenceImageUrl: normalizeUrl(project?.creatorReferenceImageUrl),
-    productReferenceImageUrl: normalizeUrl(project?.productReferenceImageUrl),
-  };
+  const scriptJobPayload = asObject(script.job?.payload);
+  const effectiveProductId = payloadProductId || asString(scriptJobPayload?.productId) || null;
+  const productReferenceImages = await loadProductReferenceImages({
+    projectId,
+    productId: effectiveProductId,
+  });
 
   const scenes = storyboard.scenes.sort((a, b) => a.sceneNumber - b.sceneNumber);
   const existingUrls = scenes
@@ -530,7 +563,7 @@ export async function runVideoGenerationJob(job: JobLike): Promise<RunResult> {
   for (const scene of targetScenes) {
     const result = await generateVideoForScene(
       scene as unknown as SceneLike,
-      projectReferenceImages,
+      productReferenceImages,
     );
     results.push(result);
   }
