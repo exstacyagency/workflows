@@ -13,6 +13,7 @@ export type CreateVideoImagesInput = {
     prompt: string;
     negativePrompt?: string;
     inputImageUrl?: string | null; // optional init image
+    previousSceneLastFrameImageUrl?: string | null; // optional continuity reference
     maskImageUrl?: string | null;  // optional mask
     width?: number;
     height?: number;
