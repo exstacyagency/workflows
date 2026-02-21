@@ -11,6 +11,9 @@ type ProductRow = {
   amazonAsin: string | null;
   creatorReferenceImageUrl: string | null;
   productReferenceImageUrl: string | null;
+  characterReferenceVideoUrl: string | null;
+  soraCharacterId: string | null;
+  characterCameoCreatedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -80,6 +83,9 @@ async function ensureProductsTable() {
       "amazon_asin" text,
       "creator_reference_image_url" text,
       "product_reference_image_url" text,
+      "character_reference_video_url" text,
+      "sora_character_id" text,
+      "character_cameo_created_at" timestamptz,
       "created_at" timestamptz NOT NULL DEFAULT now(),
       "updated_at" timestamptz NOT NULL DEFAULT now(),
       CONSTRAINT "product_project_name_unique" UNIQUE ("project_id", "name")
@@ -95,6 +101,18 @@ async function ensureProductsTable() {
   await prisma.$executeRawUnsafe(`
     ALTER TABLE "product"
     ADD COLUMN IF NOT EXISTS "product_reference_image_url" text;
+  `);
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "product"
+    ADD COLUMN IF NOT EXISTS "character_reference_video_url" text;
+  `);
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "product"
+    ADD COLUMN IF NOT EXISTS "sora_character_id" text;
+  `);
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "product"
+    ADD COLUMN IF NOT EXISTS "character_cameo_created_at" timestamptz;
   `);
 }
 
@@ -123,6 +141,9 @@ export async function GET(
         "amazon_asin" AS "amazonAsin",
         "creator_reference_image_url" AS "creatorReferenceImageUrl",
         "product_reference_image_url" AS "productReferenceImageUrl",
+        "character_reference_video_url" AS "characterReferenceVideoUrl",
+        "sora_character_id" AS "soraCharacterId",
+        "character_cameo_created_at" AS "characterCameoCreatedAt",
         "created_at" AS "createdAt",
         "updated_at" AS "updatedAt"
       FROM "product"
@@ -200,6 +221,9 @@ export async function POST(
         "amazon_asin" AS "amazonAsin",
         "creator_reference_image_url" AS "creatorReferenceImageUrl",
         "product_reference_image_url" AS "productReferenceImageUrl",
+        "character_reference_video_url" AS "characterReferenceVideoUrl",
+        "sora_character_id" AS "soraCharacterId",
+        "character_cameo_created_at" AS "characterCameoCreatedAt",
         "created_at" AS "createdAt",
         "updated_at" AS "updatedAt"
     `;
@@ -246,6 +270,9 @@ export async function PATCH(
         "amazon_asin" AS "amazonAsin",
         "creator_reference_image_url" AS "creatorReferenceImageUrl",
         "product_reference_image_url" AS "productReferenceImageUrl",
+        "character_reference_video_url" AS "characterReferenceVideoUrl",
+        "sora_character_id" AS "soraCharacterId",
+        "character_cameo_created_at" AS "characterCameoCreatedAt",
         "created_at" AS "createdAt",
         "updated_at" AS "updatedAt"
       FROM "product"
@@ -315,6 +342,9 @@ export async function PATCH(
         "amazon_asin" AS "amazonAsin",
         "creator_reference_image_url" AS "creatorReferenceImageUrl",
         "product_reference_image_url" AS "productReferenceImageUrl",
+        "character_reference_video_url" AS "characterReferenceVideoUrl",
+        "sora_character_id" AS "soraCharacterId",
+        "character_cameo_created_at" AS "characterCameoCreatedAt",
         "created_at" AS "createdAt",
         "updated_at" AS "updatedAt"
     `;

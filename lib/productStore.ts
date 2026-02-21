@@ -6,18 +6,12 @@ export type OwnedProductRow = {
   name: string;
   creatorReferenceImageUrl: string | null;
   productReferenceImageUrl: string | null;
+  characterReferenceVideoUrl: string | null;
+  soraCharacterId: string | null;
+  characterCameoCreatedAt: Date | null;
 };
 
-export type CreatorLibraryRow = {
-  id: string;
-  productId: string;
-  imageUrl: string;
-  prompt: string;
-  isActive: boolean;
-  createdAt: Date;
-};
-
-export async function ensureCreatorLibraryTables() {
+export async function ensureProductTableColumns() {
   await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS "product" (
       "id" text PRIMARY KEY,
@@ -27,14 +21,19 @@ export async function ensureCreatorLibraryTables() {
       "amazon_asin" text,
       "creator_reference_image_url" text,
       "product_reference_image_url" text,
+      "character_reference_video_url" text,
+      "sora_character_id" text,
+      "character_cameo_created_at" timestamptz,
       "created_at" timestamptz NOT NULL DEFAULT now(),
       "updated_at" timestamptz NOT NULL DEFAULT now(),
       CONSTRAINT "product_project_name_unique" UNIQUE ("project_id", "name")
     );
   `);
+
   await prisma.$executeRawUnsafe(
     `CREATE INDEX IF NOT EXISTS "product_project_id_idx" ON "product" ("project_id");`,
   );
+
   await prisma.$executeRawUnsafe(`
     ALTER TABLE "product"
     ADD COLUMN IF NOT EXISTS "creator_reference_image_url" text;
@@ -43,22 +42,18 @@ export async function ensureCreatorLibraryTables() {
     ALTER TABLE "product"
     ADD COLUMN IF NOT EXISTS "product_reference_image_url" text;
   `);
-
   await prisma.$executeRawUnsafe(`
-    CREATE TABLE IF NOT EXISTS "creator_library" (
-      "id" text PRIMARY KEY,
-      "product_id" text NOT NULL REFERENCES "product"("id") ON DELETE CASCADE,
-      "image_url" text NOT NULL,
-      "prompt" text NOT NULL,
-      "is_active" boolean NOT NULL DEFAULT false,
-      "created_at" timestamptz NOT NULL DEFAULT now()
-    );
+    ALTER TABLE "product"
+    ADD COLUMN IF NOT EXISTS "character_reference_video_url" text;
   `);
-  await prisma.$executeRawUnsafe(
-    `CREATE INDEX IF NOT EXISTS "creator_library_product_id_idx" ON "creator_library" ("product_id");`,
-  );
-
-  await ensureStoryboardSceneApprovalColumn();
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "product"
+    ADD COLUMN IF NOT EXISTS "sora_character_id" text;
+  `);
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "product"
+    ADD COLUMN IF NOT EXISTS "character_cameo_created_at" timestamptz;
+  `);
 }
 
 export async function ensureStoryboardSceneApprovalColumn() {
@@ -78,7 +73,10 @@ export async function findOwnedProductById(
       p."project_id" AS "projectId",
       p."name",
       p."creator_reference_image_url" AS "creatorReferenceImageUrl",
-      p."product_reference_image_url" AS "productReferenceImageUrl"
+      p."product_reference_image_url" AS "productReferenceImageUrl",
+      p."character_reference_video_url" AS "characterReferenceVideoUrl",
+      p."sora_character_id" AS "soraCharacterId",
+      p."character_cameo_created_at" AS "characterCameoCreatedAt"
     FROM "product" p
     INNER JOIN "project" pr ON pr."id" = p."project_id"
     WHERE p."id" = ${productId}
@@ -86,15 +84,4 @@ export async function findOwnedProductById(
     LIMIT 1
   `;
   return rows[0] ?? null;
-}
-
-export function toCreatorLibraryResponse(row: CreatorLibraryRow) {
-  return {
-    id: row.id,
-    productId: row.productId,
-    imageUrl: row.imageUrl,
-    prompt: row.prompt,
-    isActive: row.isActive,
-    createdAt: row.createdAt.toISOString(),
-  };
 }

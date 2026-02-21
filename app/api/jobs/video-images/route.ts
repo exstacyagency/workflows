@@ -3,7 +3,7 @@ import { JobStatus, JobType, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getSessionUserId } from "@/lib/getSessionUserId";
 import { requireProjectOwner404 } from "@/lib/auth/requireProjectOwner404";
-import { ensureCreatorLibraryTables, findOwnedProductById } from "@/lib/creatorLibraryStore";
+import { ensureProductTableColumns, findOwnedProductById } from "@/lib/productStore";
 import { POST as startVideoImagesStartPost } from "./start/route";
 
 type StoryboardJobRow = {
@@ -139,7 +139,7 @@ export async function POST(req: NextRequest) {
 
   const deny = await requireProjectOwner404(projectId);
   if (deny) return deny;
-  await ensureCreatorLibraryTables();
+  await ensureProductTableColumns();
 
   const ownedProduct = await findOwnedProductById(productId, userId);
   if (!ownedProduct || ownedProduct.projectId !== projectId) {
