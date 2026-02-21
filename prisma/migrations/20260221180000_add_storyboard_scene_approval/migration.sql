@@ -1,0 +1,2 @@
+ALTER TABLE "storyboard_scene"
+ADD COLUMN IF NOT EXISTS "approved" BOOLEAN NOT NULL DEFAULT false;

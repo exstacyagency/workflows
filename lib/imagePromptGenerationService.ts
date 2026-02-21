@@ -4,7 +4,9 @@ import prisma from "@/lib/prisma";
 
 const IMAGE_PROMPT_MODEL = cfg.raw("ANTHROPIC_HAIKU_MODEL") || "claude-haiku-4-5-20251001";
 const IMAGE_PROMPT_SYSTEM_PROMPT =
-  "Write static image prompts for AI generators. Two prompts per scene: first frame and last frame. No motion. Pure composition. Under 150 chars each. Output JSON with firstFramePrompt and lastFramePrompt fields.";
+  "Write static image prompts for AI generators. Two prompts per scene: first frame and last frame. No motion. Pure composition. Under 150 chars each. Output JSON with firstFramePrompt and lastFramePrompt fields. Style: User-generated content (UGC) aesthetic - smartphone camera quality, natural imperfect lighting, authentic casual feel, NOT professional studio photography. Camera: Front-facing phone camera or selfie stick perspective. Lighting: Available natural light from windows, warm indoor lighting, realistic shadows. Setting: Real home/office environment with visible everyday items, not staged or studio backgrounds. Person: Natural unpolished appearance, casual clothing, genuine expressions not model poses.";
+const UGC_SCENE_STYLE_SUFFIX =
+  "UGC smartphone video style, natural casual aesthetic, authentic not professionally produced";
 const HAS_ANTHROPIC_API_KEY = Boolean(cfg.raw("ANTHROPIC_API_KEY"));
 
 console.log("[imagePromptGeneration] ANTHROPIC_API_KEY present:", HAS_ANTHROPIC_API_KEY);
@@ -120,7 +122,14 @@ function buildUserPrompt(args: {
   creatorReferenceImageUrl: string | null;
   productReferenceImageUrl: string | null;
 }) {
+  const sceneDescriptionParts = [args.characterAction, args.environment, args.cameraDirection]
+    .map((value) => asString(value))
+    .filter(Boolean);
+  const sceneDescription = sceneDescriptionParts.length
+    ? `${sceneDescriptionParts.join(", ")}. ${UGC_SCENE_STYLE_SUFFIX}`
+    : UGC_SCENE_STYLE_SUFFIX;
   return `Scene ${args.sceneNumber}
+sceneDescription: ${sceneDescription}
 characterAction: ${args.characterAction || "N/A"}
 environment: ${args.environment || "N/A"}
 cameraDirection: ${args.cameraDirection || "N/A"}

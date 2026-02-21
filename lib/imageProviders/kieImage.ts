@@ -10,6 +10,7 @@ import type {
 
 export const MAX_POLL_ATTEMPTS = 180;
 export const POLL_INTERVAL_MS = 3_000;
+const KIE_SPEND_CONFIRM_HEADERS = { "x-kie-spend-confirm": "1" } as const;
 
 function normalizeStatus(s: any): GetTaskOutput["status"] {
   const v = String(s ?? "").toUpperCase();
@@ -173,7 +174,14 @@ export class KieImageProvider implements VideoImageProvider {
     }
 
     const firstNegative = input.prompts[0]?.negativePrompt?.trim() ?? "";
-    const frameIndex = Number(input.prompts[0]?.frameIndex ?? 0);
+    const continuityReferenceUrl = input.prompts[0]?.previousSceneLastFrameImageUrl
+      ? String(input.prompts[0].previousSceneLastFrameImageUrl).trim()
+      : "";
+    const primaryInputImageUrl = input.prompts[0]?.inputImageUrl
+      ? String(input.prompts[0].inputImageUrl).trim()
+      : "";
+    const imageInputUrls = [primaryInputImageUrl, continuityReferenceUrl].filter(Boolean);
+    const contextImageUrls = imageInputUrls;
 
     const payload = {
       model: this.model,
@@ -186,22 +194,47 @@ export class KieImageProvider implements VideoImageProvider {
         // Many KIE schemas require input.prompt specifically.
         prompt: firstPrompt,
         negative_prompt: firstNegative || undefined,
+        ...(imageInputUrls.length > 0 ? { image_input: imageInputUrls } : {}),
+        aspect_ratio: "9:16",
+        resolution: "2K",
+        output_format: "png",
         storyboardId: input.storyboardId,
-        frames: input.prompts.map((p) => ({
-          frameIndex: p.frameIndex,
-          // KIE commonly uses snake_case keys.
-          prompt: (p.prompt ?? "").trim(),
-          negative_prompt: (p.negativePrompt ?? "").trim() || undefined,
-          inputImageUrl: p.inputImageUrl ?? null,
-          maskImageUrl: p.maskImageUrl ?? null,
-          width: p.width,
-          height: p.height,
-        })),
+        ...(continuityReferenceUrl
+          ? { previousSceneLastFrameImageUrl: continuityReferenceUrl }
+          : {}),
+        ...(contextImageUrls.length > 0 ? { contextImageUrls } : {}),
+        frames: input.prompts.map((p) => {
+          return {
+            previousSceneLastFrameImageUrl: p.previousSceneLastFrameImageUrl ?? null,
+            ...(p.previousSceneLastFrameImageUrl
+              ? { additionalInputImageUrls: [p.previousSceneLastFrameImageUrl] }
+              : {}),
+            ...(p.inputImageUrl || p.previousSceneLastFrameImageUrl
+              ? {
+                  contextImageUrls: [p.inputImageUrl, p.previousSceneLastFrameImageUrl].filter(
+                    (url): url is string => Boolean(url),
+                  ),
+                }
+              : {}),
+            frameIndex: p.frameIndex,
+            // KIE commonly uses snake_case keys.
+            prompt: (p.prompt ?? "").trim(),
+            negative_prompt: (p.negativePrompt ?? "").trim() || undefined,
+            maskImageUrl: p.maskImageUrl ?? null,
+            width: p.width,
+            height: p.height,
+          };
+        }),
         options: input.options ?? {},
       },
     };
 
-    const { status, json, text } = await kieRequest<any>("POST", createPath, payload);
+    const { status, json, text } = await kieRequest<any>(
+      "POST",
+      createPath,
+      payload,
+      KIE_SPEND_CONFIRM_HEADERS,
+    );
 
     const taskId = json?.data?.taskId ?? json?.taskId ?? json?.data?.id ?? null;
     if (!taskId) {
@@ -228,7 +261,12 @@ export class KieImageProvider implements VideoImageProvider {
       ? `${statusPath}${encodeURIComponent(taskId)}`
       : `${statusPath.replace(/\/+$/, "")}/${encodeURIComponent(taskId)}`;
 
-    const { status: httpStatus, json, text } = await kieRequest<any>("GET", path);
+    const { status: httpStatus, json, text } = await kieRequest<any>(
+      "GET",
+      path,
+      undefined,
+      KIE_SPEND_CONFIRM_HEADERS,
+    );
 
     let images = extractImagesFromKie(json);
     if (images.length === 0) {
