@@ -37,8 +37,7 @@ import { runPatternAnalysis } from "../lib/patternAnalysisService.ts";
 import { startScriptGenerationJob } from "../lib/scriptGenerationService.ts";
 import { generateStoryboard } from "../lib/storyboardGenerationService.ts";
 import { startVideoPromptGenerationJob } from "../lib/videoPromptGenerationService.ts";
-import { runVideoImageGenerationJob } from "../lib/videoImageGenerationService.ts";
-import { generateImagePromptsFromStoryboard } from "../lib/imagePromptGenerationService.ts";
+// ARCHIVED: IMAGE_PROMPT_GENERATION and VIDEO_IMAGE_GENERATION handlers removed.
 import { runVideoGenerationJob } from "../lib/videoGenerationService.ts";
 import { collectProductIntelWithWebFetch } from "../lib/productDataCollectionService.ts";
 import { analyzeProductData } from "../lib/productAnalysisService.ts";
@@ -88,17 +87,20 @@ if (pipelineContext.mode === "alpha" && cfg.raw("NODE_ENV") === "production") {
   throw new Error("INVALID CONFIG: MODE=alpha cannot run with NODE_ENV=production");
 }
 
-const IS_TEST = cfg.raw("NODE_ENV") === "test";
-
-const DEFAULT_POLL_INTERVAL_MS = Number(cfg.raw("WORKER_POLL_MS") ?? 1000);
-const TEST_POLL_INTERVAL_MS = Number(cfg.raw("WORKER_TEST_POLL_MS") ?? 50);
-
-const POLL_MS = IS_TEST ? TEST_POLL_INTERVAL_MS : DEFAULT_POLL_INTERVAL_MS;
+const POLL_MS = Math.max(2000, parseInt(cfg.raw("WORKER_POLL_MS") || "2000", 10));
+const ARCHIVED_JOB_TYPES: JobType[] = [
+  JobType.IMAGE_PROMPT_GENERATION,
+  JobType.VIDEO_IMAGE_GENERATION,
+];
 const RUN_ONCE = cfg.raw("RUN_ONCE") === "1";
 const WORKER_JOB_MAX_RUNTIME_MS = Number(cfg.raw("WORKER_JOB_MAX_RUNTIME_MS") ?? 20 * 60_000);
+const JOB_TIMEOUT_RECOVERY_INTERVAL_MS = 5 * 60_000;
 const AD_QUALITY_GATE_JOB_TYPE = "AD_QUALITY_GATE" as JobType;
 
 type JsonObject = Record<string, any>;
+type ClaimExclusions = {
+  excludedJobTypes?: JobType[];
+};
 
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
@@ -336,10 +338,13 @@ async function handleProviderConfig(jobId: string, provider: string, requiredEnv
   return { ok: false as const, skipped: false as const };
 }
 
-async function claimNextJob() {
+async function claimNextJob(exclusions?: ClaimExclusions) {
   const dueBefore = nowMs();
   const dueBeforeDate = new Date(dueBefore);
-  const excludedJobTypes: JobType[] = [];
+  const excludedTypes = [
+    ...(exclusions?.excludedJobTypes || []),
+    ...ARCHIVED_JOB_TYPES,
+  ];
   const excludedTypePayloadCombinations = [
     {
       type: JobType.AD_PERFORMANCE,
@@ -350,7 +355,7 @@ async function claimNextJob() {
   console.log('[Worker] claimNextJob called');
   console.log('[Worker] dueBefore:', dueBeforeDate.toISOString());
   console.log('[Worker] claim exclusions:', {
-    excludedJobTypes,
+    excludedJobTypes: excludedTypes,
     excludedTypePayloadCombinations,
   });
   console.log(
@@ -368,6 +373,12 @@ async function claimNextJob() {
         AND NOT (
           "type" = CAST('AD_PERFORMANCE' AS "JobType")
           AND COALESCE("payload"->>'jobType', "payload"->>'kind', '') IN ('ad_transcripts', 'ad_transcript_collection')
+        )
+        AND (
+          ${excludedTypes.length} = 0
+          OR "type" NOT IN (${Prisma.join(
+            excludedTypes.map((jobType) => Prisma.sql`CAST(${jobType} AS "JobType")`),
+          )})
         )
         AND (
           ("payload"->>'nextRunAt') IS NULL
@@ -819,102 +830,15 @@ async function runJob(
         return;
       }
 
-      case "IMAGE_PROMPT_GENERATION" as JobType: {
-        const storyboardId = String(payload?.storyboardId ?? "").trim();
-        const productId = String(payload?.productId ?? "").trim() || null;
-        if (!storyboardId) {
-          const msg = "Invalid payload: missing storyboardId";
-          await markFailed({ jobId, error: msg });
-          await appendResultSummary(jobId, `Image prompt generation failed: ${msg}`);
-          return;
-        }
+      // ARCHIVED: Use VIDEO_PROMPT_GENERATION with Sora 2 instead.
+      // case "IMAGE_PROMPT_GENERATION" as JobType: {
+      //   return;
+      // }
 
-        const storyboard = await prisma.storyboard.findFirst({
-          where: { projectId: job.projectId, id: storyboardId },
-          orderBy: { createdAt: "desc" },
-          select: { id: true },
-        });
-        if (!storyboard?.id) {
-          const msg = `Storyboard not found for id=${storyboardId}`;
-          await markFailed({ jobId, error: msg });
-          await appendResultSummary(jobId, `Image prompt generation failed: ${msg}`);
-          return;
-        }
-
-        try {
-          const result = await runWithMaxRuntime("IMAGE_PROMPT_GENERATION", async () => {
-            return generateImagePromptsFromStoryboard({ storyboardId, jobId, productId });
-          });
-          await markCompleted({
-            jobId,
-            result,
-            summary: `Image prompts generated: ${result.count} scenes`,
-          });
-        } catch (e: any) {
-          const msg = String(e?.message ?? e ?? "Unknown error");
-          await markFailed({ jobId, error: e });
-          await appendResultSummary(jobId, `Image prompt generation failed: ${msg}`);
-        }
-        return;
-      }
-
-      case JobType.VIDEO_IMAGE_GENERATION: {
-        const storyboardId = String(payload?.storyboardId ?? "").trim();
-        const productId = String(payload?.productId ?? "").trim();
-        if (!storyboardId) {
-          const msg = "Invalid payload: missing storyboardId";
-          await markFailed({ jobId, error: msg });
-          await appendResultSummary(jobId, `Video images failed: ${msg}`);
-          return;
-        }
-        if (!productId) {
-          const msg = "Invalid payload: missing productId";
-          await markFailed({ jobId, error: msg });
-          await appendResultSummary(jobId, `Video images failed: ${msg}`);
-          return;
-        }
-
-        const storyboard = await prisma.storyboard.findFirst({
-          where: { projectId: job.projectId, id: storyboardId },
-          orderBy: { createdAt: "desc" },
-          select: { id: true },
-        });
-        if (!storyboard?.id) {
-          const msg = `Storyboard not found for id=${storyboardId}`;
-          await markFailed({ jobId, error: msg });
-          await appendResultSummary(jobId, `Video images failed: ${msg}`);
-          return;
-        }
-        await ensureCreatorLibraryTables();
-        const productRows = await prisma.$queryRaw<Array<{ creatorReferenceImageUrl: string | null }>>`
-          SELECT "creator_reference_image_url" AS "creatorReferenceImageUrl"
-          FROM "product"
-          WHERE "id" = ${productId}
-            AND "project_id" = ${job.projectId}
-          LIMIT 1
-        `;
-        const creatorReferenceImageUrl = String(productRows[0]?.creatorReferenceImageUrl ?? "").trim();
-        if (!creatorReferenceImageUrl) {
-          const msg =
-            "Image generation requires an active creator reference image. Set product.creatorReferenceImageUrl first.";
-          await markFailed({ jobId, error: msg });
-          await appendResultSummary(jobId, `Video images failed: ${msg}`);
-          return;
-        }
-
-        try {
-          await runWithMaxRuntime("VIDEO_IMAGE_GENERATION", async () => {
-            await runVideoImageGenerationJob({ jobId });
-          });
-          await markCompleted({ jobId, result: { ok: true } });
-        } catch (e: any) {
-          const msg = String(e?.message ?? e ?? "Unknown error");
-          await rollbackJobQuotaIfNeeded({ jobId, projectId: job.projectId, payload });
-          await markFailed({ jobId, error: e });
-          await appendResultSummary(jobId, `Video images failed: ${msg}`);
-        }
-        return;
-      }
+      // ARCHIVED: Use Sora 2 Character Cameos for direct video generation.
+      // case JobType.VIDEO_IMAGE_GENERATION: {
+      //   return;
+      // }
 
       case JobType.VIDEO_GENERATION: {
         const cfg = await handleProviderConfig(jobId, "KIE", ["KIE_API_KEY"]);
@@ -1061,10 +985,38 @@ async function runJob(
   }
 }
 
+async function recoverTimedOutRunningJobs(trigger: "startup" | "interval") {
+  const recoveredCount = await prisma.$executeRaw`
+    UPDATE job
+    SET "status" = CAST('FAILED' AS "JobStatus"),
+        "error" = to_jsonb('Job timeout - exceeded maximum runtime'::text),
+        "updatedAt" = NOW()
+    WHERE "status" = CAST('RUNNING' AS "JobStatus")
+      AND "updatedAt" < NOW() - INTERVAL '10 minutes'
+  `;
+
+  if (recoveredCount > 0) {
+    writeLog(
+      `[jobRunner] timeout recovery (${trigger}): marked ${recoveredCount} RUNNING job(s) as FAILED`,
+    );
+  }
+}
+
 async function loop() {
   writeLog(`[jobRunner] start poll=${POLL_MS}ms runOnce=${RUN_ONCE} mode=${pipelineContext.mode}`);
+  let nextTimeoutRecoveryAt = nowMs() + JOB_TIMEOUT_RECOVERY_INTERVAL_MS;
 
   while (true) {
+    if (nowMs() >= nextTimeoutRecoveryAt) {
+      try {
+        await recoverTimedOutRunningJobs("interval");
+      } catch (e) {
+        console.error("[jobRunner] timeout recovery (interval) error", e);
+      } finally {
+        nextTimeoutRecoveryAt = nowMs() + JOB_TIMEOUT_RECOVERY_INTERVAL_MS;
+      }
+    }
+
     writeLog("[WORKER] Polling for jobs...");
     let job: Awaited<ReturnType<typeof claimNextJob>> | null = null;
     try {
@@ -1130,6 +1082,12 @@ async function startWorker() {
   writeLog("========================");
   writeLog("Starting job polling in 5 seconds...");
   await new Promise((resolve) => setTimeout(resolve, STARTUP_POST_ENV_DELAY_MS));
+
+  try {
+    await recoverTimedOutRunningJobs("startup");
+  } catch (e) {
+    console.error("[jobRunner] timeout recovery (startup) error", e);
+  }
 
   await loop();
 }

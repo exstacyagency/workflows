@@ -85,6 +85,16 @@ export async function kieRequest<T>(
     "X-Request-Id": crypto.randomUUID(),
     ...(extraHeaders ?? {}),
   };
+  const loggedHeaders = {
+    ...headers,
+    Authorization: "[REDACTED]",
+  };
+  console.log("[kie.http] Outbound request headers", {
+    method,
+    path,
+    headers: loggedHeaders,
+    hasSpendConfirmHeader: headers["x-kie-spend-confirm"] === "1",
+  });
 
   try {
     const res = await fetch(url, {
