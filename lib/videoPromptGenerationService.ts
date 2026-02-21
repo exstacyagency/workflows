@@ -21,6 +21,12 @@ function asString(value: unknown): string {
   return value.trim();
 }
 
+function asObject(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
 function asStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value
@@ -32,6 +38,38 @@ function normalizeUrl(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+async function loadProductReferenceImages(args: {
+  projectId: string;
+  productId: string | null;
+}): Promise<{
+  creatorReferenceImageUrl: string | null;
+  productReferenceImageUrl: string | null;
+}> {
+  if (!args.productId) {
+    return {
+      creatorReferenceImageUrl: null,
+      productReferenceImageUrl: null,
+    };
+  }
+
+  const productRows = await prisma.$queryRaw<Array<{
+    creatorReferenceImageUrl: string | null;
+    productReferenceImageUrl: string | null;
+  }>>`
+    SELECT
+      "creator_reference_image_url" AS "creatorReferenceImageUrl",
+      "product_reference_image_url" AS "productReferenceImageUrl"
+    FROM "product"
+    WHERE "id" = ${args.productId}
+      AND "project_id" = ${args.projectId}
+    LIMIT 1
+  `;
+  return {
+    creatorReferenceImageUrl: normalizeUrl(productRows[0]?.creatorReferenceImageUrl),
+    productReferenceImageUrl: normalizeUrl(productRows[0]?.productReferenceImageUrl),
+  };
 }
 
 function resolvePanelType(raw: any, panelType: unknown): PanelType {
@@ -267,6 +305,7 @@ function buildVideoPromptForScene(opts: {
 export async function runVideoPromptGeneration(args: {
   storyboardId: string;
   jobId?: string;
+  productId?: string | null;
   creatorReferenceImageUrl?: string | null;
   productReferenceImageUrl?: string | null;
 }) {
@@ -277,7 +316,18 @@ export async function runVideoPromptGeneration(args: {
 
   const storyboard = await prisma.storyboard.findUnique({
     where: { id: storyboardId },
-    include: { scenes: true },
+    include: {
+      scenes: true,
+      script: {
+        select: {
+          job: {
+            select: {
+              payload: true,
+            },
+          },
+        },
+      },
+    },
   });
 
   if (!storyboard) {
@@ -290,27 +340,21 @@ export async function runVideoPromptGeneration(args: {
     sceneIds: storyboard.scenes.map((scene) => scene.id),
   });
 
-  const projectRows = await prisma.$queryRaw<Array<{
-    creatorReferenceImageUrl: string | null;
-    productReferenceImageUrl: string | null;
-  }>>`
-    SELECT
-      "creatorReferenceImageUrl" AS "creatorReferenceImageUrl",
-      "productReferenceImageUrl" AS "productReferenceImageUrl"
-    FROM "project"
-    WHERE "id" = ${storyboard.projectId}
-    LIMIT 1
-  `;
-  const projectReferenceImages = projectRows[0] ?? {
-    creatorReferenceImageUrl: null,
-    productReferenceImageUrl: null,
-  };
+  const scriptJobPayload = asObject(storyboard.script?.job?.payload) ?? {};
+  const effectiveProductId =
+    normalizeUrl(args.productId) ||
+    normalizeUrl(scriptJobPayload.productId) ||
+    null;
+  const productReferenceImages = await loadProductReferenceImages({
+    projectId: storyboard.projectId,
+    productId: effectiveProductId,
+  });
 
   const creatorReferenceImageUrl = normalizeUrl(
-    args.creatorReferenceImageUrl ?? projectReferenceImages.creatorReferenceImageUrl,
+    args.creatorReferenceImageUrl ?? productReferenceImages.creatorReferenceImageUrl,
   );
   const productReferenceImageUrl = normalizeUrl(
-    args.productReferenceImageUrl ?? projectReferenceImages.productReferenceImageUrl,
+    args.productReferenceImageUrl ?? productReferenceImages.productReferenceImageUrl,
   );
 
   let scenes = storyboard.scenes;
@@ -505,12 +549,14 @@ export async function runVideoPromptGeneration(args: {
 export async function startVideoPromptGenerationJob(params: {
   storyboardId: string;
   jobId: string;
+  productId?: string | null;
   creatorReferenceImageUrl?: string | null;
   productReferenceImageUrl?: string | null;
 }) {
   const {
     storyboardId,
     jobId,
+    productId,
     creatorReferenceImageUrl,
     productReferenceImageUrl,
   } = params;
@@ -534,6 +580,7 @@ export async function startVideoPromptGenerationJob(params: {
     const result = await runVideoPromptGeneration({
       storyboardId,
       jobId,
+      productId,
       creatorReferenceImageUrl,
       productReferenceImageUrl,
     });

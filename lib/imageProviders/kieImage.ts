@@ -8,6 +8,9 @@ import type {
   ImageProviderId,
 } from "./types";
 
+export const MAX_POLL_ATTEMPTS = 180;
+export const POLL_INTERVAL_MS = 3_000;
+
 function normalizeStatus(s: any): GetTaskOutput["status"] {
   const v = String(s ?? "").toUpperCase();
   if (["QUEUE", "QUEUED", "PENDING"].includes(v)) return "QUEUED";
@@ -198,7 +201,7 @@ export class KieImageProvider implements VideoImageProvider {
       },
     };
 
-    const { json, text } = await kieRequest<any>("POST", createPath, payload);
+    const { status, json, text } = await kieRequest<any>("POST", createPath, payload);
 
     const taskId = json?.data?.taskId ?? json?.taskId ?? json?.data?.id ?? null;
     if (!taskId) {
@@ -210,7 +213,12 @@ export class KieImageProvider implements VideoImageProvider {
       );
     }
 
-    return { taskId: String(taskId), raw: json };
+    return {
+      taskId: String(taskId),
+      raw: json,
+      httpStatus: status,
+      responseText: text,
+    };
   }
 
   async getTask(taskId: string): Promise<GetTaskOutput> {
@@ -220,7 +228,7 @@ export class KieImageProvider implements VideoImageProvider {
       ? `${statusPath}${encodeURIComponent(taskId)}`
       : `${statusPath.replace(/\/+$/, "")}/${encodeURIComponent(taskId)}`;
 
-    const { json, text } = await kieRequest<any>("GET", path);
+    const { status: httpStatus, json, text } = await kieRequest<any>("GET", path);
 
     let images = extractImagesFromKie(json);
     if (images.length === 0) {
@@ -267,6 +275,8 @@ export class KieImageProvider implements VideoImageProvider {
       images: images.length ? images : undefined,
       errorMessage,
       raw: json ?? text,
+      httpStatus,
+      responseText: text,
     };
   }
 }

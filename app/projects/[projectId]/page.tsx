@@ -40,11 +40,6 @@ type ProductListItem = {
   createdAt: Date;
 };
 
-type ProjectReferenceImages = {
-  creatorReferenceImageUrl: string | null;
-  productReferenceImageUrl: string | null;
-};
-
 async function ensureProductsTable() {
   await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS "product" (
@@ -54,6 +49,7 @@ async function ensureProductsTable() {
       "product_problem_solved" text,
       "amazon_asin" text,
       "creator_reference_image_url" text,
+      "product_reference_image_url" text,
       "created_at" timestamptz NOT NULL DEFAULT now(),
       "updated_at" timestamptz NOT NULL DEFAULT now(),
       CONSTRAINT "product_project_name_unique" UNIQUE ("project_id", "name")
@@ -65,6 +61,10 @@ async function ensureProductsTable() {
   await prisma.$executeRawUnsafe(`
     ALTER TABLE "product"
     ADD COLUMN IF NOT EXISTS "creator_reference_image_url" text;
+  `);
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "product"
+    ADD COLUMN IF NOT EXISTS "product_reference_image_url" text;
   `);
 }
 
@@ -91,19 +91,6 @@ export default async function ProjectDashboardPage({ params }: Params) {
   if (!project) {
     notFound();
   }
-
-  const referenceRows = await prisma.$queryRaw<ProjectReferenceImages[]>`
-    SELECT
-      "creatorReferenceImageUrl" AS "creatorReferenceImageUrl",
-      "productReferenceImageUrl" AS "productReferenceImageUrl"
-    FROM "project"
-    WHERE "id" = ${projectId}
-    LIMIT 1
-  `;
-  const referenceImages = referenceRows[0] ?? {
-    creatorReferenceImageUrl: null,
-    productReferenceImageUrl: null,
-  };
 
   await ensureProductsTable();
 
@@ -166,8 +153,6 @@ export default async function ProjectDashboardPage({ params }: Params) {
         projectId={projectId}
         initialName={project.name}
         initialDescription={project.description}
-        initialCreatorReferenceImageUrl={referenceImages.creatorReferenceImageUrl}
-        initialProductReferenceImageUrl={referenceImages.productReferenceImageUrl}
       />
 
       <section className="grid gap-4 lg:grid-cols-2">

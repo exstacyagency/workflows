@@ -16,6 +16,7 @@ const BodySchema = z.object({
   projectId: z.string().min(1),
   scriptId: z.string().min(1),
   storyboardId: z.string().min(1),
+  productId: z.string().trim().min(1).max(200).optional(),
   runId: z.string().trim().min(1).max(200).optional(),
 });
 
@@ -65,8 +66,10 @@ export async function POST(req: NextRequest) {
     }
 
     const { projectId, scriptId, storyboardId } = parsed.data;
+    const requestedProductId = parsed.data.productId ? String(parsed.data.productId).trim() : "";
     const requestedRunId = parsed.data.runId ? String(parsed.data.runId).trim() : "";
     let effectiveRunId: string | null = null;
+    let effectiveProductId: string | null = null;
 
     const auth = await requireProjectOwner(projectId);
     if (auth.error) {
@@ -81,6 +84,20 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "runId not found for this project" }, { status: 400 });
       }
       effectiveRunId = run.id;
+    }
+
+    if (requestedProductId) {
+      const productRows = await prisma.$queryRaw<Array<{ id: string }>>`
+        SELECT "id"
+        FROM "product"
+        WHERE "id" = ${requestedProductId}
+          AND "project_id" = ${projectId}
+        LIMIT 1
+      `;
+      if (!productRows[0]?.id) {
+        return NextResponse.json({ error: "productId not found for this project" }, { status: 400 });
+      }
+      effectiveProductId = requestedProductId;
     }
 
     try {
@@ -157,6 +174,7 @@ export async function POST(req: NextRequest) {
         "VIDEO_GENERATION",
         storyboardId,
         scriptId,
+        effectiveProductId ?? "no_product",
         effectiveRunId ?? "no_run",
       ]);
 
@@ -214,6 +232,7 @@ export async function POST(req: NextRequest) {
             projectId,
             storyboardId,
             scriptId,
+            ...(effectiveProductId ? { productId: effectiveProductId } : {}),
             idempotencyKey,
             ...(effectiveRunId ? { runId: effectiveRunId } : {}),
             quotaReservation: {
@@ -282,6 +301,7 @@ export async function POST(req: NextRequest) {
       "VIDEO_GENERATION",
       storyboardId,
       scriptId,
+      effectiveProductId ?? "no_product",
       effectiveRunId ?? "no_run",
     ]);
 
@@ -317,6 +337,7 @@ export async function POST(req: NextRequest) {
             projectId,
             storyboardId,
             scriptId,
+            ...(effectiveProductId ? { productId: effectiveProductId } : {}),
             idempotencyKey,
             ...(effectiveRunId ? { runId: effectiveRunId } : {}),
             quotaReservation: {
