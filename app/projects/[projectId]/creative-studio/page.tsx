@@ -2676,103 +2676,6 @@ export default function CreativeStudioPage() {
         </div>
       )}
 
-      <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-5">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-slate-100">Creative Runs</h2>
-          <span className="text-xs text-slate-500">
-            {sortedRuns.length} {sortedRuns.length === 1 ? "run" : "runs"}
-          </span>
-        </div>
-
-        <div className="flex flex-col gap-2 md:flex-row md:items-center">
-          <select
-            value={selectedRunId || "no-active"}
-            onChange={(e) => {
-              const value = e.target.value === "no-active" ? null : e.target.value;
-              console.log("[Creative] run dropdown change", {
-                selectedValue: e.target.value,
-                nextRunId: value,
-              });
-              setSelectedRunId(value);
-            }}
-            className="w-full md:w-auto px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-300"
-          >
-            <option value="no-active">No active run</option>
-            {sortedRuns.map((run) => (
-              <option key={run.runId} value={run.runId}>
-                {run.displayLabel} - {formatRunDate(run.createdAt)}
-              </option>
-            ))}
-          </select>
-          <div className="w-full md:w-auto" style={{ position: "relative" }}>
-            <button
-              type="button"
-              onClick={() => setShowRunManagerModal(true)}
-              className="w-full md:w-auto rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-200 hover:bg-slate-700"
-            >
-              Manage Runs
-            </button>
-            <RunManagementModal
-              projectId={projectId}
-              open={showRunManagerModal}
-              onClose={() => setShowRunManagerModal(false)}
-              onRunsChanged={handleRunsChanged}
-            />
-          </div>
-          {orphanedJobsCount > 0 && (
-            <button
-              type="button"
-              onClick={() => void handleCleanupOrphanedJobs()}
-              disabled={cleaningOrphanedJobs}
-              className="w-full md:w-auto rounded-lg border border-red-500/60 bg-red-900/40 px-3 py-2 text-sm text-red-200 hover:bg-red-900/60"
-              style={{
-                cursor: cleaningOrphanedJobs ? "not-allowed" : "pointer",
-                opacity: cleaningOrphanedJobs ? 0.7 : 1,
-              }}
-            >
-              {cleaningOrphanedJobs
-                ? "Cleaning Orphaned Jobs..."
-                : `Clean Up Orphaned Jobs (${orphanedJobsCount})`}
-            </button>
-          )}
-        </div>
-
-        {selectedRun && (
-          <div className="mt-3 text-sm text-slate-400">
-            <div className="text-slate-400">Jobs in this run:</div>
-            <div className="mt-2 space-y-1">
-              {selectedRun.jobs
-                .slice()
-                .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
-                .map((job) => {
-                  const statusIcon =
-                    job.status === JobStatus.COMPLETED
-                      ? "✓"
-                      : job.status === JobStatus.FAILED
-                        ? "✕"
-                        : job.status === JobStatus.RUNNING
-                          ? "●"
-                          : "○";
-                  return (
-                    <div key={job.id} className="flex items-center gap-2">
-                      <span className="text-slate-300">{statusIcon}</span>
-                      <span>{getRunJobName(job)}</span>
-                      <span className="text-xs text-slate-500">
-                        {job.status === JobStatus.COMPLETED
-                          ? new Date(job.createdAt).toLocaleTimeString("en-US", {
-                              hour: "numeric",
-                              minute: "2-digit",
-                            })
-                          : String(job.status).toLowerCase()}
-                      </span>
-                    </div>
-                  );
-                })}
-            </div>
-          </div>
-        )}
-      </section>
-
       {/* Production Pipeline */}
       <section
         style={{
@@ -4733,6 +4636,103 @@ export default function CreativeStudioPage() {
             );
           })}
         </div>
+        )}
+      </section>
+
+      <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-5">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-slate-100">Creative Runs</h2>
+          <span className="text-xs text-slate-500">
+            {sortedRuns.length} {sortedRuns.length === 1 ? "run" : "runs"}
+          </span>
+        </div>
+
+        <div className="flex flex-col gap-2 md:flex-row md:items-center">
+          <select
+            value={selectedRunId || "no-active"}
+            onChange={(e) => {
+              const value = e.target.value === "no-active" ? null : e.target.value;
+              console.log("[Creative] run dropdown change", {
+                selectedValue: e.target.value,
+                nextRunId: value,
+              });
+              setSelectedRunId(value);
+            }}
+            className="w-full md:w-auto px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-300"
+          >
+            <option value="no-active">No active run</option>
+            {sortedRuns.map((run) => (
+              <option key={run.runId} value={run.runId}>
+                {run.displayLabel} - {formatRunDate(run.createdAt)}
+              </option>
+            ))}
+          </select>
+          <div className="w-full md:w-auto" style={{ position: "relative" }}>
+            <button
+              type="button"
+              onClick={() => setShowRunManagerModal(true)}
+              className="w-full md:w-auto rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-200 hover:bg-slate-700"
+            >
+              Manage Runs
+            </button>
+            <RunManagementModal
+              projectId={projectId}
+              open={showRunManagerModal}
+              onClose={() => setShowRunManagerModal(false)}
+              onRunsChanged={handleRunsChanged}
+            />
+          </div>
+          {orphanedJobsCount > 0 && (
+            <button
+              type="button"
+              onClick={() => void handleCleanupOrphanedJobs()}
+              disabled={cleaningOrphanedJobs}
+              className="w-full md:w-auto rounded-lg border border-red-500/60 bg-red-900/40 px-3 py-2 text-sm text-red-200 hover:bg-red-900/60"
+              style={{
+                cursor: cleaningOrphanedJobs ? "not-allowed" : "pointer",
+                opacity: cleaningOrphanedJobs ? 0.7 : 1,
+              }}
+            >
+              {cleaningOrphanedJobs
+                ? "Cleaning Orphaned Jobs..."
+                : `Clean Up Orphaned Jobs (${orphanedJobsCount})`}
+            </button>
+          )}
+        </div>
+
+        {selectedRun && (
+          <div className="mt-3 text-sm text-slate-400">
+            <div className="text-slate-400">Jobs in this run:</div>
+            <div className="mt-2 space-y-1">
+              {selectedRun.jobs
+                .slice()
+                .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+                .map((job) => {
+                  const statusIcon =
+                    job.status === JobStatus.COMPLETED
+                      ? "✓"
+                      : job.status === JobStatus.FAILED
+                        ? "✕"
+                        : job.status === JobStatus.RUNNING
+                          ? "●"
+                          : "○";
+                  return (
+                    <div key={job.id} className="flex items-center gap-2">
+                      <span className="text-slate-300">{statusIcon}</span>
+                      <span>{getRunJobName(job)}</span>
+                      <span className="text-xs text-slate-500">
+                        {job.status === JobStatus.COMPLETED
+                          ? new Date(job.createdAt).toLocaleTimeString("en-US", {
+                              hour: "numeric",
+                              minute: "2-digit",
+                            })
+                          : String(job.status).toLowerCase()}
+                      </span>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
         )}
       </section>
 

@@ -23,10 +23,14 @@ export async function POST(
     await prisma.$executeRaw`
       UPDATE "product"
       SET
-        "sora_character_id" = NULL,
-        "character_reference_video_url" = NULL,
-        "character_cameo_created_at" = NULL,
-        "updated_at" = NOW()
+        "sora_character_id"              = NULL,
+        "character_user_name"            = NULL,
+        "character_reference_video_url"  = NULL,
+        "character_cameo_created_at"     = NULL,
+        "character_seed_video_task_id"   = NULL,
+        "character_seed_video_url"       = NULL,
+        "creator_visual_prompt"          = NULL,
+        "updated_at"                     = NOW()
       WHERE "id" = ${params.productId}
     `;
 

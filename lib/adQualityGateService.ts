@@ -55,6 +55,40 @@ function clampConfidence(value: unknown): number {
   return Math.max(0, Math.min(100, Math.round(n)));
 }
 
+function asNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+function firstNumber(...values: unknown[]): number | null {
+  for (const value of values) {
+    const parsed = asNumber(value);
+    if (parsed !== null) return parsed;
+  }
+  return null;
+}
+
+function extractViewCount(raw: Record<string, any>): number {
+  const metrics = asObject(raw.metrics);
+  const count = firstNumber(
+    metrics.views,
+    metrics.view,
+    metrics.plays,
+    metrics.play,
+    metrics.impressions,
+    raw.views,
+    raw.view,
+    raw.plays,
+    raw.play,
+  );
+  if (count === null || count < 0) return 0;
+  return Math.round(count);
+}
+
 function extractJsonObject(text: string): Record<string, any> {
   const cleaned = text.replace(/```json|```/g, "").trim();
   const match = cleaned.match(/\{[\s\S]*\}/);
@@ -193,6 +227,9 @@ export async function runAdQualityGate(args: {
 
     const assessment = await assessAdQuality(ocrText, transcript);
     const accepted = assessment.viable && assessment.confidence >= QUALITY_CONFIDENCE_THRESHOLD;
+    const viabilityScore = assessment.viable ? assessment.confidence / 100 : 0;
+    const viewCount = extractViewCount(raw);
+    const isSwipeFile = viabilityScore > 0.85 && viewCount > 1_000_000;
 
     await prisma.adAsset.update({
       where: { id: asset.id },
@@ -203,18 +240,28 @@ export async function runAdQualityGate(args: {
           qualityIssue: assessment.primaryIssue,
           qualityConfidence: assessment.confidence,
           qualityReason: assessment.reason,
+          viabilityScore,
+          viewCount,
+          isSwipeFile,
           qualityGate: {
             viable: accepted,
             rawViable: assessment.viable,
             issue: assessment.primaryIssue,
             confidence: assessment.confidence,
             reason: assessment.reason,
+            viabilityScore,
             confidenceThreshold: QUALITY_CONFIDENCE_THRESHOLD,
+            isSwipeFile,
             assessedAt: new Date().toISOString(),
           },
         } as any,
       },
     });
+    await prisma.$executeRaw`
+      UPDATE "ad_asset"
+      SET "isSwipeFile" = ${isSwipeFile}
+      WHERE "id" = ${asset.id}
+    `;
 
     assessed += 1;
     if (accepted) {

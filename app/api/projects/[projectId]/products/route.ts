@@ -14,6 +14,10 @@ type ProductRow = {
   characterReferenceVideoUrl: string | null;
   soraCharacterId: string | null;
   characterCameoCreatedAt: Date | null;
+  creatorVisualPrompt: string | null;
+  characterSeedVideoTaskId: string | null;
+  characterSeedVideoUrl: string | null;
+  characterUserName: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -86,6 +90,10 @@ async function ensureProductsTable() {
       "character_reference_video_url" text,
       "sora_character_id" text,
       "character_cameo_created_at" timestamptz,
+      "creator_visual_prompt" text,
+      "character_seed_video_task_id" text,
+      "character_seed_video_url" text,
+      "character_user_name" text,
       "created_at" timestamptz NOT NULL DEFAULT now(),
       "updated_at" timestamptz NOT NULL DEFAULT now(),
       CONSTRAINT "product_project_name_unique" UNIQUE ("project_id", "name")
@@ -113,6 +121,22 @@ async function ensureProductsTable() {
   await prisma.$executeRawUnsafe(`
     ALTER TABLE "product"
     ADD COLUMN IF NOT EXISTS "character_cameo_created_at" timestamptz;
+  `);
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "product"
+    ADD COLUMN IF NOT EXISTS "creator_visual_prompt" text;
+  `);
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "product"
+    ADD COLUMN IF NOT EXISTS "character_seed_video_task_id" text;
+  `);
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "product"
+    ADD COLUMN IF NOT EXISTS "character_seed_video_url" text;
+  `);
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "product"
+    ADD COLUMN IF NOT EXISTS "character_user_name" text;
   `);
 }
 
@@ -144,6 +168,10 @@ export async function GET(
         "character_reference_video_url" AS "characterReferenceVideoUrl",
         "sora_character_id" AS "soraCharacterId",
         "character_cameo_created_at" AS "characterCameoCreatedAt",
+        "creator_visual_prompt" AS "creatorVisualPrompt",
+        "character_seed_video_task_id" AS "characterSeedVideoTaskId",
+        "character_seed_video_url" AS "characterSeedVideoUrl",
+        "character_user_name" AS "characterUserName",
         "created_at" AS "createdAt",
         "updated_at" AS "updatedAt"
       FROM "product"
@@ -224,6 +252,10 @@ export async function POST(
         "character_reference_video_url" AS "characterReferenceVideoUrl",
         "sora_character_id" AS "soraCharacterId",
         "character_cameo_created_at" AS "characterCameoCreatedAt",
+        "creator_visual_prompt" AS "creatorVisualPrompt",
+        "character_seed_video_task_id" AS "characterSeedVideoTaskId",
+        "character_seed_video_url" AS "characterSeedVideoUrl",
+        "character_user_name" AS "characterUserName",
         "created_at" AS "createdAt",
         "updated_at" AS "updatedAt"
     `;
@@ -273,6 +305,10 @@ export async function PATCH(
         "character_reference_video_url" AS "characterReferenceVideoUrl",
         "sora_character_id" AS "soraCharacterId",
         "character_cameo_created_at" AS "characterCameoCreatedAt",
+        "creator_visual_prompt" AS "creatorVisualPrompt",
+        "character_seed_video_task_id" AS "characterSeedVideoTaskId",
+        "character_seed_video_url" AS "characterSeedVideoUrl",
+        "character_user_name" AS "characterUserName",
         "created_at" AS "createdAt",
         "updated_at" AS "updatedAt"
       FROM "product"
@@ -345,6 +381,10 @@ export async function PATCH(
         "character_reference_video_url" AS "characterReferenceVideoUrl",
         "sora_character_id" AS "soraCharacterId",
         "character_cameo_created_at" AS "characterCameoCreatedAt",
+        "creator_visual_prompt" AS "creatorVisualPrompt",
+        "character_seed_video_task_id" AS "characterSeedVideoTaskId",
+        "character_seed_video_url" AS "characterSeedVideoUrl",
+        "character_user_name" AS "characterUserName",
         "created_at" AS "createdAt",
         "updated_at" AS "updatedAt"
     `;

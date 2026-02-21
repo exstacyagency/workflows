@@ -319,6 +319,8 @@ model AdAsset {
   jobId             String?
   platform          AdPlatform
   rawJson           Json
+  isSwipeFile       Boolean    @default(false)
+  swipeMetadata     Json?
   createdAt         DateTime   @default(now())
   updatedAt         DateTime   @updatedAt
   contentViable     Boolean?
@@ -440,19 +442,23 @@ model Usage {
 }
 
 model product {
-  id                       String           @id
-  project_id               String
-  name                     String
-  product_problem_solved   String?
-  amazon_asin              String?
-  creatorReferenceImageUrl String?          @map("creator_reference_image_url")
-  productReferenceImageUrl String?          @map("product_reference_image_url")
-  characterReferenceVideoUrl String?        @map("character_reference_video_url")
-  soraCharacterId          String?          @map("sora_character_id")
-  characterCameoCreatedAt  DateTime?        @map("character_cameo_created_at") @db.Timestamptz(6)
-  created_at               DateTime         @default(now()) @db.Timestamptz(6)
-  updated_at               DateTime         @default(now()) @db.Timestamptz(6)
-  project                  Project          @relation(fields: [project_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id                         String    @id
+  project_id                 String
+  name                       String
+  product_problem_solved     String?
+  amazon_asin                String?
+  creatorReferenceImageUrl   String?   @map("creator_reference_image_url")
+  productReferenceImageUrl   String?   @map("product_reference_image_url")
+  characterReferenceVideoUrl String?   @map("character_reference_video_url")
+  soraCharacterId            String?   @map("sora_character_id")
+  characterCameoCreatedAt    DateTime? @map("character_cameo_created_at") @db.Timestamptz(6)
+  creatorVisualPrompt        String?   @map("creator_visual_prompt")
+  characterSeedVideoTaskId   String?   @map("character_seed_video_task_id")
+  characterSeedVideoUrl      String?   @map("character_seed_video_url")
+  characterUserName          String?   @map("character_user_name")
+  created_at                 DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at                 DateTime  @default(now()) @db.Timestamptz(6)
+  project                    Project   @relation(fields: [project_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([project_id, name], map: "product_project_name_unique")
   @@index([project_id])
@@ -467,6 +473,9 @@ enum JobType {
   IMAGE_PROMPT_GENERATION
   VIDEO_PROMPT_GENERATION
   VIDEO_IMAGE_GENERATION
+  CREATOR_AVATAR_GENERATION
+  CHARACTER_SEED_VIDEO
+  CHARACTER_REFERENCE_VIDEO
   VIDEO_GENERATION
   VIDEO_REVIEW
   VIDEO_UPSCALER
