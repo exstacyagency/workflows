@@ -8,6 +8,8 @@ type AssetRecord = {
   id: string;
   jobId: string | null;
   platform: string;
+  isSwipeFile?: boolean;
+  swipeMetadata?: Record<string, any> | null;
   createdAt: string;
   updatedAt: string;
   retention_3s?: number | null;
@@ -172,6 +174,12 @@ export default function AdAssetsViewerPage() {
         return {
           asset,
           videoUrl,
+          isSwipeFile: Boolean(asset.isSwipeFile),
+          hasSwipeMetadata:
+            asset.swipeMetadata &&
+            typeof asset.swipeMetadata === "object" &&
+            !Array.isArray(asset.swipeMetadata),
+          swipeViews: asNum(metrics.views ?? metrics.view ?? metrics.plays ?? raw.views ?? raw.view ?? raw.plays),
           retention3s: metrics.retention_3s ?? asset.retention_3s,
           retention10s: metrics.retention_10s ?? asset.retention_10s,
           retention3sCtr: metrics.retention_3s_ctr ?? asset.retention_3s_ctr,
@@ -207,6 +215,9 @@ export default function AdAssetsViewerPage() {
           assetId: row.asset.id,
           jobId: row.asset.jobId ?? "",
           platform: row.asset.platform,
+          isSwipeFile: row.isSwipeFile,
+          swipeViews: row.swipeViews ?? "",
+          swipeTemplateExtracted: row.hasSwipeMetadata,
           videoUrl: row.videoUrl,
           retention3s: row.retention3s ?? "",
           retention10s: row.retention10s ?? "",
@@ -240,6 +251,9 @@ export default function AdAssetsViewerPage() {
       "assetId",
       "jobId",
       "platform",
+      "isSwipeFile",
+      "swipeViews",
+      "swipeTemplateExtracted",
       "videoUrl",
       "retention3s",
       "retention10s",
@@ -323,6 +337,7 @@ export default function AdAssetsViewerPage() {
                 <tr>
                   <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Created</th>
                   <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Asset ID</th>
+                  <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Swipe</th>
                   <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Job ID</th>
                   <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Video URL</th>
                   <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">OCR Status</th>
@@ -360,6 +375,25 @@ export default function AdAssetsViewerPage() {
                       {new Date(row.asset.createdAt).toLocaleString()}
                     </td>
                     <td className="px-3 py-2 text-xs text-slate-300 font-mono">{row.asset.id}</td>
+                    <td className="px-3 py-2 text-xs text-slate-300">
+                      {row.isSwipeFile ? (
+                        <div className="space-y-1">
+                          <span className="inline-flex rounded bg-amber-500/20 px-2 py-0.5 text-[11px] text-amber-300">
+                            Swipe File
+                          </span>
+                          <div className="text-[11px] text-slate-400">
+                            {typeof row.swipeViews === "number"
+                              ? `${Math.round(row.swipeViews).toLocaleString()} views`
+                              : "views unavailable"}
+                          </div>
+                          <div className="text-[11px] text-slate-400">
+                            {row.hasSwipeMetadata ? "template extracted" : "template pending"}
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-slate-500">—</span>
+                      )}
+                    </td>
                     <td className="px-3 py-2 text-xs text-slate-400 font-mono">{row.asset.jobId ?? "—"}</td>
                     <td className="px-3 py-2 text-xs">
                       {row.videoUrl ? (

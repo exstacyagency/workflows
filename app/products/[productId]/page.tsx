@@ -12,6 +12,10 @@ type ProductSetupRow = {
   characterReferenceVideoUrl: string | null;
   soraCharacterId: string | null;
   characterCameoCreatedAt: Date | null;
+  creatorVisualPrompt: string | null;
+  characterSeedVideoTaskId: string | null;
+  characterSeedVideoUrl: string | null;
+  characterUserName: string | null;
   projectId: string;
   projectName: string;
 };
@@ -37,6 +41,10 @@ export default async function ProductSetupPage({
       p."character_reference_video_url" AS "characterReferenceVideoUrl",
       p."sora_character_id" AS "soraCharacterId",
       p."character_cameo_created_at" AS "characterCameoCreatedAt",
+      p."creator_visual_prompt" AS "creatorVisualPrompt",
+      p."character_seed_video_task_id" AS "characterSeedVideoTaskId",
+      p."character_seed_video_url" AS "characterSeedVideoUrl",
+      p."character_user_name" AS "characterUserName",
       pr."id" AS "projectId",
       pr."name" AS "projectName"
     FROM "product" p
@@ -58,9 +66,13 @@ export default async function ProductSetupPage({
     productReferenceImageUrl: product.productReferenceImageUrl,
     characterReferenceVideoUrl: product.characterReferenceVideoUrl,
     soraCharacterId: product.soraCharacterId,
-      characterCameoCreatedAt: product.characterCameoCreatedAt
-        ? product.characterCameoCreatedAt.toISOString()
-        : null,
+    characterCameoCreatedAt: product.characterCameoCreatedAt
+      ? product.characterCameoCreatedAt.toISOString()
+      : null,
+    creatorVisualPrompt: product.creatorVisualPrompt,
+    characterSeedVideoTaskId: product.characterSeedVideoTaskId,
+    characterSeedVideoUrl: product.characterSeedVideoUrl,
+    characterUserName: product.characterUserName,
     project: {
       id: product.projectId,
       name: product.projectName,

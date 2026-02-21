@@ -9,6 +9,10 @@ export type OwnedProductRow = {
   characterReferenceVideoUrl: string | null;
   soraCharacterId: string | null;
   characterCameoCreatedAt: Date | null;
+  creatorVisualPrompt: string | null;
+  characterSeedVideoTaskId: string | null;
+  characterSeedVideoUrl: string | null;
+  characterUserName: string | null;
 };
 
 export async function ensureProductTableColumns() {
@@ -24,6 +28,10 @@ export async function ensureProductTableColumns() {
       "character_reference_video_url" text,
       "sora_character_id" text,
       "character_cameo_created_at" timestamptz,
+      "creator_visual_prompt" text,
+      "character_seed_video_task_id" text,
+      "character_seed_video_url" text,
+      "character_user_name" text,
       "created_at" timestamptz NOT NULL DEFAULT now(),
       "updated_at" timestamptz NOT NULL DEFAULT now(),
       CONSTRAINT "product_project_name_unique" UNIQUE ("project_id", "name")
@@ -54,6 +62,22 @@ export async function ensureProductTableColumns() {
     ALTER TABLE "product"
     ADD COLUMN IF NOT EXISTS "character_cameo_created_at" timestamptz;
   `);
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "product"
+    ADD COLUMN IF NOT EXISTS "creator_visual_prompt" text;
+  `);
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "product"
+    ADD COLUMN IF NOT EXISTS "character_seed_video_task_id" text;
+  `);
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "product"
+    ADD COLUMN IF NOT EXISTS "character_seed_video_url" text;
+  `);
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "product"
+    ADD COLUMN IF NOT EXISTS "character_user_name" text;
+  `);
 }
 
 export async function ensureStoryboardSceneApprovalColumn() {
@@ -76,7 +100,11 @@ export async function findOwnedProductById(
       p."product_reference_image_url" AS "productReferenceImageUrl",
       p."character_reference_video_url" AS "characterReferenceVideoUrl",
       p."sora_character_id" AS "soraCharacterId",
-      p."character_cameo_created_at" AS "characterCameoCreatedAt"
+      p."character_cameo_created_at" AS "characterCameoCreatedAt",
+      p."creator_visual_prompt" AS "creatorVisualPrompt",
+      p."character_seed_video_task_id" AS "characterSeedVideoTaskId",
+      p."character_seed_video_url" AS "characterSeedVideoUrl",
+      p."character_user_name" AS "characterUserName"
     FROM "product" p
     INNER JOIN "project" pr ON pr."id" = p."project_id"
     WHERE p."id" = ${productId}
