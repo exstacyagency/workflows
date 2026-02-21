@@ -1069,6 +1069,8 @@ async function runJob(
           await markFailed({ jobId, error: "Missing creator visual prompt" });
           return;
         }
+        console.log("[CHARACTER_SEED_VIDEO] creatorVisualPrompt length:", creatorVisualPrompt.length);
+        console.log("[CHARACTER_SEED_VIDEO] creatorVisualPrompt value:", creatorVisualPrompt);
 
         const seedCreate = await createSeedVideo({
           prompt: creatorVisualPrompt,
