@@ -29,6 +29,15 @@ type PollResult = {
 const DEFAULT_INTERVAL_MS = Number(cfg.raw("KIE_CHARACTER_POLL_INTERVAL_MS") ?? 5_000);
 const DEFAULT_MAX_ATTEMPTS = Number(cfg.raw("KIE_CHARACTER_POLL_ATTEMPTS") ?? 120);
 
+function callbackPayloadFields(): Record<string, string> {
+  const callBackUrl = String(cfg.raw("KIE_CALLBACK_URL") ?? "").trim();
+  const progressCallBackUrl = String(cfg.raw("KIE_PROGRESS_CALLBACK_URL") ?? "").trim();
+  return {
+    ...(callBackUrl ? { callBackUrl } : {}),
+    ...(progressCallBackUrl ? { progressCallBackUrl } : {}),
+  };
+}
+
 function asObject(value: unknown): Record<string, unknown> {
   if (value && typeof value === "object" && !Array.isArray(value)) {
     return value as Record<string, unknown>;
@@ -137,8 +146,12 @@ async function sleep(ms: number) {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function createTask(payload: Record<string, unknown>): Promise<string> {
+async function createTask(
+  payload: Record<string, unknown>,
+  logLabel = "[KIE createTask] payload:",
+): Promise<string> {
   const { createPath } = kieJobPathsFromEnv();
+  console.log(logLabel, JSON.stringify(payload, null, 2));
   const { json, text } = await kieRequest<CreateTaskResponse>("POST", createPath, payload, {
     "x-kie-spend-confirm": "1",
   });
@@ -165,22 +178,20 @@ export async function createSeedVideo(args: {
   prompt: string;
   creatorReferenceImageUrl?: string | null;
 }): Promise<{ taskId: string }> {
-  const model = cfg.raw("KIE_CHARACTER_SEED_MODEL") || "sora-2-pro-text-to-video";
+  const model = cfg.raw("KIE_CHARACTER_SEED_MODEL") || "sora-2-text-to-video";
   const payload: Record<string, unknown> = {
     model,
+    ...callbackPayloadFields(),
     input: {
       prompt: args.prompt,
       aspect_ratio: "portrait",
       n_frames: "10",
       remove_watermark: true,
       upload_method: "s3",
-      ...(args.creatorReferenceImageUrl
-        ? { image_input: [args.creatorReferenceImageUrl] }
-        : {}),
     },
   };
 
-  const taskId = await createTask(payload);
+  const taskId = await createTask(payload, "[KIE createSeedVideo] payload:");
   return { taskId };
 }
 
@@ -190,9 +201,12 @@ export async function createCharacter(args: {
   const model = cfg.raw("KIE_CHARACTER_REFERENCE_MODEL") || "sora-2-characters-pro";
   const payload: Record<string, unknown> = {
     model,
+    ...callbackPayloadFields(),
     input: {
       origin_task_id: args.originTaskId,
       timestamps: [1.0, 4.0],
+      remove_watermark: true,
+      upload_method: "s3",
     },
   };
   const taskId = await createTask(payload);
@@ -210,6 +224,7 @@ export async function pollKieTask(args: {
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const raw = await getTask(args.taskId);
     const normalizedRaw = typeof raw === "string" ? raw : (raw as PollTaskResponse);
+    console.log("[KIE pollKieTask] attempt", attempt, "response:", JSON.stringify(normalizedRaw));
     if (typeof normalizedRaw === "string") {
       await sleep(intervalMs);
       continue;
