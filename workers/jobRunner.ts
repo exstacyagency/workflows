@@ -41,7 +41,6 @@ import { startVideoPromptGenerationJob } from "../lib/videoPromptGenerationServi
 import { runVideoGenerationJob } from "../lib/videoGenerationService.ts";
 import { collectProductIntelWithWebFetch } from "../lib/productDataCollectionService.ts";
 import { analyzeProductData } from "../lib/productAnalysisService.ts";
-import { ensureCreatorLibraryTables } from "@/lib/creatorLibraryStore";
 import prisma from "../lib/prisma.ts";
 import { rollbackQuota } from "../lib/billing/usage.ts";
 import { updateJobStatus } from "@/lib/jobs/updateJobStatus";

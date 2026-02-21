@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionUserId } from "@/lib/getSessionUserId";
 import { prisma } from "@/lib/prisma";
-import { ensureStoryboardSceneApprovalColumn } from "@/lib/creatorLibraryStore";
+import { ensureStoryboardSceneApprovalColumn } from "@/lib/productStore";
 import type { Prisma } from "@prisma/client";
 import {
   validateStoryboardAgainstGates,
