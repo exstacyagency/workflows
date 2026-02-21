@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionUserId } from "@/lib/getSessionUserId";
 import { prisma } from "@/lib/prisma";
+import { ensureStoryboardSceneApprovalColumn } from "@/lib/creatorLibraryStore";
 import type { Prisma } from "@prisma/client";
 import {
   validateStoryboardAgainstGates,
@@ -8,6 +9,9 @@ import {
 } from "@/lib/storyboardValidation";
 
 type StoryboardPanelResponse = {
+  sceneId: string;
+  sceneNumber: number;
+  approved: boolean;
   panelType: "ON_CAMERA" | "B_ROLL_ONLY";
   beatLabel: string;
   startTime: string;
@@ -15,6 +19,8 @@ type StoryboardPanelResponse = {
   vo: string;
   firstFramePrompt: string | null;
   lastFramePrompt: string | null;
+  firstFrameImageUrl: string | null;
+  lastFrameImageUrl: string | null;
   videoPrompt: string | null;
   characterAction: string | null;
   environment: string | null;
@@ -61,20 +67,73 @@ function asNullableString(value: unknown): string | null {
   return normalized || null;
 }
 
-function normalizePanelFromRaw(
-  rawValue: unknown,
-  sceneNumber: number,
-): StoryboardPanelResponse {
+function extractSceneFrameUrls(rawValue: unknown): {
+  firstFrameImageUrl: string | null;
+  lastFrameImageUrl: string | null;
+} {
   const raw = asObject(rawValue) ?? {};
-  const panelType = normalizePanelType(raw.panelType);
+  const firstFromRaw =
+    asString(raw.firstFrameImageUrl) ||
+    asString(raw.firstFrameUrl) ||
+    asString(raw.first_frame_url);
+  const lastFromRaw =
+    asString(raw.lastFrameImageUrl) ||
+    asString(raw.lastFrameUrl) ||
+    asString(raw.last_frame_url);
+
+  let firstFrameImageUrl = firstFromRaw || null;
+  let lastFrameImageUrl = lastFromRaw || null;
+
+  const images = Array.isArray(raw.images)
+    ? raw.images
+    : Array.isArray((asObject(raw.polled) ?? {}).images)
+      ? ((asObject(raw.polled) ?? {}).images as unknown[])
+      : [];
+
+  for (const image of images) {
+    const imageObj = asObject(image) ?? {};
+    const imageUrl = asString(imageObj.url);
+    if (!imageUrl) continue;
+    const kind = asString(imageObj.promptKind || imageObj.frameType).toLowerCase();
+    if (kind === "last") {
+      lastFrameImageUrl = lastFrameImageUrl || imageUrl;
+    } else {
+      firstFrameImageUrl = firstFrameImageUrl || imageUrl;
+    }
+  }
+
+  if (!lastFrameImageUrl && firstFrameImageUrl) {
+    lastFrameImageUrl = firstFrameImageUrl;
+  }
+
   return {
+    firstFrameImageUrl,
+    lastFrameImageUrl,
+  };
+}
+
+function normalizePanelFromRaw(args: {
+  rawValue: unknown;
+  sceneId: string;
+  sceneNumber: number;
+  approved: boolean;
+}): StoryboardPanelResponse {
+  const raw = asObject(args.rawValue) ?? {};
+  const panelType = normalizePanelType(raw.panelType);
+  const frameUrls = extractSceneFrameUrls(raw);
+  return {
+    sceneId: args.sceneId,
+    sceneNumber: args.sceneNumber,
+    approved: args.approved,
     panelType,
-    beatLabel: asString(raw.beatLabel) || `Beat ${sceneNumber}`,
+    beatLabel: asString(raw.beatLabel) || `Beat ${args.sceneNumber}`,
     startTime: asString(raw.startTime),
     endTime: asString(raw.endTime),
     vo: asString(raw.vo),
     firstFramePrompt: asNullableString(raw.firstFramePrompt),
     lastFramePrompt: asNullableString(raw.lastFramePrompt),
+    firstFrameImageUrl: frameUrls.firstFrameImageUrl,
+    lastFrameImageUrl: frameUrls.lastFrameImageUrl,
     videoPrompt: asNullableString(raw.videoPrompt),
     characterAction: asNullableString(raw.characterAction),
     environment: asNullableString(raw.environment),
@@ -89,6 +148,9 @@ function normalizePanelFromInput(value: unknown, index: number): StoryboardPanel
   const raw = asObject(value) ?? {};
   const panelType = normalizePanelType(raw.panelType);
   return {
+    sceneId: asString(raw.sceneId) || `scene-${index + 1}`,
+    sceneNumber: index + 1,
+    approved: false,
     panelType,
     beatLabel: asString(raw.beatLabel) || `Beat ${index + 1}`,
     startTime: asString(raw.startTime),
@@ -96,6 +158,8 @@ function normalizePanelFromInput(value: unknown, index: number): StoryboardPanel
     vo: asString(raw.vo),
     firstFramePrompt: asNullableString(raw.firstFramePrompt),
     lastFramePrompt: asNullableString(raw.lastFramePrompt),
+    firstFrameImageUrl: asNullableString(raw.firstFrameImageUrl),
+    lastFrameImageUrl: asNullableString(raw.lastFrameImageUrl),
     videoPrompt: asNullableString(raw.videoPrompt),
     characterAction: panelType === "B_ROLL_ONLY" ? asNullableString(raw.characterAction) : asString(raw.characterAction),
     environment: panelType === "B_ROLL_ONLY" ? asNullableString(raw.environment) : asString(raw.environment),
@@ -116,6 +180,8 @@ export async function GET(
   }
 
   try {
+    await ensureStoryboardSceneApprovalColumn();
+
     const storyboardId = String(params?.storyboardId ?? "").trim();
     if (!storyboardId) {
       return NextResponse.json({ error: "storyboardId is required" }, { status: 400 });
@@ -137,6 +203,7 @@ export async function GET(
         scenes: {
           orderBy: { sceneNumber: "asc" },
           select: {
+            id: true,
             sceneNumber: true,
             // TODO: Restore after panelType migration runs.
             // panelType: true,
@@ -150,8 +217,29 @@ export async function GET(
       return NextResponse.json({ error: "Storyboard not found" }, { status: 404 });
     }
 
+    let sceneApprovalRows: Array<{ id: string; approved: boolean | null }> = [];
+    try {
+      sceneApprovalRows = await prisma.$queryRaw<Array<{ id: string; approved: boolean | null }>>`
+        SELECT "id", "approved"
+        FROM "storyboard_scene"
+        WHERE "storyboardId" = ${storyboard.id}
+      `;
+    } catch {
+      // Backward compatibility for environments before approval migration is applied.
+      sceneApprovalRows = [];
+    }
+    const approvalBySceneId = new Map<string, boolean>();
+    for (const row of sceneApprovalRows) {
+      approvalBySceneId.set(String(row.id), Boolean(row.approved));
+    }
+
     const panels: StoryboardPanelResponse[] = storyboard.scenes.map((scene) =>
-      normalizePanelFromRaw(scene.rawJson, scene.sceneNumber),
+      normalizePanelFromRaw({
+        rawValue: scene.rawJson,
+        sceneId: scene.id,
+        sceneNumber: scene.sceneNumber,
+        approved: approvalBySceneId.get(scene.id) ?? false,
+      }),
     );
 
     const validationReport = validateStoryboardAgainstGates(panels);
@@ -274,6 +362,7 @@ export async function PATCH(
         scenes: {
           orderBy: { sceneNumber: "asc" },
           select: {
+            id: true,
             sceneNumber: true,
             // TODO: Restore after panelType migration runs.
             // panelType: true,
@@ -288,7 +377,12 @@ export async function PATCH(
     }
 
     const responsePanels = updated.scenes.map((scene) =>
-      normalizePanelFromRaw(scene.rawJson, scene.sceneNumber),
+      normalizePanelFromRaw({
+        rawValue: scene.rawJson,
+        sceneId: scene.id,
+        sceneNumber: scene.sceneNumber,
+        approved: false,
+      }),
     );
     const validationReport = validateStoryboardAgainstGates(responsePanels);
 

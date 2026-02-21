@@ -57,6 +57,15 @@ export async function ensureCreatorLibraryTables() {
   await prisma.$executeRawUnsafe(
     `CREATE INDEX IF NOT EXISTS "creator_library_product_id_idx" ON "creator_library" ("product_id");`,
   );
+
+  await ensureStoryboardSceneApprovalColumn();
+}
+
+export async function ensureStoryboardSceneApprovalColumn() {
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE storyboard_scene
+    ADD COLUMN IF NOT EXISTS approved boolean NOT NULL DEFAULT false;
+  `);
 }
 
 export async function findOwnedProductById(

@@ -96,37 +96,92 @@ export async function POST(req: Request) {
       // Persist into StoryboardScene (summary)
       const storyboardId = payload?.storyboardId;
       if (storyboardId && polled.images.length > 0) {
-        const sorted = [...polled.images].sort((a, b) => a.frameIndex - b.frameIndex);
-        const firstUrl = sorted[0].url;
-        const lastUrl = sorted.length > 1 ? sorted[sorted.length - 1].url : sorted[0].url;
-        const safePrev = (payload?.rawJson && typeof payload.rawJson === "object") ? payload.rawJson : {};
         const safePolledRaw = (polled.raw && typeof polled.raw === "object") ? polled.raw : { value: polled.raw };
-
-        const updated = await prisma.storyboardScene.updateMany({
+        const sceneRows = await prisma.storyboardScene.findMany({
           where: { storyboardId },
-          data: {
-            firstFrameUrl: firstUrl,
-            lastFrameUrl: lastUrl,
-            rawJson: { ...safePrev, polled: safePolledRaw, images: sorted } as any,
-            status: "completed" as any,
-          } as any,
+          select: {
+            id: true,
+            sceneNumber: true,
+            rawJson: true,
+          },
+        });
+        const sceneById = new Map<string, (typeof sceneRows)[number]>();
+        const sceneByNumber = new Map<number, (typeof sceneRows)[number]>();
+        for (const row of sceneRows) {
+          sceneById.set(String(row.id), row);
+          sceneByNumber.set(Number(row.sceneNumber), row);
+        }
+
+        const sceneImages = new Map<
+          string,
+          {
+            sceneId: string | null;
+            sceneNumber: number;
+            firstFrameUrl: string | null;
+            lastFrameUrl: string | null;
+            images: typeof polled.images;
+          }
+        >();
+        for (const image of polled.images) {
+          const sceneId = String((image as any).sceneId ?? "").trim() || null;
+          const sceneNumber = Number.isFinite(Number(image.sceneNumber))
+            ? Number(image.sceneNumber)
+            : Number(image.frameIndex);
+          if (!sceneId && !Number.isFinite(sceneNumber)) continue;
+          const sceneKey = sceneId ? `id:${sceneId}` : `sceneNumber:${sceneNumber}`;
+          const entry = sceneImages.get(sceneKey) ?? {
+            sceneId,
+            sceneNumber,
+            firstFrameUrl: null,
+            lastFrameUrl: null,
+            images: [],
+          };
+          entry.images.push(image);
+          if (image.promptKind === "last") {
+            entry.lastFrameUrl = image.url;
+          } else {
+            entry.firstFrameUrl = image.url;
+          }
+          sceneImages.set(sceneKey, entry);
+        }
+
+        const updates = Array.from(sceneImages.values()).flatMap((generated) => {
+          const row = generated.sceneId
+            ? sceneById.get(generated.sceneId) ?? sceneByNumber.get(generated.sceneNumber)
+            : sceneByNumber.get(generated.sceneNumber);
+          if (!row) return [];
+
+          const safePrev = row.rawJson && typeof row.rawJson === "object" ? row.rawJson : {};
+          const sortedImages = [...generated.images].sort((a, b) => {
+            const aKindRank = a.promptKind === "last" ? 1 : 0;
+            const bKindRank = b.promptKind === "last" ? 1 : 0;
+            if (aKindRank !== bKindRank) return aKindRank - bKindRank;
+            return a.frameIndex - b.frameIndex;
+          });
+          const firstFrameUrl = generated.firstFrameUrl ?? null;
+          const lastFrameUrl = generated.lastFrameUrl ?? generated.firstFrameUrl ?? null;
+
+          return [
+            prisma.storyboardScene.update({
+              where: { id: row.id },
+              data: {
+                firstFrameUrl,
+                lastFrameUrl,
+                rawJson: {
+                  ...safePrev,
+                  polled: safePolledRaw,
+                  images: sortedImages,
+                  firstFrameImageUrl: firstFrameUrl,
+                  lastFrameImageUrl: lastFrameUrl,
+                } as any,
+                status: "completed" as any,
+              } as any,
+            }),
+          ];
         });
 
-        // If no scene rows exist yet, create a minimal one (MVP behavior).
-        if (updated.count === 0) {
-          await prisma.storyboardScene.create({
-            data: {
-              storyboardId,
-              sceneNumber: 1,
-              durationSec: 8,
-              aspectRatio: "9:16",
-              sceneFull: "true",
-              rawJson: { polled: safePolledRaw, images: sorted } as any,
-              status: "completed" as any,
-              firstFrameUrl: firstUrl,
-              lastFrameUrl: lastUrl,
-            } as any,
-          });
+        if (updates.length > 0) {
+          await prisma.$transaction(updates);
         }
       }
     } else {

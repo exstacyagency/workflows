@@ -4,9 +4,15 @@ import type { ImageProviderId } from "@/lib/imageProviders/types";
 
 export type FramePrompt = {
   frameIndex: number;
+  sceneId?: string | null;
+  sceneNumber?: number;
+  frameType?: "first" | "last";
+  // Backward compatibility with older payload shape.
+  promptKind?: "first" | "last";
   prompt: string;
   negativePrompt?: string;
   inputImageUrl?: string | null;
+  previousSceneLastFrameImageUrl?: string | null;
   maskImageUrl?: string | null;
   width?: number;
   height?: number;
@@ -24,6 +30,11 @@ export type StartMultiFrameArgs = {
 
 export type FrameTask = {
   frameIndex: number;
+  sceneId: string | null;
+  sceneNumber: number;
+  frameType: "first" | "last";
+  // Backward compatibility for existing job payloads and UI consumers.
+  promptKind?: "first" | "last";
   taskId: string;
   status: "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED";
   url?: string | null;
@@ -59,8 +70,22 @@ export function buildGroupIdempotencyKey(args: {
   ]);
 }
 
-function buildFrameIdempotencyKey(groupKey: string, frameIndex: number): string {
-  return JSON.stringify([groupKey, "frame", frameIndex]);
+function buildFrameIdempotencyKey(args: {
+  groupKey: string;
+  frameIndex: number;
+  sceneId?: string | null;
+  sceneNumber: number;
+  frameType: "first" | "last";
+}): string {
+  const sceneIdentity = String(args.sceneId ?? "").trim() || String(args.sceneNumber);
+  return JSON.stringify([
+    args.groupKey,
+    "scene",
+    sceneIdentity,
+    args.frameType,
+    "frame",
+    args.frameIndex,
+  ]);
 }
 
 function stableGroupId(groupKey: string): string {
@@ -97,37 +122,62 @@ export async function startMultiFrameVideoImages(args: StartMultiFrameArgs): Pro
   const taskGroupId = stableGroupId(groupKey);
 
   // Nano Banana Pro is single-image per task.
-  // PRODUCT REQUIREMENT: generate ONLY first frame + last frame.
-  // We interpret "first" as min(frameIndex) and "last" as max(frameIndex) from prompts[].
-  const sortedPrompts = [...args.prompts].sort((a, b) => a.frameIndex - b.frameIndex);
-  const first = sortedPrompts[0];
-  const last = sortedPrompts[sortedPrompts.length - 1];
-
-  const selected = first.frameIndex === last.frameIndex ? [first] : [first, last];
+  // Generate every provided prompt (e.g. 2 prompts x 6 scenes = 12 tasks).
+  const selected = [...args.prompts].sort((a, b) => {
+    const aScene = Number.isFinite(Number(a.sceneNumber)) ? Number(a.sceneNumber) : Number(a.frameIndex);
+    const bScene = Number.isFinite(Number(b.sceneNumber)) ? Number(b.sceneNumber) : Number(b.frameIndex);
+    if (aScene !== bScene) return aScene - bScene;
+    const aFrameType = a.frameType === "last" || a.promptKind === "last" ? "last" : "first";
+    const bFrameType = b.frameType === "last" || b.promptKind === "last" ? "last" : "first";
+    const aKindRank = aFrameType === "last" ? 1 : 0;
+    const bKindRank = bFrameType === "last" ? 1 : 0;
+    if (aKindRank !== bKindRank) return aKindRank - bKindRank;
+    return Number(a.frameIndex) - Number(b.frameIndex);
+  });
 
   const tasks: FrameTask[] = [];
   for (const fp of selected) {
-    const frameKey = buildFrameIdempotencyKey(groupKey, fp.frameIndex);
+    const sceneId = String(fp.sceneId ?? "").trim() || null;
+    const sceneNumber = Number.isFinite(Number(fp.sceneNumber))
+      ? Number(fp.sceneNumber)
+      : Number(fp.frameIndex);
+    const frameType: "first" | "last" =
+      fp.frameType === "last" || fp.promptKind === "last" ? "last" : "first";
+    const frameIndex = Number.isFinite(Number(fp.frameIndex))
+      ? Number(fp.frameIndex)
+      : sceneNumber * 2 + (frameType === "last" ? 1 : 0);
+    const frameKey = buildFrameIdempotencyKey({
+      groupKey,
+      frameIndex,
+      sceneId,
+      sceneNumber,
+      frameType,
+    });
     const out = await provider.createTask({
       storyboardId: args.storyboardId,
       idempotencyKey: frameKey,
       force: !!args.force,
       prompts: [
         {
-          frameIndex: fp.frameIndex,
+          frameIndex,
           prompt: fp.prompt,
           negativePrompt: fp.negativePrompt,
           inputImageUrl: fp.inputImageUrl ?? null,
+          previousSceneLastFrameImageUrl: fp.previousSceneLastFrameImageUrl ?? null,
           maskImageUrl: fp.maskImageUrl ?? null,
           width: fp.width,
           height: fp.height,
         },
       ],
-      options: { taskGroupId, frameIndex: fp.frameIndex },
+      options: { taskGroupId, frameIndex, sceneId, sceneNumber, frameType },
     });
 
     tasks.push({
-      frameIndex: fp.frameIndex,
+      frameIndex,
+      sceneId,
+      sceneNumber,
+      frameType,
+      promptKind: frameType,
       taskId: out.taskId,
       status: "QUEUED",
       url: null,
@@ -152,7 +202,14 @@ export type PollMultiFrameResult = {
   providerId: ImageProviderId;
   tasks: FrameTask[];
   status: "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED";
-  images: Array<{ frameIndex: number; url: string }>;
+  images: Array<{
+    frameIndex: number;
+    sceneId: string | null;
+    sceneNumber: number;
+    frameType: "first" | "last";
+    promptKind?: "first" | "last";
+    url: string;
+  }>;
   errorMessage?: string;
   raw: unknown;
 };
@@ -169,7 +226,23 @@ export async function pollMultiFrameVideoImages(args: PollMultiFrameArgs): Promi
   const providerId = provider.id;
 
   const maxConcurrency = Number(mustEnv("VIDEO_IMAGES_STATUS_CONCURRENCY", "4"));
-  const tasks = [...args.tasks].sort((a, b) => a.frameIndex - b.frameIndex);
+  const tasks = [...args.tasks]
+    .map((task): FrameTask => ({
+      ...task,
+      sceneId: String(task.sceneId ?? "").trim() || null,
+      sceneNumber: Number.isFinite(Number(task.sceneNumber))
+        ? Number(task.sceneNumber)
+        : Number(task.frameIndex),
+      frameType: task.frameType === "last" || task.promptKind === "last" ? "last" : "first",
+      promptKind: task.frameType === "last" || task.promptKind === "last" ? "last" : "first",
+    }))
+    .sort((a, b) => {
+      if (a.sceneNumber !== b.sceneNumber) return a.sceneNumber - b.sceneNumber;
+      const aKindRank = a.frameType === "last" ? 1 : 0;
+      const bKindRank = b.frameType === "last" ? 1 : 0;
+      if (aKindRank !== bKindRank) return aKindRank - bKindRank;
+      return a.frameIndex - b.frameIndex;
+    });
 
   const next: FrameTask[] = [];
   const rawByTask: Record<string, unknown> = {};
@@ -211,8 +284,21 @@ export async function pollMultiFrameVideoImages(args: PollMultiFrameArgs): Promi
   const status = aggregateStatus(next);
   const images = next
     .filter(t => t.status === "SUCCEEDED" && t.url)
-    .map(t => ({ frameIndex: t.frameIndex, url: String(t.url) }))
-    .sort((a, b) => a.frameIndex - b.frameIndex);
+    .map(t => ({
+      frameIndex: t.frameIndex,
+      sceneId: t.sceneId,
+      sceneNumber: t.sceneNumber,
+      frameType: t.frameType,
+      promptKind: t.frameType,
+      url: String(t.url),
+    }))
+    .sort((a, b) => {
+      if (a.sceneNumber !== b.sceneNumber) return a.sceneNumber - b.sceneNumber;
+      const aKindRank = a.frameType === "last" ? 1 : 0;
+      const bKindRank = b.frameType === "last" ? 1 : 0;
+      if (aKindRank !== bKindRank) return aKindRank - bKindRank;
+      return a.frameIndex - b.frameIndex;
+    });
 
   const errorMessage =
     status === "FAILED"
