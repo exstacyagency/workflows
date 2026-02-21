@@ -1,0 +1,10 @@
+// In model product add:
+// creatorVisualPrompt        String?   @map("creator_visual_prompt")
+// characterSeedVideoTaskId   String?   @map("character_seed_video_task_id")
+// characterSeedVideoUrl      String?   @map("character_seed_video_url")
+// characterUserName          String?   @map("character_user_name")
+//
+// In enum JobType add:
+// CREATOR_AVATAR_GENERATION
+// CHARACTER_SEED_VIDEO
+// CHARACTER_REFERENCE_VIDEO

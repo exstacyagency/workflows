@@ -1,6 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { Prisma } from "@prisma/client";
 import { cfg } from "@/lib/config";
 import { prisma } from "@/lib/prisma";
+import { extractSwipePatterns } from "@/lib/swipePatternExtractor";
 
 const anthropic = new Anthropic({
   apiKey: cfg.raw("ANTHROPIC_API_KEY"),
@@ -72,6 +74,18 @@ function firstNumber(...values: unknown[]): number | null {
     if (n !== null) return n;
   }
   return null;
+}
+
+function getSwipeDurationSeconds(raw: Record<string, any>, fallback: number | null | undefined): number {
+  const metrics = isPlainObject(raw.metrics) ? raw.metrics : {};
+  const duration = firstNumber(
+    raw.videoDuration,
+    raw.duration,
+    metrics.duration,
+    fallback ?? null,
+  );
+  if (duration === null || duration <= 0) return 15;
+  return Math.max(1, Math.round(duration));
 }
 
 function hasTranscript(raw: Record<string, any>): boolean {
@@ -771,6 +785,48 @@ export async function runPatternAnalysis(args: {
       });
     }
   });
+
+  type SwipeAdRow = {
+    id: string;
+    duration: number | null;
+    rawJson: Prisma.JsonValue;
+  };
+  const swipeAds = await prisma.$queryRaw<SwipeAdRow[]>(
+    Prisma.sql`
+      SELECT a."id", a."duration", a."rawJson"
+      FROM "ad_asset" a
+      LEFT JOIN "job" j ON j."id" = a."jobId"
+      WHERE a."projectId" = ${projectId}
+        AND COALESCE(a."isSwipeFile", false) = true
+        AND a."swipeMetadata" IS NULL
+        ${runId ? Prisma.sql`AND j."runId" = ${runId}` : Prisma.empty}
+      ORDER BY a."createdAt" DESC
+      LIMIT 30
+    `
+  );
+
+  for (const ad of swipeAds) {
+    const raw = isPlainObject(ad.rawJson) ? (ad.rawJson as Record<string, any>) : {};
+    const transcript = asString(raw.transcript);
+    if (!transcript) continue;
+
+    try {
+      const patterns = await extractSwipePatterns(
+        transcript,
+        getSwipeDurationSeconds(raw, ad.duration),
+      );
+      const swipeMetadataJson = JSON.stringify(patterns);
+      await prisma.$executeRaw`
+        UPDATE "ad_asset"
+        SET "swipeMetadata" = ${swipeMetadataJson}::jsonb,
+            "updatedAt" = NOW()
+        WHERE "id" = ${ad.id}
+      `;
+      console.log("[PatternAnalysis] Extracted swipe patterns:", ad.id);
+    } catch (err) {
+      console.error("[PatternAnalysis] Swipe extraction failed:", ad.id, err);
+    }
+  }
 
   return {
     ok: true,
