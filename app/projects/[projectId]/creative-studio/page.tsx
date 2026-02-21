@@ -27,6 +27,7 @@ type ProductOption = {
   amazonAsin?: string | null;
   creatorReferenceImageUrl?: string | null;
   productReferenceImageUrl?: string | null;
+  soraCharacterId?: string | null;
 };
 
 type ResearchRunOption = {
@@ -650,6 +651,9 @@ export default function CreativeStudioPage() {
   );
   const hasSelectedProductCreatorReference = Boolean(
     String(selectedProduct?.creatorReferenceImageUrl ?? "").trim(),
+  );
+  const hasSelectedProductSoraCharacter = Boolean(
+    String(selectedProduct?.soraCharacterId ?? "").trim(),
   );
   const latestCompletedStoryboardJob = useMemo(
     () => {
@@ -2775,6 +2779,30 @@ export default function CreativeStudioPage() {
     );
   }
 
+  if (selectedProduct && !hasSelectedProductSoraCharacter) {
+    return (
+      <div className="px-6 py-6 space-y-6">
+        <section className="rounded-xl border border-slate-800 bg-slate-900/80 p-6">
+          <h1 className="text-2xl font-semibold text-slate-50">Creative Studio</h1>
+          <p className="text-sm text-slate-300 mt-1">
+            Character setup is required before generating videos.
+          </p>
+        </section>
+        <div className="rounded-lg bg-red-500/10 border border-red-500/50 p-4">
+          <p className="text-sm text-red-200">
+            Complete product setup to create your Sora character before using Creative Studio.
+          </p>
+          <Link
+            href={`/products/${selectedProduct.id}`}
+            className="mt-2 inline-flex items-center text-xs font-medium text-red-300 hover:text-red-200"
+          >
+            Go to Product Setup →
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="px-6 py-6 space-y-6 max-w-4xl">
       {/* Header */}
@@ -2845,21 +2873,6 @@ export default function CreativeStudioPage() {
       {error && (
         <div className="rounded-lg bg-red-500/10 border border-red-500/50 p-4">
           <p className="text-sm text-red-300">{error}</p>
-        </div>
-      )}
-
-      {!hasSelectedProductCreatorReference && selectedProductId && (
-        <div className="rounded-lg bg-amber-500/10 border border-amber-500/50 p-4">
-          <p className="text-sm text-amber-200">
-            Image generation is locked for this product. Set an active creator face in product
-            settings first.
-          </p>
-          <Link
-            href={`/projects/${projectId}/products`}
-            className="mt-2 inline-flex items-center text-xs font-medium text-amber-300 hover:text-amber-200"
-          >
-            Open Product Settings
-          </Link>
         </div>
       )}
 
