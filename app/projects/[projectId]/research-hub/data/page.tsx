@@ -20,6 +20,8 @@ type AdAsset = {
   id: string;
   jobId: string | null;
   platform: string;
+  isSwipeFile?: boolean;
+  swipeMetadata?: Record<string, any> | null;
   createdAt: string;
   updatedAt: string;
   rawJson: Record<string, any> | null;
@@ -280,6 +282,7 @@ export default function ResearchHubDataPage() {
         return {
           id: asset.id,
           updatedAt: asset.updatedAt,
+          isSwipeFile: Boolean(asset.isSwipeFile),
           videoUrl: getVideoUrl(raw),
           assessedAt:
             typeof assessedAtValue === "string" && assessedAtValue.trim().length > 0
@@ -383,6 +386,7 @@ export default function ResearchHubDataPage() {
         "updatedAt",
         "assetId",
         "videoUrl",
+        "isSwipeFile",
         "assessedAt",
         "viable",
         "rawViable",
@@ -395,6 +399,7 @@ export default function ResearchHubDataPage() {
         updatedAt: row.updatedAt,
         assetId: row.id,
         videoUrl: row.videoUrl,
+        isSwipeFile: row.isSwipeFile,
         assessedAt: row.assessedAt ?? "",
         viable: row.viable === null ? "" : row.viable,
         rawViable: row.rawViable === null ? "" : row.rawViable,
@@ -676,6 +681,7 @@ export default function ResearchHubDataPage() {
                     <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Updated</th>
                     <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Asset ID</th>
                     <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Video URL</th>
+                    <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Swipe</th>
                     <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Assessed</th>
                     <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Viable</th>
                     <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Raw Viable</th>
@@ -701,6 +707,15 @@ export default function ResearchHubDataPage() {
                           </a>
                         ) : (
                           <span className="text-slate-500">—</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-xs text-slate-300">
+                        {row.isSwipeFile ? (
+                          <span className="inline-flex rounded bg-amber-500/20 px-2 py-0.5 text-[11px] text-amber-300">
+                            Swipe File
+                          </span>
+                        ) : (
+                          "—"
                         )}
                       </td>
                       <td className="px-3 py-2 text-xs text-slate-300">

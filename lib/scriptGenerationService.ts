@@ -167,6 +167,24 @@ type PatternSelection = {
   source: "latest" | "after_customer_analysis";
 };
 
+type SwipeTemplate = {
+  hookPattern: string;
+  problemPattern: string;
+  solutionPattern: string;
+  ctaPattern: string;
+  beatStructure: Array<{
+    beat: string;
+    duration: string;
+    pattern: string;
+  }>;
+};
+
+type SwipeFileSelection = {
+  id: string;
+  views: number | null;
+  swipeMetadata: SwipeTemplate;
+};
+
 type ProductCollectionJobContext = {
   id: string;
   runId: string | null;
@@ -188,6 +206,8 @@ type ResearchSourcesUsed = {
   patternAnalysisJobId: string | null;
   patternAnalysisRunDate: string | null;
   productIntelDate: string | null;
+  swipeFileId: string | null;
+  swipeFileViews: number | null;
 };
 
 function toIso(date: Date | null | undefined): string | null {
@@ -213,6 +233,23 @@ function asStringArray(value: unknown): string[] {
     .filter(Boolean);
 }
 
+function asNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+function firstNumber(...values: unknown[]): number | null {
+  for (const value of values) {
+    const parsed = asNumber(value);
+    if (parsed !== null) return parsed;
+  }
+  return null;
+}
+
 function firstStringInArray(value: unknown): string | null {
   if (!Array.isArray(value)) return null;
   for (const entry of value) {
@@ -220,6 +257,62 @@ function firstStringInArray(value: unknown): string | null {
     if (normalized) return normalized;
   }
   return null;
+}
+
+function normalizeSwipeTemplate(value: unknown): SwipeTemplate | null {
+  const raw = asObject(value);
+  if (!raw) return null;
+
+  const hookPattern = asString(raw.hookPattern);
+  const problemPattern = asString(raw.problemPattern);
+  const solutionPattern = asString(raw.solutionPattern);
+  const ctaPattern = asString(raw.ctaPattern);
+
+  if (!hookPattern || !problemPattern || !solutionPattern || !ctaPattern) {
+    return null;
+  }
+
+  const rawBeatStructure = Array.isArray(raw.beatStructure) ? raw.beatStructure : [];
+  const beatStructure = rawBeatStructure
+    .map((entry) => {
+      const beat = asObject(entry);
+      if (!beat) return null;
+      const label = asString(beat.beat);
+      const duration = asString(beat.duration);
+      const pattern = asString(beat.pattern);
+      if (!label || !duration || !pattern) return null;
+      return {
+        beat: label,
+        duration,
+        pattern,
+      };
+    })
+    .filter((entry): entry is { beat: string; duration: string; pattern: string } => Boolean(entry))
+    .slice(0, 8);
+
+  return {
+    hookPattern,
+    problemPattern,
+    solutionPattern,
+    ctaPattern,
+    beatStructure,
+  };
+}
+
+function extractSwipeViews(rawJson: unknown): number | null {
+  const raw = asObject(rawJson);
+  if (!raw) return null;
+  const metrics = asObject(raw.metrics);
+  const qualityGate = asObject(raw.qualityGate);
+  return firstNumber(
+    raw.views,
+    raw.view,
+    raw.plays,
+    metrics?.views,
+    metrics?.view,
+    metrics?.plays,
+    qualityGate?.viewCount,
+  );
 }
 
 function escapePromptJsonString(value: string): string {
@@ -1226,6 +1319,7 @@ function buildScriptPrompt(args: {
   avatar: any;
   productIntel: any;
   patternRawJson: unknown;
+  swipeFile: SwipeFileSelection | null;
   targetDuration: number;
   beatCount: number;
   patterns: Pattern[];
@@ -1242,6 +1336,7 @@ function buildScriptPrompt(args: {
     avatar,
     productIntel,
     patternRawJson,
+    swipeFile,
     targetDuration,
     beatCount,
     patterns,
@@ -1435,13 +1530,35 @@ ${formulaComponentsPerBeatLines}`
       }
     )
     .join(",\n");
+  const swipeMetadata = swipeFile?.swipeMetadata ?? null;
+  const swipeFileViewsLabel =
+    typeof swipeFile?.views === "number" ? swipeFile.views.toLocaleString() : "unknown";
+  const swipeBeatStructure = swipeMetadata?.beatStructure?.length
+    ? swipeMetadata.beatStructure
+        .map((beat) => `- ${beat.beat} (${beat.duration}): ${beat.pattern}`)
+        .join("\n")
+    : "- Not provided";
+  const swipeTemplateSection = swipeMetadata
+    ? `SWIPE FILE TEMPLATE (from ${swipeFileViewsLabel} views)
+Hook (0-3s): ${swipeMetadata.hookPattern}
+Problem (3-8s): ${swipeMetadata.problemPattern}
+Solution (8-13s): ${swipeMetadata.solutionPattern}
+CTA (13-15s): ${swipeMetadata.ctaPattern}
+
+Beat structure:
+${swipeBeatStructure}
+
+Apply this structure exactly, but fill it with this project's avatar language and product claims.
+`
+    : "";
 
   // Tiered prompt contract:
   // Tier 1 = hard architectural constraints, Tier 2 = pass/fail quality gates, Tier 3 = flexible guidance.
-  const system =
-    "You are a TikTok conversion copywriter. You write 30-second UGC scripts that stop scrolls and drive purchases. Every word earns its place. Output ONLY valid JSON. No markdown. No preamble.";
+  const system = swipeMetadata
+    ? "You are a TikTok conversion copywriter. Use the provided swipe template as the primary script structure while keeping all output constraints. Output ONLY valid JSON. No markdown. No preamble."
+    : "You are a TikTok conversion copywriter. You write 30-second UGC scripts that stop scrolls and drive purchases. Every word earns its place. Output ONLY valid JSON. No markdown. No preamble.";
 
-  const prompt = `TIER 1 - STRUCTURE (NON-NEGOTIABLE)
+  const prompt = `${swipeTemplateSection}TIER 1 - STRUCTURE (NON-NEGOTIABLE)
 targetDuration: ${targetDuration}
 beatCount: ${beatCount}
 dynamicWordCeiling: ${dynamicWordCeiling}
@@ -1797,6 +1914,70 @@ async function selectPatternResult(
   };
 }
 
+async function selectSwipeFile(
+  projectId: string,
+  preferredRunId: string | null
+): Promise<SwipeFileSelection | null> {
+  type SwipeCandidateRow = {
+    id: string;
+    createdAt: Date;
+    rawJson: Prisma.JsonValue;
+    swipeMetadata: Prisma.JsonValue | null;
+  };
+  const getCandidates = async (runId: string | null) =>
+    prisma.$queryRaw<SwipeCandidateRow[]>(
+      Prisma.sql`
+        SELECT a."id", a."createdAt", a."rawJson", a."swipeMetadata"
+        FROM "ad_asset" a
+        LEFT JOIN "job" j ON j."id" = a."jobId"
+        WHERE a."projectId" = ${projectId}
+          AND COALESCE(a."isSwipeFile", false) = true
+          AND a."swipeMetadata" IS NOT NULL
+          ${runId ? Prisma.sql`AND j."runId" = ${runId}` : Prisma.empty}
+        ORDER BY a."createdAt" DESC
+        LIMIT 40
+      `
+    );
+
+  const sameRunCandidates = preferredRunId
+    ? await getCandidates(preferredRunId)
+    : [];
+  const fallbackCandidates = await getCandidates(null);
+  const candidateMap = new Map<string, typeof fallbackCandidates[number]>();
+  for (const candidate of [...sameRunCandidates, ...fallbackCandidates]) {
+    candidateMap.set(candidate.id, candidate);
+  }
+
+  const candidates: Array<SwipeFileSelection & { createdAt: Date }> = [];
+  for (const candidate of Array.from(candidateMap.values())) {
+    const swipeMetadata = normalizeSwipeTemplate(candidate.swipeMetadata);
+    if (!swipeMetadata) continue;
+    candidates.push({
+      id: candidate.id,
+      views: extractSwipeViews(candidate.rawJson),
+      swipeMetadata,
+      createdAt: candidate.createdAt,
+    });
+  }
+
+  candidates.sort((a, b) => {
+    const viewsA = a.views ?? -1;
+    const viewsB = b.views ?? -1;
+    if (viewsA !== viewsB) return viewsB - viewsA;
+    return b.createdAt.getTime() - a.createdAt.getTime();
+  });
+
+  const selected = candidates[0] ?? null;
+  console.log("[ScriptGen] Swipe file selected:", selected?.id || "none");
+  if (!selected) return null;
+
+  return {
+    id: selected.id,
+    views: selected.views ?? null,
+    swipeMetadata: selected.swipeMetadata,
+  };
+}
+
 async function selectProductIntelInput(
   projectId: string,
   projectName: string,
@@ -1898,6 +2079,10 @@ export async function runScriptGeneration(args: {
 
   const patternSelection = await selectPatternResult(projectId, selectedCustomerAnalysis);
   const patternResult = patternSelection.patternResult;
+  const swipeFile = await selectSwipeFile(
+    projectId,
+    patternResult?.jobRunId ?? selectedCustomerAnalysis?.runId ?? null
+  );
 
   const productIntelSelection = await selectProductIntelInput(
     projectId,
@@ -1916,6 +2101,8 @@ export async function runScriptGeneration(args: {
     patternAnalysisJobId: patternResult?.jobId ?? null,
     patternAnalysisRunDate: toIso(patternResult?.jobUpdatedAt ?? patternResult?.createdAt ?? null),
     productIntelDate: toIso(productIntelDate),
+    swipeFileId: swipeFile?.id ?? null,
+    swipeFileViews: swipeFile?.views ?? null,
   };
 
   const missingDeps: string[] = [];
@@ -1944,6 +2131,7 @@ export async function runScriptGeneration(args: {
     avatar: (avatar?.persona as any) ?? {},
     productIntel: productIntelPayload,
     patternRawJson: patternResult?.rawJson ?? null,
+    swipeFile,
     targetDuration: selectedTargetDuration,
     beatCount: selectedBeatCount,
     patterns,
