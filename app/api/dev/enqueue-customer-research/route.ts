@@ -32,7 +32,11 @@ export async function POST(req: NextRequest) {
     body = (await req.json()) as InputBody;
   } catch {}
 
-  const projectId = body.projectId ?? "proj_test";
+  const projectId = String(body.projectId ?? "").trim();
+  if (!projectId) {
+    return NextResponse.json({ error: "projectId is required" }, { status: 400 });
+  }
+
   const productName = body.productName ?? "Test Product";
   const productProblemSolved = body.productProblemSolved ?? "Test problem";
   const mainProductAsin = body.mainProductAsin ?? "B0TESTASIN1";
@@ -40,28 +44,13 @@ export async function POST(req: NextRequest) {
   const competitor2Asin = body.competitor2Asin;
   const competitor3Asin = body.competitor3Asin;
 
-  const existing = await prisma.project.findUnique({
-    where: { id: projectId },
-    select: { userId: true, name: true, description: true },
-  });
-  if (existing && existing.userId !== userId) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-
-  await prisma.project.upsert({
-    where: { id: projectId },
-    update: {
-      name: existing?.name ?? "Test Project",
-      description: existing?.description ?? null,
-      userId,
-    },
-    create: {
-      id: projectId,
-      name: "Test Project",
-      userId,
-    },
+  const ownedProject = await prisma.project.findFirst({
+    where: { id: projectId, userId },
     select: { id: true },
   });
+  if (!ownedProject) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   const job = await prisma.job.create({
     data: {
