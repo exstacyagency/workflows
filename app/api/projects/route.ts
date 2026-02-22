@@ -1,25 +1,12 @@
-import { randomBytes } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { db } from '@/lib/db';
-import { cfg } from '@/lib/config';
+import { getSessionUserId } from "@/lib/getSessionUserId";
 
 export async function GET(req: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    let userId = "";
-    
-    if (!session) {
-      if (!cfg.isProd || cfg.securitySweep || cfg.MODE === "test" || cfg.MODE === "beta" || cfg.isDev) {
-        const rawCookie = req.headers?.get?.("cookie") || "";
-        const match = rawCookie.match(/test_session=([^;]+)/);
-        userId = match ? `test-${match[1]}` : `test-${randomBytes(8).toString('hex')}`;
-      } else {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-      }
-    } else {
-      userId = (session.user as { id: string }).id;
+    const userId = await getSessionUserId(req);
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const projects = await db.project.findMany({
@@ -46,19 +33,9 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    let userId = "";
-    
-    if (!session) {
-      if (!cfg.isProd || cfg.securitySweep || cfg.MODE === "test" || cfg.MODE === "beta" || cfg.isDev) {
-        const rawCookie = req.headers?.get?.("cookie") || "";
-        const match = rawCookie.match(/test_session=([^;]+)/);
-        userId = match ? `test-${match[1]}` : `test-${randomBytes(8).toString('hex')}`;
-      } else {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-      }
-    } else {
-      userId = (session.user as { id: string }).id;
+    const userId = await getSessionUserId(req);
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     let body: { name?: string; description?: string } = {};
