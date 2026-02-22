@@ -1,5 +1,10 @@
 // auth.ts
 import { cfg } from "@/lib/config";
+import {
+  authSecret,
+  sessionTokenCookieName,
+  sessionTokenCookieSecure,
+} from "@/lib/auth/runtime";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import type { NextAuthOptions } from "next-auth";
@@ -12,15 +17,17 @@ import {
 } from "@/lib/authAbuseGuardDb";
 import { normalizeEmail } from "@/lib/normalizeEmail";
 
-const isProd = process.env.NODE_ENV === "production";
+const isProd = cfg.raw("NODE_ENV") === "production";
 
 // Debug logging to verify environment variables
 if (isProd) {
   console.log("[AUTH CONFIG]", {
-    hasSecret: !!(process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET),
-    nodeEnv: process.env.NODE_ENV,
-    nextauthUrl: process.env.NEXTAUTH_URL,
-    hasTrustHost: process.env.AUTH_TRUST_HOST,
+    hasSecret: !!authSecret,
+    nodeEnv: cfg.raw("NODE_ENV"),
+    nextauthUrl: cfg.raw("NEXTAUTH_URL"),
+    hasTrustHost: cfg.raw("AUTH_TRUST_HOST"),
+    sessionCookieName: sessionTokenCookieName,
+    sessionCookieSecure: sessionTokenCookieSecure,
   });
 }
 
@@ -29,17 +36,17 @@ export const authOptions: NextAuthOptions = {
 
   cookies: {
     sessionToken: {
-      name: "next-auth.session-token",
+      name: sessionTokenCookieName,
       options: {
         httpOnly: true,
         sameSite: "lax",
         path: "/",
-        secure: isProd, // ✅ Fixed: was hardcoded to false
+        secure: sessionTokenCookieSecure,
       },
     },
   },
 
-  secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET,
+  secret: authSecret,
 
   session: { strategy: "jwt" },
 
@@ -137,7 +144,7 @@ export const authOptions: NextAuthOptions = {
 
   events: {
     async signIn() {
-      if (!isProd && !(process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET)) {
+      if (!isProd && !authSecret) {
         console.warn(
           "[auth] Missing AUTH_SECRET/NEXTAUTH_SECRET in dev. Sessions/CSRF can be flaky. Set a stable secret in .env.local."
         );
