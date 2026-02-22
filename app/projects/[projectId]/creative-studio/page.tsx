@@ -86,6 +86,16 @@ type ScriptDetails = {
 };
 
 const DEFAULT_SCRIPT_TARGET_DURATION_SECONDS = 30;
+const PIPELINE_STEP_TYPES: JobType[] = [
+  JobType.SCRIPT_GENERATION,
+  JobType.STORYBOARD_GENERATION,
+  "IMAGE_PROMPT_GENERATION" as JobType,
+  JobType.VIDEO_IMAGE_GENERATION,
+  JobType.VIDEO_PROMPT_GENERATION,
+  JobType.VIDEO_GENERATION,
+  JobType.VIDEO_REVIEW,
+  JobType.VIDEO_UPSCALER,
+];
 
 type ScriptRunSummarySource = {
   present: boolean;

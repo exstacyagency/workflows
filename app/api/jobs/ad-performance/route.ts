@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getSessionUserId } from "@/lib/getSessionUserId";
 import { isSelfHosted } from "@/lib/config/mode";
 import { JobType } from "@prisma/client";
+import { requireProjectOwner } from "@/lib/requireProjectOwner";
 
 export async function POST(req: Request) {
   if (isSelfHosted()) {
@@ -27,6 +28,11 @@ export async function POST(req: Request) {
     );
   }
 
+  const auth = await requireProjectOwner(projectId);
+  if (auth.error) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
+  }
+
   const idempotencyKey = JSON.stringify([
     projectId,
     JobType.AD_PERFORMANCE,
@@ -34,7 +40,7 @@ export async function POST(req: Request) {
   ]);
 
   const existing = await prisma.job.findFirst({
-    where: { idempotencyKey },
+    where: { idempotencyKey, projectId, userId },
     select: { id: true },
   });
 
