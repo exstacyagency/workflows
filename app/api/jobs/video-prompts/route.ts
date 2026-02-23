@@ -13,6 +13,40 @@ import { assertMinPlan, UpgradeRequiredError } from '../../../../lib/billing/req
 import { reserveQuota, rollbackQuota, QuotaExceededError } from '../../../../lib/billing/usage';
 import { requireProjectOwner404 } from '@/lib/auth/requireProjectOwner404';
 
+function asObject(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function asString(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return value.trim();
+}
+
+function resolveStoryboardIdFromJob(resultSummary: unknown, payload: unknown): string | null {
+  const summaryObj = asObject(resultSummary);
+  const payloadObj = asObject(payload);
+
+  const fromSummary = asString(summaryObj?.storyboardId);
+  if (fromSummary) return fromSummary;
+
+  const nestedSummary = asObject(summaryObj?.summary);
+  const nestedSummaryId = asString(nestedSummary?.storyboardId);
+  if (nestedSummaryId) return nestedSummaryId;
+
+  const fromPayload = asString(payloadObj?.storyboardId);
+  if (fromPayload) return fromPayload;
+
+  const summaryText = typeof resultSummary === "string" ? resultSummary : "";
+  if (summaryText) {
+    const match = summaryText.match(/storyboardId=([^) ,]+)/);
+    if (match?.[1]) return String(match[1]).trim();
+  }
+
+  return null;
+}
+
 export async function POST(req: NextRequest) {
   const userId = await getSessionUserId();
   if (!userId) {
@@ -50,7 +84,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const storyboardId = parsed.data.storyboardId;
+    const requestedStoryboardId = parsed.data.storyboardId;
     const requestedProductId = parsed.data.productId ? String(parsed.data.productId).trim() : "";
     const requestedRunId = parsed.data.runId ? String(parsed.data.runId).trim() : "";
     let effectiveProductId: string | null = null;
@@ -59,17 +93,17 @@ export async function POST(req: NextRequest) {
     // If client does not supply attemptKey, generate a unique nonce per request.
     const attemptKey = parsed.data.attemptKey || `${Date.now()}-${randomUUID()}`;
 
-    const storyboard = await prisma.storyboard.findUnique({
-      where: { id: storyboardId },
+    const requestedStoryboard = await prisma.storyboard.findUnique({
+      where: { id: requestedStoryboardId },
       select: { id: true, projectId: true },
     });
-    if (!storyboard) {
+    if (!requestedStoryboard) {
       return NextResponse.json(
         { error: 'Storyboard or project not found' },
         { status: 404 },
       );
     }
-    projectId = storyboard.projectId;
+    projectId = requestedStoryboard.projectId;
 
     const deny = await requireProjectOwner404(projectId);
     if (deny) return deny;
@@ -97,6 +131,60 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "productId not found for this project" }, { status: 400 });
       }
       effectiveProductId = requestedProductId;
+    }
+
+    const latestStoryboardJob = await prisma.job.findFirst({
+      where: {
+        projectId,
+        userId,
+        type: JobType.STORYBOARD_GENERATION,
+        status: JobStatus.COMPLETED,
+        ...(effectiveRunId ? { runId: effectiveRunId } : {}),
+      },
+      orderBy: { updatedAt: "desc" },
+      select: {
+        id: true,
+        resultSummary: true,
+        payload: true,
+      },
+    });
+
+    const resolvedStoryboardId =
+      resolveStoryboardIdFromJob(latestStoryboardJob?.resultSummary, latestStoryboardJob?.payload) ||
+      requestedStoryboardId;
+
+    const storyboard = await prisma.storyboard.findUnique({
+      where: { id: resolvedStoryboardId },
+      select: {
+        id: true,
+        projectId: true,
+        scriptId: true,
+        scenes: {
+          orderBy: { sceneNumber: "asc" },
+          select: {
+            id: true,
+            sceneNumber: true,
+            status: true,
+            rawJson: true,
+          },
+        },
+        script: {
+          select: {
+            rawJson: true,
+            job: {
+              select: {
+                payload: true,
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!storyboard || storyboard.projectId !== projectId) {
+      return NextResponse.json(
+        { error: "No valid completed storyboard found for this run/project" },
+        { status: 400 },
+      );
     }
 
     // Plan check AFTER ownership to avoid leaking project existence via 402.
@@ -131,11 +219,14 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const scriptJobPayload = asObject(storyboard.script?.job?.payload) ?? {};
+    const effectiveProductFromScript = asString(scriptJobPayload.productId) || null;
+    const resolvedProductId = effectiveProductId ?? effectiveProductFromScript;
     const idempotencyKey = JSON.stringify([
       projectId,
       JobType.VIDEO_PROMPT_GENERATION,
-      storyboardId,
-      effectiveProductId ?? "no_product",
+      storyboard.id,
+      resolvedProductId ?? "no_product",
       effectiveRunId ?? "no_run",
       attemptKey,
     ]);
@@ -189,8 +280,9 @@ export async function POST(req: NextRequest) {
           idempotencyKey,
           ...(effectiveRunId ? { runId: effectiveRunId } : {}),
           payload: {
-            storyboardId,
-            ...(effectiveProductId ? { productId: effectiveProductId } : {}),
+            storyboardId: storyboard.id,
+            ...(storyboard.scriptId ? { scriptId: storyboard.scriptId } : {}),
+            ...(resolvedProductId ? { productId: resolvedProductId } : {}),
             idempotencyKey,
             ...(effectiveRunId ? { runId: effectiveRunId } : {}),
           },
@@ -231,8 +323,9 @@ export async function POST(req: NextRequest) {
         idempotencyKey,
         ...(effectiveRunId ? { runId: effectiveRunId } : {}),
         payload: {
-          storyboardId,
-          ...(effectiveProductId ? { productId: effectiveProductId } : {}),
+          storyboardId: storyboard.id,
+          ...(storyboard.scriptId ? { scriptId: storyboard.scriptId } : {}),
+          ...(resolvedProductId ? { productId: resolvedProductId } : {}),
           idempotencyKey,
           ...(effectiveRunId ? { runId: effectiveRunId } : {}),
         },
@@ -254,7 +347,15 @@ export async function POST(req: NextRequest) {
     });
 
     return NextResponse.json(
-      { jobId: job.id, runId: job.runId ?? effectiveRunId, queued: true, reused: false },
+      {
+        jobId: job.id,
+        runId: job.runId ?? effectiveRunId,
+        storyboardId: storyboard.id,
+        scriptId: storyboard.scriptId ?? null,
+        productId: resolvedProductId,
+        queued: true,
+        reused: false,
+      },
       { status: 200 },
     );
   } catch (err: any) {

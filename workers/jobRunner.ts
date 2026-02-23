@@ -861,7 +861,11 @@ async function runJob(
 
         let result: Awaited<ReturnType<typeof startVideoPromptGenerationJob>>;
         try {
-          result = await startVideoPromptGenerationJob({ storyboardId, jobId, productId });
+          result = await startVideoPromptGenerationJob({
+            storyboardId,
+            jobId,
+            productId,
+          });
           console.log("[Worker][VIDEO_PROMPT_GENERATION] Video prompt generation completed", {
             jobId,
             storyboardId,

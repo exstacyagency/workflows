@@ -696,6 +696,7 @@ export default function CreativeStudioPage() {
         )
         .sort(sortByNewest);
       if (inSelectedRun[0]) return inSelectedRun[0];
+      if (selectedRunId) return null;
       return (
         jobs
           .filter(
@@ -704,7 +705,7 @@ export default function CreativeStudioPage() {
           .sort(sortByNewest)[0] ?? null
       );
     },
-    [jobs, jobsInActiveRun],
+    [jobs, jobsInActiveRun, selectedRunId],
   );
   const latestCompletedStoryboardId = useMemo(
     () => getStoryboardIdFromJob(latestCompletedStoryboardJob),
@@ -2089,6 +2090,10 @@ export default function CreativeStudioPage() {
   const latestVideoImageJobSignature = latestVideoImageJob
     ? `${latestVideoImageJob.id}:${latestVideoImageJob.status}:${latestVideoImageJob.updatedAt}`
     : "";
+  const latestVideoPromptJob = getJobsForType(JobType.VIDEO_PROMPT_GENERATION)[0];
+  const latestVideoPromptJobSignature = latestVideoPromptJob
+    ? `${latestVideoPromptJob.id}:${latestVideoPromptJob.status}:${latestVideoPromptJob.updatedAt}`
+    : "";
 
   const storyboardPanelsForSceneFlow = useMemo(() => {
     if (!latestCompletedStoryboardId) return [] as StoryboardPanel[];
@@ -2125,6 +2130,7 @@ export default function CreativeStudioPage() {
     if (anyRequiredSceneGenerated) return "running";
     return "not_started";
   })();
+  const storyboardCompleted = getStepStatus(JobType.STORYBOARD_GENERATION) === "completed";
 
   // Build production pipeline with dependencies
   const steps: ProductionStep[] = [
@@ -2180,9 +2186,9 @@ export default function CreativeStudioPage() {
       label: "Generate Video Prompts",
       jobType: JobType.VIDEO_PROMPT_GENERATION,
       status: getStepStatus(JobType.VIDEO_PROMPT_GENERATION),
-      canRun: allRequiredScenesApproved,
-      locked: !allRequiredScenesApproved,
-      lockReason: "Approve scenes 1-6 first",
+      canRun: storyboardCompleted,
+      locked: !storyboardCompleted,
+      lockReason: "Complete storyboard first",
       lastJob: getJobsForType(JobType.VIDEO_PROMPT_GENERATION)[0],
     },
     {
@@ -2274,21 +2280,10 @@ export default function CreativeStudioPage() {
         step.key === "video_images" ||
         step.key === "image_prompts"
       ) {
-        const latestCompletedStoryboardJob = [...jobs]
-          .filter(
-            (job) =>
-              job.type === JobType.STORYBOARD_GENERATION &&
-              job.status === JobStatus.COMPLETED,
-          )
-          .sort(
-            (a, b) =>
-              new Date(b.updatedAt ?? b.createdAt).getTime() -
-              new Date(a.updatedAt ?? a.createdAt).getTime(),
-          )[0];
-        const storyboardId = getStoryboardIdFromJob(latestCompletedStoryboardJob);
+        const storyboardId = String(latestCompletedStoryboardId ?? "").trim();
         if (!storyboardId) {
           throw new Error(
-            "No completed storyboard found for this project. Run Create Storyboard first.",
+            "No completed storyboard found for the selected run. Run Create Storyboard first.",
           );
         }
         payload = {
@@ -2415,11 +2410,13 @@ export default function CreativeStudioPage() {
 
   useEffect(() => {
     const activeStoryboardId = String(storyboardPanelId || latestCompletedStoryboardId || "").trim();
-    if (!activeStoryboardId || !latestVideoImageJobSignature) return;
+    if (!activeStoryboardId) return;
+    if (!latestVideoImageJobSignature && !latestVideoPromptJobSignature) return;
     void refreshStoryboardForOutput(activeStoryboardId);
   }, [
     latestCompletedStoryboardId,
     latestVideoImageJobSignature,
+    latestVideoPromptJobSignature,
     storyboardPanelId,
   ]);
 
@@ -2430,7 +2427,7 @@ export default function CreativeStudioPage() {
       return;
     }
     if (isViewableCompletedStep(step) && !isCompletedStepOutputExpanded(step.key)) {
-      if (step.key === "image_prompts") {
+      if (step.key === "image_prompts" || step.key === "video_prompts") {
         const targetStoryboardId = String(storyboardPanelId || latestCompletedStoryboardId || "").trim();
         if (targetStoryboardId) {
           void refreshStoryboardForOutput(targetStoryboardId);
@@ -2908,6 +2905,103 @@ export default function CreativeStudioPage() {
           <p className="text-sm text-red-300">{error}</p>
         </div>
       )}
+
+      <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-5">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-slate-100">Creative Runs</h2>
+          <span className="text-xs text-slate-500">
+            {sortedRuns.length} {sortedRuns.length === 1 ? "run" : "runs"}
+          </span>
+        </div>
+
+        <div className="flex flex-col gap-2 md:flex-row md:items-center">
+          <select
+            value={selectedRunId || "no-active"}
+            onChange={(e) => {
+              const value = e.target.value === "no-active" ? null : e.target.value;
+              console.log("[Creative] run dropdown change", {
+                selectedValue: e.target.value,
+                nextRunId: value,
+              });
+              setSelectedRunId(value);
+            }}
+            className="w-full md:w-auto px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-300"
+          >
+            <option value="no-active">No active run</option>
+            {sortedRuns.map((run) => (
+              <option key={run.runId} value={run.runId}>
+                {run.displayLabel} - {formatRunDate(run.createdAt)}
+              </option>
+            ))}
+          </select>
+          <div className="w-full md:w-auto" style={{ position: "relative" }}>
+            <button
+              type="button"
+              onClick={() => setShowRunManagerModal(true)}
+              className="w-full md:w-auto rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-200 hover:bg-slate-700"
+            >
+              Manage Runs
+            </button>
+            <RunManagementModal
+              projectId={projectId}
+              open={showRunManagerModal}
+              onClose={() => setShowRunManagerModal(false)}
+              onRunsChanged={handleRunsChanged}
+            />
+          </div>
+          {orphanedJobsCount > 0 && (
+            <button
+              type="button"
+              onClick={() => void handleCleanupOrphanedJobs()}
+              disabled={cleaningOrphanedJobs}
+              className="w-full md:w-auto rounded-lg border border-red-500/60 bg-red-900/40 px-3 py-2 text-sm text-red-200 hover:bg-red-900/60"
+              style={{
+                cursor: cleaningOrphanedJobs ? "not-allowed" : "pointer",
+                opacity: cleaningOrphanedJobs ? 0.7 : 1,
+              }}
+            >
+              {cleaningOrphanedJobs
+                ? "Cleaning Orphaned Jobs..."
+                : `Clean Up Orphaned Jobs (${orphanedJobsCount})`}
+            </button>
+          )}
+        </div>
+
+        {selectedRun && (
+          <div className="mt-3 text-sm text-slate-400">
+            <div className="text-slate-400">Jobs in this run:</div>
+            <div className="mt-2 space-y-1">
+              {selectedRun.jobs
+                .slice()
+                .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+                .map((job) => {
+                  const statusIcon =
+                    job.status === JobStatus.COMPLETED
+                      ? "✓"
+                      : job.status === JobStatus.FAILED
+                        ? "✕"
+                        : job.status === JobStatus.RUNNING
+                          ? "●"
+                          : "○";
+                  return (
+                    <div key={job.id} className="flex items-center gap-2">
+                      <span className="text-slate-300">{statusIcon}</span>
+                      <span>{getRunJobName(job)}</span>
+                      <span className="text-xs text-slate-500">
+                        {job.status === JobStatus.COMPLETED
+                          ? new Date(job.createdAt).toLocaleTimeString("en-US", {
+                              hour: "numeric",
+                              minute: "2-digit",
+                            })
+                          : String(job.status).toLowerCase()}
+                      </span>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+        )}
+      </section>
 
       {/* Production Pipeline */}
       <section
@@ -4816,7 +4910,15 @@ export default function CreativeStudioPage() {
                                   </div>
                                 </>
                               ) : (
-                                <p style={{ margin: 0, color: "#e2e8f0", fontSize: 13, lineHeight: 1.5 }}>
+                                <p
+                                  style={{
+                                    margin: 0,
+                                    color: "#e2e8f0",
+                                    fontSize: 13,
+                                    lineHeight: 1.5,
+                                    whiteSpace: "pre-wrap",
+                                  }}
+                                >
                                   {promptValue || "No prompt generated yet."}
                                 </p>
                               )}
@@ -4923,103 +5025,6 @@ export default function CreativeStudioPage() {
             );
           })}
         </div>
-        )}
-      </section>
-
-      <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-5">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-slate-100">Creative Runs</h2>
-          <span className="text-xs text-slate-500">
-            {sortedRuns.length} {sortedRuns.length === 1 ? "run" : "runs"}
-          </span>
-        </div>
-
-        <div className="flex flex-col gap-2 md:flex-row md:items-center">
-          <select
-            value={selectedRunId || "no-active"}
-            onChange={(e) => {
-              const value = e.target.value === "no-active" ? null : e.target.value;
-              console.log("[Creative] run dropdown change", {
-                selectedValue: e.target.value,
-                nextRunId: value,
-              });
-              setSelectedRunId(value);
-            }}
-            className="w-full md:w-auto px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-300"
-          >
-            <option value="no-active">No active run</option>
-            {sortedRuns.map((run) => (
-              <option key={run.runId} value={run.runId}>
-                {run.displayLabel} - {formatRunDate(run.createdAt)}
-              </option>
-            ))}
-          </select>
-          <div className="w-full md:w-auto" style={{ position: "relative" }}>
-            <button
-              type="button"
-              onClick={() => setShowRunManagerModal(true)}
-              className="w-full md:w-auto rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-200 hover:bg-slate-700"
-            >
-              Manage Runs
-            </button>
-            <RunManagementModal
-              projectId={projectId}
-              open={showRunManagerModal}
-              onClose={() => setShowRunManagerModal(false)}
-              onRunsChanged={handleRunsChanged}
-            />
-          </div>
-          {orphanedJobsCount > 0 && (
-            <button
-              type="button"
-              onClick={() => void handleCleanupOrphanedJobs()}
-              disabled={cleaningOrphanedJobs}
-              className="w-full md:w-auto rounded-lg border border-red-500/60 bg-red-900/40 px-3 py-2 text-sm text-red-200 hover:bg-red-900/60"
-              style={{
-                cursor: cleaningOrphanedJobs ? "not-allowed" : "pointer",
-                opacity: cleaningOrphanedJobs ? 0.7 : 1,
-              }}
-            >
-              {cleaningOrphanedJobs
-                ? "Cleaning Orphaned Jobs..."
-                : `Clean Up Orphaned Jobs (${orphanedJobsCount})`}
-            </button>
-          )}
-        </div>
-
-        {selectedRun && (
-          <div className="mt-3 text-sm text-slate-400">
-            <div className="text-slate-400">Jobs in this run:</div>
-            <div className="mt-2 space-y-1">
-              {selectedRun.jobs
-                .slice()
-                .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
-                .map((job) => {
-                  const statusIcon =
-                    job.status === JobStatus.COMPLETED
-                      ? "✓"
-                      : job.status === JobStatus.FAILED
-                        ? "✕"
-                        : job.status === JobStatus.RUNNING
-                          ? "●"
-                          : "○";
-                  return (
-                    <div key={job.id} className="flex items-center gap-2">
-                      <span className="text-slate-300">{statusIcon}</span>
-                      <span>{getRunJobName(job)}</span>
-                      <span className="text-xs text-slate-500">
-                        {job.status === JobStatus.COMPLETED
-                          ? new Date(job.createdAt).toLocaleTimeString("en-US", {
-                              hour: "numeric",
-                              minute: "2-digit",
-                            })
-                          : String(job.status).toLowerCase()}
-                      </span>
-                    </div>
-                  );
-                })}
-            </div>
-          </div>
         )}
       </section>
 
