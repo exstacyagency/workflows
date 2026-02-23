@@ -32,6 +32,7 @@ import { runCustomerResearch } from "../services/customerResearchService.ts";
 import { runCustomerAnalysis } from "../lib/customerAnalysisService";
 import { collectAds, buildAdCollectionConfig, type AdCollectionConfig } from "../lib/adRawCollectionService.ts";
 import { runAdOcrCollection } from "../lib/adOcrCollectionService.ts";
+import { runAdTranscriptCollection } from "../lib/adTranscriptCollectionService.ts";
 import { runAdQualityGate } from "../lib/adQualityGateService.ts";
 import { runPatternAnalysis } from "../lib/patternAnalysisService.ts";
 import { startScriptGenerationJob } from "../lib/scriptGenerationService.ts";
@@ -378,16 +379,9 @@ async function updateRunStatus(runId: string | null | undefined, projectId: stri
           : RunStatus.IN_PROGRESS;
 
   try {
-    const updateData = {
-      status,
-      completedAt:
-        status === RunStatus.COMPLETED || status === RunStatus.FAILED
-          ? new Date()
-          : null,
-    };
     await prisma.researchRun.update({
       where: { id: runId },
-      data: updateData as any,
+      data: { status },
     });
   } catch (error) {
     console.warn("[Worker] Failed to update run status", { runId, projectId, error });
@@ -429,13 +423,11 @@ async function claimNextJob(exclusions?: ClaimExclusions) {
     ...(exclusions?.excludedJobTypes || []),
     ...ARCHIVED_JOB_TYPES,
   ];
-  const excludedTypePayloadCombinations = [
-    {
-      type: JobType.AD_PERFORMANCE,
-      payloadFields: ["jobType", "kind"],
-      excludedValues: ["ad_transcripts", "ad_transcript_collection"],
-    },
-  ];
+  const excludedTypePayloadCombinations: Array<{
+    type: JobType;
+    payloadFields: string[];
+    excludedValues: string[];
+  }> = [];
   console.log('[Worker] claimNextJob called');
   console.log('[Worker] dueBefore:', dueBeforeDate.toISOString());
   console.log('[Worker] claim exclusions:', {
@@ -458,10 +450,6 @@ async function claimNextJob(exclusions?: ClaimExclusions) {
           SELECT 1
           FROM job r
           WHERE r."status" = CAST('RUNNING' AS "JobStatus")
-        )
-        AND NOT (
-          "type" = CAST('AD_PERFORMANCE' AS "JobType")
-          AND COALESCE("payload"->>'jobType', "payload"->>'kind', '') IN ('ad_transcripts', 'ad_transcript_collection')
         )
         AND (
           ${excludedTypes.length} = 0
@@ -665,6 +653,32 @@ async function runJob(
 
       case JobType.AD_PERFORMANCE: {
         const adSubtype = String(payload?.jobType ?? payload?.kind ?? "ad_raw_collection");
+
+        if (adSubtype === "ad_transcripts" || adSubtype === "ad_transcript_collection") {
+          const cfgAssembly = await handleProviderConfig(jobId, "AssemblyAI", ["ASSEMBLYAI_API_KEY"]);
+          if (!cfgAssembly.ok) return;
+
+          const runId = String(payload?.runId ?? (job as any)?.runId ?? "").trim();
+          const forceReprocess = payload?.forceReprocess === true;
+          if (!runId) {
+            await markFailed({ jobId, error: "Invalid payload: missing runId" });
+            return;
+          }
+
+          const result = await runAdTranscriptCollection({
+            projectId: job.projectId,
+            jobId,
+            runId,
+            forceReprocess,
+          });
+
+          await markCompleted({
+            jobId,
+            result: { ok: true, ...result },
+            summary: `Transcripts: ${result.processed}/${result.totalAssets}`,
+          });
+          return;
+        }
 
         if (adSubtype === "ad_ocr_collection") {
           const cfgVision = await handleProviderConfig(jobId, "Google Vision", [

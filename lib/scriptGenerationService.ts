@@ -185,6 +185,8 @@ type SwipeFileSelection = {
   swipeMetadata: SwipeTemplate;
 };
 
+type ScriptStrategy = "swipe_template" | "research_formula";
+
 type ProductCollectionJobContext = {
   id: string;
   runId: string | null;
@@ -208,6 +210,8 @@ type ResearchSourcesUsed = {
   productIntelDate: string | null;
   swipeFileId: string | null;
   swipeFileViews: number | null;
+  scriptStrategy: ScriptStrategy;
+  requestedSwipeTemplateAdId: string | null;
 };
 
 function toIso(date: Date | null | undefined): string | null {
@@ -1639,12 +1643,16 @@ type ScriptJobPayload = {
   customerAnalysisJobId?: unknown;
   targetDuration?: unknown;
   beatCount?: unknown;
+  scriptStrategy?: unknown;
+  swipeTemplateAdId?: unknown;
 };
 
 type ScriptGenerationJobConfig = {
   customerAnalysisJobId: string | null;
   targetDuration: number;
   beatCount: number;
+  scriptStrategy: ScriptStrategy;
+  swipeTemplateAdId: string | null;
 };
 
 async function getRequestedScriptGenerationConfig(jobId?: string): Promise<ScriptGenerationJobConfig> {
@@ -1653,6 +1661,8 @@ async function getRequestedScriptGenerationConfig(jobId?: string): Promise<Scrip
       customerAnalysisJobId: null,
       targetDuration: DEFAULT_SCRIPT_TARGET_DURATION,
       beatCount: DEFAULT_SCRIPT_BEAT_COUNT,
+      scriptStrategy: "swipe_template",
+      swipeTemplateAdId: null,
     };
   }
   const job = await prisma.job.findUnique({
@@ -1667,12 +1677,20 @@ async function getRequestedScriptGenerationConfig(jobId?: string): Promise<Scrip
     typeof payload?.customerAnalysisJobId === 'string'
       ? payload.customerAnalysisJobId.trim()
       : '';
+  const scriptStrategyRaw =
+    typeof payload?.scriptStrategy === "string" ? payload.scriptStrategy.trim() : "";
+  const scriptStrategy: ScriptStrategy =
+    scriptStrategyRaw === "research_formula" ? "research_formula" : "swipe_template";
+  const swipeTemplateAdIdRaw =
+    typeof payload?.swipeTemplateAdId === "string" ? payload.swipeTemplateAdId.trim() : "";
   const targetDuration = normalizeTargetDurationValue(payload?.targetDuration);
   const beatCount = normalizeBeatCountValue(payload?.beatCount);
   return {
     customerAnalysisJobId: selectedId || null,
     targetDuration,
     beatCount,
+    scriptStrategy,
+    swipeTemplateAdId: swipeTemplateAdIdRaw || null,
   };
 }
 
@@ -1916,7 +1934,8 @@ async function selectPatternResult(
 
 async function selectSwipeFile(
   projectId: string,
-  preferredRunId: string | null
+  preferredRunId: string | null,
+  requestedSwipeTemplateAdId: string | null
 ): Promise<SwipeFileSelection | null> {
   type SwipeCandidateRow = {
     id: string;
@@ -1948,7 +1967,31 @@ async function selectSwipeFile(
     candidateMap.set(candidate.id, candidate);
   }
 
-  const candidates: Array<SwipeFileSelection & { createdAt: Date }> = [];
+  const scoreSwipe = (rawJson: Prisma.JsonValue): number => {
+    const raw = asObject(rawJson) ?? {};
+    const metrics = asObject(raw.metrics) ?? {};
+    const views = asNumber(metrics.views ?? metrics.view ?? metrics.plays);
+    const engagementScore = asNumber(metrics.engagement_score);
+    const retention3s = asNumber(metrics.retention_3s);
+    const retention10s = asNumber(metrics.retention_10s);
+    const ctr = asNumber(metrics.ctr);
+
+    const viewsNorm = views && views > 0 ? Math.min(1, Math.log10(views + 1) / 7) : 0;
+    const engagementNorm = engagementScore !== null ? Math.max(0, Math.min(1, engagementScore)) : 0;
+    const r3Norm = retention3s !== null ? Math.max(0, Math.min(1, retention3s)) : 0;
+    const r10Norm = retention10s !== null ? Math.max(0, Math.min(1, retention10s)) : 0;
+    const ctrNorm = ctr !== null ? Math.max(0, Math.min(1, ctr)) : 0;
+
+    return (
+      0.35 * engagementNorm +
+      0.25 * r3Norm +
+      0.2 * r10Norm +
+      0.1 * ctrNorm +
+      0.1 * viewsNorm
+    );
+  };
+
+  const candidates: Array<SwipeFileSelection & { createdAt: Date; score: number }> = [];
   for (const candidate of Array.from(candidateMap.values())) {
     const swipeMetadata = normalizeSwipeTemplate(candidate.swipeMetadata);
     if (!swipeMetadata) continue;
@@ -1957,15 +2000,27 @@ async function selectSwipeFile(
       views: extractSwipeViews(candidate.rawJson),
       swipeMetadata,
       createdAt: candidate.createdAt,
+      score: scoreSwipe(candidate.rawJson),
     });
   }
 
   candidates.sort((a, b) => {
-    const viewsA = a.views ?? -1;
-    const viewsB = b.views ?? -1;
-    if (viewsA !== viewsB) return viewsB - viewsA;
+    if (a.score !== b.score) return b.score - a.score;
     return b.createdAt.getTime() - a.createdAt.getTime();
   });
+
+  if (requestedSwipeTemplateAdId) {
+    const requested = candidates.find((c) => c.id === requestedSwipeTemplateAdId) ?? null;
+    if (!requested) {
+      throw new Error("Selected swipe template ad is not available for script generation.");
+    }
+    console.log("[ScriptGen] Swipe file selected by user:", requested.id);
+    return {
+      id: requested.id,
+      views: requested.views ?? null,
+      swipeMetadata: requested.swipeMetadata,
+    };
+  }
 
   const selected = candidates[0] ?? null;
   console.log("[ScriptGen] Swipe file selected:", selected?.id || "none");
@@ -2052,8 +2107,10 @@ export async function runScriptGeneration(args: {
   customerAnalysisJobId?: string;
   targetDuration?: number;
   beatCount?: number;
+  scriptStrategy?: ScriptStrategy;
+  swipeTemplateAdId?: string | null;
 }) {
-  const { projectId, jobId, customerAnalysisJobId, targetDuration, beatCount } = args;
+  const { projectId, jobId, customerAnalysisJobId, targetDuration, beatCount, scriptStrategy, swipeTemplateAdId } = args;
 
   // Load dependencies:
   const project = await prisma.project.findUnique({
@@ -2072,6 +2129,12 @@ export async function runScriptGeneration(args: {
   const selectedBeatCount = normalizeBeatCountValue(
     beatCount ?? requestedConfig.beatCount
   );
+  const selectedScriptStrategy: ScriptStrategy =
+    scriptStrategy ?? requestedConfig.scriptStrategy;
+  const selectedSwipeTemplateAdId =
+    (typeof swipeTemplateAdId === "string" ? swipeTemplateAdId.trim() : "") ||
+    requestedConfig.swipeTemplateAdId ||
+    null;
 
   const avatarSelection = await getAvatarForScript(projectId, selectedCustomerAnalysisJobId);
   const avatar = avatarSelection.avatar;
@@ -2079,10 +2142,17 @@ export async function runScriptGeneration(args: {
 
   const patternSelection = await selectPatternResult(projectId, selectedCustomerAnalysis);
   const patternResult = patternSelection.patternResult;
-  const swipeFile = await selectSwipeFile(
-    projectId,
-    patternResult?.jobRunId ?? selectedCustomerAnalysis?.runId ?? null
-  );
+  const swipeFile =
+    selectedScriptStrategy === "swipe_template"
+      ? await selectSwipeFile(
+          projectId,
+          patternResult?.jobRunId ?? selectedCustomerAnalysis?.runId ?? null,
+          selectedSwipeTemplateAdId
+        )
+      : null;
+  if (selectedScriptStrategy === "swipe_template" && !swipeFile) {
+    throw new Error("No swipe template candidates found. Choose 'Research Formula' or mark a swipe ad.");
+  }
 
   const productIntelSelection = await selectProductIntelInput(
     projectId,
@@ -2103,6 +2173,8 @@ export async function runScriptGeneration(args: {
     productIntelDate: toIso(productIntelDate),
     swipeFileId: swipeFile?.id ?? null,
     swipeFileViews: swipeFile?.views ?? null,
+    scriptStrategy: selectedScriptStrategy,
+    requestedSwipeTemplateAdId: selectedSwipeTemplateAdId,
   };
 
   const missingDeps: string[] = [];

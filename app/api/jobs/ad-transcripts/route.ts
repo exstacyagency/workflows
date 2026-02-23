@@ -1,7 +1,6 @@
 // app/api/jobs/ad-transcripts/route.ts
 import { cfg } from "@/lib/config";
 import { NextRequest, NextResponse } from "next/server";
-import { startAdTranscriptJob } from "@/lib/adTranscriptCollectionService";
 import { prisma } from "@/lib/prisma";
 import { requireProjectOwner } from "@/lib/requireProjectOwner";
 import { ProjectJobSchema, parseJson } from "@/lib/validation/jobs";
@@ -197,13 +196,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!cfg.raw("ASSEMBLYAI_API_KEY")) {
-      return NextResponse.json(
-        { error: "ASSEMBLYAI_API_KEY must be set" },
-        { status: 500 }
-      );
-    }
-
     if (cfg.raw("NODE_ENV") === "production") {
       const rateCheck = await checkRateLimit(projectId);
       if (!rateCheck.allowed) {
@@ -212,6 +204,13 @@ export async function POST(req: NextRequest) {
           { status: 429 }
         );
       }
+    }
+
+    if (!cfg.raw("ASSEMBLYAI_API_KEY")) {
+      return NextResponse.json(
+        { error: "ASSEMBLYAI_API_KEY must be set" },
+        { status: 500 }
+      );
     }
 
     const job = await prisma.job.create({
@@ -236,13 +235,6 @@ export async function POST(req: NextRequest) {
 
     jobId = job.id;
 
-    const result = await startAdTranscriptJob({
-      projectId,
-      jobId: job.id,
-      runId: effectiveRunId,
-      forceReprocess,
-    });
-
     await logAudit({
       userId,
       projectId,
@@ -252,7 +244,15 @@ export async function POST(req: NextRequest) {
       metadata: { type: "ad-transcripts" },
     });
 
-    return NextResponse.json({ ...result, runId: effectiveRunId }, { status: 200 });
+    return NextResponse.json(
+      {
+        jobId: job.id,
+        runId: effectiveRunId,
+        status: "PENDING",
+        queued: true,
+      },
+      { status: 200 }
+    );
   } catch (err: any) {
     console.error(err);
 

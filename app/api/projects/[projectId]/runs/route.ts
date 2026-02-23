@@ -14,6 +14,7 @@ type RunRow = {
   createdAt: Date;
   jobCount: number;
   latestJobType: string | null;
+  latestJobSubtype: string | null;
   latestJobStatus: string | null;
   runNumber: number;
 };
@@ -63,6 +64,7 @@ export async function GET(
           LEFT JOIN LATERAL (
             SELECT
               j2."type"::text AS "latestJobType",
+              COALESCE(j2."payload"->>'jobType', j2."payload"->>'kind') AS "latestJobSubtype",
               j2."status"::text AS "latestJobStatus"
             FROM "job" j2
             WHERE j2."runId" = rr."id"
@@ -71,7 +73,7 @@ export async function GET(
             LIMIT 1
           ) lj ON TRUE
           WHERE rr."projectId" = ${pathProjectId}
-          GROUP BY rr."id", rr."projectId", rr."name", rr."status", rr."createdAt", lj."latestJobType", lj."latestJobStatus"
+          GROUP BY rr."id", rr."projectId", rr."name", rr."status", rr."createdAt", lj."latestJobType", lj."latestJobSubtype", lj."latestJobStatus"
         )
         SELECT
           rr.*,

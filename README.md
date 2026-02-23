@@ -185,6 +185,14 @@ The system models a complete video production workflow:
    cd services/reddit-scraper && python3 flask_api.py
    ```
 
+### Worker Runtime Note (TODO before go-live)
+
+- OCR extraction (`ad_ocr_collection`) requires `ffmpeg` in the worker runtime.
+- Local developer workers need `ffmpeg` installed in PATH.
+- Production should run the worker in Docker/Railway/Render (or equivalent) with `ffmpeg` preinstalled so end users do not need local setup.
+- Transcript extraction (`ad_transcript_collection`) uses AssemblyAI and requires:
+  - `ASSEMBLYAI_API_KEY`
+
 6. **Access the Application**: Open http://localhost:3000
 
 ## Frontend Entry Points
