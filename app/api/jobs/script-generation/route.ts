@@ -29,6 +29,8 @@ const ScriptGenerationSchema = ProjectJobSchema.extend({
   forceNew: z.boolean().optional(),
   targetDuration: z.number().int().min(1).max(180).default(30),
   beatCount: z.number().int().min(1).max(10).default(5),
+  scriptStrategy: z.enum(["swipe_template", "research_formula"]).optional(),
+  swipeTemplateAdId: z.string().trim().min(1).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -146,7 +148,9 @@ export async function POST(req: NextRequest) {
         : "none";
     const selectedTargetDuration = Number(parsed.data.targetDuration);
     const selectedBeatCount = Number(parsed.data.beatCount);
-    let idempotencyKey = `script-generation:${projectId}:${effectiveRunId}:${selectedProductId}:${selectedCustomerAnalysisJobId}:${selectedTargetDuration}:${selectedBeatCount}`;
+    const selectedScriptStrategy = String(parsed.data.scriptStrategy || "swipe_template");
+    const selectedSwipeTemplateAdId = String(parsed.data.swipeTemplateAdId || "auto");
+    let idempotencyKey = `script-generation:${projectId}:${effectiveRunId}:${selectedProductId}:${selectedCustomerAnalysisJobId}:${selectedTargetDuration}:${selectedBeatCount}:${selectedScriptStrategy}:${selectedSwipeTemplateAdId}`;
     if (breakerTest) idempotencyKey += `:${Date.now()}`;
     const bypassIdempotencyRecord = async (
       jobId: string,

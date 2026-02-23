@@ -32,7 +32,10 @@ export async function GET(
 
   const { searchParams } = new URL(req.url);
   const jobId = searchParams.get('jobId');
+  const jobType = searchParams.get('jobType');
   const runId = searchParams.get('runId');
+  const productId = searchParams.get('productId');
+  const product = searchParams.get('product');
   const subreddit = searchParams.get('subreddit');
   const solutionKeyword = searchParams.get('solutionKeyword');
   const minScoreParam = searchParams.get('minScore');
@@ -43,8 +46,38 @@ export async function GET(
   if (jobId) {
     where.jobId = jobId;
   }
-  if (runId) {
-    where.job = { ...(where.job ?? {}), runId };
+  if (runId || jobType) {
+    where.job = {
+      ...(where.job ?? {}),
+      ...(runId ? { runId } : {}),
+      ...(jobType ? { type: jobType as any } : {}),
+    };
+  }
+  if (!jobId && (productId || product)) {
+    const productJobs = await prisma.job.findMany({
+      where: {
+        projectId,
+        ...(jobType ? { type: jobType as any } : {}),
+        ...(productId
+          ? {
+              payload: {
+                path: ['productId'],
+                equals: productId,
+              },
+            }
+          : {}),
+        ...(!productId && product
+          ? {
+              payload: {
+                path: ['productName'],
+                equals: product,
+              },
+            }
+          : {}),
+      },
+      select: { id: true },
+    });
+    where.jobId = { in: productJobs.map((j) => j.id) };
   }
   if (subreddit) {
     where.subreddit = subreddit;
