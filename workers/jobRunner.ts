@@ -38,12 +38,17 @@ import { startScriptGenerationJob } from "../lib/scriptGenerationService.ts";
 import { generateStoryboard } from "../lib/storyboardGenerationService.ts";
 import { startVideoPromptGenerationJob } from "../lib/videoPromptGenerationService.ts";
 import { generateCreatorAvatar } from "../lib/creatorAvatarGenerationService.ts";
-import { createSeedVideo, createCharacter, pollKieTask } from "../lib/kieCharacterService.ts";
+import {
+  createSeedVideo,
+  createCharacter,
+  getTask,
+  normalizeState as normalizeKieState,
+} from "../lib/kieCharacterService.ts";
 import {
   getProductCharacterState,
   saveCreatorVisualPrompt,
   saveSeedVideoResult,
-  saveCharacterResult,
+  saveCharacterToTable,
 } from "../lib/productCharacterStore.ts";
 // ARCHIVED: IMAGE_PROMPT_GENERATION and VIDEO_IMAGE_GENERATION handlers removed.
 import { runVideoGenerationJob } from "../lib/videoGenerationService.ts";
@@ -141,6 +146,75 @@ async function runWithMaxRuntime<T>(label: string, fn: () => Promise<T>): Promis
 function asObject(value: unknown): JsonObject {
   if (value && typeof value === "object" && !Array.isArray(value)) return value as JsonObject;
   return {};
+}
+
+function extractKieVideoUrl(raw: unknown): string {
+  const rawObj = asObject(raw);
+  const dataObj = asObject(rawObj.data);
+  try {
+    const resultJson = dataObj.resultJson;
+    const parsed = typeof resultJson === "string" ? JSON.parse(resultJson) : asObject(resultJson);
+    const urls = (asObject(parsed).resultUrls ?? dataObj.resultUrls) as unknown;
+    if (Array.isArray(urls) && typeof urls[0] === "string") return urls[0];
+  } catch {
+    // Ignore parse errors and continue with fallbacks.
+  }
+
+  const direct = dataObj.videoUrl ?? dataObj.video_url;
+  if (typeof direct === "string") return direct;
+
+  const resultObj = asObject(dataObj.result);
+  const nestedUrls = resultObj.resultUrls;
+  if (Array.isArray(nestedUrls) && typeof nestedUrls[0] === "string") return nestedUrls[0];
+
+  const nestedDirect = resultObj.videoUrl ?? resultObj.video_url;
+  return typeof nestedDirect === "string" ? nestedDirect : "";
+}
+
+async function enqueueReferenceVideoJob({
+  job,
+  jobId,
+  productId,
+  taskId,
+}: {
+  job: {
+    projectId: string;
+    userId: string;
+  };
+  jobId: string;
+  productId: string;
+  taskId: string;
+}) {
+  const key = JSON.stringify([
+    job.projectId,
+    CHARACTER_REFERENCE_VIDEO_JOB_TYPE,
+    productId,
+    "from",
+    jobId,
+  ]);
+
+  try {
+    await prisma.job.create({
+      data: {
+        projectId: job.projectId,
+        userId: job.userId,
+        type: CHARACTER_REFERENCE_VIDEO_JOB_TYPE,
+        status: JobStatus.PENDING,
+        idempotencyKey: key,
+        payload: {
+          projectId: job.projectId,
+          productId,
+          originTaskId: taskId,
+          upstreamJobId: jobId,
+        },
+      },
+    });
+  } catch (e: any) {
+    const code = String(e?.code ?? "");
+    const msg = String(e?.message ?? "").toLowerCase();
+    const isUnique = code === "P2002" || msg.includes("unique constraint");
+    if (!isUnique) throw e;
+  }
 }
 
 function serializeResult(value: any) {
@@ -1056,6 +1130,54 @@ async function runJob(
           return;
         }
 
+        const MAX_WALL_MS = 5 * 60 * 1000;
+        const POLL_INTERVAL_MS = 10_000;
+        const seedStartedAt = Number(payload?.seedStartedAt ?? Date.now());
+        const elapsed = Date.now() - seedStartedAt;
+
+        if (elapsed > MAX_WALL_MS) {
+          await markFailed({ jobId, error: "Character seed video timed out after 5 minutes" });
+          return;
+        }
+
+        if (payload?.seedTaskId) {
+          const seedTaskId = String(payload.seedTaskId).trim();
+          const raw = await getTask(seedTaskId);
+          const normalized =
+            typeof raw === "string" ? "RUNNING" : normalizeKieState(raw as Record<string, unknown>);
+
+          if (normalized === "SUCCEEDED") {
+            const videoUrl = extractKieVideoUrl(raw);
+            await saveSeedVideoResult(productId, { taskId: seedTaskId, videoUrl });
+            await enqueueReferenceVideoJob({ job, jobId, productId, taskId: seedTaskId });
+            await markCompleted({
+              jobId,
+              result: { ok: true, productId, taskId: seedTaskId, seedVideoUrl: videoUrl },
+              summary: "Character seed video generated",
+            });
+            return;
+          }
+
+          if (normalized === "FAILED") {
+            await markFailed({ jobId, error: "KIE seed video task failed" });
+            return;
+          }
+
+          await prisma.job.update({
+            where: { id: jobId },
+            data: {
+              status: JobStatus.PENDING,
+              payload: {
+                ...payload,
+                seedTaskId,
+                seedStartedAt,
+                nextRunAt: Date.now() + POLL_INTERVAL_MS,
+              },
+            },
+          });
+          return;
+        }
+
         const productState = await getProductCharacterState(productId, job.projectId);
         if (!productState) {
           await markFailed({ jobId, error: `Product not found: ${productId}` });
@@ -1069,66 +1191,23 @@ async function runJob(
           await markFailed({ jobId, error: "Missing creator visual prompt" });
           return;
         }
-        console.log("[CHARACTER_SEED_VIDEO] creatorVisualPrompt length:", creatorVisualPrompt.length);
-        console.log("[CHARACTER_SEED_VIDEO] creatorVisualPrompt value:", creatorVisualPrompt);
 
         const seedCreate = await createSeedVideo({
           prompt: creatorVisualPrompt,
           creatorReferenceImageUrl: productState.creatorReferenceImageUrl,
         });
-        const seedResult = await pollKieTask({ taskId: seedCreate.taskId });
-        if (seedResult.state !== "SUCCEEDED") {
-          await markFailed({ jobId, error: "Character seed video generation failed" });
-          return;
-        }
 
-        await saveSeedVideoResult(productId, {
-          taskId: seedCreate.taskId,
-          videoUrl: seedResult.videoUrl,
-        });
-
-        const nextIdempotencyKey = JSON.stringify([
-          job.projectId,
-          CHARACTER_REFERENCE_VIDEO_JOB_TYPE,
-          productId,
-          "from",
-          jobId,
-        ]);
-
-        try {
-          await prisma.job.create({
-            data: {
-              projectId: job.projectId,
-              userId: job.userId,
-              type: CHARACTER_REFERENCE_VIDEO_JOB_TYPE,
-              status: JobStatus.PENDING,
-              idempotencyKey: nextIdempotencyKey,
-              payload: {
-                projectId: job.projectId,
-                productId,
-                originTaskId: seedCreate.taskId,
-                upstreamJobId: jobId,
-              },
+        await prisma.job.update({
+          where: { id: jobId },
+          data: {
+            status: JobStatus.PENDING,
+            payload: {
+              ...payload,
+              seedTaskId: seedCreate.taskId,
+              seedStartedAt: Date.now(),
+              nextRunAt: Date.now() + POLL_INTERVAL_MS,
             },
-          });
-        } catch (e: any) {
-          const code = String(e?.code ?? "");
-          const msg = String(e?.message ?? "");
-          const isUnique = code === "P2002" || msg.toLowerCase().includes("unique constraint");
-          if (!isUnique) {
-            throw e;
-          }
-        }
-
-        await markCompleted({
-          jobId,
-          result: {
-            ok: true,
-            productId,
-            taskId: seedCreate.taskId,
-            seedVideoUrl: seedResult.videoUrl,
           },
-          summary: "Character seed video generated",
         });
         return;
       }
@@ -1145,48 +1224,146 @@ async function runJob(
           return;
         }
 
+        const MAX_WALL_MS = 5 * 60 * 1000;
+        const POLL_INTERVAL_MS = 10_000;
+        const refStartedAt = Number(payload?.refStartedAt ?? Date.now());
+
+        if (Date.now() - refStartedAt > MAX_WALL_MS) {
+          await markFailed({ jobId, error: "Character reference video timed out after 5 minutes" });
+          return;
+        }
+
         const productState = await getProductCharacterState(productId, job.projectId);
         if (!productState) {
           await markFailed({ jobId, error: `Product not found: ${productId}` });
           return;
         }
 
-        const originTaskId = String(
-          payload?.originTaskId ?? productState.characterSeedVideoTaskId ?? "",
-        ).trim();
+        if (payload?.refTaskId) {
+          const refTaskId = String(payload.refTaskId).trim();
+          const raw = await getTask(refTaskId);
+          const normalized =
+            typeof raw === "string" ? "RUNNING" : normalizeKieState(raw as Record<string, unknown>);
+
+          if (normalized === "SUCCEEDED") {
+            const rawObj = asObject(raw);
+            const dataObj = asObject(rawObj.data);
+            let parsed: Record<string, unknown> = {};
+
+            try {
+              const resultJson = dataObj.resultJson;
+              parsed =
+                typeof resultJson === "string"
+                  ? asObject(JSON.parse(resultJson))
+                  : asObject(resultJson);
+            } catch {
+              parsed = {};
+            }
+
+            const resultObject = asObject(parsed.resultObject);
+            const characterId = String(
+              resultObject.character_id ??
+                resultObject.characterId ??
+                dataObj.character_id ??
+                dataObj.characterId ??
+                "",
+            ).trim();
+            const characterUserName = String(
+              resultObject.character_user_name ??
+                resultObject.characterUserName ??
+                dataObj.character_user_name ??
+                dataObj.characterUserName ??
+                "",
+            ).trim();
+
+            if (!characterId) {
+              await markFailed({
+                jobId,
+                error: "Character reference task succeeded but returned no character_id",
+              });
+              return;
+            }
+
+            try {
+              await saveCharacterToTable({
+                productId,
+                name: `${productState.name} Character ${Date.now()}`,
+                soraCharacterId: characterId,
+                characterUserName: characterUserName || "",
+                seedVideoTaskId: String(payload?.originTaskId ?? ""),
+                seedVideoUrl: productState.characterSeedVideoUrl ?? "",
+                creatorVisualPrompt: productState.creatorVisualPrompt ?? "",
+              });
+            } catch (err) {
+              console.error("saveCharacterToTable failed:", err);
+              await markFailed({ jobId, error: `Failed to save character: ${String(err)}` });
+              return;
+            }
+
+            await prisma.$executeRaw`
+              UPDATE "product"
+              SET "sora_character_id" = ${characterId},
+                  "character_user_name" = ${characterUserName || null},
+                  "character_cameo_created_at" = NOW(),
+                  "updated_at" = NOW()
+              WHERE "id" = ${productId}
+            `;
+
+            await markCompleted({
+              jobId,
+              result: { ok: true, productId, characterId, characterUserName, taskId: refTaskId },
+              summary: "Character reference created",
+            });
+            return;
+          }
+
+          if (normalized === "FAILED") {
+            await markFailed({ jobId, error: "KIE character reference task failed" });
+            return;
+          }
+
+          await prisma.job.update({
+            where: { id: jobId },
+            data: {
+              status: JobStatus.PENDING,
+              payload: {
+                ...payload,
+                refTaskId,
+                refStartedAt,
+                nextRunAt: Date.now() + POLL_INTERVAL_MS,
+              },
+            },
+          });
+          return;
+        }
+
+        const originTaskId = String(payload?.originTaskId ?? "").trim();
         if (!originTaskId) {
           await markFailed({ jobId, error: "Missing origin seed video task id" });
           return;
         }
 
-        const createResult = await createCharacter({ originTaskId });
-        const characterResult = await pollKieTask({ taskId: createResult.taskId });
-        if (characterResult.state !== "SUCCEEDED") {
-          await markFailed({ jobId, error: "Character creation failed" });
+        const characterPrompt = String(
+          payload?.characterPrompt ?? productState.creatorVisualPrompt ?? "",
+        ).trim();
+        if (!characterPrompt) {
+          await markFailed({ jobId, error: "Missing character prompt" });
           return;
         }
 
-        if (!characterResult.characterId) {
-          await markFailed({ jobId, error: "Character creation succeeded but returned no character_id" });
-          return;
-        }
+        const createResult = await createCharacter({ originTaskId, characterPrompt });
 
-        await saveCharacterResult(productId, {
-          characterId: characterResult.characterId,
-          characterUserName: characterResult.characterUserName,
-          referenceVideoUrl: productState.characterSeedVideoUrl ?? characterResult.videoUrl,
-        });
-
-        await markCompleted({
-          jobId,
-          result: {
-            ok: true,
-            productId,
-            characterId: characterResult.characterId,
-            characterUserName: characterResult.characterUserName,
-            taskId: createResult.taskId,
+        await prisma.job.update({
+          where: { id: jobId },
+          data: {
+            status: JobStatus.PENDING,
+            payload: {
+              ...payload,
+              refTaskId: createResult.taskId,
+              refStartedAt: Date.now(),
+              nextRunAt: Date.now() + POLL_INTERVAL_MS,
+            },
           },
-          summary: "Character reference created",
         });
         return;
       }

@@ -106,6 +106,7 @@ function buildVideoPromptUserPrompt(args: {
   vo: string;
   panelType: PanelType;
   characterAction: string | null;
+  characterHandle: string | null;
   environment: string | null;
   cameraDirection: string;
   productPlacement: string;
@@ -119,6 +120,7 @@ function buildVideoPromptUserPrompt(args: {
     vo,
     panelType,
     characterAction,
+    characterHandle,
     environment,
     cameraDirection,
     productPlacement,
@@ -134,6 +136,7 @@ VO: ${vo || 'N/A'}
 Panel type: ${panelType}
 
 Character: ${characterAction || 'N/A'}
+${characterHandle ? `Character handle: ${characterHandle} - include this @handle verbatim in the prompt so KIE renders the registered character.` : ''}
 Environment: ${environment || 'N/A'}
 Camera: ${cameraDirection || 'N/A'}
 Product placement: ${productPlacement || 'N/A'}
@@ -151,6 +154,7 @@ async function generateKlingPromptWithClaude(args: {
   vo: string;
   panelType: PanelType;
   characterAction: string | null;
+  characterHandle: string | null;
   environment: string | null;
   cameraDirection: string;
   productPlacement: string;
@@ -176,6 +180,7 @@ async function generateKlingPromptWithClaude(args: {
     vo: args.vo,
     panelType: args.panelType,
     characterAction: args.characterAction,
+    characterHandle: args.characterHandle ?? null,
     environment: args.environment,
     cameraDirection: args.cameraDirection,
     productPlacement: args.productPlacement,
@@ -384,6 +389,7 @@ export async function runVideoPromptGeneration(args: {
       vo: "",
       panelType,
       characterAction: null,
+      characterHandle: null,
       environment: null,
       cameraDirection: "",
       productPlacement: "",
@@ -456,6 +462,7 @@ export async function runVideoPromptGeneration(args: {
 
     const vo = asString(raw.vo);
     const characterAction = asString(raw.characterAction) || null;
+    const characterHandle = asString((raw as any).characterHandle) || null;
     const environment = asString(raw.environment) || null;
     const cameraDirection = asString(raw.cameraDirection);
     const productPlacement = asString(raw.productPlacement);
@@ -477,6 +484,7 @@ export async function runVideoPromptGeneration(args: {
       vo,
       panelType,
       characterAction,
+      characterHandle,
       environment,
       cameraDirection,
       productPlacement,

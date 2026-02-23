@@ -20,6 +20,15 @@ type ProductSetupRow = {
   projectName: string;
 };
 
+type CharacterRow = {
+  id: string;
+  name: string;
+  characterUserName: string | null;
+  soraCharacterId: string | null;
+  seedVideoUrl: string | null;
+  createdAt: Date;
+};
+
 export default async function ProductSetupPage({
   params,
 }: {
@@ -59,6 +68,20 @@ export default async function ProductSetupPage({
     notFound();
   }
 
+  const characters = await prisma.character.findMany({
+    where: { productId: product.id },
+    select: {
+      id: true,
+      name: true,
+      characterUserName: true,
+      soraCharacterId: true,
+      seedVideoUrl: true,
+      createdAt: true,
+    },
+    orderBy: { createdAt: "asc" },
+  }) as CharacterRow[];
+  console.log("DEBUG productId:", product.id, "characters found:", characters.length);
+
   const setupData: ProductSetupData = {
     id: product.id,
     name: product.name,
@@ -73,6 +96,14 @@ export default async function ProductSetupPage({
     characterSeedVideoTaskId: product.characterSeedVideoTaskId,
     characterSeedVideoUrl: product.characterSeedVideoUrl,
     characterUserName: product.characterUserName,
+    characters: characters.map((char) => ({
+      id: char.id,
+      name: char.name,
+      characterUserName: char.characterUserName,
+      soraCharacterId: char.soraCharacterId,
+      seedVideoUrl: char.seedVideoUrl,
+      createdAt: char.createdAt.toISOString(),
+    })),
     project: {
       id: product.projectId,
       name: product.projectName,

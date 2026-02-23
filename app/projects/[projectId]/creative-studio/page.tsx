@@ -28,6 +28,17 @@ type ProductOption = {
   creatorReferenceImageUrl?: string | null;
   productReferenceImageUrl?: string | null;
   soraCharacterId?: string | null;
+  characterUserName?: string | null;
+  characters?: CharacterOption[];
+};
+
+type CharacterOption = {
+  id: string;
+  name: string;
+  characterUserName?: string | null;
+  soraCharacterId?: string | null;
+  createdAt?: string | Date;
+  productName?: string;
 };
 
 type ResearchRunOption = {
@@ -659,6 +670,16 @@ export default function CreativeStudioPage() {
     () => products.find((p) => p.id === selectedProductId) ?? null,
     [products, selectedProductId],
   );
+  const allCharacters = useMemo(
+    () =>
+      products.flatMap((p) =>
+        (p.characters ?? []).map((c) => ({
+          ...c,
+          productName: p.name,
+        })),
+      ),
+    [products],
+  );
   const hasSelectedProductCreatorReference = Boolean(
     String(selectedProduct?.creatorReferenceImageUrl ?? "").trim(),
   );
@@ -954,6 +975,7 @@ export default function CreativeStudioPage() {
       lastFrameImageUrl: asValue(raw.lastFrameImageUrl) || null,
       videoPrompt: asValue(raw.videoPrompt) || null,
       characterAction: characterAction || null,
+      characterHandle: asValue(raw.characterHandle) || null,
       environment: environment || null,
       cameraDirection: asValue(raw.cameraDirection),
       productPlacement: asValue(raw.productPlacement),
@@ -983,6 +1005,7 @@ export default function CreativeStudioPage() {
       lastFrameImageUrl: null,
       videoPrompt: null,
       characterAction: null,
+      characterHandle: null,
       environment: null,
       cameraDirection: "",
       productPlacement: "",
@@ -4134,6 +4157,37 @@ export default function CreativeStudioPage() {
                                         resize: "vertical",
                                       }}
                                     />
+                                    <div style={{ color: "#94a3b8", fontSize: 11, marginTop: 8, marginBottom: 4 }}>
+                                      Character Handle
+                                    </div>
+                                    <select
+                                      value={panel.characterHandle ?? ""}
+                                      onChange={(e) =>
+                                        updateStoryboardDraftPanel(panelIndex, (prev) => ({
+                                          ...prev,
+                                          characterHandle: e.target.value || null,
+                                        }))
+                                      }
+                                      style={{
+                                        width: "100%",
+                                        boxSizing: "border-box",
+                                        borderRadius: 8,
+                                        border: "1px solid #334155",
+                                        backgroundColor: "#0f172a",
+                                        color: "#e2e8f0",
+                                        padding: 8,
+                                        fontSize: 12,
+                                      }}
+                                    >
+                                      <option value="">No character</option>
+                                      {allCharacters
+                                        .filter((c) => c.characterUserName)
+                                        .map((c) => (
+                                          <option key={c.id} value={`@${c.characterUserName}`}>
+                                            {c.productName} - {c.name} ({`@${c.characterUserName}`})
+                                          </option>
+                                        ))}
+                                    </select>
                                   </div>
                                 )}
 
@@ -4311,6 +4365,7 @@ export default function CreativeStudioPage() {
                                 ) : (
                                   <>
                                     <div><strong style={{ color: "#f1f5f9" }}>Character Action:</strong> {panel.characterAction || "Not provided"}</div>
+                                    <div><strong style={{ color: "#f1f5f9" }}>Character Handle:</strong> {panel.characterHandle || "Not provided"}</div>
                                     <div><strong style={{ color: "#f1f5f9" }}>Environment:</strong> {panel.environment || "Not provided"}</div>
                                     <div><strong style={{ color: "#f1f5f9" }}>Camera Direction:</strong> {panel.cameraDirection || "Not provided"}</div>
                                     <div><strong style={{ color: "#f1f5f9" }}>Product Placement:</strong> {panel.productPlacement || "Not provided"}</div>

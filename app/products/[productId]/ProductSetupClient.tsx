@@ -15,6 +15,14 @@ export type ProductSetupData = {
   characterSeedVideoTaskId: string | null;
   characterSeedVideoUrl: string | null;
   characterUserName: string | null;
+  characters: {
+    id: string;
+    name: string;
+    characterUserName: string | null;
+    soraCharacterId: string | null;
+    seedVideoUrl: string | null;
+    createdAt: string;
+  }[];
   project: {
     id: string;
     name: string;
@@ -78,6 +86,7 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const [manualMode, setManualMode] = useState(false);
+  const [addingCharacter, setAddingCharacter] = useState(false);
   const [manualDescription, setManualDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pipelineStatus, setPipelineStatus] = useState<CharacterPipelineStatusResponse | null>(null);
@@ -160,7 +169,7 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           productId: product.id,
-          manualDescription: manualMode ? manualDescription : null,
+          manualDescription: manualDescription.trim() || null,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -169,6 +178,8 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
       }
 
       await refreshStatus();
+      setManualDescription("");
+      setAddingCharacter(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
@@ -303,38 +314,123 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
             )}
           </>
         ) : (
-          <div className="space-y-3">
-            <p className="text-sm text-emerald-300">Character Ready</p>
-            <p className="text-sm text-slate-300">
-              <span className="text-slate-500">ID:</span>{" "}
-              <code className="rounded bg-slate-800 px-2 py-1">{effectiveCharacterId}</code>
-            </p>
-            {effectiveCharacterUserName && (
-              <p className="text-xs text-slate-400">
-                <span className="text-slate-500">User:</span> {effectiveCharacterUserName}
-              </p>
+          <>
+            {effectiveCharacterId && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-emerald-300">
+                    {product.characters.length} Character{product.characters.length !== 1 ? "s" : ""} Ready
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setAddingCharacter((v) => !v)}
+                      className="inline-flex items-center rounded-md bg-sky-500 hover:bg-sky-400 px-3 py-2 text-xs font-medium text-white"
+                    >
+                      + Add Character
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleReset()}
+                      disabled={isResetting}
+                      className="inline-flex items-center rounded-md border border-red-800 bg-red-950 px-3 py-2 text-xs font-medium text-red-300 hover:bg-red-900 disabled:opacity-60"
+                    >
+                      {isResetting ? "Resetting..." : "Reset All"}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  {product.characters.map((char) => (
+                    <div key={char.id} className="rounded-lg border border-slate-800 bg-slate-950/50 p-4 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-medium text-slate-100">{char.name}</p>
+                        <p className="text-xs text-slate-500">{new Date(char.createdAt).toLocaleString()}</p>
+                      </div>
+                      <p className="text-xs text-slate-400">
+                        <span className="text-slate-500">Handle:</span> @{char.characterUserName}
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        <span className="text-slate-600">ID:</span>{" "}
+                        <code className="rounded bg-slate-800 px-1">{char.soraCharacterId}</code>
+                      </p>
+                      {char.seedVideoUrl && (
+                        <video
+                          src={char.seedVideoUrl}
+                          controls
+                          className="w-full max-w-lg rounded border border-slate-700"
+                        />
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {addingCharacter && (
+                  <div className="space-y-3 rounded-lg border border-slate-800 bg-slate-950/40 p-4">
+                    <p className="text-xs text-slate-400">
+                      Generate an additional character for this product.
+                    </p>
+                    <textarea
+                      value={manualDescription}
+                      onChange={(e) => setManualDescription(e.target.value)}
+                      placeholder="Describe this character&apos;s visual style..."
+                      className="min-h-[96px] w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-sky-500 focus:outline-none"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void handleGenerateCharacter()}
+                        disabled={
+                          isGenerating ||
+                          hasInFlightStage ||
+                          manualDescription.trim().length === 0
+                        }
+                        className="inline-flex items-center rounded-md bg-sky-500 hover:bg-sky-400 px-3 py-2 text-xs font-medium text-white disabled:opacity-60"
+                      >
+                        {isGenerating ? "Starting..." : "Generate"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAddingCharacter(false)}
+                        className="inline-flex items-center rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-medium text-slate-200 hover:bg-slate-800"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                    {hasInFlightStage && (
+                      <p className="text-xs text-amber-300">Pipeline already running - wait for it to finish.</p>
+                    )}
+                  </div>
+                )}
+
+                {hasInFlightStage && stages.length > 0 && (
+                  <div className="space-y-2 pt-2">
+                    {stages.map((stage) => (
+                      <div key={stage.type} className="rounded-md border border-slate-800 bg-slate-950/50 p-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-sm text-slate-200">{stage.label}</p>
+                          <p
+                            className={`text-xs ${
+                              stage.status === "COMPLETED"
+                                ? "text-emerald-300"
+                                : stage.status === "FAILED"
+                                  ? "text-red-300"
+                                  : stage.status === "RUNNING"
+                                    ? "text-sky-300"
+                                    : "text-slate-400"
+                            }`}
+                          >
+                            {stageStatusText(stage)}
+                          </p>
+                        </div>
+                        {stage.error && <p className="mt-2 text-xs text-red-300">{stage.error}</p>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
-            {effectiveReferenceVideo && (
-              <video
-                src={effectiveReferenceVideo}
-                controls
-                className="w-full max-w-lg rounded border border-slate-700"
-              />
-            )}
-            {effectiveCameoCreatedAt && (
-              <p className="text-xs text-slate-500">
-                Created {new Date(effectiveCameoCreatedAt).toLocaleString()}
-              </p>
-            )}
-            <button
-              type="button"
-              onClick={() => void handleReset()}
-              disabled={isResetting}
-              className="inline-flex items-center rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-medium text-slate-200 hover:bg-slate-800 disabled:opacity-60"
-            >
-              {isResetting ? "Resetting..." : "Reset Character"}
-            </button>
-          </div>
+          </>
         )}
       </section>
     </div>

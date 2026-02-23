@@ -120,7 +120,7 @@ function extractCharacterUserName(response: PollTaskResponse): string | null {
   );
 }
 
-function normalizeState(response: PollTaskResponse): "RUNNING" | "SUCCEEDED" | "FAILED" {
+export function normalizeState(response: PollTaskResponse): "RUNNING" | "SUCCEEDED" | "FAILED" {
   const data = unwrapData(response);
   const rawState = pickString(
     data.state,
@@ -163,7 +163,7 @@ async function createTask(
   return taskId;
 }
 
-async function getTask(taskId: string): Promise<PollTaskResponse | string> {
+export async function getTask(taskId: string): Promise<PollTaskResponse | string> {
   const { statusPath } = kieJobPathsFromEnv();
   const path = statusPath.includes("taskId=")
     ? `${statusPath}${encodeURIComponent(taskId)}`
@@ -197,6 +197,7 @@ export async function createSeedVideo(args: {
 
 export async function createCharacter(args: {
   originTaskId: string;
+  characterPrompt: string;
 }): Promise<{ taskId: string }> {
   const model = cfg.raw("KIE_CHARACTER_REFERENCE_MODEL") || "sora-2-characters-pro";
   const payload: Record<string, unknown> = {
@@ -204,7 +205,8 @@ export async function createCharacter(args: {
     ...callbackPayloadFields(),
     input: {
       origin_task_id: args.originTaskId,
-      timestamps: [1.0, 4.0],
+      character_prompt: args.characterPrompt,
+      timestamps: "1.0,4.0",
       remove_watermark: true,
       upload_method: "s3",
     },
