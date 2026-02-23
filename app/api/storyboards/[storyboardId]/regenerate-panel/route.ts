@@ -7,8 +7,10 @@ import { prisma } from "@/lib/prisma";
 type PanelTypeValue = "ON_CAMERA" | "B_ROLL_ONLY";
 type RegenerateTarget = "panel_direction" | "video_prompt";
 
-const VIDEO_PROMPT_SYSTEM_PROMPT =
-  "You write Kling AI video prompts. Translate storyboard direction into camera-ready prompts under 200 characters. Be specific. Every word earns its place.";
+const VIDEO_PROMPT_SYSTEM_PROMPT = `You are a video director writing production-grade Sora 2 prompts for UGC supplement ads.
+Return only the final prompt text.
+Write clear cinematic direction with concrete subject action, camera language, lighting, and environment details.
+Keep temporal continuity and character consistency across the shot.`;
 const VIDEO_PROMPT_MODEL = cfg.raw("ANTHROPIC_MODEL") || "claude-sonnet-4-5-20250929";
 
 type StoryboardPanel = {
@@ -156,9 +158,9 @@ Keep the same voice and continuity with surrounding panels. Return ONLY valid JS
 }
 
 function normalizeKlingPrompt(text: string): string {
-  const normalized = String(text ?? "").replace(/\s+/g, " ").trim();
-  if (normalized.length <= 200) return normalized;
-  return normalized.slice(0, 200).trimEnd();
+  const normalized = String(text ?? "").replace(/\r/g, "").trim();
+  if (normalized.length <= 2400) return normalized;
+  return normalized.slice(0, 2400).trimEnd();
 }
 
 function formatDurationLabel(durationSec: number): string {
@@ -180,22 +182,38 @@ function buildVideoPromptRegenerationPrompt(args: {
   hasProductRef: boolean;
 }): string {
   const { sceneNumber, durationSec, panel, hasCreatorRef, hasProductRef } = args;
-  return `Scene ${sceneNumber}, ${formatDurationLabel(durationSec)}s.
+  return `You are generating a Sora 2 video prompt for Scene ${sceneNumber} of a UGC supplement ad.
 
-VO: ${panel.vo || "N/A"}
-
-Panel type: ${panel.panelType}
-
-Character: ${panel.characterAction || "N/A"}
+STORYBOARD PANEL:
+Scene ${sceneNumber} | ${formatDurationLabel(durationSec)}s | ${panel.panelType}
+Scene VO: ${panel.vo || "N/A"}
+Character action: ${panel.characterAction || "N/A"}
 Environment: ${panel.environment || "N/A"}
 Camera: ${panel.cameraDirection || "N/A"}
 Product placement: ${panel.productPlacement || "N/A"}
-B-roll shots: ${panel.bRollSuggestions.length > 0 ? panel.bRollSuggestions.join("; ") : "N/A"}
+${panel.bRollSuggestions.length > 0 ? `B-roll: ${panel.bRollSuggestions.join("; ")}` : ""}
+${hasCreatorRef ? "Subject: use creator reference image." : ""}
+${hasProductRef ? "Product: use product reference image." : ""}
 
-${hasCreatorRef ? "Subject from creator reference image." : ""}
-${hasProductRef ? "Product from product reference image." : ""}
+Write a Sora 2 prompt using this structure and labels:
 
-Write a Kling prompt. Specify subject, exact action with timing, camera movement, lighting. Under 200 chars. No fluff.`;
+[Scene description: subject, environment, atmosphere]
+
+Cinematography:
+Camera shot: [framing and angle]
+Lighting + palette: [light source, quality, 3-5 color anchors]
+Mood: [tone]
+
+Actions:
+- [0s: opening beat]
+- [Xs: next beat with timing]
+- [Final beat]
+
+Output requirements:
+- 350-1200 characters
+- No preamble or explanation
+- Include concrete physical actions and camera movement
+- Avoid generic filler phrasing`;
 }
 
 export async function POST(
@@ -311,7 +329,7 @@ export async function POST(
 
       const response = await anthropic.messages.create({
         model: VIDEO_PROMPT_MODEL,
-        max_tokens: 200,
+        max_tokens: 2400,
         system: VIDEO_PROMPT_SYSTEM_PROMPT,
         messages: [
           {
