@@ -116,6 +116,28 @@ type ScriptRunSummarySource = {
   completedAt: string | null;
   avatarSummary?: string | null;
   productName?: string | null;
+  formulaSummary?: string | null;
+  psychologicalMechanism?: string | null;
+  summary?: string | null;
+};
+
+type SwipeRecommendationCandidate = {
+  assetId: string;
+  title: string | null;
+  score: number;
+  reasons: string[];
+  metrics: {
+    views: number | null;
+    engagementScore: number | null;
+    retention3s: number | null;
+    retention10s: number | null;
+    ctr: number | null;
+  };
+  sourceUrl: string | null;
+  transcriptSnippet: string | null;
+  ocrText: string | null;
+  selectionSource: "swipe_file" | "run_ad";
+  createdAt: string | null;
 };
 
 type ScriptRunSummary = {
@@ -123,6 +145,12 @@ type ScriptRunSummary = {
   customerAnalysis: ScriptRunSummarySource;
   patternAnalysis: ScriptRunSummarySource;
   productCollection: ScriptRunSummarySource;
+  swipeRecommendation?: {
+    present: boolean;
+    recommendedAdId: string | null;
+    sourceMode?: "swipe_file" | "run_ad";
+    candidates: SwipeRecommendationCandidate[];
+  };
 };
 
 type AddBeatExpansionProps = {
@@ -404,6 +432,8 @@ export default function CreativeStudioPage() {
   const [selectedScriptResearchJobId, setSelectedScriptResearchJobId] = useState("");
   const [scriptTargetDuration, setScriptTargetDuration] = useState<number>(30);
   const [scriptBeatCount, setScriptBeatCount] = useState<number>(5);
+  const [scriptGenerationStrategy, setScriptGenerationStrategy] = useState<"swipe_template" | "research_formula">("swipe_template");
+  const [selectedSwipeTemplateAdId, setSelectedSwipeTemplateAdId] = useState<string>("");
   const [scriptNoResearchAcknowledged, setScriptNoResearchAcknowledged] = useState(false);
   const [scriptModalSubmitting, setScriptModalSubmitting] = useState(false);
   const [scriptModalError, setScriptModalError] = useState<string | null>(null);
@@ -640,6 +670,16 @@ export default function CreativeStudioPage() {
     () => scriptResearchRuns.find((run) => run.jobId === selectedScriptResearchJobId) ?? null,
     [scriptResearchRuns, selectedScriptResearchJobId],
   );
+  const scriptSwipeCandidates = scriptRunSummary?.swipeRecommendation?.candidates ?? [];
+  const selectedSwipeCandidate =
+    scriptSwipeCandidates.find((candidate) => candidate.assetId === selectedSwipeTemplateAdId) ?? null;
+  const scriptGenerateDisabled =
+    scriptModalSubmitting ||
+    scriptRunsLoading ||
+    (scriptResearchRuns.length > 0 ? !selectedScriptResearchJobId : !scriptNoResearchAcknowledged) ||
+    (scriptGenerationStrategy === "swipe_template" &&
+      scriptSwipeCandidates.length > 0 &&
+      !selectedSwipeTemplateAdId);
 
   function getRunJobName(job: Job) {
     const names: Record<string, string> = {
@@ -919,6 +959,16 @@ export default function CreativeStudioPage() {
       hour12: true,
     });
 
+  function formatSwipeMetricPercent(value: number | null, digits = 1): string {
+    if (value === null || !Number.isFinite(value)) return "—";
+    return `${(value * 100).toFixed(digits)}%`;
+  }
+
+  function formatSwipeMetricNumber(value: number | null, digits = 3): string {
+    if (value === null || !Number.isFinite(value)) return "—";
+    return value.toFixed(digits);
+  }
+
   function getSummaryText(resultSummary: unknown): string {
     if (typeof resultSummary === "string" && resultSummary.trim()) {
       return resultSummary;
@@ -1125,6 +1175,32 @@ export default function CreativeStudioPage() {
       if (match?.[1]) return match[1];
     }
     return null;
+  }
+
+  function getScriptIdFromJob(job: Job | null | undefined): string | null {
+    if (!job) return null;
+
+    const payload = job.payload && typeof job.payload === "object"
+      ? (job.payload as Record<string, unknown>)
+      : null;
+    const payloadResult =
+      payload?.result && typeof payload.result === "object"
+        ? (payload.result as Record<string, unknown>)
+        : null;
+
+    const fromPayloadResult =
+      typeof payloadResult?.scriptId === "string" && payloadResult.scriptId.trim()
+        ? payloadResult.scriptId.trim()
+        : null;
+    if (fromPayloadResult) return fromPayloadResult;
+
+    const fromPayload =
+      typeof payload?.scriptId === "string" && payload.scriptId.trim()
+        ? payload.scriptId.trim()
+        : null;
+    if (fromPayload) return fromPayload;
+
+    return getScriptIdFromResultSummary(job.resultSummary);
   }
 
   function getStoryboardIdFromJob(job: Job | null | undefined): string | null {
@@ -1561,7 +1637,7 @@ export default function CreativeStudioPage() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(data?.error || "Failed to load script");
+        throw new Error(data?.error || `Failed to load script (${res.status})`);
       }
 
       const script = data as ScriptDetails;
@@ -2415,6 +2491,8 @@ export default function CreativeStudioPage() {
     setSelectedScriptResearchJobId("");
     setScriptTargetDuration(30);
     setScriptBeatCount(5);
+    setScriptGenerationStrategy("swipe_template");
+    setSelectedSwipeTemplateAdId("");
     setScriptNoResearchAcknowledged(false);
     setScriptModalError(null);
     setScriptModalSubmitting(false);
@@ -2629,7 +2707,10 @@ export default function CreativeStudioPage() {
     return data as ScriptRunSummary;
   }, [projectId]);
 
-  async function handleChooseGenerateWithAi() {
+  async function handleChooseGenerateWithAi(
+    preferredStrategy: "swipe_template" | "research_formula" = "swipe_template"
+  ) {
+    setScriptGenerationStrategy(preferredStrategy);
     setScriptModalMode("ai");
     setScriptModalError(null);
     setScriptRunsLoading(true);
@@ -2638,10 +2719,12 @@ export default function CreativeStudioPage() {
       const runs = await loadScriptResearchRuns();
       setScriptResearchRuns(runs);
       setSelectedScriptResearchJobId(runs[0]?.jobId || "");
+      setSelectedSwipeTemplateAdId("");
       setScriptNoResearchAcknowledged(false);
     } catch (err: any) {
       setScriptResearchRuns([]);
       setSelectedScriptResearchJobId("");
+      setSelectedSwipeTemplateAdId("");
       setScriptNoResearchAcknowledged(false);
       setScriptModalError(err?.message || "Failed to load research runs");
     } finally {
@@ -2694,6 +2777,21 @@ export default function CreativeStudioPage() {
     };
   }, [loadScriptRunSummary, scriptModalMode, scriptResearchRuns, selectedScriptResearchJobId]);
 
+  useEffect(() => {
+    if (scriptModalMode !== "ai") return;
+    const candidates = scriptRunSummary?.swipeRecommendation?.candidates ?? [];
+    if (candidates.length === 0) {
+      setSelectedSwipeTemplateAdId("");
+      return;
+    }
+    const recommended = scriptRunSummary?.swipeRecommendation?.recommendedAdId ?? "";
+    setSelectedSwipeTemplateAdId((prev) => {
+      if (prev && candidates.some((candidate) => candidate.assetId === prev)) return prev;
+      if (recommended && candidates.some((candidate) => candidate.assetId === recommended)) return recommended;
+      return candidates[0]?.assetId ?? "";
+    });
+  }, [scriptModalMode, scriptRunSummary]);
+
   async function handleGenerateScriptWithAi() {
     const scriptStep = steps.find((step) => step.key === "script");
     if (!scriptStep) return;
@@ -2706,6 +2804,13 @@ export default function CreativeStudioPage() {
       setScriptModalError("Please acknowledge the generic script warning before generating.");
       return;
     }
+    if (scriptGenerationStrategy === "swipe_template") {
+      const hasCandidates = (scriptRunSummary?.swipeRecommendation?.candidates?.length ?? 0) > 0;
+      if (hasCandidates && !selectedSwipeTemplateAdId) {
+        setScriptModalError("Select a swipe template ad before generating.");
+        return;
+      }
+    }
 
     setScriptModalSubmitting(true);
     setScriptModalError(null);
@@ -2713,14 +2818,15 @@ export default function CreativeStudioPage() {
       forceNew: true,
       targetDuration: scriptTargetDuration,
       beatCount: scriptBeatCount,
+      scriptStrategy: scriptGenerationStrategy,
+      ...(scriptGenerationStrategy === "swipe_template" && selectedSwipeTemplateAdId
+        ? { swipeTemplateAdId: selectedSwipeTemplateAdId }
+        : {}),
       ...(selectedScriptResearchJobId
         ? { customerAnalysisJobId: selectedScriptResearchJobId }
         : {}),
     };
-    const ok = await runStep(
-      scriptStep,
-      scriptGenerationPayload
-    );
+    const ok = await runStep(scriptStep, scriptGenerationPayload);
     setScriptModalSubmitting(false);
 
     if (ok) {
@@ -3167,7 +3273,7 @@ export default function CreativeStudioPage() {
                 : null;
             const scriptId =
               step.key === "script" && step.status === "completed" && step.lastJob
-                ? getScriptIdFromResultSummary(step.lastJob.resultSummary)
+                ? getScriptIdFromJob(step.lastJob)
                 : null;
             const isScriptPanelOpen = Boolean(scriptId && scriptPanelOpenId === scriptId);
             const scriptValidationReport =
@@ -5183,12 +5289,12 @@ export default function CreativeStudioPage() {
             {scriptModalMode === "choose" ? (
               <div>
                 <p style={{ margin: "0 0 16px 0", color: "#cbd5e1", fontSize: 14 }}>
-                  Choose how you want to create this script.
+                  Choose a script path.
                 </p>
                 <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                   <button
                     type="button"
-                    onClick={handleChooseGenerateWithAi}
+                    onClick={() => void handleChooseGenerateWithAi("swipe_template")}
                     disabled={scriptModalSubmitting}
                     style={{
                       width: "100%",
@@ -5203,7 +5309,26 @@ export default function CreativeStudioPage() {
                       cursor: scriptModalSubmitting ? "not-allowed" : "pointer",
                     }}
                   >
-                    Generate with AI
+                    Recommended Swipe Template
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleChooseGenerateWithAi("research_formula")}
+                    disabled={scriptModalSubmitting}
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "12px 14px",
+                      borderRadius: 10,
+                      border: "1px solid #334155",
+                      backgroundColor: "#1e293b",
+                      color: "#f8fafc",
+                      fontSize: 14,
+                      fontWeight: 600,
+                      cursor: scriptModalSubmitting ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    Use Formula from Research
                   </button>
                   <button
                     type="button"
@@ -5225,7 +5350,7 @@ export default function CreativeStudioPage() {
                       cursor: scriptModalSubmitting ? "not-allowed" : "pointer",
                     }}
                   >
-                    Upload My Own Script
+                    Create My Own Script
                   </button>
                 </div>
               </div>
@@ -5391,6 +5516,259 @@ export default function CreativeStudioPage() {
                             ) : null}
                           </div>
                         )}
+
+                        <div
+                          style={{
+                            marginTop: 10,
+                            border: "1px solid #334155",
+                            borderRadius: 10,
+                            backgroundColor: "#0b1220",
+                            padding: "10px 12px",
+                          }}
+                        >
+                          <p style={{ margin: "0 0 8px 0", color: "#cbd5e1", fontSize: 12, fontWeight: 600 }}>
+                            Script Strategy
+                          </p>
+                          <label
+                            style={{ display: "flex", alignItems: "center", gap: 8, color: "#e2e8f0", fontSize: 13 }}
+                          >
+                            <input
+                              type="radio"
+                              name="script-strategy"
+                              value="swipe_template"
+                              checked={scriptGenerationStrategy === "swipe_template"}
+                              onChange={() => setScriptGenerationStrategy("swipe_template")}
+                              disabled={scriptModalSubmitting}
+                            />
+                            Select ad template from swipe
+                          </label>
+                          <label
+                            style={{ display: "flex", alignItems: "center", gap: 8, color: "#e2e8f0", fontSize: 13, marginTop: 6 }}
+                          >
+                            <input
+                              type="radio"
+                              name="script-strategy"
+                              value="research_formula"
+                              checked={scriptGenerationStrategy === "research_formula"}
+                              onChange={() => setScriptGenerationStrategy("research_formula")}
+                              disabled={scriptModalSubmitting}
+                            />
+                            Use formula from research
+                          </label>
+
+                          {scriptGenerationStrategy === "swipe_template" && (
+                            <div style={{ marginTop: 10 }}>
+                              {(() => {
+                                const recommendation = scriptRunSummary?.swipeRecommendation;
+                                const candidates = recommendation?.candidates ?? [];
+                                if (candidates.length === 0) {
+                                  return (
+                                    <p style={{ margin: 0, color: "#fde68a", fontSize: 12 }}>
+                                      No swipe template candidates found for this run. Switch to &quot;Use formula from research.&quot;
+                                    </p>
+                                  );
+                                }
+                                return (
+                                  <>
+                                    <p style={{ margin: "0 0 6px 0", color: "#94a3b8", fontSize: 12 }}>
+                                      Recommended by engagement metrics. You can override.
+                                    </p>
+                                    {recommendation?.sourceMode === "run_ad" ? (
+                                      <p style={{ margin: "0 0 8px 0", color: "#fde68a", fontSize: 12 }}>
+                                        No explicit swipe-file templates were found in this run. Showing top ads from the run as template candidates.
+                                      </p>
+                                    ) : null}
+                                    <select
+                                      value={selectedSwipeTemplateAdId}
+                                      onChange={(e) => setSelectedSwipeTemplateAdId(e.target.value)}
+                                      disabled={scriptModalSubmitting}
+                                      style={{
+                                        width: "100%",
+                                        borderRadius: 8,
+                                        border: "1px solid #334155",
+                                        backgroundColor: "#020617",
+                                        color: "#e2e8f0",
+                                        padding: "8px 10px",
+                                        fontSize: 12,
+                                        boxSizing: "border-box",
+                                      }}
+                                    >
+                                      {candidates.map((candidate) => {
+                                        const recommended = recommendation?.recommendedAdId === candidate.assetId;
+                                        const labelTitle = (candidate.title || "Untitled ad").slice(0, 80);
+                                        return (
+                                          <option key={candidate.assetId} value={candidate.assetId}>
+                                            {recommended ? "★ " : ""}
+                                            {labelTitle} · score {candidate.score.toFixed(3)}
+                                          </option>
+                                        );
+                                      })}
+                                    </select>
+                                    {(() => {
+                                      const active = selectedSwipeCandidate;
+                                      if (!active) return null;
+                                      return (
+                                        <div
+                                          style={{
+                                            marginTop: 8,
+                                            border: "1px solid #334155",
+                                            borderRadius: 10,
+                                            backgroundColor: "#020617",
+                                            padding: "10px 12px",
+                                          }}
+                                        >
+                                          <p style={{ margin: 0, color: "#cbd5e1", fontSize: 12, fontWeight: 700 }}>
+                                            Selected Swipe Preview
+                                          </p>
+                                          <p style={{ margin: "6px 0 0 0", color: "#94a3b8", fontSize: 12 }}>
+                                            {active.reasons.join(" · ")}
+                                          </p>
+                                          <div
+                                            style={{
+                                              marginTop: 8,
+                                              display: "grid",
+                                              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                                              gap: 8,
+                                            }}
+                                          >
+                                            <div style={{ color: "#e2e8f0", fontSize: 12 }}>
+                                              <span style={{ color: "#94a3b8" }}>Score:</span>{" "}
+                                              {formatSwipeMetricNumber(active.score, 4)}
+                                            </div>
+                                            <div style={{ color: "#e2e8f0", fontSize: 12 }}>
+                                              <span style={{ color: "#94a3b8" }}>Engagement:</span>{" "}
+                                              {formatSwipeMetricNumber(active.metrics.engagementScore)}
+                                            </div>
+                                            <div style={{ color: "#e2e8f0", fontSize: 12 }}>
+                                              <span style={{ color: "#94a3b8" }}>3s retention:</span>{" "}
+                                              {formatSwipeMetricPercent(active.metrics.retention3s)}
+                                            </div>
+                                            <div style={{ color: "#e2e8f0", fontSize: 12 }}>
+                                              <span style={{ color: "#94a3b8" }}>10s retention:</span>{" "}
+                                              {formatSwipeMetricPercent(active.metrics.retention10s)}
+                                            </div>
+                                            <div style={{ color: "#e2e8f0", fontSize: 12 }}>
+                                              <span style={{ color: "#94a3b8" }}>CTR:</span>{" "}
+                                              {formatSwipeMetricPercent(active.metrics.ctr, 2)}
+                                            </div>
+                                            <div style={{ color: "#e2e8f0", fontSize: 12 }}>
+                                              <span style={{ color: "#94a3b8" }}>Views:</span>{" "}
+                                              {active.metrics.views !== null
+                                                ? Math.round(active.metrics.views).toLocaleString()
+                                                : "—"}
+                                            </div>
+                                          </div>
+                                          {active.transcriptSnippet ? (
+                                            <div style={{ marginTop: 8 }}>
+                                              <p
+                                                style={{
+                                                  margin: "0 0 4px 0",
+                                                  color: "#94a3b8",
+                                                  fontSize: 11,
+                                                  fontWeight: 600,
+                                                }}
+                                              >
+                                                Transcript
+                                              </p>
+                                              <p style={{ margin: 0, color: "#e2e8f0", fontSize: 12, lineHeight: 1.4 }}>
+                                                {active.transcriptSnippet}
+                                              </p>
+                                            </div>
+                                          ) : null}
+                                          {active.ocrText ? (
+                                            <div style={{ marginTop: 8 }}>
+                                              <p
+                                                style={{
+                                                  margin: "0 0 4px 0",
+                                                  color: "#94a3b8",
+                                                  fontSize: 11,
+                                                  fontWeight: 600,
+                                                }}
+                                              >
+                                                OCR
+                                              </p>
+                                              <p style={{ margin: 0, color: "#e2e8f0", fontSize: 12, lineHeight: 1.4 }}>
+                                                {active.ocrText}
+                                              </p>
+                                            </div>
+                                          ) : null}
+                                          <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", gap: 8 }}>
+                                            <span style={{ color: "#64748b", fontSize: 11 }}>
+                                              Asset ID: {active.assetId.slice(0, 8)}...
+                                            </span>
+                                            {active.sourceUrl ? (
+                                              <a
+                                                href={active.sourceUrl}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                style={{ color: "#38bdf8", fontSize: 11, textDecoration: "none" }}
+                                              >
+                                                Open source video
+                                              </a>
+                                            ) : null}
+                                          </div>
+                                        </div>
+                                      );
+                                    })()}
+                                  </>
+                                );
+                              })()}
+                            </div>
+                          )}
+
+                          {scriptGenerationStrategy === "research_formula" && (
+                            <div
+                              style={{
+                                marginTop: 10,
+                                border: "1px solid #334155",
+                                borderRadius: 10,
+                                backgroundColor: "#020617",
+                                padding: "10px 12px",
+                              }}
+                            >
+                              <p style={{ margin: 0, color: "#cbd5e1", fontSize: 12, fontWeight: 700 }}>
+                                Formula Preview
+                              </p>
+                              {scriptRunSummary?.patternAnalysis?.formulaSummary ? (
+                                <div style={{ marginTop: 8 }}>
+                                  <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: 11, fontWeight: 600 }}>
+                                    Transfer Formula
+                                  </p>
+                                  <p style={{ margin: 0, color: "#e2e8f0", fontSize: 12, lineHeight: 1.45 }}>
+                                    {scriptRunSummary.patternAnalysis.formulaSummary}
+                                  </p>
+                                </div>
+                              ) : null}
+                              {scriptRunSummary?.patternAnalysis?.psychologicalMechanism ? (
+                                <div style={{ marginTop: 8 }}>
+                                  <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: 11, fontWeight: 600 }}>
+                                    Psychological Mechanism
+                                  </p>
+                                  <p style={{ margin: 0, color: "#e2e8f0", fontSize: 12, lineHeight: 1.45 }}>
+                                    {scriptRunSummary.patternAnalysis.psychologicalMechanism}
+                                  </p>
+                                </div>
+                              ) : null}
+                              {scriptRunSummary?.patternAnalysis?.summary ? (
+                                <div style={{ marginTop: 8 }}>
+                                  <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: 11, fontWeight: 600 }}>
+                                    Pattern Summary
+                                  </p>
+                                  <p style={{ margin: 0, color: "#cbd5e1", fontSize: 12, lineHeight: 1.45 }}>
+                                    {scriptRunSummary.patternAnalysis.summary}
+                                  </p>
+                                </div>
+                              ) : null}
+                              {!scriptRunSummary?.patternAnalysis?.formulaSummary &&
+                              !scriptRunSummary?.patternAnalysis?.psychologicalMechanism &&
+                              !scriptRunSummary?.patternAnalysis?.summary ? (
+                                <p style={{ margin: "8px 0 0 0", color: "#fde68a", fontSize: 12 }}>
+                                  No formula details were found for this run. Pattern Analysis may need to be rerun.
+                                </p>
+                              ) : null}
+                            </div>
+                          )}
+                        </div>
                       </>
                     )}
                   </div>
@@ -5474,45 +5852,22 @@ export default function CreativeStudioPage() {
                   <button
                     type="button"
                     onClick={handleGenerateScriptWithAi}
-                    disabled={
-                      scriptModalSubmitting ||
-                      scriptRunsLoading ||
-                      (scriptResearchRuns.length > 0
-                        ? !selectedScriptResearchJobId
-                        : !scriptNoResearchAcknowledged)
-                    }
+                    disabled={scriptGenerateDisabled}
                     style={{
                       border: "none",
-                      backgroundColor:
-                        scriptModalSubmitting ||
-                        scriptRunsLoading ||
-                        (scriptResearchRuns.length > 0
-                          ? !selectedScriptResearchJobId
-                          : !scriptNoResearchAcknowledged)
-                          ? "#1e293b"
-                          : "#0ea5e9",
-                      color:
-                        scriptModalSubmitting ||
-                        scriptRunsLoading ||
-                        (scriptResearchRuns.length > 0
-                          ? !selectedScriptResearchJobId
-                          : !scriptNoResearchAcknowledged)
-                          ? "#64748b"
-                          : "#ffffff",
+                      backgroundColor: scriptGenerateDisabled ? "#1e293b" : "#0ea5e9",
+                      color: scriptGenerateDisabled ? "#64748b" : "#ffffff",
                       padding: "8px 14px",
                       borderRadius: 8,
                       fontWeight: 600,
-                      cursor:
-                        scriptModalSubmitting ||
-                        scriptRunsLoading ||
-                        (scriptResearchRuns.length > 0
-                          ? !selectedScriptResearchJobId
-                          : !scriptNoResearchAcknowledged)
-                          ? "not-allowed"
-                          : "pointer",
+                      cursor: scriptGenerateDisabled ? "not-allowed" : "pointer",
                     }}
                   >
-                    {scriptModalSubmitting ? "Starting AI generation..." : "Generate with AI"}
+                    {scriptModalSubmitting
+                      ? "Starting AI generation..."
+                      : scriptGenerationStrategy === "swipe_template"
+                        ? "Generate from Swipe Template"
+                        : "Generate from Research Formula"}
                   </button>
                 </div>
               </div>

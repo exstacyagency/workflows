@@ -41,6 +41,7 @@ function formatMetric(value: unknown): string {
 type OcrFrame = {
   second: number;
   text: string;
+  textFound?: boolean;
   confidence: number | null;
   imageUrl: string | null;
 };
@@ -99,10 +100,11 @@ function parseOcrFrames(raw: Record<string, any>): OcrFrame[] {
       const second = asNum(entry.second);
       const text = typeof entry.text === "string" ? entry.text.trim() : "";
       const confidence = asNum(entry.confidence);
-      if (second === null || !text) return null;
+      if (second === null) return null;
       return {
         second,
         text,
+        textFound: typeof entry.textFound === "boolean" ? entry.textFound : text.length > 0,
         confidence: confidence === null ? null : confidence,
         imageUrl:
           typeof entry.imageUrl === "string" && entry.imageUrl.trim().length > 0
@@ -460,8 +462,13 @@ export default function AdAssetsViewerPage() {
                                     Confidence: {formatConfidence(frame.confidence)}
                                   </div>
                                   <div className="mt-1 text-[11px] text-slate-200 whitespace-pre-wrap break-words">
-                                    Text: {frame.text}
+                                    Text: {frame.text || "—"}
                                   </div>
+                                  {!frame.textFound && (
+                                    <div className="mt-1 text-[11px] text-slate-500">
+                                      No readable text detected in this sampled frame
+                                    </div>
+                                  )}
                                   {frame.imageUrl ? (
                                     <div className="mt-2">
                                       <a
@@ -484,7 +491,7 @@ export default function AdAssetsViewerPage() {
                                     </div>
                                   )}
                                   <div className="mt-1 text-[11px] text-slate-400 whitespace-pre-wrap break-words">
-                                    Preview: {frame.text.slice(0, 200)}
+                                    Preview: {frame.text ? frame.text.slice(0, 200) : "—"}
                                   </div>
                                 </div>
                               );

@@ -7,48 +7,59 @@ import { requireProjectOwner404 } from '@/lib/auth/requireProjectOwner404';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-export async function GET(req: NextRequest, { params }: { params: { projectId: string } }) {
-  const session = await requireSession(req);
-  if (!session) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-  const { projectId } = params;
-  if (!projectId) {
-    return NextResponse.json({ error: 'projectId is required' }, { status: 400 });
-  }
-  const deny = await requireProjectOwner404(projectId);
-  if (deny) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  const { searchParams } = new URL(req.url);
-  const jobId = searchParams.get('jobId');
-  const runId = searchParams.get('runId');
-  const product = searchParams.get('product');
-  const subreddit = searchParams.get('subreddit');
-  const solutionKeyword = searchParams.get('solutionKeyword');
-  const minScoreParam = searchParams.get('minScore');
-  const limitParam = searchParams.get('limit');
-  const offsetParam = searchParams.get('offset');
-  const parsedLimit = limitParam ? Number.parseInt(limitParam, 10) : 100;
-  const parsedOffset = offsetParam ? Number.parseInt(offsetParam, 10) : 0;
+async function buildResearchWhere(args: {
+  projectId: string;
+  jobId?: string | null;
+  jobType?: string | null;
+  runId?: string | null;
+  productId?: string | null;
+  product?: string | null;
+  subreddit?: string | null;
+  solutionKeyword?: string | null;
+  minScoreParam?: string | null;
+}) {
+  const { projectId, jobId, jobType, runId, productId, product, subreddit, solutionKeyword, minScoreParam } = args;
   const parsedMinScore = minScoreParam ? Number.parseInt(minScoreParam, 10) : 0;
   const hasMinScore = Number.isFinite(parsedMinScore) && parsedMinScore > 0;
-  const limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.min(parsedLimit, 500) : 100;
-  const offset = Number.isFinite(parsedOffset) && parsedOffset >= 0 ? parsedOffset : 0;
-
   const where: any = { projectId };
+
   if (jobId) {
     where.jobId = jobId;
+    if (runId || jobType) {
+      where.job = {
+        ...(where.job ?? {}),
+        ...(runId ? { runId } : {}),
+        ...(jobType ? { type: jobType as any } : {}),
+      };
+    }
+  } else if (runId || jobType) {
+    where.job = {
+      ...(where.job ?? {}),
+      ...(runId ? { runId } : {}),
+      ...(jobType ? { type: jobType as any } : {}),
+    };
   }
-  if (runId) {
-    where.job = { ...(where.job ?? {}), runId };
-  } else if (product) {
+  if (!jobId && (productId || product)) {
     const productJobs = await prisma.job.findMany({
       where: {
         projectId,
-        type: 'CUSTOMER_RESEARCH',
-        payload: {
-          path: ['productName'],
-          equals: product,
-        },
+        ...(jobType ? { type: jobType as any } : {}),
+        ...(productId
+          ? {
+              payload: {
+                path: ['productId'],
+                equals: productId,
+              },
+            }
+          : {}),
+        ...(!productId && product
+          ? {
+              payload: {
+                path: ['productName'],
+                equals: product,
+              },
+            }
+          : {}),
       },
       select: { id: true },
     });
@@ -57,18 +68,7 @@ export async function GET(req: NextRequest, { params }: { params: { projectId: s
     if (jobIds.length > 0) {
       where.jobId = { in: jobIds };
     } else {
-      return NextResponse.json({
-        rows: [],
-        total: 0,
-        stats: {
-          totalRows: 0,
-          uniqueSubreddits: 0,
-          avgScore: 0,
-          topKeyword: 'N/A',
-          topKeywordCount: 0,
-        },
-        keywordStats: [],
-      });
+      where.jobId = { in: [] as string[] };
     }
   }
   if (subreddit) {
@@ -83,6 +83,48 @@ export async function GET(req: NextRequest, { params }: { params: { projectId: s
       gte: parsedMinScore,
     } as any;
   }
+
+  return where;
+}
+
+export async function GET(req: NextRequest, { params }: { params: { projectId: string } }) {
+  const session = await requireSession(req);
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  const { projectId } = params;
+  if (!projectId) {
+    return NextResponse.json({ error: 'projectId is required' }, { status: 400 });
+  }
+  const deny = await requireProjectOwner404(projectId);
+  if (deny) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const { searchParams } = new URL(req.url);
+  const jobId = searchParams.get('jobId');
+  const jobType = searchParams.get('jobType');
+  const runId = searchParams.get('runId');
+  const productId = searchParams.get('productId');
+  const product = searchParams.get('product');
+  const subreddit = searchParams.get('subreddit');
+  const solutionKeyword = searchParams.get('solutionKeyword');
+  const minScoreParam = searchParams.get('minScore');
+  const limitParam = searchParams.get('limit');
+  const offsetParam = searchParams.get('offset');
+  const parsedLimit = limitParam ? Number.parseInt(limitParam, 10) : 100;
+  const parsedOffset = offsetParam ? Number.parseInt(offsetParam, 10) : 0;
+  const limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.min(parsedLimit, 500) : 100;
+  const offset = Number.isFinite(parsedOffset) && parsedOffset >= 0 ? parsedOffset : 0;
+
+  const where = await buildResearchWhere({
+    projectId,
+    jobId,
+    jobType,
+    runId,
+    productId,
+    product,
+    subreddit,
+    solutionKeyword,
+    minScoreParam,
+  });
 
   const [rows, total] = await Promise.all([
     prisma.researchRow.findMany({
@@ -186,4 +228,102 @@ export async function GET(req: NextRequest, { params }: { params: { projectId: s
       },
     }
   );
+}
+
+export async function DELETE(req: NextRequest, { params }: { params: { projectId: string } }) {
+  const session = await requireSession(req);
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const { projectId } = params;
+  if (!projectId) {
+    return NextResponse.json({ error: 'projectId is required' }, { status: 400 });
+  }
+
+  const deny = await requireProjectOwner404(projectId);
+  if (deny) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+
+  let body: any = {};
+  try {
+    body = await req.json();
+  } catch {
+    body = {};
+  }
+
+  const rowId = String(body?.rowId || '').trim();
+  const rowIds = Array.isArray(body?.rowIds)
+    ? body.rowIds.map((id: unknown) => String(id || '').trim()).filter(Boolean)
+    : [];
+  const deleteAll = body?.deleteAll === true;
+  const jobType = String(body?.jobType || '').trim();
+  const runId = String(body?.runId || '').trim();
+  const productId = String(body?.productId || '').trim();
+  const jobId = String(body?.jobId || '').trim();
+  const product = String(body?.product || '').trim();
+  const subreddit = String(body?.subreddit || '').trim();
+  const solutionKeyword = String(body?.solutionKeyword || '').trim();
+  const minScoreParam = body?.minScore !== undefined && body?.minScore !== null ? String(body.minScore) : null;
+
+  if (!deleteAll && !rowId && rowIds.length === 0) {
+    return NextResponse.json(
+      { error: 'rowId, rowIds, or deleteAll is required' },
+      { status: 400 },
+    );
+  }
+
+  if (deleteAll) {
+    const where = await buildResearchWhere({
+      projectId,
+      jobId: jobId || null,
+      jobType: jobType || null,
+      runId: runId || null,
+      productId: productId || null,
+      product: product || null,
+      subreddit: subreddit || null,
+      solutionKeyword: solutionKeyword || null,
+      minScoreParam,
+    });
+    const result = await prisma.researchRow.deleteMany({ where });
+    return NextResponse.json({ success: true, deletedCount: result.count });
+  }
+
+  if (rowIds.length > 0) {
+    const result = await prisma.researchRow.deleteMany({
+      where: {
+        projectId,
+        id: { in: rowIds },
+        ...(runId || jobType
+          ? {
+              job: {
+                ...(runId ? { runId } : {}),
+                ...(jobType ? { type: jobType as any } : {}),
+              },
+            }
+          : {}),
+      },
+    });
+    return NextResponse.json({ success: true, deletedCount: result.count });
+  }
+
+  const row = await prisma.researchRow.findFirst({
+    where: {
+      id: rowId,
+      projectId,
+      ...(runId || jobType
+        ? {
+            job: {
+              ...(runId ? { runId } : {}),
+              ...(jobType ? { type: jobType as any } : {}),
+            },
+          }
+        : {}),
+    },
+    select: { id: true },
+  });
+  if (!row) {
+    return NextResponse.json({ error: 'Data point not found for this project/run' }, { status: 404 });
+  }
+  await prisma.researchRow.delete({ where: { id: row.id } });
+  return NextResponse.json({ success: true, deletedRowId: row.id, deletedCount: 1 });
 }

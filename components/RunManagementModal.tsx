@@ -10,6 +10,7 @@ type RunItem = {
   createdAt: string;
   jobCount: number;
   latestJobType: string | null;
+  latestJobSubtype: string | null;
   latestJobStatus: string | null;
   runNumber: number;
 };
@@ -39,12 +40,19 @@ function formatRunDate(dateString: string): string {
   });
 }
 
-function getJobTypeLabel(jobType: string | null): string {
+function getJobTypeLabel(jobType: string | null, jobSubtype?: string | null): string {
   if (!jobType) return "No jobs yet";
+  if (jobType === "AD_PERFORMANCE") {
+    const subtype = String(jobSubtype ?? "").trim();
+    if (subtype === "ad_ocr_collection") return "Extract OCR";
+    if (subtype === "ad_transcripts" || subtype === "ad_transcript_collection") {
+      return "Extract Transcripts";
+    }
+    return "Ad Collection";
+  }
   const labels: Record<string, string> = {
     CUSTOMER_RESEARCH: "Customer Research",
     CUSTOMER_ANALYSIS: "Customer Analysis",
-    AD_PERFORMANCE: "Ad Collection",
     AD_QUALITY_GATE: "Quality Assessment",
     PATTERN_ANALYSIS: "Pattern Analysis",
     PRODUCT_DATA_COLLECTION: "Product Collection",
@@ -325,7 +333,7 @@ export default function RunManagementModal({
                     >
                       <div>
                         <p style={{ margin: 0, fontSize: "14px", fontWeight: 600, color: "#f8fafc" }}>
-                          {getJobTypeLabel(run.latestJobType)}
+                          {getJobTypeLabel(run.latestJobType, run.latestJobSubtype)}
                         </p>
                         <div style={{ marginTop: "6px", fontSize: "12px", color: "#94a3b8" }}>
                           <span style={{ fontWeight: 600, color: "#cbd5e1" }}>Run #{run.runNumber}</span>

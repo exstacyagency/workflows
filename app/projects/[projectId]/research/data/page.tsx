@@ -28,6 +28,8 @@ interface ResearchRow {
 
 interface Job {
   id: string;
+  type: string;
+  runId?: string | null;
   createdAt: string;
   payload: any;
 }
@@ -46,11 +48,44 @@ interface KeywordStat {
   avgScore: number;
 }
 
+function isRedditSource(row: ResearchRow): boolean {
+  return row.source.startsWith('REDDIT_');
+}
+
+function isAmazonSource(row: ResearchRow): boolean {
+  return row.source.startsWith('AMAZON');
+}
+
+function isProductIntelSource(row: ResearchRow): boolean {
+  return row.source === 'UPLOADED' && row.type === 'product_intel';
+}
+
+function isUploadedUserSource(row: ResearchRow): boolean {
+  return row.source === 'UPLOADED' && !isProductIntelSource(row);
+}
+
+function isTikTokAdSource(row: ResearchRow): boolean {
+  const source = String(row.source || '').toUpperCase();
+  const metadata = (row.metadata ?? {}) as Record<string, any>;
+  const platform = String(metadata.platform ?? metadata.network ?? metadata.source_platform ?? '').toUpperCase();
+  if (source.includes('TIKTOK') || source.includes('APIFY')) return true;
+  if (platform.includes('TIKTOK')) return true;
+  return false;
+}
+
 export default function AllResearchDataPage() {
   const params = useParams();
   const searchParams = useSearchParams();
   const projectId = params.projectId as string;
+  const jobTypeFromUrl = searchParams.get('jobType');
+  const normalizedJobType =
+    jobTypeFromUrl === 'PRODUCT_DATA_COLLECTION' || jobTypeFromUrl === 'CUSTOMER_RESEARCH'
+      ? jobTypeFromUrl
+      : 'CUSTOMER_RESEARCH';
+  const isProductDataView = normalizedJobType === 'PRODUCT_DATA_COLLECTION';
+  const productIdFromUrl = searchParams.get('productId');
   const productFromUrl = searchParams.get('product');
+  const runIdFromUrl = searchParams.get('runId');
 
   const [rows, setRows] = useState<ResearchRow[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -73,6 +108,10 @@ export default function AllResearchDataPage() {
   const [minScoreFilter, setMinScoreFilter] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
+  const [deletingRowId, setDeletingRowId] = useState<string | null>(null);
+  const [selectedRowIds, setSelectedRowIds] = useState<string[]>([]);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
   const rowsPerPage = 100;
 
   const loadJobs = useCallback(async () => {
@@ -83,7 +122,9 @@ export default function AllResearchDataPage() {
 
       const productJobs = jobList.filter(
         (j: any) =>
-          j.type === 'CUSTOMER_RESEARCH' &&
+          j.type === normalizedJobType &&
+          (!runIdFromUrl || j.runId === runIdFromUrl) &&
+          (!productIdFromUrl || j.payload?.productId === productIdFromUrl) &&
           (!productFromUrl || j.payload?.productName === productFromUrl)
       );
 
@@ -91,7 +132,7 @@ export default function AllResearchDataPage() {
     } catch (error) {
       console.error('Failed to load jobs:', error);
     }
-  }, [projectId, productFromUrl]);
+  }, [normalizedJobType, productFromUrl, productIdFromUrl, projectId, runIdFromUrl]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -101,10 +142,16 @@ export default function AllResearchDataPage() {
         limit: String(rowsPerPage),
         offset: String(offset),
       });
+      params.set('jobType', normalizedJobType);
       if (selectedJob !== 'all') {
         params.set('jobId', selectedJob);
+      } else if (runIdFromUrl) {
+        params.set('runId', runIdFromUrl);
       } else if (productFromUrl) {
         params.set('product', productFromUrl);
+      }
+      if (productIdFromUrl) {
+        params.set('productId', productIdFromUrl);
       }
       if (subredditFilter) {
         params.set('subreddit', subredditFilter);
@@ -141,10 +188,13 @@ export default function AllResearchDataPage() {
     }
   }, [
     minScoreFilter,
+    normalizedJobType,
     page,
     productFromUrl,
+    productIdFromUrl,
     projectId,
     rowsPerPage,
+    runIdFromUrl,
     selectedJob,
     solutionKeywordFilter,
     subredditFilter,
@@ -157,6 +207,12 @@ export default function AllResearchDataPage() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    setSelectedJob('all');
+    setPage(1);
+    setSelectedRowIds([]);
+  }, [normalizedJobType, productIdFromUrl, productFromUrl, runIdFromUrl]);
 
   const uniqueSubreddits = useMemo(
     () =>
@@ -180,22 +236,38 @@ export default function AllResearchDataPage() {
 
   const filteredRows = rows.filter((row) => {
     if (sourceFilter !== 'all') {
-      if (sourceFilter === 'reddit' && !row.source.startsWith('REDDIT_')) return false;
-      if (sourceFilter === 'amazon' && !row.source.startsWith('AMAZON')) return false;
-      if (sourceFilter === 'uploaded' && row.source !== 'UPLOADED' && row.type !== 'UPLOADED') {
-        return false;
-      }
-      if (!['reddit', 'amazon', 'uploaded'].includes(sourceFilter) && row.source !== sourceFilter) return false;
+      if (sourceFilter === 'reddit' && !isRedditSource(row)) return false;
+      if (sourceFilter === 'amazon' && !isAmazonSource(row)) return false;
+      if (sourceFilter === 'product-intel' && !isProductIntelSource(row)) return false;
+      if (sourceFilter === 'uploaded-user' && !isUploadedUserSource(row)) return false;
+      if (sourceFilter === 'tiktok-ad' && !isTikTokAdSource(row)) return false;
     }
     if (typeFilter !== 'all' && row.type !== typeFilter) return false;
     if (searchQuery && !row.content.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     return true;
   });
 
+  const filteredRowIds = useMemo(() => filteredRows.map((row) => row.id), [filteredRows]);
+  const allFilteredSelected =
+    filteredRowIds.length > 0 && filteredRowIds.every((id) => selectedRowIds.includes(id));
+  const selectedCount = selectedRowIds.length;
+
+  useEffect(() => {
+    setSelectedRowIds((prev) => prev.filter((id) => filteredRowIds.includes(id)));
+  }, [filteredRowIds]);
+
   async function handleExport() {
     const params = new URLSearchParams();
+    params.set('jobType', normalizedJobType);
     if (selectedJob !== 'all') {
       params.set('jobId', selectedJob);
+    } else if (runIdFromUrl) {
+      params.set('runId', runIdFromUrl);
+    }
+    if (productIdFromUrl) {
+      params.set('productId', productIdFromUrl);
+    } else if (productFromUrl) {
+      params.set('product', productFromUrl);
     }
     if (subredditFilter) {
       params.set('subreddit', subredditFilter);
@@ -218,12 +290,128 @@ export default function AllResearchDataPage() {
     window.URL.revokeObjectURL(url);
   }
 
+  async function handleDeleteDataPoint(rowId: string) {
+    if (!window.confirm('Delete this data point? This cannot be undone.')) return;
+    setDeletingRowId(rowId);
+    try {
+      const response = await fetch(`/api/projects/${projectId}/research`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          rowId,
+          jobType: normalizedJobType,
+          ...(runIdFromUrl ? { runId: runIdFromUrl } : {}),
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data?.success) {
+        throw new Error(data?.error || 'Failed to delete data point');
+      }
+      setRows((prev) => prev.filter((row) => row.id !== rowId));
+      setTotalCount((prev) => Math.max(0, prev - 1));
+      setSelectedRowIds((prev) => prev.filter((id) => id !== rowId));
+      if (expandedRow === rowId) setExpandedRow(null);
+    } catch (error: any) {
+      alert(error?.message || 'Failed to delete data point');
+    } finally {
+      setDeletingRowId(null);
+    }
+  }
+
+  function toggleSelectRow(rowId: string) {
+    setSelectedRowIds((prev) =>
+      prev.includes(rowId) ? prev.filter((id) => id !== rowId) : [...prev, rowId]
+    );
+  }
+
+  function toggleSelectAllFiltered() {
+    if (allFilteredSelected) {
+      setSelectedRowIds((prev) => prev.filter((id) => !filteredRowIds.includes(id)));
+      return;
+    }
+    setSelectedRowIds((prev) => Array.from(new Set([...prev, ...filteredRowIds])));
+  }
+
+  async function handleDeleteSelected() {
+    if (selectedRowIds.length === 0) return;
+    if (
+      !window.confirm(`Delete ${selectedRowIds.length} selected data point(s)? This cannot be undone.`)
+    ) {
+      return;
+    }
+    setBulkDeleting(true);
+    try {
+      const response = await fetch(`/api/projects/${projectId}/research`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          rowIds: selectedRowIds,
+          jobType: normalizedJobType,
+          ...(runIdFromUrl ? { runId: runIdFromUrl } : {}),
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data?.success) {
+        throw new Error(data?.error || 'Failed to delete selected data points');
+      }
+      await loadData();
+      setSelectedRowIds([]);
+      setExpandedRow(null);
+    } catch (error: any) {
+      alert(error?.message || 'Failed to delete selected data points');
+    } finally {
+      setBulkDeleting(false);
+    }
+  }
+
+  async function handleDeleteAll() {
+    if (
+      !window.confirm(
+        'Delete all data points matching current filters (job/run/product/subreddit/keyword/min score)? This cannot be undone.'
+      )
+    ) {
+      return;
+    }
+
+    setDeletingAll(true);
+    try {
+      const response = await fetch(`/api/projects/${projectId}/research`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          deleteAll: true,
+          jobType: normalizedJobType,
+          ...(selectedJob !== 'all' ? { jobId: selectedJob } : {}),
+          ...(runIdFromUrl ? { runId: runIdFromUrl } : {}),
+          ...(productIdFromUrl ? { productId: productIdFromUrl } : {}),
+          ...(selectedJob === 'all' && !runIdFromUrl && productFromUrl ? { product: productFromUrl } : {}),
+          ...(subredditFilter ? { subreddit: subredditFilter } : {}),
+          ...(solutionKeywordFilter ? { solutionKeyword: solutionKeywordFilter } : {}),
+          ...(minScoreFilter > 0 ? { minScore: minScoreFilter } : {}),
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data?.success) {
+        throw new Error(data?.error || 'Failed to delete all filtered data points');
+      }
+      await loadData();
+      setSelectedRowIds([]);
+      setExpandedRow(null);
+    } catch (error: any) {
+      alert(error?.message || 'Failed to delete all filtered data points');
+    } finally {
+      setDeletingAll(false);
+    }
+  }
+
   const totalPages = Math.max(1, Math.ceil(totalCount / rowsPerPage));
 
   function getDisplaySource(row: ResearchRow): string {
-    if (row.source.startsWith('REDDIT_')) return 'Reddit';
-    if (row.source.startsWith('AMAZON')) return 'Amazon';
-    if (row.source === 'UPLOADED') return row.metadata?.source || 'Uploaded';
+    if (isRedditSource(row)) return 'Reddit';
+    if (isAmazonSource(row)) return 'Amazon';
+    if (isTikTokAdSource(row)) return 'TikTok Ad';
+    if (isProductIntelSource(row)) return 'Product Intel';
+    if (isUploadedUserSource(row)) return 'Uploaded';
     return row.source;
   }
 
@@ -271,18 +459,39 @@ export default function AllResearchDataPage() {
               ← Back to Research Hub
             </Link>
             <h1 className="text-2xl font-bold">
-              All Research Data {productFromUrl && `- ${productFromUrl}`}
+              {isProductDataView ? 'All Product Data' : 'All Customer Data'} {productFromUrl && `- ${productFromUrl}`}
             </h1>
             <p className="text-sm text-slate-400 mt-1">
               {totalCount} total rows across {jobs.length} research jobs
+              {runIdFromUrl ? (
+                <>
+                  {' '}· runId: <span className="font-mono">{runIdFromUrl}</span>
+                </>
+              ) : null}
             </p>
           </div>
-          <button
-            onClick={handleExport}
-            className="px-4 py-2 bg-sky-600 hover:bg-sky-500 rounded text-sm font-medium"
-          >
-            Export All CSV
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleDeleteSelected}
+              disabled={selectedCount === 0 || bulkDeleting || deletingAll}
+              className="px-3 py-2 bg-rose-700 hover:bg-rose-600 disabled:opacity-50 disabled:cursor-not-allowed rounded text-sm font-medium"
+            >
+              {bulkDeleting ? 'Deleting...' : `Delete Selected (${selectedCount})`}
+            </button>
+            <button
+              onClick={handleDeleteAll}
+              disabled={deletingAll || bulkDeleting || totalCount === 0}
+              className="px-3 py-2 bg-rose-900 hover:bg-rose-800 disabled:opacity-50 disabled:cursor-not-allowed rounded text-sm font-medium"
+            >
+              {deletingAll ? 'Deleting...' : 'Delete All'}
+            </button>
+            <button
+              onClick={handleExport}
+              className="px-4 py-2 bg-sky-600 hover:bg-sky-500 rounded text-sm font-medium"
+            >
+              Export All CSV
+            </button>
+          </div>
         </div>
       </div>
 
@@ -354,10 +563,9 @@ export default function AllResearchDataPage() {
             <option value="all">All Sources</option>
             <option value="reddit">Reddit</option>
             <option value="amazon">Amazon</option>
-            <option value="uploaded">Uploaded</option>
-            <option value="REDDIT_PRODUCT">Reddit Product</option>
-            <option value="REDDIT_PROBLEM">Reddit Problem</option>
-            <option value="UPLOADED">Uploaded</option>
+            <option value="product-intel">Product Intel</option>
+            <option value="uploaded-user">Uploaded</option>
+            <option value="tiktok-ad">TikTok Ad</option>
           </select>
 
           <select
@@ -454,6 +662,15 @@ export default function AllResearchDataPage() {
               <table className="w-full text-sm border border-slate-800">
                 <thead className="bg-slate-900 border-b border-slate-700">
                   <tr>
+                    <th className="text-left p-3 font-medium w-10">
+                      <input
+                        type="checkbox"
+                        checked={allFilteredSelected}
+                        onChange={toggleSelectAllFiltered}
+                        className="h-4 w-4"
+                        aria-label="Select all visible rows"
+                      />
+                    </th>
                     <th className="text-left p-3 font-medium w-24">Type</th>
                     <th className="text-left p-3 font-medium w-24">Source</th>
                     <th className="text-left p-3 font-medium w-40">Subreddit</th>
@@ -472,6 +689,15 @@ export default function AllResearchDataPage() {
                     return (
                       <Fragment key={row.id}>
                         <tr className="border-b border-slate-800 hover:bg-slate-900/50">
+                          <td className="p-3">
+                            <input
+                              type="checkbox"
+                              checked={selectedRowIds.includes(row.id)}
+                              onChange={() => toggleSelectRow(row.id)}
+                              className="h-4 w-4"
+                              aria-label={`Select row ${row.id}`}
+                            />
+                          </td>
                           <td className="p-3">
                             <span className="px-2 py-1 bg-slate-700 rounded text-xs">
                               {row.type || 'unknown'}
@@ -518,9 +744,9 @@ export default function AllResearchDataPage() {
                             )}
                           </td>
                           <td className="p-3 text-slate-300">
-                            {row.source.startsWith('REDDIT_') ? (
+                            {isRedditSource(row) ? (
                               <span className="font-mono">{getScore(row)}</span>
-                            ) : row.source.startsWith('AMAZON') ? (
+                            ) : isAmazonSource(row) ? (
                               <span>{row.rating ?? (row.metadata?.rating ?? '—')}/5</span>
                             ) : (
                               <span className="text-slate-500">—</span>
@@ -550,17 +776,26 @@ export default function AllResearchDataPage() {
                             )}
                           </td>
                           <td className="p-3">
-                            <button
-                              onClick={() => setExpandedRow(isExpanded ? null : row.id)}
-                              className="text-xs text-sky-400 hover:text-sky-300 underline"
-                            >
-                              {isExpanded ? 'Hide' : 'Details'}
-                            </button>
+                            <div className="flex flex-col gap-1">
+                              <button
+                                onClick={() => setExpandedRow(isExpanded ? null : row.id)}
+                                className="text-xs text-sky-400 hover:text-sky-300 underline text-left"
+                              >
+                                {isExpanded ? 'Hide' : 'Details'}
+                              </button>
+                              <button
+                                onClick={() => handleDeleteDataPoint(row.id)}
+                                disabled={deletingRowId === row.id}
+                                className="text-xs text-rose-300 hover:text-rose-200 underline text-left disabled:opacity-50"
+                              >
+                                {deletingRowId === row.id ? 'Deleting...' : 'Delete'}
+                              </button>
+                            </div>
                           </td>
                         </tr>
                         {isExpanded && (
                           <tr className="border-b border-slate-800 bg-slate-900/40">
-                            <td colSpan={9} className="p-4">
+                            <td colSpan={10} className="p-4">
                               <div className="space-y-4">
                                 <div>
                                   <h4 className="font-medium mb-2">Full Content</h4>
