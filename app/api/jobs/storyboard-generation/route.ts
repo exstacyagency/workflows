@@ -15,6 +15,8 @@ const BodySchema = z.object({
   scriptId: z.string().optional(),
   productId: z.string().optional(),
   runId: z.string().optional(),
+  characterId: z.string().optional(),
+  attemptKey: z.string().optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -51,6 +53,8 @@ export async function POST(req: NextRequest) {
       scriptId: rawScriptId,
       productId: rawProductId,
       runId: rawRunId,
+      characterId: rawCharacterId,
+      attemptKey: rawAttemptKey,
     } = parsed.data;
 
     const auth = await requireProjectOwner(projectId);
@@ -85,8 +89,12 @@ export async function POST(req: NextRequest) {
 
     const requestedRunId = String(rawRunId ?? "").trim();
     const requestedProductId = String(rawProductId ?? "").trim();
+    const requestedCharacterId = String(rawCharacterId ?? "").trim();
+    const attemptKey = String(rawAttemptKey ?? "").trim() || `${Date.now()}`;
     let effectiveRunId: string | null = null;
     let effectiveProductId: string | null = null;
+    let effectiveCharacterId: string | null = null;
+    let effectiveCharacterHandle: string | null = null;
     if (requestedRunId) {
       const run = await prisma.researchRun.findUnique({
         where: { id: requestedRunId },
@@ -116,6 +124,48 @@ export async function POST(req: NextRequest) {
         );
       }
       effectiveProductId = requestedProductId;
+    }
+
+    if (requestedCharacterId) {
+      const character = await prisma.character.findFirst({
+        where: {
+          id: requestedCharacterId,
+          projectId,
+        },
+        select: {
+          id: true,
+          runId: true,
+          productId: true,
+          characterUserName: true,
+        },
+      });
+      if (!character) {
+        return NextResponse.json(
+          { error: "characterId not found for this project" },
+          { status: 400 },
+        );
+      }
+      if (effectiveRunId && character.runId !== effectiveRunId) {
+        return NextResponse.json(
+          { error: "characterId does not belong to selected run" },
+          { status: 400 },
+        );
+      }
+      if (effectiveProductId && character.productId !== effectiveProductId) {
+        return NextResponse.json(
+          { error: "characterId does not belong to selected product" },
+          { status: 400 },
+        );
+      }
+      const username = String(character.characterUserName ?? "").trim();
+      if (!username) {
+        return NextResponse.json(
+          { error: "Selected character has no character handle" },
+          { status: 400 },
+        );
+      }
+      effectiveCharacterId = character.id;
+      effectiveCharacterHandle = `@${username.replace(/^@+/, "")}`;
     }
 
     const requestedScriptId = String(rawScriptId ?? "").trim();
@@ -154,6 +204,9 @@ export async function POST(req: NextRequest) {
       JobType.STORYBOARD_GENERATION,
       scriptIdUsed,
       effectiveProductId ?? "no_product",
+      effectiveRunId ?? "no_run",
+      effectiveCharacterId ?? "no_character",
+      attemptKey,
     ]);
 
     const existing = await prisma.job.findFirst({
@@ -214,6 +267,8 @@ export async function POST(req: NextRequest) {
       projectId,
       scriptId: scriptIdUsed,
       ...(effectiveProductId ? { productId: effectiveProductId } : {}),
+      ...(effectiveCharacterId ? { characterId: effectiveCharacterId } : {}),
+      ...(effectiveCharacterHandle ? { characterHandle: effectiveCharacterHandle } : {}),
       idempotencyKey,
       ...(effectiveRunId ? { runId: effectiveRunId } : {}),
       ...(reservation ? { quotaReservation: reservation } : {}),
@@ -245,6 +300,8 @@ export async function POST(req: NextRequest) {
         jobId: job.id,
         runId: job.runId ?? effectiveRunId,
         scriptIdUsed,
+        ...(effectiveCharacterId ? { characterId: effectiveCharacterId } : {}),
+        ...(effectiveCharacterHandle ? { characterHandle: effectiveCharacterHandle } : {}),
         reused: false,
         started: !securitySweep,
         ...(securitySweep ? { skipped: true, reason: 'SECURITY_SWEEP' } : {}),

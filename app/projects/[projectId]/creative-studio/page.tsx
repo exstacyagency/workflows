@@ -35,6 +35,8 @@ type ProductOption = {
 type CharacterOption = {
   id: string;
   name: string;
+  productId?: string;
+  runId?: string | null;
   characterUserName?: string | null;
   soraCharacterId?: string | null;
   createdAt?: string | Date;
@@ -390,6 +392,8 @@ export default function CreativeStudioPage() {
   const [products, setProducts] = useState<ProductOption[]>([]);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(selectedProductIdFromUrl);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const [runCharacters, setRunCharacters] = useState<CharacterOption[]>([]);
+  const [selectedStoryboardCharacterId, setSelectedStoryboardCharacterId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [showScriptModal, setShowScriptModal] = useState(false);
@@ -533,6 +537,55 @@ export default function CreativeStudioPage() {
     }
   }, [projectId, router, selectedProductIdFromUrl]);
 
+  const loadRunCharacters = useCallback(async () => {
+    const activeRunId = String(selectedRunId ?? "").trim();
+    const activeProductId = String(selectedProductId ?? "").trim();
+    if (!projectId || !activeRunId) {
+      setRunCharacters([]);
+      setSelectedStoryboardCharacterId(null);
+      return;
+    }
+    try {
+      const params = new URLSearchParams();
+      params.set("runId", activeRunId);
+      if (activeProductId) params.set("productId", activeProductId);
+      const res = await fetch(`/api/projects/${projectId}/characters?${params.toString()}`, {
+        cache: "no-store",
+      });
+      const data = await res.json().catch(() => []);
+      if (!res.ok || !Array.isArray(data)) {
+        throw new Error("Failed to load run characters");
+      }
+
+      const mapped: CharacterOption[] = data.map((entry: any) => ({
+        id: String(entry?.id ?? ""),
+        name: String(entry?.name ?? "Character"),
+        productId: String(entry?.productId ?? ""),
+        runId: entry?.runId ? String(entry.runId) : null,
+        characterUserName:
+          typeof entry?.characterUserName === "string" ? entry.characterUserName : null,
+        soraCharacterId:
+          typeof entry?.soraCharacterId === "string" ? entry.soraCharacterId : null,
+        createdAt:
+          typeof entry?.createdAt === "string" ? entry.createdAt : new Date().toISOString(),
+        productName:
+          typeof entry?.product?.name === "string"
+            ? entry.product.name
+            : (products.find((p) => p.id === String(entry?.productId ?? ""))?.name ?? "Product"),
+      }));
+
+      setRunCharacters(mapped);
+      setSelectedStoryboardCharacterId((current) => {
+        if (current && mapped.some((char) => char.id === current)) return current;
+        return mapped[0]?.id ?? null;
+      });
+    } catch (err: any) {
+      console.error("[Creative] Failed to load run characters", err);
+      setRunCharacters([]);
+      setSelectedStoryboardCharacterId(null);
+    }
+  }, [projectId, products, selectedProductId, selectedRunId]);
+
   useEffect(() => {
     if (!projectId) return;
     loadProducts();
@@ -547,6 +600,10 @@ export default function CreativeStudioPage() {
     if (!projectId) return;
     loadJobs(selectedProductId);
   }, [projectId, loadJobs, selectedProductId]);
+
+  useEffect(() => {
+    void loadRunCharacters();
+  }, [loadRunCharacters]);
 
   // Auto-refresh jobs every 5 seconds
   useEffect(() => {
@@ -670,16 +727,7 @@ export default function CreativeStudioPage() {
     () => products.find((p) => p.id === selectedProductId) ?? null,
     [products, selectedProductId],
   );
-  const allCharacters = useMemo(
-    () =>
-      products.flatMap((p) =>
-        (p.characters ?? []).map((c) => ({
-          ...c,
-          productName: p.name,
-        })),
-      ),
-    [products],
-  );
+  const allCharacters = useMemo(() => runCharacters, [runCharacters]);
   const hasSelectedProductCreatorReference = Boolean(
     String(selectedProduct?.creatorReferenceImageUrl ?? "").trim(),
   );
@@ -723,6 +771,8 @@ export default function CreativeStudioPage() {
   useEffect(() => {
     closeScriptPanel();
     setExpandedCompletedStepKeys({});
+    setRunCharacters([]);
+    setSelectedStoryboardCharacterId(null);
     setVideoPromptEditMode(false);
     setVideoPromptDrafts([]);
     setVideoPromptSaveError(null);
@@ -2086,6 +2136,10 @@ export default function CreativeStudioPage() {
 
   const imagePromptLastJob = getJobsForType("IMAGE_PROMPT_GENERATION" as JobType)[0];
   const isImagePromptJobStuck = isStaleRunningJob(imagePromptLastJob);
+  const latestStoryboardJob = getJobsForType(JobType.STORYBOARD_GENERATION)[0];
+  const latestStoryboardJobSignature = latestStoryboardJob
+    ? `${latestStoryboardJob.id}:${latestStoryboardJob.status}:${latestStoryboardJob.updatedAt}`
+    : "";
   const latestVideoImageJob = getJobsForType(JobType.VIDEO_IMAGE_GENERATION)[0];
   const latestVideoImageJobSignature = latestVideoImageJob
     ? `${latestVideoImageJob.id}:${latestVideoImageJob.status}:${latestVideoImageJob.updatedAt}`
@@ -2248,6 +2302,7 @@ export default function CreativeStudioPage() {
 
     try {
       const activeRunId = String(selectedRunId ?? "").trim();
+      const activeStoryboardCharacterId = String(selectedStoryboardCharacterId ?? "").trim();
       let endpoint = "";
       let payload: any = {
         ...(extraPayload || {}),
@@ -2275,6 +2330,22 @@ export default function CreativeStudioPage() {
         throw new Error("Endpoint not configured for this step");
       }
 
+      if (step.key === "storyboard") {
+        if (activeRunId && runCharacters.length > 0 && !activeStoryboardCharacterId) {
+          throw new Error("Select a character from Character Casting before creating storyboard.");
+        }
+        if (activeStoryboardCharacterId) {
+          payload = {
+            ...payload,
+            characterId: activeStoryboardCharacterId,
+          };
+        }
+        payload = {
+          ...payload,
+          attemptKey: `storyboard-${Date.now()}`,
+        };
+      }
+
       if (
         step.key === "video_prompts" ||
         step.key === "video_images" ||
@@ -2297,6 +2368,7 @@ export default function CreativeStudioPage() {
         endpoint,
         selectedRunId,
         activeRunId: activeRunId || null,
+        activeStoryboardCharacterId: activeStoryboardCharacterId || null,
         payloadRunId:
           typeof payload?.runId === "string" && payload.runId.trim()
             ? payload.runId
@@ -2411,10 +2483,17 @@ export default function CreativeStudioPage() {
   useEffect(() => {
     const activeStoryboardId = String(storyboardPanelId || latestCompletedStoryboardId || "").trim();
     if (!activeStoryboardId) return;
-    if (!latestVideoImageJobSignature && !latestVideoPromptJobSignature) return;
+    if (
+      !latestStoryboardJobSignature &&
+      !latestVideoImageJobSignature &&
+      !latestVideoPromptJobSignature
+    ) {
+      return;
+    }
     void refreshStoryboardForOutput(activeStoryboardId);
   }, [
     latestCompletedStoryboardId,
+    latestStoryboardJobSignature,
     latestVideoImageJobSignature,
     latestVideoPromptJobSignature,
     storyboardPanelId,
@@ -2809,30 +2888,6 @@ export default function CreativeStudioPage() {
     );
   }
 
-  if (selectedProduct && !hasSelectedProductSoraCharacter) {
-    return (
-      <div className="px-6 py-6 space-y-6">
-        <section className="rounded-xl border border-slate-800 bg-slate-900/80 p-6">
-          <h1 className="text-2xl font-semibold text-slate-50">Creative Studio</h1>
-          <p className="text-sm text-slate-300 mt-1">
-            Character setup is required before generating videos.
-          </p>
-        </section>
-        <div className="rounded-lg bg-red-500/10 border border-red-500/50 p-4">
-          <p className="text-sm text-red-200">
-            Complete product setup to create your Sora character before using Creative Studio.
-          </p>
-          <Link
-            href={`/products/${selectedProduct.id}`}
-            className="mt-2 inline-flex items-center text-xs font-medium text-red-300 hover:text-red-200"
-          >
-            Go to Product Setup →
-          </Link>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="px-6 py-6 space-y-6 max-w-4xl">
       {/* Header */}
@@ -2903,6 +2958,20 @@ export default function CreativeStudioPage() {
       {error && (
         <div className="rounded-lg bg-red-500/10 border border-red-500/50 p-4">
           <p className="text-sm text-red-300">{error}</p>
+        </div>
+      )}
+
+      {selectedProduct && !hasSelectedProductSoraCharacter && (
+        <div className="rounded-lg bg-amber-500/10 border border-amber-500/50 p-4">
+          <p className="text-sm text-amber-200">
+            Character setup is recommended for better on-camera consistency, but you can continue without it.
+          </p>
+          <Link
+            href={`/products/${selectedProduct.id}`}
+            className="mt-2 inline-flex items-center text-xs font-medium text-amber-300 hover:text-amber-200"
+          >
+            Open Product Setup →
+          </Link>
         </div>
       )}
 
@@ -2999,6 +3068,44 @@ export default function CreativeStudioPage() {
                   );
                 })}
             </div>
+          </div>
+        )}
+      </section>
+
+      <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-5">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-slate-100">Character Casting</h2>
+          <span className="text-xs text-slate-500">
+            {runCharacters.length} {runCharacters.length === 1 ? "character" : "characters"}
+          </span>
+        </div>
+        {!selectedRunId ? (
+          <p className="text-xs text-slate-400">
+            Select a creative run to load run-scoped characters for storyboard casting.
+          </p>
+        ) : runCharacters.length === 0 ? (
+          <p className="text-xs text-amber-300">
+            No characters found for this run and product. Generate a character in Product Setup first.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            <select
+              value={selectedStoryboardCharacterId ?? ""}
+              onChange={(event) => setSelectedStoryboardCharacterId(event.target.value || null)}
+              className="w-full md:w-auto px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-300"
+            >
+              {runCharacters.map((char) => (
+                <option key={char.id} value={char.id}>
+                  {(char.productName ? `${char.productName} - ` : "") + char.name}
+                  {char.characterUserName ? ` (@${String(char.characterUserName).replace(/^@+/, "")})` : ""}
+                </option>
+              ))}
+            </select>
+            {selectedStoryboardCharacterId && (
+              <p className="text-xs text-slate-500">
+                Selected character will be applied to ON_CAMERA storyboard panels by default.
+              </p>
+            )}
           </div>
         )}
       </section>

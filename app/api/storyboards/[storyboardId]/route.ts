@@ -23,6 +23,7 @@ type StoryboardPanelResponse = {
   lastFrameImageUrl: string | null;
   videoPrompt: string | null;
   characterAction: string | null;
+  characterHandle: string | null;
   environment: string | null;
   cameraDirection: string;
   productPlacement: string;
@@ -136,6 +137,7 @@ function normalizePanelFromRaw(args: {
     lastFrameImageUrl: frameUrls.lastFrameImageUrl,
     videoPrompt: asNullableString(raw.videoPrompt),
     characterAction: asNullableString(raw.characterAction),
+    characterHandle: asNullableString(raw.characterHandle),
     environment: asNullableString(raw.environment),
     cameraDirection: asString(raw.cameraDirection),
     productPlacement: asString(raw.productPlacement),
@@ -162,6 +164,7 @@ function normalizePanelFromInput(value: unknown, index: number): StoryboardPanel
     lastFrameImageUrl: asNullableString(raw.lastFrameImageUrl),
     videoPrompt: asNullableString(raw.videoPrompt),
     characterAction: panelType === "B_ROLL_ONLY" ? asNullableString(raw.characterAction) : asString(raw.characterAction),
+    characterHandle: asNullableString(raw.characterHandle),
     environment: panelType === "B_ROLL_ONLY" ? asNullableString(raw.environment) : asString(raw.environment),
     cameraDirection: asString(raw.cameraDirection),
     productPlacement: asString(raw.productPlacement),

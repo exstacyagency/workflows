@@ -22,9 +22,30 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const deny = await requireProjectOwner404(projectId);
   if (deny) return deny;
 
+  const runId = String(_req.nextUrl.searchParams.get("runId") ?? "").trim();
+  const productId = String(_req.nextUrl.searchParams.get("productId") ?? "").trim();
+
   const characters = await prisma.character.findMany({
-    where: { projectId },
+    where: {
+      projectId,
+      ...(runId ? { runId } : {}),
+      ...(productId ? { productId } : {}),
+    },
     orderBy: { createdAt: 'desc' },
+    include: {
+      product: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+      run: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+    },
   });
 
   return NextResponse.json(characters, { status: 200 });
