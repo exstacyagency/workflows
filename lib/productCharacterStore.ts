@@ -3,6 +3,7 @@ import { ensureProductTableColumns } from "@/lib/productStore";
 
 export type ProductCharacterState = {
   id: string;
+  name: string;
   projectId: string;
   creatorReferenceImageUrl: string | null;
   characterReferenceVideoUrl: string | null;
@@ -42,6 +43,7 @@ export async function getProductCharacterState(
     ? await prisma.$queryRaw<ProductCharacterState[]>`
         SELECT
           p."id",
+          p."name",
           p."project_id" AS "projectId",
           p."creator_reference_image_url" AS "creatorReferenceImageUrl",
           p."character_reference_video_url" AS "characterReferenceVideoUrl",
@@ -58,6 +60,7 @@ export async function getProductCharacterState(
     : await prisma.$queryRaw<ProductCharacterState[]>`
         SELECT
           p."id",
+          p."name",
           p."project_id" AS "projectId",
           p."creator_reference_image_url" AS "creatorReferenceImageUrl",
           p."character_reference_video_url" AS "characterReferenceVideoUrl",
@@ -118,5 +121,78 @@ export async function saveCharacterResult(
       "character_cameo_created_at" = NOW(),
       "updated_at" = NOW()
     WHERE "id" = ${productId}
+  `;
+}
+
+export async function saveCharacterToTable({
+  productId,
+  name,
+  soraCharacterId,
+  characterUserName,
+  seedVideoTaskId,
+  seedVideoUrl,
+  creatorVisualPrompt,
+}: {
+  productId: string;
+  name: string;
+  soraCharacterId: string;
+  characterUserName: string;
+  seedVideoTaskId?: string;
+  seedVideoUrl?: string;
+  creatorVisualPrompt?: string;
+}) {
+  const productRow = await prisma.$queryRaw<Array<{ projectId: string }>>`
+    SELECT "project_id" AS "projectId"
+    FROM "product"
+    WHERE "id" = ${productId}
+    LIMIT 1
+  `;
+  const projectId = productRow[0]?.projectId ?? null;
+
+  await prisma.character.create({
+    data: {
+      productId,
+      projectId,
+      name,
+      soraCharacterId,
+      characterUserName,
+      seedVideoTaskId: seedVideoTaskId ?? null,
+      seedVideoUrl: seedVideoUrl ?? null,
+      creatorVisualPrompt: creatorVisualPrompt ?? null,
+    },
+  });
+}
+
+export async function getCharactersForProject(projectId: string) {
+  return prisma.$queryRaw<Array<{
+    id: string;
+    productId: string | null;
+    name: string;
+    soraCharacterId: string | null;
+    characterUserName: string | null;
+    seedVideoTaskId: string | null;
+    seedVideoUrl: string | null;
+    creatorVisualPrompt: string | null;
+    createdAt: Date;
+    updatedAt: Date;
+    productName: string | null;
+  }>>`
+    SELECT
+      c."id",
+      c."productId",
+      c."name",
+      c."soraCharacterId",
+      c."characterUserName",
+      c."seedVideoTaskId",
+      c."seedVideoUrl",
+      c."creatorVisualPrompt",
+      c."createdAt",
+      c."updatedAt",
+      p."name" AS "productName"
+    FROM "character" c
+    LEFT JOIN "product" p ON p."id" = c."productId"
+    WHERE p."project_id" = ${projectId}
+       OR c."projectId" = ${projectId}
+    ORDER BY c."createdAt" ASC
   `;
 }
