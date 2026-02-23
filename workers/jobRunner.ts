@@ -1287,6 +1287,7 @@ async function runJob(
             try {
               await saveCharacterToTable({
                 productId,
+                runId: String(payload?.runId ?? "") || null,
                 name: `${productState.name} Character ${Date.now()}`,
                 soraCharacterId: characterId,
                 characterUserName: characterUserName || "",
