@@ -454,6 +454,11 @@ async function claimNextJob(exclusions?: ClaimExclusions) {
       SELECT "id"
       FROM job
       WHERE "status" = CAST('PENDING' AS "JobStatus")
+        AND NOT EXISTS (
+          SELECT 1
+          FROM job r
+          WHERE r."status" = CAST('RUNNING' AS "JobStatus")
+        )
         AND NOT (
           "type" = CAST('AD_PERFORMANCE' AS "JobType")
           AND COALESCE("payload"->>'jobType', "payload"->>'kind', '') IN ('ad_transcripts', 'ad_transcript_collection')
@@ -793,6 +798,7 @@ async function runJob(
       case JobType.STORYBOARD_GENERATION: {
         const scriptId = String(payload?.scriptId ?? "").trim();
         const productId = String(payload?.productId ?? "").trim() || null;
+        const characterHandle = String(payload?.characterHandle ?? "").trim() || null;
         if (!scriptId) {
           await rollbackJobQuotaIfNeeded({ jobId, projectId: job.projectId, payload });
           await markFailed({ jobId, error: "Invalid payload: missing scriptId" });
@@ -800,7 +806,7 @@ async function runJob(
         }
 
         try {
-          const result = await generateStoryboard(scriptId, { productId });
+          const result = await generateStoryboard(scriptId, { productId, characterHandle });
           const warningCount = Array.isArray(result.validationReport?.warnings)
             ? result.validationReport.warnings.length
             : 0;
