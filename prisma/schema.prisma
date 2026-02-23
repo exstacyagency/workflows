@@ -112,6 +112,7 @@ model ResearchRun {
   status    RunStatus @default(IN_PROGRESS)
   createdAt DateTime  @default(now())
   jobs      Job[]
+  characters Character[]
   project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
@@ -303,6 +304,7 @@ model Character {
   projectId           String?
   productId           String?
   jobId               String?
+  runId               String?
   name                String
   metadata            Json?
   soraCharacterId     String?
@@ -313,11 +315,13 @@ model Character {
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
   job                 Job?     @relation(fields: [jobId], references: [id])
+  run                 ResearchRun? @relation(fields: [runId], references: [id])
   project             Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
   product             product? @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
   @@index([productId])
+  @@index([runId])
   @@map("character")
 }
 

@@ -50,6 +50,7 @@ export async function GET(req: NextRequest) {
     }
 
     const productId = req.nextUrl.searchParams.get("productId")?.trim();
+    const runId = req.nextUrl.searchParams.get("runId")?.trim() || null;
     if (!productId) {
       return NextResponse.json({ error: "productId is required" }, { status: 400 });
     }
@@ -59,6 +60,36 @@ export async function GET(req: NextRequest) {
     const product = await findOwnedProductById(productId, userId);
     if (!product) {
       return NextResponse.json({ error: "Product not found" }, { status: 404 });
+    }
+
+    if (!runId) {
+      const stages = STAGE_ORDER.map((type) => ({
+        type,
+        label: STAGE_LABELS[String(type)] ?? type,
+        jobId: null,
+        status: "PENDING" as const,
+        error: null,
+        createdAt: null,
+        updatedAt: null,
+      }));
+
+      return NextResponse.json(
+        {
+          productId: product.id,
+          projectId: product.projectId,
+          runId: null,
+          isComplete: false,
+          activeStage: null,
+          stages,
+          character: {
+            soraCharacterId: null,
+            characterUserName: null,
+            characterReferenceVideoUrl: null,
+            characterCameoCreatedAt: null,
+          },
+        },
+        { status: 200 },
+      );
     }
 
     const jobs = await prisma.$queryRaw<PipelineJobRow[]>`
@@ -72,6 +103,7 @@ export async function GET(req: NextRequest) {
       FROM "job" j
       WHERE j."projectId" = ${product.projectId}
         AND j."userId" = ${userId}
+        AND j."runId" = ${runId}
         AND j."type" IN (
           CAST('CREATOR_AVATAR_GENERATION' AS "JobType"),
           CAST('CHARACTER_SEED_VIDEO' AS "JobType"),
@@ -105,18 +137,33 @@ export async function GET(req: NextRequest) {
       stages.find((stage) => stage.status === JobStatus.RUNNING) ??
       stages.find((stage) => stage.status === JobStatus.PENDING && stage.jobId);
 
+    const runCharacter = await prisma.character.findFirst({
+      where: {
+        productId: product.id,
+        runId,
+      },
+      orderBy: { createdAt: "desc" },
+      select: {
+        soraCharacterId: true,
+        characterUserName: true,
+        seedVideoUrl: true,
+        createdAt: true,
+      },
+    });
+
     return NextResponse.json(
       {
         productId: product.id,
         projectId: product.projectId,
-        isComplete: Boolean(product.soraCharacterId),
+        runId,
+        isComplete: Boolean(runCharacter?.soraCharacterId),
         activeStage: activeStage?.type ?? null,
         stages,
         character: {
-          soraCharacterId: product.soraCharacterId,
-          characterUserName: product.characterUserName,
-          characterReferenceVideoUrl: product.characterReferenceVideoUrl,
-          characterCameoCreatedAt: product.characterCameoCreatedAt,
+          soraCharacterId: runCharacter?.soraCharacterId ?? null,
+          characterUserName: runCharacter?.characterUserName ?? null,
+          characterReferenceVideoUrl: runCharacter?.seedVideoUrl ?? null,
+          characterCameoCreatedAt: runCharacter?.createdAt ?? null,
         },
       },
       { status: 200 },

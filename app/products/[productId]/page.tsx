@@ -31,8 +31,10 @@ type CharacterRow = {
 
 export default async function ProductSetupPage({
   params,
+  searchParams,
 }: {
   params: { productId: string };
+  searchParams?: { runId?: string };
 }) {
   const userId = await getSessionUserId();
   if (!userId) {
@@ -67,19 +69,32 @@ export default async function ProductSetupPage({
   if (!product) {
     notFound();
   }
+  const runs = await prisma.researchRun.findMany({
+    where: { projectId: product.projectId },
+    select: { id: true, name: true },
+    orderBy: { createdAt: "desc" },
+  });
+  console.log("DEBUG runs:", JSON.stringify(runs));
+  console.log("DEBUG product.projectId:", product.projectId);
+  const selectedRunId = searchParams?.runId?.trim() || null;
 
-  const characters = await prisma.character.findMany({
-    where: { productId: product.id },
-    select: {
-      id: true,
-      name: true,
-      characterUserName: true,
-      soraCharacterId: true,
-      seedVideoUrl: true,
-      createdAt: true,
-    },
-    orderBy: { createdAt: "asc" },
-  }) as CharacterRow[];
+  const characters = selectedRunId
+    ? ((await prisma.character.findMany({
+        where: {
+          productId: product.id,
+          runId: selectedRunId,
+        },
+        select: {
+          id: true,
+          name: true,
+          characterUserName: true,
+          soraCharacterId: true,
+          seedVideoUrl: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: "asc" },
+      })) as CharacterRow[])
+    : [];
   console.log("DEBUG productId:", product.id, "characters found:", characters.length);
 
   const setupData: ProductSetupData = {
@@ -104,6 +119,8 @@ export default async function ProductSetupPage({
       seedVideoUrl: char.seedVideoUrl,
       createdAt: char.createdAt.toISOString(),
     })),
+    runs: runs.map((run) => ({ id: run.id, name: run.name })),
+    selectedRunId,
     project: {
       id: product.projectId,
       name: product.projectName,

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 export type ProductSetupData = {
@@ -23,6 +24,8 @@ export type ProductSetupData = {
     seedVideoUrl: string | null;
     createdAt: string;
   }[];
+  runs: { id: string; name: string | null }[];
+  selectedRunId: string | null;
   project: {
     id: string;
     name: string;
@@ -83,17 +86,20 @@ function stageStatusText(stage: StageStatus): string {
 }
 
 export function ProductSetupClient({ product }: { product: ProductSetupData }) {
+  const router = useRouter();
   const [isGenerating, setIsGenerating] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const [manualMode, setManualMode] = useState(false);
   const [addingCharacter, setAddingCharacter] = useState(false);
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(product.selectedRunId ?? null);
   const [manualDescription, setManualDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pipelineStatus, setPipelineStatus] = useState<CharacterPipelineStatusResponse | null>(null);
 
   const refreshStatus = useCallback(async () => {
+    const runParam = selectedRunId ? `&runId=${encodeURIComponent(selectedRunId)}` : "";
     const res = await fetch(
-      `/api/jobs/character-generation/status?productId=${encodeURIComponent(product.id)}`,
+      `/api/jobs/character-generation/status?productId=${encodeURIComponent(product.id)}${runParam}`,
       { cache: "no-store" },
     );
     const data = await res.json().catch(() => ({}));
@@ -102,7 +108,7 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
     }
     setPipelineStatus(data as CharacterPipelineStatusResponse);
     return data as CharacterPipelineStatusResponse;
-  }, [product.id]);
+  }, [product.id, selectedRunId]);
 
   useEffect(() => {
     let mounted = true;
@@ -125,11 +131,13 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
     };
   }, [refreshStatus]);
 
+  const selectedRunCharacter = product.characters[0] ?? null;
+
   useEffect(() => {
-    if (pipelineStatus?.isComplete && !product.soraCharacterId) {
+    if (pipelineStatus?.isComplete && !selectedRunCharacter?.soraCharacterId) {
       window.setTimeout(() => window.location.reload(), 1200);
     }
-  }, [pipelineStatus?.isComplete, product.soraCharacterId]);
+  }, [pipelineStatus?.isComplete, selectedRunCharacter?.soraCharacterId]);
 
   const stages = useMemo(() => pipelineStatus?.stages ?? [], [pipelineStatus?.stages]);
   const hasInFlightStage = useMemo(
@@ -145,15 +153,27 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
   );
 
   const effectiveCharacterId =
-    pipelineStatus?.character?.soraCharacterId ?? product.soraCharacterId ?? null;
+    pipelineStatus?.character?.soraCharacterId ?? selectedRunCharacter?.soraCharacterId ?? null;
   const effectiveReferenceVideo =
     pipelineStatus?.character?.characterReferenceVideoUrl ??
-    product.characterSeedVideoUrl ??
-    product.characterReferenceVideoUrl;
+    selectedRunCharacter?.seedVideoUrl ??
+    null;
   const effectiveCharacterUserName =
-    pipelineStatus?.character?.characterUserName ?? product.characterUserName;
+    pipelineStatus?.character?.characterUserName ?? selectedRunCharacter?.characterUserName ?? null;
   const effectiveCameoCreatedAt =
-    pipelineStatus?.character?.characterCameoCreatedAt ?? product.characterCameoCreatedAt;
+    pipelineStatus?.character?.characterCameoCreatedAt ?? selectedRunCharacter?.createdAt ?? null;
+
+  const handleRunChange = useCallback(
+    (value: string | null) => {
+      const nextRunId = value || null;
+      setSelectedRunId(nextRunId);
+      const query = nextRunId ? `?runId=${encodeURIComponent(nextRunId)}` : "?";
+      router.push(query);
+    },
+    [router],
+  );
+
+  console.log("RUNS:", product.runs, "SELECTED:", selectedRunId);
 
   async function handleGenerateCharacter() {
     setIsGenerating(true);
@@ -170,6 +190,7 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
         body: JSON.stringify({
           productId: product.id,
           manualDescription: manualDescription.trim() || null,
+          runId: selectedRunId,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -240,6 +261,21 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
         {!effectiveCharacterId ? (
           <>
             <div className="space-y-3 rounded-lg border border-slate-800 bg-slate-950/40 p-4">
+              <div className="space-y-1">
+                <label className="text-xs text-slate-400">Attach to Run</label>
+                <select
+                  value={selectedRunId ?? ""}
+                  onChange={(event) => handleRunChange(event.target.value || null)}
+                  className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
+                >
+                  <option value="">No active run (create new)</option>
+                  {product.runs.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name ?? r.id}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <label className="flex items-center gap-2 text-xs text-slate-300">
                 <input
                   type="checkbox"
@@ -338,6 +374,22 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
                       {isResetting ? "Resetting..." : "Reset All"}
                     </button>
                   </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs text-slate-400">Attach to Run</label>
+                  <select
+                    value={selectedRunId ?? ""}
+                    onChange={(event) => handleRunChange(event.target.value || null)}
+                    className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
+                  >
+                    <option value="">No active run (create new)</option>
+                    {product.runs.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.name ?? r.id}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div className="space-y-3">

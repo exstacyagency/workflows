@@ -126,6 +126,7 @@ export async function saveCharacterResult(
 
 export async function saveCharacterToTable({
   productId,
+  runId,
   name,
   soraCharacterId,
   characterUserName,
@@ -134,6 +135,7 @@ export async function saveCharacterToTable({
   creatorVisualPrompt,
 }: {
   productId: string;
+  runId?: string | null;
   name: string;
   soraCharacterId: string;
   characterUserName: string;
@@ -153,6 +155,7 @@ export async function saveCharacterToTable({
     data: {
       productId,
       projectId,
+      runId: runId ?? null,
       name,
       soraCharacterId,
       characterUserName,
