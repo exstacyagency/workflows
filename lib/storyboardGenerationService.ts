@@ -557,7 +557,7 @@ async function loadStoryboardPromptContextForScriptRun(args: {
 
 export async function generateStoryboard(
   scriptId: string,
-  opts?: { productId?: string | null },
+  opts?: { productId?: string | null; characterHandle?: string | null },
 ): Promise<{
   storyboardId: string;
   panelCount: number;
@@ -605,6 +605,10 @@ export async function generateStoryboard(
   const scriptRunId = script.job?.runId ?? null;
   const scriptJobPayload = asObject(script.job?.payload) ?? {};
   const explicitProductId = asString(opts?.productId) || null;
+  const explicitCharacterHandle = asString(opts?.characterHandle) || null;
+  const normalizedCharacterHandle = explicitCharacterHandle
+    ? `@${explicitCharacterHandle.replace(/^@+/, "")}`
+    : null;
   const productIdFromScriptPayload = asString(scriptJobPayload.productId) || null;
   const effectiveProductId = explicitProductId || productIdFromScriptPayload;
   const productReferenceImages = await loadProductReferenceImages({
@@ -693,6 +697,9 @@ export async function generateStoryboard(
           : {}),
         ...(productReferenceImages.productReferenceImageUrl
           ? { productReferenceImageUrl: productReferenceImages.productReferenceImageUrl }
+          : {}),
+        ...(panel.panelType === "ON_CAMERA" && normalizedCharacterHandle
+          ? { characterHandle: normalizedCharacterHandle }
           : {}),
       };
       await tx.storyboardScene.create({

@@ -127,6 +127,12 @@ function formatDurationLabel(durationSec: number): string {
   return Number.isInteger(rounded) ? String(rounded) : String(rounded);
 }
 
+function normalizeCharacterHandleForPrompt(value: string | null): string | null {
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+  return `@${raw.replace(/^@+/, "")}`;
+}
+
 function buildVideoPromptUserPrompt(args: {
   sceneNumber: number;
   durationSec: number;
@@ -159,6 +165,7 @@ function buildVideoPromptUserPrompt(args: {
     hasCreatorRef,
     hasProductRef,
   } = args;
+  const normalizedCharacterHandle = normalizeCharacterHandleForPrompt(characterHandle);
   const beatLabel = scriptBeat
     ? `${asString(scriptBeat.beat) || "N/A"} (${asString(scriptBeat.duration) || "N/A"}) - VO: "${asString(scriptBeat.vo) || "N/A"}"`
     : "";
@@ -173,7 +180,7 @@ STORYBOARD PANEL:
 Scene ${sceneNumber} | ${formatDurationLabel(durationSec)}s | ${panelType}
 Scene VO: ${vo || 'N/A'}
 Character action: ${characterAction || 'N/A'}
-${characterHandle ? `Character: @${characterHandle} (include verbatim)` : ''}
+${normalizedCharacterHandle ? `Character: ${normalizedCharacterHandle} (include verbatim)` : ''}
 Environment: ${environment || 'N/A'}
 Camera: ${cameraDirection || 'N/A'}
 Product placement: ${productPlacement || 'N/A'}
