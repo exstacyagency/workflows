@@ -703,6 +703,7 @@ export async function generateStoryboard(
           // panelType: panel.panelType,
           status: "ready",
           rawJson: panelWithReferences as Prisma.InputJsonValue,
+          approved: true,
         },
       });
     }

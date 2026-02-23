@@ -11,8 +11,12 @@ type SceneReferenceFrame = {
   url: string;
 };
 
-const VIDEO_PROMPT_SYSTEM_PROMPT =
-  "You write Kling AI video prompts. Translate storyboard direction into camera-ready prompts under 200 characters. Be specific. Every word earns its place.";
+const VIDEO_PROMPT_SYSTEM_PROMPT = `You are a video director writing production-grade Sora 2 prompts for UGC supplement ads.
+Return only the final prompt text.
+Write clear cinematic direction with concrete subject action, camera language, lighting, and environment details.
+Keep temporal continuity and character consistency across the shot.
+If a character handle is provided, include it verbatim with the @ symbol.
+VO IS MANDATORY: include the scene's VO line verbatim in every output prompt (as a VO line or spoken line).`;
 
 const VIDEO_PROMPT_MODEL = cfg.raw("ANTHROPIC_MODEL") || "claude-sonnet-4-5-20250929";
 
@@ -90,9 +94,32 @@ function extractTextContent(response: any): string {
 }
 
 function normalizeKlingPrompt(text: string): string {
-  const normalized = String(text ?? "").replace(/\s+/g, " ").trim();
-  if (normalized.length <= 200) return normalized;
-  return normalized.slice(0, 200).trimEnd();
+  const normalized = String(text ?? "").replace(/\r/g, "").trim();
+  if (normalized.length <= 2400) return normalized;
+  return normalized.slice(0, 2400).trimEnd();
+}
+
+function normalizeForMatch(value: string): string {
+  return String(value ?? "")
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function ensurePromptContainsVo(prompt: string, requiredVo: string): string {
+  const nextPrompt = String(prompt ?? "").trim();
+  const vo = String(requiredVo ?? "").trim();
+  if (!vo) return nextPrompt;
+
+  const promptMatch = normalizeForMatch(nextPrompt);
+  const voMatch = normalizeForMatch(vo);
+  if (voMatch && promptMatch.includes(voMatch)) {
+    return nextPrompt;
+  }
+
+  return `${nextPrompt}\n\nVO line: "${vo}"`.trim();
 }
 
 function formatDurationLabel(durationSec: number): string {
@@ -104,6 +131,8 @@ function buildVideoPromptUserPrompt(args: {
   sceneNumber: number;
   durationSec: number;
   vo: string;
+  scriptVoFull: string | null;
+  scriptBeat: { beat?: string; duration?: string; vo?: string } | null;
   panelType: PanelType;
   characterAction: string | null;
   characterHandle: string | null;
@@ -118,6 +147,8 @@ function buildVideoPromptUserPrompt(args: {
     sceneNumber,
     durationSec,
     vo,
+    scriptVoFull,
+    scriptBeat,
     panelType,
     characterAction,
     characterHandle,
@@ -128,30 +159,57 @@ function buildVideoPromptUserPrompt(args: {
     hasCreatorRef,
     hasProductRef,
   } = args;
+  const beatLabel = scriptBeat
+    ? `${asString(scriptBeat.beat) || "N/A"} (${asString(scriptBeat.duration) || "N/A"}) - VO: "${asString(scriptBeat.vo) || "N/A"}"`
+    : "";
 
-  return `Scene ${sceneNumber}, ${formatDurationLabel(durationSec)}s.
+  return `You are generating a Sora 2 video prompt for Scene ${sceneNumber} of a UGC supplement ad.
 
-VO: ${vo || 'N/A'}
+AD CONTEXT:
+Full voiceover: "${scriptVoFull || 'N/A'}"
+${beatLabel ? `This scene: ${beatLabel}` : ''}
 
-Panel type: ${panelType}
-
-Character: ${characterAction || 'N/A'}
-${characterHandle ? `Character handle: ${characterHandle} - include this @handle verbatim in the prompt so KIE renders the registered character.` : ''}
+STORYBOARD PANEL:
+Scene ${sceneNumber} | ${formatDurationLabel(durationSec)}s | ${panelType}
+Scene VO: ${vo || 'N/A'}
+Character action: ${characterAction || 'N/A'}
+${characterHandle ? `Character: @${characterHandle} (include verbatim)` : ''}
 Environment: ${environment || 'N/A'}
 Camera: ${cameraDirection || 'N/A'}
 Product placement: ${productPlacement || 'N/A'}
-B-roll shots: ${bRollSuggestions.length > 0 ? bRollSuggestions.join('; ') : 'N/A'}
+${bRollSuggestions.length > 0 ? `B-roll: ${bRollSuggestions.join('; ')}` : ''}
+${hasCreatorRef ? 'Subject: use creator reference image.' : ''}
+${hasProductRef ? 'Product: use product reference image.' : ''}
 
-${hasCreatorRef ? 'Subject from creator reference image.' : ''}
-${hasProductRef ? 'Product from product reference image.' : ''}
+Write a Sora 2 prompt using this structure and labels:
 
-Write a Kling prompt. Specify subject, exact action with timing, camera movement, lighting. Under 200 chars. No fluff.`;
+[Scene description: subject, environment, atmosphere]
+
+Cinematography:
+Camera shot: [framing and angle]
+Lighting + palette: [light source, quality, 3-5 color anchors]
+Mood: [tone]
+
+Actions:
+- [0s: opening beat]
+- [Xs: next beat with timing]
+- [Final beat]
+
+Output requirements:
+- 350-1200 characters
+- No preamble or explanation
+- Include concrete physical actions and camera movement
+- Avoid generic filler phrasing
+- MUST include this exact scene VO line verbatim somewhere in the output: "${vo || "N/A"}"`;
 }
 
 async function generateKlingPromptWithClaude(args: {
   sceneNumber: number;
   durationSec: number;
   vo: string;
+  requiredVo: string;
+  scriptVoFull: string | null;
+  scriptBeat: { beat?: string; duration?: string; vo?: string } | null;
   panelType: PanelType;
   characterAction: string | null;
   characterHandle: string | null;
@@ -161,12 +219,10 @@ async function generateKlingPromptWithClaude(args: {
   bRollSuggestions: string[];
   hasCreatorRef: boolean;
   hasProductRef: boolean;
-  fallbackPrompt: string;
 }): Promise<string> {
   const apiKey = cfg.raw("ANTHROPIC_API_KEY");
   if (!apiKey) {
-    console.warn("[videoPromptGeneration] Missing ANTHROPIC_API_KEY; using fallback prompt template.");
-    return normalizeKlingPrompt(args.fallbackPrompt);
+    throw new Error("Missing ANTHROPIC_API_KEY");
   }
 
   const anthropic = new Anthropic({
@@ -177,7 +233,9 @@ async function generateKlingPromptWithClaude(args: {
   const userPrompt = buildVideoPromptUserPrompt({
     sceneNumber: args.sceneNumber,
     durationSec: args.durationSec,
-    vo: args.vo,
+    vo: args.requiredVo,
+    scriptVoFull: args.scriptVoFull ?? null,
+    scriptBeat: args.scriptBeat ?? null,
     panelType: args.panelType,
     characterAction: args.characterAction,
     characterHandle: args.characterHandle ?? null,
@@ -192,7 +250,7 @@ async function generateKlingPromptWithClaude(args: {
   try {
     const response = await anthropic.messages.create({
       model: VIDEO_PROMPT_MODEL,
-      max_tokens: 200,
+      max_tokens: 2400,
       system: VIDEO_PROMPT_SYSTEM_PROMPT,
       messages: [{ role: "user", content: userPrompt }],
     });
@@ -201,20 +259,17 @@ async function generateKlingPromptWithClaude(args: {
       throw new Error("Claude returned empty video prompt text");
     }
     const prompt = normalizeKlingPrompt(text);
+    const promptWithVo = ensurePromptContainsVo(prompt, args.requiredVo);
     console.log(`[videoPromptGeneration] Generated prompt for scene ${args.sceneNumber}`, {
-      prompt,
+      prompt: promptWithVo,
     });
-    return prompt;
+    return promptWithVo;
   } catch (error: any) {
-    console.error("[videoPromptGeneration] Claude prompt generation failed; using fallback template.", {
+    console.error("[videoPromptGeneration] Claude prompt generation failed.", {
       sceneNumber: args.sceneNumber,
       error: String(error?.message ?? error),
     });
-    const prompt = normalizeKlingPrompt(args.fallbackPrompt);
-    console.log(`[videoPromptGeneration] Generated prompt for scene ${args.sceneNumber}`, {
-      prompt,
-    });
-    return prompt;
+    throw error;
   }
 }
 
@@ -245,64 +300,6 @@ function buildSceneReferenceFrames(args: {
 }
 
 /**
- * Build a per-scene video prompt.
- *
- * Mirrors the intent of your n8n "Generate Video Prompt":
- * - Use duration
- * - Use motion arc (if present in rawJson)
- * - Emphasize smooth interpolation + character consistency
- * - Use first/last frame as anchors (implicitly via narrative)
- */
-function buildVideoPromptForScene(opts: {
-  sceneNumber: number;
-  durationSec: number;
-  firstFrameUrl?: string | null;
-  lastFrameUrl?: string | null;
-  raw: any;
-  panelType: PanelType;
-  creatorReferenceImageUrl?: string | null;
-  productReferenceImageUrl?: string | null;
-}): string {
-  const {
-    sceneNumber,
-    durationSec,
-    firstFrameUrl,
-    lastFrameUrl,
-    raw,
-    panelType,
-    creatorReferenceImageUrl,
-    productReferenceImageUrl,
-  } = opts;
-
-  const motionArc: string =
-    raw?.motion_arc ||
-    `Smooth movement from first frame to last frame for scene ${sceneNumber}`;
-
-  const referencesInfo = [
-    panelType !== 'B_ROLL_ONLY' && creatorReferenceImageUrl
-      ? 'Keep the subject from creator reference image consistent across the scene.'
-      : null,
-    productReferenceImageUrl
-      ? 'Show the product from product reference image with matching appearance and branding.'
-      : null,
-  ]
-    .filter(Boolean)
-    .join(' ');
-
-  const framesInfo = [
-    firstFrameUrl ? `First frame: ${firstFrameUrl}` : null,
-    lastFrameUrl ? `Last frame: ${lastFrameUrl}` : null,
-    creatorReferenceImageUrl ? `Creator reference image: ${creatorReferenceImageUrl}` : null,
-    productReferenceImageUrl ? `Product reference image: ${productReferenceImageUrl}` : null,
-  ]
-    .filter(Boolean)
-    .join(' | ');
-
-  return `${durationSec}s. ${motionArc}. Maintain character consistency between first and last frame. Smooth interpolation between poses. ${referencesInfo} ${framesInfo}`
-    .trim();
-}
-
-/**
  * Generate video prompts for all scenes in a storyboard that:
  * - have firstFrameUrl and lastFrameUrl
  * - do NOT have videoPrompt yet
@@ -325,6 +322,7 @@ export async function runVideoPromptGeneration(args: {
       scenes: true,
       script: {
         select: {
+          rawJson: true,
           job: {
             select: {
               payload: true,
@@ -346,6 +344,9 @@ export async function runVideoPromptGeneration(args: {
   });
 
   const scriptJobPayload = asObject(storyboard.script?.job?.payload) ?? {};
+  const scriptRaw = (storyboard.script?.rawJson ?? {}) as any;
+  const scriptVoFull = asString(scriptRaw.vo_full) || null;
+  const scriptScenes = Array.isArray(scriptRaw.scenes) ? scriptRaw.scenes : [];
   const effectiveProductId =
     normalizeUrl(args.productId) ||
     normalizeUrl(scriptJobPayload.productId) ||
@@ -367,26 +368,24 @@ export async function runVideoPromptGeneration(args: {
 
   if (scenes.length === 0) {
     const panelType: PanelType = 'ON_CAMERA';
+    const fallbackSceneBeat = asObject(scriptScenes[0]) ?? null;
+    const fallbackRequiredVo = asString(fallbackSceneBeat?.vo);
+    if (!fallbackRequiredVo) {
+      throw new Error("Scene 1 missing VO. Cannot generate video prompt without scene VO.");
+    }
     const sceneReferenceFrames = buildSceneReferenceFrames({
       panelType,
       creatorReferenceImageUrl,
       productReferenceImageUrl,
     });
 
-    const fallbackPrompt = buildVideoPromptForScene({
-      sceneNumber: 1,
-      durationSec: 8,
-      raw: {},
-      panelType,
-      creatorReferenceImageUrl:
-        sceneReferenceFrames.find((frame) => frame.kind === 'creator')?.url ?? null,
-      productReferenceImageUrl:
-        sceneReferenceFrames.find((frame) => frame.kind === 'product')?.url ?? null,
-    });
     const prompt = await generateKlingPromptWithClaude({
       sceneNumber: 1,
       durationSec: 8,
       vo: "",
+      requiredVo: fallbackRequiredVo,
+      scriptVoFull,
+      scriptBeat: fallbackSceneBeat,
       panelType,
       characterAction: null,
       characterHandle: null,
@@ -396,7 +395,6 @@ export async function runVideoPromptGeneration(args: {
       bRollSuggestions: [],
       hasCreatorRef: Boolean(sceneReferenceFrames.find((frame) => frame.kind === 'creator')?.url),
       hasProductRef: Boolean(sceneReferenceFrames.find((frame) => frame.kind === 'product')?.url),
-      fallbackPrompt,
     });
 
     const created = await prisma.storyboardScene.create({
@@ -422,12 +420,7 @@ export async function runVideoPromptGeneration(args: {
     processed = 1;
   }
 
-  const targetScenes = scenes.filter(
-    (s: any) => {
-      const vp = (s as any).videoPrompt ?? (s.rawJson as any)?.videoPrompt ?? '';
-      return !vp || String(vp).trim().length === 0;
-    },
-  );
+  const targetScenes = scenes;
 
   if (!targetScenes.length) {
     console.log("[videoPromptGeneration] All prompts generated successfully", {
@@ -461,6 +454,12 @@ export async function runVideoPromptGeneration(args: {
       sceneReferenceFrames.find((frame) => frame.kind === 'product')?.url ?? null;
 
     const vo = asString(raw.vo);
+    const sceneBeat = asObject(scriptScenes[sceneNumber - 1]) ?? null;
+    const sceneBeatVo = asString(sceneBeat?.vo);
+    const requiredVo = vo || sceneBeatVo;
+    if (!requiredVo) {
+      throw new Error(`Scene ${sceneNumber} missing VO. Cannot generate video prompt without scene VO.`);
+    }
     const characterAction = asString(raw.characterAction) || null;
     const characterHandle = asString((raw as any).characterHandle) || null;
     const environment = asString(raw.environment) || null;
@@ -468,20 +467,13 @@ export async function runVideoPromptGeneration(args: {
     const productPlacement = asString(raw.productPlacement);
     const bRollSuggestions = asStringArray(raw.bRollSuggestions);
 
-    const fallbackPrompt = buildVideoPromptForScene({
-      sceneNumber,
-      durationSec,
-      firstFrameUrl,
-      lastFrameUrl,
-      raw,
-      panelType,
-      creatorReferenceImageUrl: sceneCreatorReferenceImageUrl,
-      productReferenceImageUrl: sceneProductReferenceImageUrl,
-    });
     const prompt = await generateKlingPromptWithClaude({
       sceneNumber,
       durationSec,
       vo,
+      requiredVo,
+      scriptVoFull,
+      scriptBeat: sceneBeat,
       panelType,
       characterAction,
       characterHandle,
@@ -491,7 +483,6 @@ export async function runVideoPromptGeneration(args: {
       bRollSuggestions,
       hasCreatorRef: Boolean(sceneCreatorReferenceImageUrl),
       hasProductRef: Boolean(sceneProductReferenceImageUrl),
-      fallbackPrompt,
     });
     console.log('[videoPromptGeneration] Claude prompt generated', {
       storyboardId,
