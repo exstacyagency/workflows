@@ -130,6 +130,34 @@ function ensurePromptContainsVo(prompt: string, requiredVo: string): string {
   return `${nextPrompt}\n\nVO line: "${vo}"`.trim();
 }
 
+function ensurePromptContainsCharacterHandle(prompt: string, characterHandle: string | null): string {
+  const nextPrompt = String(prompt ?? "").trim();
+  const normalizedHandle = normalizeCharacterHandleForPrompt(characterHandle);
+  if (!normalizedHandle) return nextPrompt;
+
+  const promptMatch = normalizeForMatch(nextPrompt);
+  const handleMatch = normalizeForMatch(normalizedHandle);
+  if (handleMatch && promptMatch.includes(handleMatch)) {
+    return nextPrompt;
+  }
+
+  return `${nextPrompt}\n\nCharacter handle: ${normalizedHandle}`.trim();
+}
+
+function ensurePromptStatesOffCameraVoice(prompt: string, panelType: PanelType): string {
+  const nextPrompt = String(prompt ?? "").trim();
+  if (panelType !== "B_ROLL_ONLY") return nextPrompt;
+
+  const requiredLine = "Creator is speaking but is not shown.";
+  const promptMatch = normalizeForMatch(nextPrompt);
+  const requiredMatch = normalizeForMatch(requiredLine);
+  if (requiredMatch && promptMatch.includes(requiredMatch)) {
+    return nextPrompt;
+  }
+
+  return `${nextPrompt}\n\n${requiredLine}`.trim();
+}
+
 function formatDurationLabel(durationSec: number): string {
   const rounded = Number.isFinite(durationSec) ? Math.round(durationSec * 10) / 10 : 8;
   return Number.isInteger(rounded) ? String(rounded) : String(rounded);
@@ -299,10 +327,18 @@ async function generateKlingPromptWithClaude(args: {
     }
     const prompt = normalizeKlingPrompt(text);
     const promptWithVo = ensurePromptContainsVo(prompt, args.requiredVo);
+    const promptWithHandle = ensurePromptContainsCharacterHandle(
+      promptWithVo,
+      args.characterHandle ?? null,
+    );
+    const promptWithVoiceVisibility = ensurePromptStatesOffCameraVoice(
+      promptWithHandle,
+      args.panelType,
+    );
     console.log(`[videoPromptGeneration] Generated prompt for scene ${args.sceneNumber}`, {
-      prompt: promptWithVo,
+      prompt: promptWithVoiceVisibility,
     });
-    return promptWithVo;
+    return promptWithVoiceVisibility;
   } catch (error: any) {
     console.error("[videoPromptGeneration] Claude prompt generation failed.", {
       sceneNumber: args.sceneNumber,
@@ -347,6 +383,7 @@ export async function runVideoPromptGeneration(args: {
   storyboardId: string;
   jobId?: string;
   productId?: string | null;
+  characterHandle?: string | null;
   creatorReferenceImageUrl?: string | null;
   productReferenceImageUrl?: string | null;
 }) {
@@ -386,6 +423,17 @@ export async function runVideoPromptGeneration(args: {
   const scriptRaw = (storyboard.script?.rawJson ?? {}) as any;
   const scriptVoFull = asString(scriptRaw.vo_full) || null;
   const scriptScenes = Array.isArray(scriptRaw.scenes) ? scriptRaw.scenes : [];
+  const handleFromScriptPayload = asString((scriptJobPayload as any).characterHandle) || null;
+  const handleFromStoryboardScenes =
+    storyboard.scenes
+      .map((scene) => {
+        const raw = asObject((scene as any).rawJson);
+        return asString((raw as any).characterHandle);
+      })
+      .find((value) => value.length > 0) || null;
+  const globalCharacterHandle = normalizeCharacterHandleForPrompt(
+    args.characterHandle ?? handleFromScriptPayload ?? handleFromStoryboardScenes ?? null,
+  );
   const effectiveProductId =
     normalizeUrl(args.productId) ||
     normalizeUrl(scriptJobPayload.productId) ||
@@ -428,7 +476,7 @@ export async function runVideoPromptGeneration(args: {
       scriptBeat: fallbackSceneBeat,
       panelType,
       characterAction: null,
-      characterHandle: null,
+      characterHandle: globalCharacterHandle,
       environment: null,
       cameraDirection: "",
       productPlacement: "",
@@ -503,7 +551,7 @@ export async function runVideoPromptGeneration(args: {
       throw new Error(`Scene ${sceneNumber} missing VO. Cannot generate video prompt without scene VO.`);
     }
     const characterAction = asString(raw.characterAction) || null;
-    const characterHandle = asString((raw as any).characterHandle) || null;
+    const characterHandle = asString((raw as any).characterHandle) || globalCharacterHandle || null;
     const environment = asString(raw.environment) || null;
     const cameraDirection = asString(raw.cameraDirection);
     const productPlacement = asString(raw.productPlacement);
@@ -598,6 +646,7 @@ export async function startVideoPromptGenerationJob(params: {
   storyboardId: string;
   jobId: string;
   productId?: string | null;
+  characterHandle?: string | null;
   creatorReferenceImageUrl?: string | null;
   productReferenceImageUrl?: string | null;
 }) {
@@ -605,6 +654,7 @@ export async function startVideoPromptGenerationJob(params: {
     storyboardId,
     jobId,
     productId,
+    characterHandle,
     creatorReferenceImageUrl,
     productReferenceImageUrl,
   } = params;
@@ -629,6 +679,7 @@ export async function startVideoPromptGenerationJob(params: {
       storyboardId,
       jobId,
       productId,
+      characterHandle,
       creatorReferenceImageUrl,
       productReferenceImageUrl,
     });

@@ -72,6 +72,7 @@ export async function POST(req: NextRequest) {
     const BodySchema = z.object({
       storyboardId: z.string().min(1),
       productId: z.string().trim().min(1).max(200).optional(),
+      characterHandle: z.string().trim().min(1).max(200).optional(),
       attemptKey: z.string().trim().min(1).max(200).optional(),
       runId: z.string().trim().min(1).max(200).optional(),
     });
@@ -86,6 +87,9 @@ export async function POST(req: NextRequest) {
 
     const requestedStoryboardId = parsed.data.storyboardId;
     const requestedProductId = parsed.data.productId ? String(parsed.data.productId).trim() : "";
+    const requestedCharacterHandle = parsed.data.characterHandle
+      ? String(parsed.data.characterHandle).trim()
+      : "";
     const requestedRunId = parsed.data.runId ? String(parsed.data.runId).trim() : "";
     let effectiveProductId: string | null = null;
     let effectiveRunId: string | null = null;
@@ -283,6 +287,7 @@ export async function POST(req: NextRequest) {
             storyboardId: storyboard.id,
             ...(storyboard.scriptId ? { scriptId: storyboard.scriptId } : {}),
             ...(resolvedProductId ? { productId: resolvedProductId } : {}),
+            ...(requestedCharacterHandle ? { characterHandle: requestedCharacterHandle } : {}),
             idempotencyKey,
             ...(effectiveRunId ? { runId: effectiveRunId } : {}),
           },
@@ -326,6 +331,7 @@ export async function POST(req: NextRequest) {
           storyboardId: storyboard.id,
           ...(storyboard.scriptId ? { scriptId: storyboard.scriptId } : {}),
           ...(resolvedProductId ? { productId: resolvedProductId } : {}),
+          ...(requestedCharacterHandle ? { characterHandle: requestedCharacterHandle } : {}),
           idempotencyKey,
           ...(effectiveRunId ? { runId: effectiveRunId } : {}),
         },
