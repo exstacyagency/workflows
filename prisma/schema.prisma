@@ -273,6 +273,7 @@ model StoryboardScene {
   id           String     @id @default(uuid())
   storyboardId String
   sceneNumber  Int
+  clipDurationSeconds Int? @default(10)
   panelType    PanelType? @default(ON_CAMERA)
   rawJson      Json?
   approved     Boolean    @default(false)
@@ -332,6 +333,7 @@ model AdAsset {
   platform          AdPlatform
   rawJson           Json
   isSwipeFile       Boolean    @default(false)
+  swipeCandidate    Boolean    @default(false)
   swipeMetadata     Json?
   createdAt         DateTime   @default(now())
   updatedAt         DateTime   @updatedAt

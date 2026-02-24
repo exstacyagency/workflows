@@ -39,6 +39,7 @@ type SceneLike = {
   id: string;
   sceneNumber: number;
   durationSec: number;
+  clipDurationSeconds?: number | null;
   aspectRatio: string;
   rawJson: unknown;
   panelType?: 'ON_CAMERA' | 'B_ROLL_ONLY' | null;
@@ -95,6 +96,11 @@ function normalizeUrl(value: unknown): string | null {
 function asString(value: unknown): string {
   if (typeof value !== "string") return "";
   return value.trim();
+}
+
+function normalizeSoraClipDuration(raw: number | null | undefined): 10 | 15 {
+  if (raw === 15) return 15;
+  return 10;
 }
 
 function normalizeReferenceFrames(value: unknown): SceneReferenceFrame[] {
@@ -346,7 +352,11 @@ async function generateVideoForScene(
     throw new Error(`Scene ${(scene as any).id} missing firstFrameUrl or lastFrameUrl`);
   }
 
-  const durationSec = Number((scene as any).durationSec ?? raw.durationSec ?? raw.duration ?? DEFAULT_DURATION_SEC) || DEFAULT_DURATION_SEC;
+  const clipDurationFromScene = Number((scene as any).clipDurationSeconds);
+  const fallbackDuration = Number((scene as any).durationSec ?? raw.durationSec ?? raw.duration ?? DEFAULT_DURATION_SEC) || DEFAULT_DURATION_SEC;
+  const durationSec = normalizeSoraClipDuration(
+    Number.isFinite(clipDurationFromScene) ? clipDurationFromScene : fallbackDuration
+  );
   const fps = Number(DEFAULT_FPS) || 24;
   const aspectRatio = String((scene as any).aspectRatio ?? raw.aspectRatio ?? '9:16');
   const referenceFrames = buildSceneReferenceFrames({

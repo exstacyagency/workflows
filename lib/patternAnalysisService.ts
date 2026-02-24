@@ -601,10 +601,19 @@ Output JSON:
       "openingSentenceStructure": "first_person_confession"
     },
     "visualFlow": "Shot sequence that maximizes retention",
-    // psychologicalMechanism: Name the cognitive trigger the pattern exploits.
-    "psychologicalMechanism": "Name the specific cognitive trigger used (e.g., pattern interrupt, loss aversion, social proof cascade, authority transfer, time compression, confession dissonance)",
-    // transferFormula: Provide a product-agnostic formula for reuse across categories.
-    "transferFormula": "[Abstract component 1] + [Abstract component 2] + [Abstract component 3] = [mechanism label]"
+    "psychologicalMechanism": {
+      "label": "Name of cognitive trigger (e.g. loss aversion, authority transfer)",
+      "executionBrief": "Exactly how to write copy that triggers this — 1-2 sentences of concrete writing instruction"
+    },
+    "transferFormula": {
+      "label": "[Component 1] + [Component 2] + [Component 3] = mechanism",
+      "components": [
+        {
+          "name": "Component name",
+          "executionBrief": "Concrete writing instruction — what words, structure, or timing activates this component"
+        }
+      ]
+    }
   },
   "avoidPatterns": [
     {
@@ -615,7 +624,7 @@ Output JSON:
   ]
 }
 
-Focus: Prioritize adaptable mechanisms over category-specific tactics. Explain why each mechanism works psychologically and keep formulas product-agnostic.`;
+Focus: Prioritize adaptable mechanisms over category-specific tactics. Explain why each mechanism works psychologically and keep formulas product-agnostic. For psychologicalMechanism and transferFormula, provide execution briefs — not just labels. A copywriter should be able to write from the brief alone without seeing the original ad.`;
 }
 
 async function loadAdsForRun(
@@ -627,6 +636,7 @@ async function loadAdsForRun(
   const assets = await prisma.adAsset.findMany({
     where: {
       projectId,
+      ...(onlyViable ? { contentViable: true } : {}),
       ...(runId ? { job: { is: { runId } } } : {}),
     },
     select: {
@@ -785,6 +795,42 @@ export async function runPatternAnalysis(args: {
       });
     }
   });
+
+  const swipeCandidates = await prisma.adAsset.findMany({
+    where: {
+      projectId,
+      swipeCandidate: true,
+      ...(runId ? { job: { is: { runId } } } : {}),
+    },
+    select: {
+      id: true,
+    },
+  });
+  const swipeCandidateIds = swipeCandidates.map((asset) => asset.id);
+  const winningAdIdSet = new Set(
+    patterns.winningAds
+      .map((entry: any) => firstString(entry?.adId, entry?.id, entry?.assetId))
+      .filter((id): id is string => Boolean(id))
+  );
+  const promotedSwipeIds = swipeCandidateIds.filter((id) => winningAdIdSet.has(id));
+  const nonPromotedSwipeIds = swipeCandidateIds.filter((id) => !winningAdIdSet.has(id));
+
+  if (promotedSwipeIds.length > 0 || nonPromotedSwipeIds.length > 0) {
+    await prisma.$transaction(async (tx) => {
+      if (promotedSwipeIds.length > 0) {
+        await tx.adAsset.updateMany({
+          where: { id: { in: promotedSwipeIds } },
+          data: { isSwipeFile: true },
+        });
+      }
+      if (nonPromotedSwipeIds.length > 0) {
+        await tx.adAsset.updateMany({
+          where: { id: { in: nonPromotedSwipeIds } },
+          data: { isSwipeFile: false },
+        });
+      }
+    });
+  }
 
   type SwipeAdRow = {
     id: string;

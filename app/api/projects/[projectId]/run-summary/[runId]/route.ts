@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { AdPlatform, JobStatus, JobType } from "@prisma/client";
+import { AdPlatform, JobStatus, JobType, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getSessionUserId } from "@/lib/getSessionUserId";
 
@@ -57,6 +57,26 @@ function asNumber(value: unknown): number | null {
     if (Number.isFinite(n)) return n;
   }
   return null;
+}
+
+function asBoolean(value: unknown): boolean | null {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true") return true;
+    if (normalized === "false") return false;
+  }
+  return null;
+}
+
+function hasPassedQualityAssessment(rawJson: unknown): boolean {
+  const raw = asObject(rawJson);
+  if (!raw) return false;
+  const qualityGate = asObject(raw.qualityGate);
+  const qualityGateViable = asBoolean(qualityGate?.viable);
+  if (qualityGateViable === true) return true;
+  const contentViable = asBoolean(raw.contentViable);
+  return contentViable === true;
 }
 
 function scoreSwipeCandidate(rawJson: Record<string, unknown>): {
@@ -275,51 +295,96 @@ export async function GET(
       }),
     ]);
 
-    const swipeAssets = await prisma.adAsset.findMany({
-      where: {
-        projectId,
-        isSwipeFile: true,
-        swipeMetadata: { not: null },
-        job: {
-          is: {
-            runId,
-          },
-        },
-      },
-      orderBy: { createdAt: "desc" },
-      take: 60,
-      select: {
-        id: true,
-        createdAt: true,
-        rawJson: true,
-      },
-    });
+    type CandidateAdRow = {
+      id: string;
+      createdAt: Date;
+      rawJson: Prisma.JsonValue;
+    };
+
+    const projectedRawJson = Prisma.sql`
+      jsonb_strip_nulls(
+        jsonb_build_object(
+          'contentViable', a."rawJson"->'contentViable',
+          'qualityGate',
+            jsonb_strip_nulls(
+              jsonb_build_object(
+                'viable', a."rawJson"->'qualityGate'->'viable',
+                'confidence', a."rawJson"->'qualityGate'->'confidence'
+              )
+            ),
+          'ad_title', a."rawJson"->>'ad_title',
+          'title', a."rawJson"->>'title',
+          'headline', a."rawJson"->>'headline',
+          'url', a."rawJson"->>'url',
+          'videoUrl', COALESCE(a."rawJson"->>'videoUrl', a."rawJson"->>'video_url'),
+          'sourceUrl', a."rawJson"->>'sourceUrl',
+          'transcriptText', a."rawJson"->>'transcriptText',
+          'transcript', a."rawJson"->>'transcript',
+          'transcript_text', a."rawJson"->>'transcript_text',
+          'whisperTranscript', a."rawJson"->>'whisperTranscript',
+          'assemblyTranscript', a."rawJson"->>'assemblyTranscript',
+          'ocrText', a."rawJson"->>'ocrText',
+          'ocr_text', a."rawJson"->>'ocr_text',
+          'metrics',
+            jsonb_strip_nulls(
+              jsonb_build_object(
+                'views', a."rawJson"->'metrics'->'views',
+                'view', a."rawJson"->'metrics'->'view',
+                'plays', a."rawJson"->'metrics'->'plays',
+                'engagement_score', a."rawJson"->'metrics'->'engagement_score',
+                'retention_3s', a."rawJson"->'metrics'->'retention_3s',
+                'retention_10s', a."rawJson"->'metrics'->'retention_10s',
+                'ctr', a."rawJson"->'metrics'->'ctr'
+              )
+            )
+        )
+      )
+    `;
+
+    const swipeAssets = await prisma.$queryRaw<CandidateAdRow[]>(
+      Prisma.sql`
+        SELECT
+          a."id",
+          a."createdAt",
+          ${projectedRawJson} AS "rawJson"
+        FROM "ad_asset" a
+        LEFT JOIN "job" j ON j."id" = a."jobId"
+        WHERE a."projectId" = ${projectId}
+          AND COALESCE(a."isSwipeFile", false) = true
+          AND a."swipeMetadata" IS NOT NULL
+          AND j."runId" = ${runId}
+        ORDER BY a."createdAt" DESC
+        LIMIT 60
+      `,
+    );
 
     const fallbackRunAds =
       swipeAssets.length > 0
         ? []
-        : await prisma.adAsset.findMany({
-            where: {
-              projectId,
-              platform: AdPlatform.TIKTOK,
-              job: {
-                is: {
-                  runId,
-                },
-              },
-            },
-            orderBy: { createdAt: "desc" },
-            take: 60,
-            select: {
-              id: true,
-              createdAt: true,
-              rawJson: true,
-            },
-          });
+        : await prisma.$queryRaw<CandidateAdRow[]>(
+            Prisma.sql`
+              SELECT
+                a."id",
+                a."createdAt",
+                ${projectedRawJson} AS "rawJson"
+              FROM "ad_asset" a
+              LEFT JOIN "job" j ON j."id" = a."jobId"
+              WHERE a."projectId" = ${projectId}
+                AND a."platform" = CAST(${AdPlatform.TIKTOK} AS "AdPlatform")
+                AND j."runId" = ${runId}
+                AND (a."rawJson"->>'transcript') IS NOT NULL
+                AND LENGTH(TRIM(a."rawJson"->>'transcript')) > 50
+              ORDER BY a."createdAt" DESC
+              LIMIT 60
+            `
+          );
 
-    const scoredAssets = swipeAssets.length > 0 ? swipeAssets : fallbackRunAds;
+    const passedSwipeAssets = swipeAssets.filter((asset) => hasPassedQualityAssessment(asset.rawJson));
+    const passedFallbackRunAds = fallbackRunAds.filter((asset) => hasPassedQualityAssessment(asset.rawJson));
+
+    const scoredAssets = passedSwipeAssets.length > 0 ? passedSwipeAssets : passedFallbackRunAds;
     const selectionSource: "swipe_file" | "run_ad" =
-      swipeAssets.length > 0 ? "swipe_file" : "run_ad";
+      passedSwipeAssets.length > 0 ? "swipe_file" : "run_ad";
 
     const swipeCandidates: SwipeCandidate[] = scoredAssets
       .map((asset) => {
