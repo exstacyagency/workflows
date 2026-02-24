@@ -843,7 +843,7 @@ export async function runPatternAnalysis(args: {
       FROM "ad_asset" a
       LEFT JOIN "job" j ON j."id" = a."jobId"
       WHERE a."projectId" = ${projectId}
-        AND COALESCE(a."isSwipeFile", false) = true
+        AND COALESCE(a."swipeCandidate", false) = true
         AND a."swipeMetadata" IS NULL
         ${runId ? Prisma.sql`AND j."runId" = ${runId}` : Prisma.empty}
       ORDER BY a."createdAt" DESC
