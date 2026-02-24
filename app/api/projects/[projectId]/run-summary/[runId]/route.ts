@@ -44,6 +44,21 @@ type SwipeCandidate = {
   createdAt: string | null;
 };
 
+type FormulaComponent = {
+  name: string;
+  executionBrief: string;
+};
+
+type TransferFormulaDetails = {
+  label: string | null;
+  components: FormulaComponent[];
+};
+
+type PsychologicalMechanismDetails = {
+  label: string | null;
+  executionBrief: string | null;
+};
+
 function truncateText(value: string | null, maxLength: number): string | null {
   if (!value) return null;
   if (value.length <= maxLength) return value;
@@ -159,6 +174,31 @@ function extractTransferFormula(rawPatternJson: unknown): string | null {
   );
 }
 
+function extractTransferFormulaDetails(rawPatternJson: unknown): TransferFormulaDetails | null {
+  const root = asObject(rawPatternJson);
+  const patternsRoot = asObject(root?.patterns);
+  const prescriptiveGuidance =
+    asObject(patternsRoot?.prescriptiveGuidance) ||
+    asObject(root?.prescriptiveGuidance);
+  const rawFormula = prescriptiveGuidance?.transferFormula ?? prescriptiveGuidance?.transfer_formula;
+  const formulaObj = asObject(rawFormula);
+  if (!formulaObj) return null;
+
+  const label = asString(formulaObj.label);
+  const componentsRaw = Array.isArray(formulaObj.components) ? formulaObj.components : [];
+  const components = componentsRaw
+    .map((entry) => asObject(entry))
+    .filter((entry): entry is Record<string, unknown> => Boolean(entry))
+    .map((entry) => ({
+      name: asString(entry.name) ?? "",
+      executionBrief: asString(entry.executionBrief) ?? asString(entry.execution_brief) ?? "",
+    }))
+    .filter((entry) => entry.name || entry.executionBrief);
+
+  if (!label && components.length === 0) return null;
+  return { label, components };
+}
+
 function extractPsychologicalMechanism(rawPatternJson: unknown): string | null {
   const root = asObject(rawPatternJson);
   const patternsRoot = asObject(root?.patterns);
@@ -171,6 +211,26 @@ function extractPsychologicalMechanism(rawPatternJson: unknown): string | null {
     asString(prescriptiveGuidance?.psychological_mechanism) ||
     null
   );
+}
+
+function extractPsychologicalMechanismDetails(
+  rawPatternJson: unknown,
+): PsychologicalMechanismDetails | null {
+  const root = asObject(rawPatternJson);
+  const patternsRoot = asObject(root?.patterns);
+  const prescriptiveGuidance =
+    asObject(patternsRoot?.prescriptiveGuidance) ||
+    asObject(root?.prescriptiveGuidance);
+  const rawMechanism =
+    prescriptiveGuidance?.psychologicalMechanism ||
+    prescriptiveGuidance?.psychological_mechanism;
+  const mechanismObj = asObject(rawMechanism);
+  if (!mechanismObj) return null;
+  const label = asString(mechanismObj.label);
+  const executionBrief =
+    asString(mechanismObj.executionBrief) || asString(mechanismObj.execution_brief);
+  if (!label && !executionBrief) return null;
+  return { label, executionBrief };
 }
 
 function extractProductNameFromPayload(payload: unknown): string | null {
@@ -448,6 +508,9 @@ export async function GET(
       : null;
     const transferFormula = extractTransferFormula(patternResult?.rawJson);
     const psychologicalMechanism = extractPsychologicalMechanism(patternResult?.rawJson);
+    const transferFormulaDetails = extractTransferFormulaDetails(patternResult?.rawJson);
+    const psychologicalMechanismDetails =
+      extractPsychologicalMechanismDetails(patternResult?.rawJson);
 
     const avatarSummary = extractAvatarSummary(customerAnalysisJob?.resultSummary);
     let productName = extractProductNameFromPayload(productCollectionJob?.payload);
@@ -473,7 +536,9 @@ export async function GET(
           jobId: patternAnalysisJob?.id ?? null,
           completedAt: toIsoString(patternAnalysisJob?.updatedAt),
           formulaSummary: transferFormula ?? null,
+          formulaDetails: transferFormulaDetails ?? null,
           psychologicalMechanism: psychologicalMechanism ?? null,
+          psychologicalMechanismDetails: psychologicalMechanismDetails ?? null,
           summary:
             asString(patternResult?.summary) ||
             asString(asObject(patternAnalysisJob?.resultSummary)?.summary) ||

@@ -3,10 +3,6 @@ import { getSessionUserId } from "@/lib/getSessionUserId";
 import { prisma } from "@/lib/prisma";
 import { ensureStoryboardSceneApprovalColumn } from "@/lib/productStore";
 import type { Prisma } from "@prisma/client";
-import {
-  validateStoryboardAgainstGates,
-  type StoryboardValidationReport,
-} from "@/lib/storyboardValidation";
 
 type StoryboardPanelResponse = {
   sceneId: string;
@@ -38,7 +34,6 @@ type StoryboardResponseBody = {
   createdAt: string;
   updatedAt: string;
   panels: StoryboardPanelResponse[];
-  validationReport: StoryboardValidationReport;
 };
 
 function asObject(value: unknown): Record<string, unknown> | null {
@@ -66,6 +61,12 @@ function normalizePanelType(value: unknown): "ON_CAMERA" | "B_ROLL_ONLY" {
 function asNullableString(value: unknown): string | null {
   const normalized = asString(value);
   return normalized || null;
+}
+
+function normalizeCharacterHandle(value: unknown): string | null {
+  const normalized = asNullableString(value);
+  if (!normalized) return null;
+  return `@${normalized.replace(/^@+/, "")}`;
 }
 
 function extractSceneFrameUrls(rawValue: unknown): {
@@ -164,7 +165,7 @@ function normalizePanelFromInput(value: unknown, index: number): StoryboardPanel
     lastFrameImageUrl: asNullableString(raw.lastFrameImageUrl),
     videoPrompt: asNullableString(raw.videoPrompt),
     characterAction: panelType === "B_ROLL_ONLY" ? asNullableString(raw.characterAction) : asString(raw.characterAction),
-    characterHandle: asNullableString(raw.characterHandle),
+    characterHandle: normalizeCharacterHandle(raw.characterHandle),
     environment: panelType === "B_ROLL_ONLY" ? asNullableString(raw.environment) : asString(raw.environment),
     cameraDirection: asString(raw.cameraDirection),
     productPlacement: asString(raw.productPlacement),
@@ -245,8 +246,6 @@ export async function GET(
       }),
     );
 
-    const validationReport = validateStoryboardAgainstGates(panels);
-
     const responseBody: { success: boolean; storyboard: StoryboardResponseBody } = {
       success: true,
       storyboard: {
@@ -256,7 +255,6 @@ export async function GET(
         createdAt: storyboard.createdAt.toISOString(),
         updatedAt: storyboard.updatedAt.toISOString(),
         panels,
-        validationReport,
       },
     };
 
@@ -324,13 +322,22 @@ export async function PATCH(
     }
 
     const panels = rawPanels.map((panel, index) => normalizePanelFromInput(panel, index));
+    const availableCharacterHandle =
+      panels.find((panel) => panel.panelType === "ON_CAMERA" && panel.characterHandle)?.characterHandle ??
+      panels.find((panel) => panel.characterHandle)?.characterHandle ??
+      null;
+    const panelsWithCharacterHandle = panels.map((panel) =>
+      panel.panelType === "ON_CAMERA" && availableCharacterHandle
+        ? { ...panel, characterHandle: availableCharacterHandle }
+        : panel,
+    );
 
     await prisma.$transaction(async (tx) => {
       await tx.storyboardScene.deleteMany({
         where: { storyboardId: storyboard.id },
       });
 
-      for (let index = 0; index < panels.length; index += 1) {
+      for (let index = 0; index < panelsWithCharacterHandle.length; index += 1) {
         await tx.storyboardScene.create({
           data: {
             storyboardId: storyboard.id,
@@ -338,7 +345,7 @@ export async function PATCH(
             // TODO: Restore after panelType migration runs.
             // panelType: panels[index].panelType,
             status: "ready",
-            rawJson: panels[index] as unknown as Prisma.InputJsonValue,
+            rawJson: panelsWithCharacterHandle[index] as unknown as Prisma.InputJsonValue,
           },
         });
       }
@@ -387,8 +394,6 @@ export async function PATCH(
         approved: false,
       }),
     );
-    const validationReport = validateStoryboardAgainstGates(responsePanels);
-
     return NextResponse.json(
       {
         success: true,
@@ -399,7 +404,6 @@ export async function PATCH(
           createdAt: updated.createdAt.toISOString(),
           updatedAt: updated.updatedAt.toISOString(),
           panels: responsePanels,
-          validationReport,
         },
       },
       { status: 200 },

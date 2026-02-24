@@ -8,10 +8,13 @@ type SwipeBeat = {
 };
 
 export type SwipePatterns = {
+  adMechanism: string;
+  mechanismDescription: string;
   hookPattern: string;
-  problemPattern: string;
-  solutionPattern: string;
-  ctaPattern: string;
+  closingPattern: string;
+  problemPattern: string | null;
+  solutionPattern: string | null;
+  ctaPattern: string | null;
   beatStructure: SwipeBeat[];
 };
 
@@ -56,10 +59,13 @@ function normalizePatterns(payload: Record<string, unknown>): SwipePatterns {
     .slice(0, 8);
 
   return {
+    adMechanism: asString(payload.adMechanism) || "other",
+    mechanismDescription: asString(payload.mechanismDescription) || "",
     hookPattern: asString(payload.hookPattern) || "{hook}",
-    problemPattern: asString(payload.problemPattern) || "{problem}",
-    solutionPattern: asString(payload.solutionPattern) || "{solution}",
-    ctaPattern: asString(payload.ctaPattern) || "{cta}",
+    closingPattern: asString(payload.closingPattern) || "{closing}",
+    problemPattern: payload.problemPattern ? asString(payload.problemPattern) : null,
+    solutionPattern: payload.solutionPattern ? asString(payload.solutionPattern) : null,
+    ctaPattern: payload.ctaPattern ? asString(payload.ctaPattern) : null,
     beatStructure,
   };
 }
@@ -82,24 +88,36 @@ export async function extractSwipePatterns(
     messages: [
       {
         role: "user",
-        content: `Extract script patterns from this ${videoDuration}s UGC ad transcript.
+        content: `You are analyzing a UGC ad transcript to extract its ACTUAL psychological structure - not a assumed hook/problem/solution formula.
 
-Transcript:
+Transcript (${videoDuration}s):
 ${transcript}
+
+Step 1: Identify the REAL structural mechanism this ad uses. Examples:
+- parasocial_intimacy: direct personal address, relationship-building, no explicit problem
+- problem_solution: identifies pain, presents fix
+- demonstration: show don't tell, product in action
+- social_proof: results-led, before/after
+- curiosity_gap: withholds information to drive completion
+
+Step 2: Extract the beat structure AS IT ACTUALLY EXISTS in this ad. Do not invent beats that aren't there.
 
 Return JSON:
 {
-  "hookPattern": "Template with {variables}",
-  "problemPattern": "Template with {variables}",
-  "solutionPattern": "Template with {variables}",
-  "ctaPattern": "Template with {variables}",
+  "adMechanism": "parasocial_intimacy | problem_solution | demonstration | social_proof | curiosity_gap | other",
+  "mechanismDescription": "One sentence describing how this ad actually works psychologically",
   "beatStructure": [
-    {"beat": "Hook", "duration": "0-3s", "pattern": "{template}"},
-    {"beat": "Problem", "duration": "3-8s", "pattern": "{template}"}
-  ]
+    {"beat": "exact beat name from this ad", "duration": "0-5s", "pattern": "template with {variables}"}
+  ],
+  "hookPattern": "template for the opening move",
+  "closingPattern": "template for how it ends",
+  "problemPattern": "only if a problem beat exists, otherwise null",
+  "solutionPattern": "only if a solution beat exists, otherwise null",
+  "ctaPattern": "only if explicit CTA exists, otherwise null"
 }
 
-Extract STRUCTURE not content. Use {pain}, {product}, {result} as variables.`,
+Extract STRUCTURE not content. Use {brand}, {product}, {viewer_name}, {result}, {claim} as variables.
+Do not force hook/problem/solution if the ad does not use that structure.`,
       },
     ],
   });
