@@ -13,6 +13,44 @@ type BeatSpec = {
   vo: string;
 };
 
+const SORA_CLIP_LENGTHS = [10, 15] as const;
+type SoraClipLength = typeof SORA_CLIP_LENGTHS[number];
+
+function snapToSoraClip(durationSeconds: number): SoraClipLength {
+  return durationSeconds <= 12 ? 10 : 15;
+}
+
+function splitBeatIntoClips(
+  beat: BeatSpec & { durationSeconds: number }
+): Array<BeatSpec & { clipDurationSeconds: SoraClipLength }> {
+  const { durationSeconds, beatLabel, vo, startTime, endTime } = beat;
+
+  if (durationSeconds <= 15) {
+    return [{ beatLabel, vo, startTime, endTime, clipDurationSeconds: snapToSoraClip(durationSeconds) }];
+  }
+
+  const clips: Array<BeatSpec & { clipDurationSeconds: SoraClipLength }> = [];
+  let remaining = durationSeconds;
+  let clipIndex = 1;
+  let currentStart = parseFloat(startTime);
+
+  while (remaining > 0) {
+    const clipLength: SoraClipLength = remaining > 15 ? 15 : snapToSoraClip(remaining);
+    const clipEnd = currentStart + clipLength;
+    clips.push({
+      beatLabel: `${beatLabel} (${clipIndex})`,
+      vo: clipIndex === 1 ? vo : "",
+      startTime: `${formatSeconds(currentStart)}s`,
+      endTime: `${formatSeconds(clipEnd)}s`,
+      clipDurationSeconds: clipLength,
+    });
+    remaining -= clipLength;
+    currentStart = clipEnd;
+    clipIndex++;
+  }
+  return clips;
+}
+
 type StoryboardPanel = {
   panelType: PanelTypeValue;
   beatLabel: string;
@@ -214,7 +252,11 @@ function validatePanel(rawPanel: unknown, beat: BeatSpec, index: number): Storyb
 
 function buildBeatSpecsFromScript(
   rawJson: unknown,
-): { beatCount: number; targetDuration: number; beats: BeatSpec[] } {
+): {
+  beatCount: number;
+  targetDuration: number;
+  beats: Array<BeatSpec & { clipDurationSeconds: SoraClipLength }>;
+} {
   const root = asObject(rawJson) ?? {};
   const scenesRaw = Array.isArray(root.scenes) ? root.scenes : [];
   if (scenesRaw.length === 0) {
@@ -249,7 +291,13 @@ function buildBeatSpecsFromScript(
     };
   });
 
-  return { beatCount, targetDuration, beats };
+  const soraScenes = beats.flatMap((beat) => {
+    const start = parseFloat(beat.startTime);
+    const end = parseFloat(beat.endTime);
+    return splitBeatIntoClips({ ...beat, durationSeconds: end - start });
+  });
+
+  return { beatCount: soraScenes.length, targetDuration, beats: soraScenes };
 }
 
 function buildStoryboardUserPrompt(args: {
@@ -706,6 +754,7 @@ export async function generateStoryboard(
         data: {
           storyboardId: storyboard.id,
           sceneNumber: index + 1,
+          clipDurationSeconds: beats[index]?.clipDurationSeconds ?? 10,
           // TODO: Restore after panelType migration runs.
           // panelType: panel.panelType,
           status: "ready",

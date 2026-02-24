@@ -7,6 +7,7 @@ import { JobStatus, JobType } from "@prisma/client";
 import toast, { Toaster } from "react-hot-toast";
 import Link from "next/link";
 import RunManagementModal from "@/components/RunManagementModal";
+import { analyzeSwipeTranscript, type SwipeAnalysis } from "@/lib/analyzeSwipeTranscript";
 
 type Job = {
   id: string;
@@ -109,6 +110,7 @@ const PIPELINE_STEP_TYPES: JobType[] = [
   JobType.VIDEO_REVIEW,
   JobType.VIDEO_UPSCALER,
 ];
+const CREATIVE_JOB_TYPES = new Set<JobType>(PIPELINE_STEP_TYPES);
 
 type ScriptRunSummarySource = {
   present: boolean;
@@ -434,6 +436,7 @@ export default function CreativeStudioPage() {
   const [scriptBeatCount, setScriptBeatCount] = useState<number>(5);
   const [scriptGenerationStrategy, setScriptGenerationStrategy] = useState<"swipe_template" | "research_formula">("swipe_template");
   const [selectedSwipeTemplateAdId, setSelectedSwipeTemplateAdId] = useState<string>("");
+  const [swipeAnalysis, setSwipeAnalysis] = useState<SwipeAnalysis | null>(null);
   const [scriptNoResearchAcknowledged, setScriptNoResearchAcknowledged] = useState(false);
   const [scriptModalSubmitting, setScriptModalSubmitting] = useState(false);
   const [scriptModalError, setScriptModalError] = useState<string | null>(null);
@@ -755,6 +758,19 @@ export default function CreativeStudioPage() {
   const selectedRun = selectedRunId ? sortedRuns.find((run) => run.runId === selectedRunId) : null;
   const selectedRunJobs = useMemo(() => selectedRun?.jobs ?? [], [selectedRun]);
   const hasSelectedRunWithJobs = Boolean(selectedRunId && selectedRunJobs.length > 0);
+  const recentCreativeJobs = useMemo(
+    () =>
+      jobs
+        .filter((job) => CREATIVE_JOB_TYPES.has(job.type))
+        .slice()
+        .sort(
+          (a, b) =>
+            new Date(b.updatedAt ?? b.createdAt).getTime() -
+            new Date(a.updatedAt ?? a.createdAt).getTime()
+        )
+        .slice(0, 10),
+    [jobs]
+  );
   const orphanedJobsCount = useMemo(
     () => jobs.filter((job) => !String(job.runId ?? "").trim()).length,
     [jobs],
@@ -2493,6 +2509,7 @@ export default function CreativeStudioPage() {
     setScriptBeatCount(5);
     setScriptGenerationStrategy("swipe_template");
     setSelectedSwipeTemplateAdId("");
+    setSwipeAnalysis(null);
     setScriptNoResearchAcknowledged(false);
     setScriptModalError(null);
     setScriptModalSubmitting(false);
@@ -2792,6 +2809,35 @@ export default function CreativeStudioPage() {
     });
   }, [scriptModalMode, scriptRunSummary]);
 
+  useEffect(() => {
+    if (scriptModalMode !== "ai" || scriptGenerationStrategy !== "swipe_template") {
+      setSwipeAnalysis(null);
+      return;
+    }
+
+    if (!selectedSwipeTemplateAdId) {
+      setSwipeAnalysis(null);
+      return;
+    }
+
+    const candidate = scriptSwipeCandidates.find((c) => c.assetId === selectedSwipeTemplateAdId);
+    const transcript = candidate?.transcriptSnippet;
+    if (!transcript) {
+      setSwipeAnalysis(null);
+      return;
+    }
+
+    const analysis = analyzeSwipeTranscript(transcript);
+    setSwipeAnalysis(analysis);
+    setScriptTargetDuration(analysis.estimatedDuration);
+    setScriptBeatCount(analysis.suggestedBeats);
+  }, [
+    scriptModalMode,
+    scriptGenerationStrategy,
+    selectedSwipeTemplateAdId,
+    scriptSwipeCandidates,
+  ]);
+
   async function handleGenerateScriptWithAi() {
     const scriptStep = steps.find((step) => step.key === "script");
     if (!scriptStep) return;
@@ -2819,6 +2865,9 @@ export default function CreativeStudioPage() {
       targetDuration: scriptTargetDuration,
       beatCount: scriptBeatCount,
       scriptStrategy: scriptGenerationStrategy,
+      ...(swipeAnalysis?.beatRatios
+        ? { beatRatios: swipeAnalysis.beatRatios }
+        : {}),
       ...(scriptGenerationStrategy === "swipe_template" && selectedSwipeTemplateAdId
         ? { swipeTemplateAdId: selectedSwipeTemplateAdId }
         : {}),
@@ -3142,40 +3191,6 @@ export default function CreativeStudioPage() {
           )}
         </div>
 
-        {selectedRun && (
-          <div className="mt-3 text-sm text-slate-400">
-            <div className="text-slate-400">Jobs in this run:</div>
-            <div className="mt-2 space-y-1">
-              {selectedRun.jobs
-                .slice()
-                .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
-                .map((job) => {
-                  const statusIcon =
-                    job.status === JobStatus.COMPLETED
-                      ? "✓"
-                      : job.status === JobStatus.FAILED
-                        ? "✕"
-                        : job.status === JobStatus.RUNNING
-                          ? "●"
-                          : "○";
-                  return (
-                    <div key={job.id} className="flex items-center gap-2">
-                      <span className="text-slate-300">{statusIcon}</span>
-                      <span>{getRunJobName(job)}</span>
-                      <span className="text-xs text-slate-500">
-                        {job.status === JobStatus.COMPLETED
-                          ? new Date(job.createdAt).toLocaleTimeString("en-US", {
-                              hour: "numeric",
-                              minute: "2-digit",
-                            })
-                          : String(job.status).toLowerCase()}
-                      </span>
-                    </div>
-                  );
-                })}
-            </div>
-          </div>
-        )}
       </section>
 
       <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-5">
@@ -5564,18 +5579,18 @@ export default function CreativeStudioPage() {
                                 if (candidates.length === 0) {
                                   return (
                                     <p style={{ margin: 0, color: "#fde68a", fontSize: 12 }}>
-                                      No swipe template candidates found for this run. Switch to &quot;Use formula from research.&quot;
+                                      No swipe-eligible ads found. Ads need a transcript to use as a script template.
                                     </p>
                                   );
                                 }
                                 return (
                                   <>
                                     <p style={{ margin: "0 0 6px 0", color: "#94a3b8", fontSize: 12 }}>
-                                      Recommended by engagement metrics. You can override.
+                                      Recommended by engagement metrics. Only ads that passed quality assessment are shown.
                                     </p>
                                     {recommendation?.sourceMode === "run_ad" ? (
                                       <p style={{ margin: "0 0 8px 0", color: "#fde68a", fontSize: 12 }}>
-                                        No explicit swipe-file templates were found in this run. Showing top ads from the run as template candidates.
+                                        No explicit swipe-file templates were found in this run. Showing top quality-passed ads from this run as template candidates.
                                       </p>
                                     ) : null}
                                     <select
@@ -5675,23 +5690,6 @@ export default function CreativeStudioPage() {
                                               </p>
                                             </div>
                                           ) : null}
-                                          {active.ocrText ? (
-                                            <div style={{ marginTop: 8 }}>
-                                              <p
-                                                style={{
-                                                  margin: "0 0 4px 0",
-                                                  color: "#94a3b8",
-                                                  fontSize: 11,
-                                                  fontWeight: 600,
-                                                }}
-                                              >
-                                                OCR
-                                              </p>
-                                              <p style={{ margin: 0, color: "#e2e8f0", fontSize: 12, lineHeight: 1.4 }}>
-                                                {active.ocrText}
-                                              </p>
-                                            </div>
-                                          ) : null}
                                           <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", gap: 8 }}>
                                             <span style={{ color: "#64748b", fontSize: 11 }}>
                                               Asset ID: {active.assetId.slice(0, 8)}...
@@ -5773,6 +5771,27 @@ export default function CreativeStudioPage() {
                     )}
                   </div>
                 )}
+                {swipeAnalysis && scriptGenerationStrategy === "swipe_template" ? (
+                  <div
+                    style={{
+                      marginTop: 8,
+                      padding: "0 4px",
+                    }}
+                  >
+                    <p style={{ margin: 0, color: "#facc15", fontSize: 12, fontWeight: 600 }}>
+                      Auto-detected from transcript: ~{swipeAnalysis.estimatedDuration}s · {swipeAnalysis.suggestedBeats} beats
+                    </p>
+                    {swipeAnalysis.beatBreakdown.length > 0 ? (
+                      <div style={{ marginTop: 4, opacity: 0.75 }}>
+                        {swipeAnalysis.beatBreakdown.map((line, index) => (
+                          <p key={`${line}-${index}`} style={{ margin: "2px 0 0 0", color: "#cbd5e1", fontSize: 11 }}>
+                            {line}
+                          </p>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
                 <div
                   style={{
                     marginTop: 12,
@@ -5822,7 +5841,7 @@ export default function CreativeStudioPage() {
                         boxSizing: "border-box",
                       }}
                     >
-                      {[3, 4, 5, 6].map((count) => (
+                      {[3, 4, 5, 6, 8].map((count) => (
                         <option key={count} value={String(count)}>
                           {count}
                         </option>
@@ -5939,6 +5958,38 @@ export default function CreativeStudioPage() {
           </div>
         </div>
       )}
+
+      <div className="mt-8 border-t border-slate-800 pt-6">
+        <h2 className="text-lg font-semibold text-slate-200 mb-4">Recent Jobs</h2>
+        <div className="space-y-2">
+          {recentCreativeJobs.map((job) => (
+            <div
+              key={job.id}
+              className="flex items-start justify-between gap-4 p-3 rounded-lg bg-slate-900/50 border border-slate-800"
+            >
+              <div className="flex-1">
+                <div className="text-sm font-medium text-slate-200">{getRunJobName(job)}</div>
+                <div className="text-xs text-slate-500">
+                  {new Date(job.updatedAt ?? job.createdAt).toLocaleString()}
+                </div>
+              </div>
+              <div
+                className={`px-2 py-1 rounded text-xs ${
+                  job.status === JobStatus.COMPLETED
+                    ? "bg-emerald-500/10 text-emerald-400"
+                    : job.status === JobStatus.FAILED
+                      ? "bg-red-500/10 text-red-400"
+                      : job.status === JobStatus.RUNNING
+                        ? "bg-sky-500/10 text-sky-400"
+                        : "bg-slate-500/10 text-slate-400"
+                }`}
+              >
+                {job.status}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
 
       <div style={{ display: "flex", justifyContent: "flex-start" }}>
         <Link

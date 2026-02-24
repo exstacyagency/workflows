@@ -8,6 +8,7 @@ import type { Job } from '@prisma/client';
 import { guardedExternalCall } from './externalCallGuard.ts';
 import { env, requireEnv } from './configGuard.ts';
 import { flag, devNumber } from './flags.ts';
+import { scaleBeatRatiosToduration, type BeatRatio } from "@/lib/analyzeSwipeTranscript";
 
 const LLM_TIMEOUT_MS = Number(cfg.raw("LLM_TIMEOUT_MS") ?? 90_000);
 console.log("[LLM] timeout config:", {
@@ -504,6 +505,30 @@ function normalizeBeatCountValue(value: unknown): number {
   return rounded;
 }
 
+function normalizeBeatRatios(value: unknown): BeatRatio[] {
+  if (!Array.isArray(value)) return [];
+  const normalized: BeatRatio[] = [];
+  for (const entry of value) {
+    const item = asObject(entry);
+    if (!item) continue;
+    const label = asString(item.label);
+    const startPct = asNumber(item.startPct);
+    const endPct = asNumber(item.endPct);
+    if (!label || startPct === null || endPct === null) continue;
+    if (startPct < 0 || endPct > 1 || startPct >= endPct) continue;
+    normalized.push({ label, startPct, endPct });
+  }
+  return normalized;
+}
+
+function toJsonBeatRatios(ratios: BeatRatio[]): Array<{ label: string; startPct: number; endPct: number }> {
+  return ratios.map((ratio) => ({
+    label: ratio.label,
+    startPct: ratio.startPct,
+    endPct: ratio.endPct,
+  }));
+}
+
 function formatSecondsForPrompt(value: number): string {
   const rounded = Math.round(value * 10) / 10;
   if (Number.isInteger(rounded)) return String(rounded);
@@ -651,12 +676,37 @@ function extractTransferFormula(rawPatternJson: unknown): string | null {
   const prescriptiveGuidance =
     asObject(patternsRoot?.prescriptiveGuidance) ||
     asObject(root?.prescriptiveGuidance);
+  if (!prescriptiveGuidance) return null;
 
-  return (
-    asString(prescriptiveGuidance?.transferFormula) ||
-    asString(prescriptiveGuidance?.transfer_formula) ||
-    null
-  );
+  const transferRaw =
+    prescriptiveGuidance?.transferFormula ??
+    prescriptiveGuidance?.transfer_formula;
+
+  const legacy = asString(transferRaw);
+  if (legacy) return legacy;
+
+  const transferObj = asObject(transferRaw);
+  if (!transferObj) return null;
+
+  const label = asString(transferObj.label);
+  const components = Array.isArray(transferObj.components) ? transferObj.components : [];
+  const componentLines = components
+    .map((entry) => {
+      const component = asObject(entry);
+      if (!component) return null;
+      const name = asString(component.name);
+      const executionBrief =
+        asString(component.executionBrief) ||
+        asString(component.execution_brief);
+      if (!name || !executionBrief) return null;
+      return `  - ${name}: ${executionBrief}`;
+    })
+    .filter((line): line is string => Boolean(line));
+
+  if (!label && componentLines.length === 0) return null;
+  if (componentLines.length === 0) return label;
+  if (!label) return `Components:\n${componentLines.join("\n")}`;
+  return `${label}\nComponents:\n${componentLines.join("\n")}`;
 }
 
 function extractPsychologicalMechanism(rawPatternJson: unknown): string | null {
@@ -665,12 +715,27 @@ function extractPsychologicalMechanism(rawPatternJson: unknown): string | null {
   const prescriptiveGuidance =
     asObject(patternsRoot?.prescriptiveGuidance) ||
     asObject(root?.prescriptiveGuidance);
+  if (!prescriptiveGuidance) return null;
 
-  return (
-    asString(prescriptiveGuidance?.psychologicalMechanism) ||
-    asString(prescriptiveGuidance?.psychological_mechanism) ||
-    null
-  );
+  const mechanismRaw =
+    prescriptiveGuidance?.psychologicalMechanism ??
+    prescriptiveGuidance?.psychological_mechanism;
+
+  const legacy = asString(mechanismRaw);
+  if (legacy) return legacy;
+
+  const mechanismObj = asObject(mechanismRaw);
+  if (!mechanismObj) return null;
+
+  const label = asString(mechanismObj.label);
+  const executionBrief =
+    asString(mechanismObj.executionBrief) ||
+    asString(mechanismObj.execution_brief);
+
+  if (!label && !executionBrief) return null;
+  if (!executionBrief) return label;
+  if (!label) return `How to execute: ${executionBrief}`;
+  return `${label}\nHow to execute: ${executionBrief}`;
 }
 
 function buildVoiceCadenceConstraint(rawPatternJson: unknown): string {
@@ -1326,6 +1391,7 @@ function buildScriptPrompt(args: {
   swipeFile: SwipeFileSelection | null;
   targetDuration: number;
   beatCount: number;
+  beatRatios?: BeatRatio[];
   patterns: Pattern[];
   antiPatterns: AntiPattern[];
   stackingRules: StackingRule[];
@@ -1343,6 +1409,7 @@ function buildScriptPrompt(args: {
     swipeFile,
     targetDuration,
     beatCount,
+    beatRatios,
     patterns,
     antiPatterns,
     stackingRules,
@@ -1562,10 +1629,17 @@ Apply this structure exactly, but fill it with this project's avatar language an
     ? "You are a TikTok conversion copywriter. Use the provided swipe template as the primary script structure while keeping all output constraints. Output ONLY valid JSON. No markdown. No preamble."
     : "You are a TikTok conversion copywriter. You write 30-second UGC scripts that stop scrolls and drive purchases. Every word earns its place. Output ONLY valid JSON. No markdown. No preamble.";
 
+  const proportionalTiming = beatRatios && beatRatios.length > 0
+    ? scaleBeatRatiosToduration(beatRatios, targetDuration)
+    : null;
+  const proportionalTimingSection = proportionalTiming
+    ? `proportionalBeatTiming:\n${proportionalTiming}\n`
+    : `beatCount: ${beatCount}\n`;
+
   const prompt = `${swipeTemplateSection}TIER 1 - STRUCTURE (NON-NEGOTIABLE)
 targetDuration: ${targetDuration}
-beatCount: ${beatCount}
 dynamicWordCeiling: ${dynamicWordCeiling}
+${proportionalTimingSection}
 beatStructureLines:
 ${beatStructureLines}
 ${tier1FormulaSection}
@@ -1643,6 +1717,7 @@ type ScriptJobPayload = {
   customerAnalysisJobId?: unknown;
   targetDuration?: unknown;
   beatCount?: unknown;
+  beatRatios?: unknown;
   scriptStrategy?: unknown;
   swipeTemplateAdId?: unknown;
 };
@@ -1651,6 +1726,7 @@ type ScriptGenerationJobConfig = {
   customerAnalysisJobId: string | null;
   targetDuration: number;
   beatCount: number;
+  beatRatios: BeatRatio[];
   scriptStrategy: ScriptStrategy;
   swipeTemplateAdId: string | null;
 };
@@ -1661,6 +1737,7 @@ async function getRequestedScriptGenerationConfig(jobId?: string): Promise<Scrip
       customerAnalysisJobId: null,
       targetDuration: DEFAULT_SCRIPT_TARGET_DURATION,
       beatCount: DEFAULT_SCRIPT_BEAT_COUNT,
+      beatRatios: [],
       scriptStrategy: "swipe_template",
       swipeTemplateAdId: null,
     };
@@ -1685,10 +1762,12 @@ async function getRequestedScriptGenerationConfig(jobId?: string): Promise<Scrip
     typeof payload?.swipeTemplateAdId === "string" ? payload.swipeTemplateAdId.trim() : "";
   const targetDuration = normalizeTargetDurationValue(payload?.targetDuration);
   const beatCount = normalizeBeatCountValue(payload?.beatCount);
+  const beatRatios = normalizeBeatRatios(payload?.beatRatios);
   return {
     customerAnalysisJobId: selectedId || null,
     targetDuration,
     beatCount,
+    beatRatios,
     scriptStrategy,
     swipeTemplateAdId: swipeTemplateAdIdRaw || null,
   };
@@ -1951,21 +2030,29 @@ async function selectSwipeFile(
         LEFT JOIN "job" j ON j."id" = a."jobId"
         WHERE a."projectId" = ${projectId}
           AND COALESCE(a."isSwipeFile", false) = true
+          AND COALESCE(a."contentViable", false) = true
           AND a."swipeMetadata" IS NOT NULL
           ${runId ? Prisma.sql`AND j."runId" = ${runId}` : Prisma.empty}
-        ORDER BY a."createdAt" DESC
+        ORDER BY
+          COALESCE(
+            NULLIF(regexp_replace(a."rawJson"->'qualityGate'->>'viewCount', '[^0-9\\.-]', '', 'g'), '')::double precision,
+            NULLIF(regexp_replace(a."rawJson"->'metrics'->>'views', '[^0-9\\.-]', '', 'g'), '')::double precision,
+            NULLIF(regexp_replace(a."rawJson"->'metrics'->>'view', '[^0-9\\.-]', '', 'g'), '')::double precision,
+            NULLIF(regexp_replace(a."rawJson"->'metrics'->>'plays', '[^0-9\\.-]', '', 'g'), '')::double precision,
+            NULLIF(regexp_replace(a."rawJson"->>'views', '[^0-9\\.-]', '', 'g'), '')::double precision,
+            NULLIF(regexp_replace(a."rawJson"->>'view', '[^0-9\\.-]', '', 'g'), '')::double precision,
+            NULLIF(regexp_replace(a."rawJson"->>'plays', '[^0-9\\.-]', '', 'g'), '')::double precision,
+            0
+          ) DESC,
+          a."createdAt" DESC
         LIMIT 40
       `
     );
 
-  const sameRunCandidates = preferredRunId
-    ? await getCandidates(preferredRunId)
-    : [];
-  const fallbackCandidates = await getCandidates(null);
-  const candidateMap = new Map<string, typeof fallbackCandidates[number]>();
-  for (const candidate of [...sameRunCandidates, ...fallbackCandidates]) {
-    candidateMap.set(candidate.id, candidate);
-  }
+  const sameRunCandidates = preferredRunId ? await getCandidates(preferredRunId) : [];
+  const scopedCandidates =
+    sameRunCandidates.length > 0 ? sameRunCandidates : await getCandidates(null);
+  const candidateScope = sameRunCandidates.length > 0 ? "same_run" : "project_wide";
 
   const scoreSwipe = (rawJson: Prisma.JsonValue): number => {
     const raw = asObject(rawJson) ?? {};
@@ -1992,7 +2079,7 @@ async function selectSwipeFile(
   };
 
   const candidates: Array<SwipeFileSelection & { createdAt: Date; score: number }> = [];
-  for (const candidate of Array.from(candidateMap.values())) {
+  for (const candidate of scopedCandidates) {
     const swipeMetadata = normalizeSwipeTemplate(candidate.swipeMetadata);
     if (!swipeMetadata) continue;
     candidates.push({
@@ -2005,6 +2092,9 @@ async function selectSwipeFile(
   }
 
   candidates.sort((a, b) => {
+    const aViews = a.views ?? 0;
+    const bViews = b.views ?? 0;
+    if (aViews !== bViews) return bViews - aViews;
     if (a.score !== b.score) return b.score - a.score;
     return b.createdAt.getTime() - a.createdAt.getTime();
   });
@@ -2023,7 +2113,11 @@ async function selectSwipeFile(
   }
 
   const selected = candidates[0] ?? null;
-  console.log("[ScriptGen] Swipe file selected:", selected?.id || "none");
+  console.log("[ScriptGen] Swipe file selected:", selected?.id || "none", {
+    candidateScope,
+    preferredRunId,
+    candidateCount: candidates.length,
+  });
   if (!selected) return null;
 
   return {
@@ -2107,10 +2201,20 @@ export async function runScriptGeneration(args: {
   customerAnalysisJobId?: string;
   targetDuration?: number;
   beatCount?: number;
+  beatRatios?: BeatRatio[];
   scriptStrategy?: ScriptStrategy;
   swipeTemplateAdId?: string | null;
 }) {
-  const { projectId, jobId, customerAnalysisJobId, targetDuration, beatCount, scriptStrategy, swipeTemplateAdId } = args;
+  const {
+    projectId,
+    jobId,
+    customerAnalysisJobId,
+    targetDuration,
+    beatCount,
+    beatRatios,
+    scriptStrategy,
+    swipeTemplateAdId,
+  } = args;
 
   // Load dependencies:
   const project = await prisma.project.findUnique({
@@ -2128,6 +2232,9 @@ export async function runScriptGeneration(args: {
   );
   const selectedBeatCount = normalizeBeatCountValue(
     beatCount ?? requestedConfig.beatCount
+  );
+  const selectedBeatRatios = normalizeBeatRatios(
+    beatRatios ?? requestedConfig.beatRatios
   );
   const selectedScriptStrategy: ScriptStrategy =
     scriptStrategy ?? requestedConfig.scriptStrategy;
@@ -2151,7 +2258,9 @@ export async function runScriptGeneration(args: {
         )
       : null;
   if (selectedScriptStrategy === "swipe_template" && !swipeFile) {
-    throw new Error("No swipe template candidates found. Choose 'Research Formula' or mark a swipe ad.");
+    throw new Error(
+      "No swipe template candidates found (same run and project-wide). Only quality-passed, pattern-promoted swipe ads can be used."
+    );
   }
 
   const productIntelSelection = await selectProductIntelInput(
@@ -2206,6 +2315,7 @@ export async function runScriptGeneration(args: {
     swipeFile,
     targetDuration: selectedTargetDuration,
     beatCount: selectedBeatCount,
+    beatRatios: selectedBeatRatios,
     patterns,
     antiPatterns,
     stackingRules,
@@ -2221,6 +2331,7 @@ export async function runScriptGeneration(args: {
       rawJson: {
         targetDuration: selectedTargetDuration,
         beatCount: selectedBeatCount,
+        beatRatios: toJsonBeatRatios(selectedBeatRatios),
       },
       wordCount: 0,
     },
