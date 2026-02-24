@@ -30,7 +30,7 @@ export async function GET(
         )::int AS "assetsWithOcr"
       FROM "ad_asset"
       WHERE "projectId" = ${projectId}
-        AND "platform" = 'TIKTOK'
+        AND "platform" = CAST('TIKTOK' AS "AdPlatform")
     `;
 
     const counts = rows[0] ?? { totalAssets: 0, assetsWithOcr: 0 };

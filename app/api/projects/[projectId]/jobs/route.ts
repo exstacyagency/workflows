@@ -21,6 +21,9 @@ export async function GET(
         id: projectId,
         userId: userId,
       },
+      select: {
+        id: true,
+      },
     });
 
     if (!project) {

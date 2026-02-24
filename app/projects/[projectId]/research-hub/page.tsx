@@ -95,6 +95,16 @@ interface ProductCollectionFormData {
   aboutUrl: string;
 }
 
+const RESEARCH_JOB_TYPES = new Set<string>([
+  "CUSTOMER_RESEARCH",
+  "CUSTOMER_ANALYSIS",
+  "AD_PERFORMANCE",
+  "AD_QUALITY_GATE",
+  "PATTERN_ANALYSIS",
+  "PRODUCT_DATA_COLLECTION",
+  "PRODUCT_ANALYSIS",
+]);
+
 const INDUSTRY_SUGGESTIONS = [
   { code: "22000000000", label: "Apparel & Accessories" },
   { code: "16000000000", label: "Appliances" },
@@ -701,6 +711,16 @@ export default function ResearchHubPage() {
       )
     : null;
 
+  const recentResearchJobs = useMemo(
+    () =>
+      jobs
+        .filter((job) => RESEARCH_JOB_TYPES.has(String(job.type)))
+        .slice()
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .slice(0, 10),
+    [jobs]
+  );
+
   const arePrerequisitesComplete = (step: ResearchStep, track: ResearchTrack): boolean => {
     const prerequisiteIds =
       Array.isArray(step.prerequisites) && step.prerequisites.length > 0
@@ -1254,40 +1274,6 @@ export default function ResearchHubPage() {
                 View Product Data
               </Link>
             </div>
-            {selectedRun && (
-              <div className="mt-3 text-sm text-slate-400">
-                <div className="mt-2 text-slate-400">Jobs in this run:</div>
-                <div className="mt-2 space-y-1">
-                  {selectedRun.jobs
-                    .slice()
-                    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
-                    .map((job) => {
-                      const statusIcon =
-                        job.status === "COMPLETED"
-                          ? "✓"
-                          : job.status === "FAILED"
-                            ? "✕"
-                            : job.status === "RUNNING"
-                              ? "●"
-                              : "○";
-                      return (
-                        <div key={job.id} className="flex items-center gap-2">
-                          <span className="text-slate-300">{statusIcon}</span>
-                          <span>{getRunJobName(job)}</span>
-                          <span className="text-xs text-slate-500">
-                            {job.status === "COMPLETED"
-                              ? new Date(job.createdAt).toLocaleTimeString("en-US", {
-                                  hour: "numeric",
-                                  minute: "2-digit",
-                                })
-                              : job.status.toLowerCase()}
-                          </span>
-                        </div>
-                      );
-                    })}
-                </div>
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -1641,7 +1627,7 @@ export default function ResearchHubPage() {
       <div className="mt-8 border-t border-slate-800 pt-6">
         <h2 className="text-lg font-semibold text-slate-200 mb-4">Recent Jobs</h2>
         <div className="space-y-2">
-          {jobs.slice(0, 10).map(job => {
+          {recentResearchJobs.map(job => {
             const rs = job.resultSummary as any;
             return (
               <div key={job.id} className="flex items-start justify-between gap-4 p-3 rounded-lg bg-slate-900/50 border border-slate-800">

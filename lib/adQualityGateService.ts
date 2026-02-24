@@ -49,6 +49,16 @@ function firstString(...values: unknown[]): string | null {
   return null;
 }
 
+function asBoolean(value: unknown): boolean | null {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true") return true;
+    if (normalized === "false") return false;
+  }
+  return null;
+}
+
 function clampConfidence(value: unknown): number {
   const n = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(n)) return 0;
@@ -192,6 +202,9 @@ export async function runAdQualityGate(args: {
     select: {
       id: true,
       rawJson: true,
+      contentViable: true,
+      qualityConfidence: true,
+      qualityReason: true,
     },
     orderBy: { createdAt: "asc" },
   });
@@ -199,7 +212,12 @@ export async function runAdQualityGate(args: {
   const candidates = assets.filter((asset) => {
     const raw = asObject(asset.rawJson);
     const alreadyAssessed = Boolean(raw.qualityGate && typeof raw.qualityGate === "object");
-    if (!forceReprocess && alreadyAssessed) return false;
+    const needsColumnBackfill =
+      alreadyAssessed &&
+      (asset.contentViable === null ||
+        asset.qualityConfidence === null ||
+        !firstString(asset.qualityReason));
+    if (!forceReprocess && alreadyAssessed && !needsColumnBackfill) return false;
     const transcript = firstString(raw.transcript);
     const ocrText = firstString(raw.ocrText);
     return Boolean(transcript || ocrText);
@@ -222,18 +240,53 @@ export async function runAdQualityGate(args: {
 
   for (const asset of candidates) {
     const raw = asObject(asset.rawJson);
+    const qualityGate = asObject(raw.qualityGate);
+    const alreadyAssessed = Boolean(raw.qualityGate && typeof raw.qualityGate === "object");
     const transcript = firstString(raw.transcript);
     const ocrText = firstString(raw.ocrText);
+
+    if (!forceReprocess && alreadyAssessed) {
+      const accepted = asBoolean(raw.contentViable) === true || asBoolean(qualityGate.viable) === true;
+      const confidence = clampConfidence(firstNumber(raw.qualityConfidence, qualityGate.confidence));
+      const qualityIssue = (firstString(raw.qualityIssue, qualityGate.issue) ?? "valid") as QualityIssue;
+      const qualityReason = firstString(raw.qualityReason, qualityGate.reason) ?? "Backfilled from quality gate metadata";
+      const swipeCandidate =
+        asBoolean(raw.swipeCandidate) === true || asBoolean(qualityGate.swipeCandidate) === true;
+
+      await prisma.adAsset.update({
+        where: { id: asset.id },
+        data: {
+          contentViable: accepted,
+          qualityIssue,
+          qualityConfidence: confidence,
+          qualityReason,
+          swipeCandidate,
+        },
+      });
+
+      assessed += 1;
+      if (accepted) viable += 1;
+      else rejectionReasons[qualityIssue] = (rejectionReasons[qualityIssue] || 0) + 1;
+      continue;
+    }
 
     const assessment = await assessAdQuality(ocrText, transcript);
     const accepted = assessment.viable && assessment.confidence >= QUALITY_CONFIDENCE_THRESHOLD;
     const viabilityScore = assessment.viable ? assessment.confidence / 100 : 0;
     const viewCount = extractViewCount(raw);
-    const isSwipeFile = viabilityScore > 0.85 && viewCount > 1_000_000;
+    const transcriptText = typeof raw.transcript === "string" ? raw.transcript.trim() : "";
+    const transcriptWordCount = transcriptText ? transcriptText.split(/\s+/).filter(Boolean).length : 0;
+    const hasMeaningfulTranscript = transcriptText.length > 100 && transcriptWordCount >= 20;
+    const swipeCandidate =
+      viabilityScore > 0.85 && viewCount > 1_000_000 && hasMeaningfulTranscript;
 
     await prisma.adAsset.update({
       where: { id: asset.id },
       data: {
+        contentViable: accepted,
+        qualityIssue: assessment.primaryIssue,
+        qualityConfidence: assessment.confidence,
+        qualityReason: assessment.reason,
         rawJson: {
           ...raw,
           contentViable: accepted,
@@ -242,7 +295,7 @@ export async function runAdQualityGate(args: {
           qualityReason: assessment.reason,
           viabilityScore,
           viewCount,
-          isSwipeFile,
+          swipeCandidate,
           qualityGate: {
             viable: accepted,
             rawViable: assessment.viable,
@@ -251,17 +304,13 @@ export async function runAdQualityGate(args: {
             reason: assessment.reason,
             viabilityScore,
             confidenceThreshold: QUALITY_CONFIDENCE_THRESHOLD,
-            isSwipeFile,
+            swipeCandidate,
             assessedAt: new Date().toISOString(),
           },
         } as any,
+        swipeCandidate,
       },
     });
-    await prisma.$executeRaw`
-      UPDATE "ad_asset"
-      SET "isSwipeFile" = ${isSwipeFile}
-      WHERE "id" = ${asset.id}
-    `;
 
     assessed += 1;
     if (accepted) {

@@ -66,7 +66,51 @@ export async function GET(_request: Request, { params }: Params) {
           a."duration",
           a."source_type",
           a."engagement_score",
-          a."rawJson"
+          jsonb_strip_nulls(
+            jsonb_build_object(
+              'url', a."rawJson"->>'url',
+              'videoUrl', COALESCE(a."rawJson"->>'videoUrl', a."rawJson"->>'video_url'),
+              'views', a."rawJson"->'views',
+              'view', a."rawJson"->'view',
+              'plays', a."rawJson"->'plays',
+              'ad_title', a."rawJson"->>'ad_title',
+              'pageName', a."rawJson"->>'pageName',
+              'ocrText', a."rawJson"->>'ocrText',
+              'ocrFrames', COALESCE(a."rawJson"->'ocrFrames', '[]'::jsonb),
+              'transcript', a."rawJson"->>'transcript',
+              'transcriptWords', COALESCE(a."rawJson"->'transcriptWords', '[]'::jsonb),
+              'transcriptSource', COALESCE(a."rawJson"->'transcriptSource', '{}'::jsonb),
+              'qualityGate', COALESCE(a."rawJson"->'qualityGate', '{}'::jsonb),
+              'contentViable', a."rawJson"->'contentViable',
+              'qualityIssue', a."rawJson"->>'qualityIssue',
+              'qualityConfidence', a."rawJson"->'qualityConfidence',
+              'qualityReason', a."rawJson"->>'qualityReason',
+              'metrics',
+                jsonb_strip_nulls(
+                  jsonb_build_object(
+                    'views', a."rawJson"->'metrics'->'views',
+                    'view', a."rawJson"->'metrics'->'view',
+                    'plays', a."rawJson"->'metrics'->'plays',
+                    'retention_3s', a."rawJson"->'metrics'->'retention_3s',
+                    'retention_10s', a."rawJson"->'metrics'->'retention_10s',
+                    'retention_3s_ctr', a."rawJson"->'metrics'->'retention_3s_ctr',
+                    'retention_10s_ctr', a."rawJson"->'metrics'->'retention_10s_ctr',
+                    'retention_3s_cvr', a."rawJson"->'metrics'->'retention_3s_cvr',
+                    'retention_10s_cvr', a."rawJson"->'metrics'->'retention_10s_cvr',
+                    'duration', a."rawJson"->'metrics'->'duration',
+                    'ctr', a."rawJson"->'metrics'->'ctr',
+                    'cost', a."rawJson"->'metrics'->'cost',
+                    'like', a."rawJson"->'metrics'->'like',
+                    'likes', a."rawJson"->'metrics'->'likes',
+                    'source_type', a."rawJson"->'metrics'->'source_type',
+                    'engagement_score', a."rawJson"->'metrics'->'engagement_score',
+                    'industry_code', a."rawJson"->'metrics'->'industry_code',
+                    'conversion_spikes', a."rawJson"->'metrics'->'conversion_spikes',
+                    'ocr_meta', a."rawJson"->'metrics'->'ocr_meta'
+                  )
+                )
+            )
+          ) AS "rawJson"
         FROM "ad_asset" a
         LEFT JOIN "job" j ON j."id" = a."jobId"
         WHERE a."projectId" = ${projectId}

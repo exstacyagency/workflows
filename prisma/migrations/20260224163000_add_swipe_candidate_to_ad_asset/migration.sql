@@ -1,0 +1,2 @@
+ALTER TABLE "ad_asset"
+ADD COLUMN IF NOT EXISTS "swipeCandidate" BOOLEAN NOT NULL DEFAULT false;

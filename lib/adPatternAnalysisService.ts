@@ -42,8 +42,8 @@ function isAnthropicRetryable(err: any) {
   );
 }
 
-export async function runPatternAnalysis(args: { projectId: string; jobId: string }) {
-  const { projectId, jobId } = args;
+export async function runPatternAnalysis(args: { projectId: string; jobId: string; runId?: string | null }) {
+  const { projectId, jobId, runId } = args;
 
   let job = await prisma.job.findUnique({ where: { id: jobId } });
   if (!job) {
@@ -55,8 +55,13 @@ export async function runPatternAnalysis(args: { projectId: string; jobId: strin
   try {
     requireEnv(['ANTHROPIC_API_KEY'], 'ANTHROPIC');
 
+    const effectiveRunId = String(runId ?? (job as any)?.runId ?? "").trim() || null;
     const assets = await prisma.adAsset.findMany({
-      where: { projectId },
+      where: {
+        projectId,
+        contentViable: true,
+        ...(effectiveRunId ? { job: { is: { runId: effectiveRunId } } } : {}),
+      },
       select: { id: true, rawJson: true },
       take: 50,
     });
