@@ -250,8 +250,11 @@ export async function runAdQualityGate(args: {
       const confidence = clampConfidence(firstNumber(raw.qualityConfidence, qualityGate.confidence));
       const qualityIssue = (firstString(raw.qualityIssue, qualityGate.issue) ?? "valid") as QualityIssue;
       const qualityReason = firstString(raw.qualityReason, qualityGate.reason) ?? "Backfilled from quality gate metadata";
-      const swipeCandidate =
-        asBoolean(raw.swipeCandidate) === true || asBoolean(qualityGate.swipeCandidate) === true;
+      const viabilityScore = accepted ? confidence / 100 : 0;
+      const transcriptText = typeof transcript === "string" ? transcript.trim() : "";
+      const transcriptWordCount = transcriptText ? transcriptText.split(/\s+/).filter(Boolean).length : 0;
+      const hasMeaningfulTranscript = transcriptText.length > 100 && transcriptWordCount >= 20;
+      const swipeCandidate = viabilityScore > 0.85 && hasMeaningfulTranscript;
 
       await prisma.adAsset.update({
         where: { id: asset.id },
@@ -278,7 +281,7 @@ export async function runAdQualityGate(args: {
     const transcriptWordCount = transcriptText ? transcriptText.split(/\s+/).filter(Boolean).length : 0;
     const hasMeaningfulTranscript = transcriptText.length > 100 && transcriptWordCount >= 20;
     const swipeCandidate =
-      viabilityScore > 0.85 && viewCount > 1_000_000 && hasMeaningfulTranscript;
+      viabilityScore > 0.85 && hasMeaningfulTranscript;
 
     await prisma.adAsset.update({
       where: { id: asset.id },

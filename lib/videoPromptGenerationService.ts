@@ -11,12 +11,20 @@ type SceneReferenceFrame = {
   url: string;
 };
 
-const VIDEO_PROMPT_SYSTEM_PROMPT = `You are a video director writing production-grade Sora 2 prompts for UGC supplement ads.
-Return only the final prompt text.
-Write clear cinematic direction with concrete subject action, camera language, lighting, and environment details.
-Keep temporal continuity and character consistency across the shot.
-If a character handle is provided, include it verbatim with the @ symbol.
-VO IS MANDATORY: include the scene's VO line verbatim in every output prompt (as a VO line or spoken line).`;
+const VIDEO_PROMPT_SYSTEM_PROMPT = `You are a Sora 2 API generating UGC ad video prompts. Output ONLY the prompt text. No preamble, no explanation, no markdown.
+
+VISUAL IDENTITY (apply to every scene):
+- Shot on iPhone 15 Pro front camera, ~24mm equivalent, vertical 9:16
+- Handheld selfie grip with micro-jitter and subtle sway
+- Shallow depth of field, soft background blur
+- Natural phone grain, slight exposure variation, no filters
+- Single-take aesthetic - no cuts, no transitions within clip
+- Audio: iPhone mic, slight room reverb, ambient background noise, NO music
+
+CHARACTER CONSISTENCY:
+- Use the same actor identity across all scenes
+- Maintain identical face, hair, skin, clothing, and age throughout
+- If character reference image provided, match it exactly`;
 
 const VIDEO_PROMPT_MODEL = cfg.raw("ANTHROPIC_MODEL") || "claude-sonnet-4-5-20250929";
 
@@ -135,6 +143,7 @@ function normalizeCharacterHandleForPrompt(value: string | null): string | null 
 
 function buildVideoPromptUserPrompt(args: {
   sceneNumber: number;
+  totalScenes: number;
   durationSec: number;
   vo: string;
   scriptVoFull: string | null;
@@ -146,11 +155,13 @@ function buildVideoPromptUserPrompt(args: {
   cameraDirection: string;
   productPlacement: string;
   bRollSuggestions: string[];
+  characterDescription: string;
   hasCreatorRef: boolean;
   hasProductRef: boolean;
 }): string {
   const {
     sceneNumber,
+    totalScenes,
     durationSec,
     vo,
     scriptVoFull,
@@ -162,56 +173,74 @@ function buildVideoPromptUserPrompt(args: {
     cameraDirection,
     productPlacement,
     bRollSuggestions,
+    characterDescription,
     hasCreatorRef,
     hasProductRef,
   } = args;
   const normalizedCharacterHandle = normalizeCharacterHandleForPrompt(characterHandle);
-  const beatLabel = scriptBeat
-    ? `${asString(scriptBeat.beat) || "N/A"} (${asString(scriptBeat.duration) || "N/A"}) - VO: "${asString(scriptBeat.vo) || "N/A"}"`
-    : "";
+  const beatLabel = asString(scriptBeat?.beat);
 
-  return `You are generating a Sora 2 video prompt for Scene ${sceneNumber} of a UGC supplement ad.
+  return `SCENE ${sceneNumber} of ${totalScenes} | ${formatDurationLabel(durationSec)}s | ${panelType}
+${beatLabel ? `Beat: ${beatLabel}` : ""}
 
-AD CONTEXT:
-Full voiceover: "${scriptVoFull || 'N/A'}"
-${beatLabel ? `This scene: ${beatLabel}` : ''}
+FULL AD VO (for context only):
+"${scriptVoFull || "N/A"}"
 
-STORYBOARD PANEL:
-Scene ${sceneNumber} | ${formatDurationLabel(durationSec)}s | ${panelType}
-Scene VO: ${vo || 'N/A'}
-Character action: ${characterAction || 'N/A'}
-${normalizedCharacterHandle ? `Character: ${normalizedCharacterHandle} (include verbatim)` : ''}
-Environment: ${environment || 'N/A'}
-Camera: ${cameraDirection || 'N/A'}
-Product placement: ${productPlacement || 'N/A'}
-${bRollSuggestions.length > 0 ? `B-roll: ${bRollSuggestions.join('; ')}` : ''}
-${hasCreatorRef ? 'Subject: use creator reference image.' : ''}
-${hasProductRef ? 'Product: use product reference image.' : ''}
+THIS SCENE VO (include verbatim):
+"${vo || "N/A"}"
 
-Write a Sora 2 prompt using this structure and labels:
+STORYBOARD DIRECTION:
+SET DRESSING (render these props explicitly):
+${environment || "real home/work setting, lived-in and natural"}
+Camera: ${cameraDirection || "medium close-up, eye level, centered"}
+Character action: ${characterAction || "N/A"}
+Product placement: ${productPlacement || "none"}
+${bRollSuggestions.length > 0 ? `B-roll overlays: ${bRollSuggestions.join("; ")}` : ""}
+${normalizedCharacterHandle ? `Character handle: ${normalizedCharacterHandle} (include verbatim with @ symbol)` : ""}
+${hasCreatorRef ? "Subject: match creator reference image exactly." : ""}
+${hasProductRef ? "Product: match product reference image exactly." : ""}
 
-[Scene description: subject, environment, atmosphere]
+CHARACTER (maintain across all scenes):
+${characterDescription}
+
+OUTPUT STRUCTURE - use these exact labels:
+
+[Scene: one sentence - subject, environment, atmosphere]
+
+Environment:
+- [specific props and set dressing visible in frame]
+- [room details - walls, surfaces, lighting fixtures]
 
 Cinematography:
-Camera shot: [framing and angle]
-Lighting + palette: [light source, quality, 3-5 color anchors]
-Mood: [tone]
+- Shot: [framing, angle, distance]
+- Lighting: [source, quality, temperature]
+- Palette: [3-5 color anchors]
+- Motion: [camera movement, handheld behavior]
 
-Actions:
-- [0s: opening beat]
-- [Xs: next beat with timing]
-- [Final beat]
+Performance:
+- 0s: [opening action]
+- ${Math.round(durationSec * 0.3)}s: [mid action]
+- ${Math.round(durationSec * 0.7)}s: [product/key moment]
+- ${formatDurationLabel(durationSec)}s: [closing action]
 
-Output requirements:
-- 350-1200 characters
-- No preamble or explanation
-- Include concrete physical actions and camera movement
-- Avoid generic filler phrasing
-- MUST include this exact scene VO line verbatim somewhere in the output: "${vo || "N/A"}"`;
+VO: "${vo || "N/A"}"
+
+Audio:
+- [ambient sound description]
+- No music. iPhone mic. Single-take.
+
+UGC keywords: smartphone selfie, handheld realism, front-camera authenticity, raw UGC monologue, micro-jitters, imperfect framing, no filters, one-take aesthetic, subtle exposure shifts.
+
+CONSTRAINTS:
+- Vertical 9:16 format
+- ${formatDurationLabel(durationSec)}s clip duration
+- Include scene VO verbatim
+- No cinematic film language - this is a phone video`;
 }
 
 async function generateKlingPromptWithClaude(args: {
   sceneNumber: number;
+  totalScenes: number;
   durationSec: number;
   vo: string;
   requiredVo: string;
@@ -224,6 +253,7 @@ async function generateKlingPromptWithClaude(args: {
   cameraDirection: string;
   productPlacement: string;
   bRollSuggestions: string[];
+  characterDescription: string;
   hasCreatorRef: boolean;
   hasProductRef: boolean;
 }): Promise<string> {
@@ -239,6 +269,7 @@ async function generateKlingPromptWithClaude(args: {
 
   const userPrompt = buildVideoPromptUserPrompt({
     sceneNumber: args.sceneNumber,
+    totalScenes: args.totalScenes,
     durationSec: args.durationSec,
     vo: args.requiredVo,
     scriptVoFull: args.scriptVoFull ?? null,
@@ -250,6 +281,7 @@ async function generateKlingPromptWithClaude(args: {
     cameraDirection: args.cameraDirection,
     productPlacement: args.productPlacement,
     bRollSuggestions: args.bRollSuggestions,
+    characterDescription: args.characterDescription,
     hasCreatorRef: args.hasCreatorRef,
     hasProductRef: args.hasProductRef,
   });
@@ -388,6 +420,7 @@ export async function runVideoPromptGeneration(args: {
 
     const prompt = await generateKlingPromptWithClaude({
       sceneNumber: 1,
+      totalScenes: 1,
       durationSec: 8,
       vo: "",
       requiredVo: fallbackRequiredVo,
@@ -400,6 +433,7 @@ export async function runVideoPromptGeneration(args: {
       cameraDirection: "",
       productPlacement: "",
       bRollSuggestions: [],
+      characterDescription: "Same creator identity as the ad context. Maintain face, hair, clothing, and age consistency.",
       hasCreatorRef: Boolean(sceneReferenceFrames.find((frame) => frame.kind === 'creator')?.url),
       hasProductRef: Boolean(sceneReferenceFrames.find((frame) => frame.kind === 'product')?.url),
     });
@@ -428,6 +462,7 @@ export async function runVideoPromptGeneration(args: {
   }
 
   const targetScenes = scenes;
+  const totalScenes = targetScenes.length;
 
   if (!targetScenes.length) {
     console.log("[videoPromptGeneration] All prompts generated successfully", {
@@ -473,9 +508,15 @@ export async function runVideoPromptGeneration(args: {
     const cameraDirection = asString(raw.cameraDirection);
     const productPlacement = asString(raw.productPlacement);
     const bRollSuggestions = asStringArray(raw.bRollSuggestions);
+    const characterDescription =
+      asString((raw as any).characterDescription) ||
+      (characterHandle
+        ? `Creator handle ${normalizeCharacterHandleForPrompt(characterHandle)}. Keep identity and styling consistent across scenes.`
+        : "Same creator identity across scenes. Keep face, hair, clothing, and age consistent.");
 
     const prompt = await generateKlingPromptWithClaude({
       sceneNumber,
+      totalScenes,
       durationSec,
       vo,
       requiredVo,
@@ -488,6 +529,7 @@ export async function runVideoPromptGeneration(args: {
       cameraDirection,
       productPlacement,
       bRollSuggestions,
+      characterDescription,
       hasCreatorRef: Boolean(sceneCreatorReferenceImageUrl),
       hasProductRef: Boolean(sceneProductReferenceImageUrl),
     });

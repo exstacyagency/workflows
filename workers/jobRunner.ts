@@ -107,7 +107,17 @@ const ARCHIVED_JOB_TYPES: JobType[] = [
 ];
 const RUN_ONCE = cfg.raw("RUN_ONCE") === "1";
 const WORKER_JOB_MAX_RUNTIME_MS = Number(cfg.raw("WORKER_JOB_MAX_RUNTIME_MS") ?? 20 * 60_000);
-const JOB_TIMEOUT_RECOVERY_INTERVAL_MS = 5 * 60_000;
+const SCRIPT_JOB_MAX_RUNTIME_MS = Number(
+  cfg.raw("SCRIPT_JOB_MAX_RUNTIME_MS") ?? 45 * 60_000,
+);
+const JOB_TIMEOUT_RECOVERY_INTERVAL_MS = Number(
+  cfg.raw("JOB_TIMEOUT_RECOVERY_INTERVAL_MS") ?? 5 * 60_000,
+);
+const JOB_RUNNING_STALE_MS = Number(cfg.raw("JOB_RUNNING_STALE_MS") ?? 10 * 60_000);
+const SCRIPT_JOB_RUNNING_STALE_MS = Number(
+  cfg.raw("SCRIPT_JOB_RUNNING_STALE_MS") ??
+    Math.max(60 * 60_000, SCRIPT_JOB_MAX_RUNTIME_MS + 15 * 60_000),
+);
 const AD_QUALITY_GATE_JOB_TYPE = "AD_QUALITY_GATE" as JobType;
 const CREATOR_AVATAR_JOB_TYPE = "CREATOR_AVATAR_GENERATION" as JobType;
 const CHARACTER_SEED_VIDEO_JOB_TYPE = "CHARACTER_SEED_VIDEO" as JobType;
@@ -126,8 +136,15 @@ function nowMs() {
   return Date.now();
 }
 
-async function runWithMaxRuntime<T>(label: string, fn: () => Promise<T>): Promise<T> {
-  const timeoutMs = WORKER_JOB_MAX_RUNTIME_MS;
+async function runWithJobTypeMaxRuntime<T>(
+  jobType: JobType,
+  label: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const timeoutMs =
+    jobType === JobType.SCRIPT_GENERATION
+      ? Math.max(5 * 60_000, SCRIPT_JOB_MAX_RUNTIME_MS)
+      : Math.max(60_000, WORKER_JOB_MAX_RUNTIME_MS);
   let timeout: ReturnType<typeof setTimeout> | null = null;
   try {
     return await Promise.race([
@@ -446,11 +463,6 @@ async function claimNextJob(exclusions?: ClaimExclusions) {
       SELECT "id"
       FROM job
       WHERE "status" = CAST('PENDING' AS "JobStatus")
-        AND NOT EXISTS (
-          SELECT 1
-          FROM job r
-          WHERE r."status" = CAST('RUNNING' AS "JobStatus")
-        )
         AND (
           ${excludedTypes.length} = 0
           OR "type" NOT IN (${Prisma.join(
@@ -813,6 +825,8 @@ async function runJob(
         const scriptId = String(payload?.scriptId ?? "").trim();
         const productId = String(payload?.productId ?? "").trim() || null;
         const characterHandle = String(payload?.characterHandle ?? "").trim() || null;
+        const storyboardMode = String(payload?.storyboardMode ?? "").trim() === "manual" ? "manual" : "ai";
+        const manualPanels = Array.isArray(payload?.manualPanels) ? payload.manualPanels : undefined;
         if (!scriptId) {
           await rollbackJobQuotaIfNeeded({ jobId, projectId: job.projectId, payload });
           await markFailed({ jobId, error: "Invalid payload: missing scriptId" });
@@ -820,7 +834,12 @@ async function runJob(
         }
 
         try {
-          const result = await generateStoryboard(scriptId, { productId, characterHandle });
+          const result = await generateStoryboard(scriptId, {
+            productId,
+            characterHandle,
+            storyboardMode,
+            manualPanels,
+          });
           const warningCount = Array.isArray(result.validationReport?.warnings)
             ? result.validationReport.warnings.length
             : 0;
@@ -1409,13 +1428,25 @@ async function runJob(
 }
 
 async function recoverTimedOutRunningJobs(trigger: "startup" | "interval") {
+  const now = Date.now();
+  const staleBeforeIso = new Date(now - JOB_RUNNING_STALE_MS).toISOString();
+  const scriptStaleBeforeIso = new Date(now - SCRIPT_JOB_RUNNING_STALE_MS).toISOString();
   const recoveredCount = await prisma.$executeRaw`
     UPDATE job
     SET "status" = CAST('FAILED' AS "JobStatus"),
         "error" = to_jsonb('Job timeout - exceeded maximum runtime'::text),
         "updatedAt" = NOW()
     WHERE "status" = CAST('RUNNING' AS "JobStatus")
-      AND "updatedAt" < NOW() - INTERVAL '10 minutes'
+      AND (
+        (
+          "type" = CAST('SCRIPT_GENERATION' AS "JobType")
+          AND "updatedAt" < ${scriptStaleBeforeIso}::timestamptz
+        )
+        OR (
+          "type" <> CAST('SCRIPT_GENERATION' AS "JobType")
+          AND "updatedAt" < ${staleBeforeIso}::timestamptz
+        )
+      )
   `;
 
   if (recoveredCount > 0) {
@@ -1468,7 +1499,21 @@ async function loop() {
       }
 
       writeLog(`[WORKER] Claimed job: ${job.id} Type: ${job.type}`);
-      await runJob(job, pipelineContext);
+      try {
+        await runWithJobTypeMaxRuntime(job.type, `job ${job.id}`, () =>
+          runJob(job!, pipelineContext),
+        );
+      } catch (e) {
+        try {
+          await markFailed({ jobId: job.id, error: e });
+        } catch (updateErr) {
+          console.error("[jobRunner] failed to mark timed-out job as FAILED", {
+            jobId: job.id,
+            updateErr,
+          });
+        }
+        throw e;
+      }
       writeLog(`[WORKER] Finished job: ${job.id}`);
       if (!RUN_ONCE) {
         await sleep(POLL_MS);

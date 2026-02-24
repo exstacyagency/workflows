@@ -16,6 +16,21 @@ const BodySchema = z.object({
   productId: z.string().optional(),
   runId: z.string().optional(),
   characterId: z.string().optional(),
+  storyboardMode: z.enum(["ai", "manual"]).optional(),
+  manualPanels: z
+    .array(
+      z.object({
+        beatLabel: z.string().optional(),
+        startTime: z.string().optional(),
+        endTime: z.string().optional(),
+        vo: z.string().optional(),
+        creatorAction: z.string().optional(),
+        textOverlay: z.string().optional(),
+        visualDescription: z.string().optional(),
+        productPlacement: z.string().optional(),
+      }),
+    )
+    .optional(),
   attemptKey: z.string().optional(),
 });
 
@@ -54,6 +69,8 @@ export async function POST(req: NextRequest) {
       productId: rawProductId,
       runId: rawRunId,
       characterId: rawCharacterId,
+      storyboardMode: rawStoryboardMode,
+      manualPanels: rawManualPanels,
       attemptKey: rawAttemptKey,
     } = parsed.data;
 
@@ -90,6 +107,10 @@ export async function POST(req: NextRequest) {
     const requestedRunId = String(rawRunId ?? "").trim();
     const requestedProductId = String(rawProductId ?? "").trim();
     const requestedCharacterId = String(rawCharacterId ?? "").trim();
+    const storyboardMode = rawStoryboardMode === "manual" ? "manual" : "ai";
+    const manualPanels = storyboardMode === "manual" && Array.isArray(rawManualPanels)
+      ? rawManualPanels
+      : undefined;
     const attemptKey = String(rawAttemptKey ?? "").trim() || `${Date.now()}`;
     let effectiveRunId: string | null = null;
     let effectiveProductId: string | null = null;
@@ -206,6 +227,7 @@ export async function POST(req: NextRequest) {
       effectiveProductId ?? "no_product",
       effectiveRunId ?? "no_run",
       effectiveCharacterId ?? "no_character",
+      storyboardMode,
       attemptKey,
     ]);
 
@@ -269,6 +291,8 @@ export async function POST(req: NextRequest) {
       ...(effectiveProductId ? { productId: effectiveProductId } : {}),
       ...(effectiveCharacterId ? { characterId: effectiveCharacterId } : {}),
       ...(effectiveCharacterHandle ? { characterHandle: effectiveCharacterHandle } : {}),
+      storyboardMode,
+      ...(manualPanels ? { manualPanels } : {}),
       idempotencyKey,
       ...(effectiveRunId ? { runId: effectiveRunId } : {}),
       ...(reservation ? { quotaReservation: reservation } : {}),
@@ -300,6 +324,7 @@ export async function POST(req: NextRequest) {
         jobId: job.id,
         runId: job.runId ?? effectiveRunId,
         scriptIdUsed,
+        storyboardMode,
         ...(effectiveCharacterId ? { characterId: effectiveCharacterId } : {}),
         ...(effectiveCharacterHandle ? { characterHandle: effectiveCharacterHandle } : {}),
         reused: false,

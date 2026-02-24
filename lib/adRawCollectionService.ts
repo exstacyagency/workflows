@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { AdPlatform, JobStatus, Prisma } from '@prisma/client';
 import { ConfigError, env, requireEnv } from './configGuard.ts';
 import { updateJobStatus } from '@/lib/jobs/updateJobStatus';
+import { uploadPublicObject } from "./s3Service";
 
 const APIFY_BASE = 'https://api.apify.com/v2';
 const APIFY_POLL_MS = 2000;
@@ -465,6 +466,28 @@ function sortByEngagement(ads: NormalizedAd[]): NormalizedAd[] {
     }));
 }
 
+async function mirrorVideoToS3(
+  videoUrl: string,
+  adId: string,
+): Promise<string> {
+  if (!videoUrl) return videoUrl;
+  try {
+    const response = await fetch(videoUrl);
+    if (!response.ok) return videoUrl;
+    const buffer = Buffer.from(await response.arrayBuffer());
+    const key = `ad-assets/${adId}/source.mp4`;
+    const s3Url = await uploadPublicObject({
+      key,
+      body: buffer,
+      contentType: "video/mp4",
+    });
+    return s3Url ?? videoUrl;
+  } catch {
+    // Fall back to original URL - do not fail collection if storage fails.
+    return videoUrl;
+  }
+}
+
 /**
  * Save normalized ads into AdAsset with metrics JSON aligned to what
  * the Pattern Brain needs later.
@@ -483,7 +506,14 @@ async function saveAdsToPrisma(options: {
     return;
   }
 
-  const data = ads.map(ad => ({
+  const adsWithS3Urls = await Promise.all(
+    ads.map(async (ad) => ({
+      ...ad,
+      videoUrl: await mirrorVideoToS3(ad.videoUrl, ad.id),
+    })),
+  );
+
+  const data = adsWithS3Urls.map(ad => ({
     projectId,
     jobId,
     platform: AdPlatform.TIKTOK,

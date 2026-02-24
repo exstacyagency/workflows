@@ -1,7 +1,6 @@
 // app/api/jobs/script-generation/route.ts
 import { cfg } from "@/lib/config";
 import { NextRequest, NextResponse } from "next/server";
-import { startScriptGenerationJob } from "../../../../lib/scriptGenerationService";
 import { requireProjectOwner } from "../../../../lib/requireProjectOwner";
 import { ProjectJobSchema, parseJson } from "../../../../lib/validation/jobs";
 import { checkRateLimit } from "../../../../lib/rateLimiter";
@@ -10,7 +9,6 @@ import { JobStatus, JobType, ScriptStatus, Prisma } from "@prisma/client";
 import { logAudit } from "../../../../lib/logger";
 import { getSessionUserId } from "../../../../lib/getSessionUserId";
 import { enforceUserConcurrency } from "../../../../lib/jobGuards";
-import { runWithState } from "../../../../lib/jobRuntime";
 import { flag } from "../../../../lib/flags";
 import { getRequestId, logError, logInfo } from "../../../../lib/observability";
 import { z } from "zod";
@@ -28,7 +26,8 @@ const ScriptGenerationSchema = ProjectJobSchema.extend({
   runId: z.string().optional(),
   forceNew: z.boolean().optional(),
   targetDuration: z.number().int().min(1).max(180).default(30),
-  beatCount: z.number().int().min(1).max(10).default(5),
+  beatCount: z.number().int().min(1).max(10).optional(),
+  clipDurationSeconds: z.union([z.literal(10), z.literal(15)]).default(10),
   beatRatios: z
     .array(
       z.object({
@@ -54,9 +53,9 @@ async function querySwipeTemplateCandidates(
       FROM "ad_asset" a
       LEFT JOIN "job" j ON j."id" = a."jobId"
       WHERE a."projectId" = ${projectId}
-        AND COALESCE(a."isSwipeFile", false) = true
         AND COALESCE(a."contentViable", false) = true
-        AND a."swipeMetadata" IS NOT NULL
+        AND (a."rawJson"->>'transcript') IS NOT NULL
+        AND LENGTH(TRIM(a."rawJson"->>'transcript')) > 100
         ${runId ? Prisma.sql`AND j."runId" = ${runId}` : Prisma.empty}
       ORDER BY a."createdAt" DESC
       LIMIT 100
@@ -266,7 +265,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json(
           {
             error:
-              "No swipe template candidates are available. Only ads that passed quality assessment and pattern-analysis promotion can be used. Run Quality Assessment and Pattern Analysis, then try again.",
+              "No swipe-eligible ads found. Ads must be quality-passed and include a meaningful transcript.",
           },
           { status: 400 },
         );
@@ -276,7 +275,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json(
           {
             error:
-              "Selected swipe template ad is not available. It must be quality-passed and promoted to swipe by pattern analysis.",
+              "Selected swipe template ad is not available. It must be swipe-eligible for the selected run scope.",
           },
           { status: 400 },
         );
@@ -429,7 +428,7 @@ export async function POST(req: NextRequest) {
           projectId,
           userId,
           type: JobType.SCRIPT_GENERATION,
-          status: JobStatus.RUNNING,
+          status: JobStatus.PENDING,
           idempotencyKey,
           runId: effectiveRunId,
           payload: {
@@ -490,17 +489,9 @@ export async function POST(req: NextRequest) {
       metadata: { type: "script-generation" },
     });
 
-    const state = await runWithState(job.id, () =>
-      startScriptGenerationJob(projectId, job),
-    );
-
-    if (!state.ok && reservation) {
-      await rollbackQuota(userId, reservation.periodKey, "researchQueries", 1);
-    }
-
     return NextResponse.json(
-      { jobId: job.id, runId: effectiveRunId, ...state },
-      { status: state.ok ? 200 : 500 },
+      { jobId: job.id, runId: effectiveRunId, ok: true, started: true },
+      { status: 200 },
     );
   } catch (err: any) {
     if (reservation && userIdForQuota) {

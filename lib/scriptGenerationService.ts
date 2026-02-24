@@ -8,16 +8,25 @@ import type { Job } from '@prisma/client';
 import { guardedExternalCall } from './externalCallGuard.ts';
 import { env, requireEnv } from './configGuard.ts';
 import { flag, devNumber } from './flags.ts';
-import { scaleBeatRatiosToduration, type BeatRatio } from "@/lib/analyzeSwipeTranscript";
+import type { BeatRatio } from "@/lib/analyzeSwipeTranscript";
+import { extractSwipePatterns } from "@/lib/swipePatternExtractor";
+import { WORDS_PER_CLIP, beatsForClipDuration } from "./soraConstants";
 
-const LLM_TIMEOUT_MS = Number(cfg.raw("LLM_TIMEOUT_MS") ?? 90_000);
+function parsePositiveIntConfig(raw: string | undefined, fallback: number): number {
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return fallback;
+  const normalized = Math.trunc(parsed);
+  return normalized > 0 ? normalized : fallback;
+}
+
+const LLM_TIMEOUT_MS = parsePositiveIntConfig(cfg.raw("LLM_TIMEOUT_MS"), 90_000);
 console.log("[LLM] timeout config:", {
   raw: cfg.raw("LLM_TIMEOUT_MS"),
   resolved: LLM_TIMEOUT_MS,
 });
-const LLM_BREAKER_FAILS = Number(cfg.raw("LLM_BREAKER_FAILS") ?? 3);
-const LLM_BREAKER_COOLDOWN_MS = Number(cfg.raw("LLM_BREAKER_COOLDOWN_MS") ?? 60_000);
-const LLM_RETRIES = Number(cfg.raw("LLM_RETRIES") ?? 1);
+const LLM_BREAKER_FAILS = parsePositiveIntConfig(cfg.raw("LLM_BREAKER_FAILS"), 3);
+const LLM_BREAKER_COOLDOWN_MS = parsePositiveIntConfig(cfg.raw("LLM_BREAKER_COOLDOWN_MS"), 60_000);
+const LLM_RETRIES = parsePositiveIntConfig(cfg.raw("LLM_RETRIES"), 1);
 
 type Pattern = {
   pattern_name: string;
@@ -123,7 +132,7 @@ type PromptInjectionValues = {
 
 type BeatPlanEntry = {
   label: string;
-  duration: string;
+  duration?: string;
   guidance?: string;
   formulaComponent?: string;
 };
@@ -183,6 +192,7 @@ type SwipeTemplate = {
 type SwipeFileSelection = {
   id: string;
   views: number | null;
+  transcript: string | null;
   swipeMetadata: SwipeTemplate;
 };
 
@@ -556,22 +566,19 @@ function buildDefaultBeatLabels(beatCount: number): string[] {
   return labels;
 }
 
-function buildDefaultBeatPlan(targetDuration: number, beatCount: number): BeatPlanEntry[] {
+function buildDefaultBeatPlan(
+  targetDuration: number,
+  beatCount: number,
+  clipDurationSeconds: 10 | 15,
+): BeatPlanEntry[] {
   const safeDuration = normalizeTargetDurationValue(targetDuration);
-  const safeBeatCount = normalizeBeatCountValue(beatCount);
+  const safeClipDuration = clipDurationSeconds === 15 ? 15 : 10;
+  const computedBeatCount = beatsForClipDuration(safeDuration, safeClipDuration);
+  const safeBeatCount = normalizeBeatCountValue(beatCount || computedBeatCount);
   const labels = buildDefaultBeatLabels(safeBeatCount);
-  const secondsPerBeat = safeDuration / safeBeatCount;
-  let start = 0;
-
-  return labels.map((label, index) => {
-    const end = index === safeBeatCount - 1 ? safeDuration : start + secondsPerBeat;
-    const entry: BeatPlanEntry = {
-      label,
-      duration: `${formatSecondsForPrompt(start)}-${formatSecondsForPrompt(end)}s`,
-    };
-    start = end;
-    return entry;
-  });
+  return labels.map((label) => ({
+    label,
+  }));
 }
 
 function parsePrescriptiveBodySegments(body: string): string[] {
@@ -587,7 +594,10 @@ function parsePrescriptiveBodySegments(body: string): string[] {
     .filter(Boolean);
 }
 
-function normalizeTimingDuration(value: Record<string, unknown>, fallback: string): string {
+function normalizeTimingDuration(
+  value: Record<string, unknown>,
+  fallback?: string,
+): string | undefined {
   return (
     asString(value.timing) ||
     asString(value.time_range) ||
@@ -622,11 +632,16 @@ function buildBeatPlanFromPatternData(
   rawPatternJson: unknown,
   targetDuration: number,
   beatCount: number,
+  clipDurationSeconds: 10 | 15,
 ): {
   beats: BeatPlanEntry[];
   source: "timingPatterns" | "prescriptiveGuidance.body" | "default";
 } {
-  const fallbackBeats = buildDefaultBeatPlan(targetDuration, beatCount);
+  const fallbackBeats = buildDefaultBeatPlan(
+    targetDuration,
+    beatCount,
+    clipDurationSeconds,
+  );
   const root = asObject(rawPatternJson);
   const patternsRoot = asObject(root?.patterns);
   const timingPatternsRaw = Array.isArray(patternsRoot?.timingPatterns)
@@ -1390,8 +1405,7 @@ function buildScriptPrompt(args: {
   patternRawJson: unknown;
   swipeFile: SwipeFileSelection | null;
   targetDuration: number;
-  beatCount: number;
-  beatRatios?: BeatRatio[];
+  clipDurationSeconds: 10 | 15;
   patterns: Pattern[];
   antiPatterns: AntiPattern[];
   stackingRules: StackingRule[];
@@ -1408,8 +1422,7 @@ function buildScriptPrompt(args: {
     patternRawJson,
     swipeFile,
     targetDuration,
-    beatCount,
-    beatRatios,
+    clipDurationSeconds,
     patterns,
     antiPatterns,
     stackingRules,
@@ -1563,10 +1576,12 @@ function buildScriptPrompt(args: {
   const copyReadyPhrasesList = copyReadyPhrases.length
     ? copyReadyPhrases.map((phrase, index) => `${index + 1}. "${phrase}"`).join("\n")
     : "MISSING";
+  const beatCount = beatsForClipDuration(targetDuration, clipDurationSeconds);
   const beatPlanBase = buildBeatPlanFromPatternData(
     patternRawJson,
     targetDuration,
     beatCount,
+    clipDurationSeconds,
   );
   const transferFormula = extractTransferFormula(patternRawJson);
   const beatPlan = {
@@ -1575,11 +1590,16 @@ function buildScriptPrompt(args: {
   };
   const psychologicalMechanism = extractPsychologicalMechanism(patternRawJson) || "MISSING";
   const voiceCadenceConstraint = buildVoiceCadenceConstraint(patternRawJson);
-  const schemaTimingPlan = buildDefaultBeatPlan(targetDuration, beatCount);
+  const schemaTimingPlan = buildDefaultBeatPlan(
+    targetDuration,
+    beatCount,
+    clipDurationSeconds,
+  );
   const dynamicWordCeiling = Math.round((targetDuration / 60) * 135 * 0.9);
+  const wordsPerBeat = WORDS_PER_CLIP[clipDurationSeconds];
   const beatStructureLines = beatPlan.beats
     .map((beat, index) => {
-      return `- Beat ${index + 1}: ${beat.label} (${beat.duration})`;
+      return `- Beat ${index + 1}: ${beat.label}`;
     })
     .join("\n");
   const formulaComponentsPerBeatLines = beatPlan.beats
@@ -1597,29 +1617,27 @@ ${formulaComponentsPerBeatLines}`
     .map(
       (timedBeat, index) => {
         const beat = beatPlan.beats[index] ?? timedBeat;
-        return `    {\n      "beat": "${escapePromptJsonString(beat.label)}",\n      "duration": "${escapePromptJsonString(timedBeat.duration)}",\n      "vo": "text"\n    }`;
+        const durationLabel = asString(timedBeat.duration) ?? `${clipDurationSeconds}s`;
+        return `    {\n      "beat": "${escapePromptJsonString(beat.label)}",\n      "duration": "${escapePromptJsonString(durationLabel)}",\n      "vo": "text (max ${wordsPerBeat} words, speakable in ${clipDurationSeconds}s)"\n    }`;
       }
     )
     .join(",\n");
   const swipeMetadata = swipeFile?.swipeMetadata ?? null;
   const swipeFileViewsLabel =
     typeof swipeFile?.views === "number" ? swipeFile.views.toLocaleString() : "unknown";
-  const swipeBeatStructure = swipeMetadata?.beatStructure?.length
-    ? swipeMetadata.beatStructure
-        .map((beat) => `- ${beat.beat} (${beat.duration}): ${beat.pattern}`)
-        .join("\n")
-    : "- Not provided";
   const swipeTemplateSection = swipeMetadata
     ? `SWIPE FILE TEMPLATE (from ${swipeFileViewsLabel} views)
-Hook (0-3s): ${swipeMetadata.hookPattern}
-Problem (3-8s): ${swipeMetadata.problemPattern}
-Solution (8-13s): ${swipeMetadata.solutionPattern}
-CTA (13-15s): ${swipeMetadata.ctaPattern}
+Mechanism: ${swipeMetadata.adMechanism} — ${swipeMetadata.mechanismDescription}
 
-Beat structure:
-${swipeBeatStructure}
+Source transcript — this is your structural blueprint:
+${swipeFile?.transcript ?? ""}
 
-Apply this structure exactly, but fill it with this project's avatar language and product claims.
+Replicate exactly:
+- How it opens (first 3 words set the tone — match that energy)
+- How it moves beat to beat (rhythm, pacing, sentence length)
+- How it closes (the emotional or logical landing)
+
+Replace brand, product, and claims with this project's equivalent. Do not reformat into POV statements, problem/solution structure, or any other framework unless the source transcript uses it. The transcript above is the ground truth — not a suggestion.
 `
     : "";
 
@@ -1627,22 +1645,18 @@ Apply this structure exactly, but fill it with this project's avatar language an
   // Tier 1 = hard architectural constraints, Tier 2 = pass/fail quality gates, Tier 3 = flexible guidance.
   const system = swipeMetadata
     ? "You are a TikTok conversion copywriter. Use the provided swipe template as the primary script structure while keeping all output constraints. Output ONLY valid JSON. No markdown. No preamble."
-    : "You are a TikTok conversion copywriter. You write 30-second UGC scripts that stop scrolls and drive purchases. Every word earns its place. Output ONLY valid JSON. No markdown. No preamble.";
-
-  const proportionalTiming = beatRatios && beatRatios.length > 0
-    ? scaleBeatRatiosToduration(beatRatios, targetDuration)
-    : null;
-  const proportionalTimingSection = proportionalTiming
-    ? `proportionalBeatTiming:\n${proportionalTiming}\n`
-    : `beatCount: ${beatCount}\n`;
+    : "You are a TikTok conversion copywriter. You write UGC scripts that stop scrolls and drive purchases. Every word earns its place. Output ONLY valid JSON. No markdown. No preamble.";
 
   const prompt = `${swipeTemplateSection}TIER 1 - STRUCTURE (NON-NEGOTIABLE)
-targetDuration: ${targetDuration}
+${swipeMetadata
+  ? `// Structure governed by swipe template above. Beat count, timing, and formula constraints are suppressed.`
+  : `beatCount: ${beatCount}
+clipDurationSeconds: ${clipDurationSeconds}
+wordsPerBeat: ${wordsPerBeat} (hard ceiling - each beat VO must be speakable in ${clipDurationSeconds}s at natural pace)
 dynamicWordCeiling: ${dynamicWordCeiling}
-${proportionalTimingSection}
 beatStructureLines:
 ${beatStructureLines}
-${tier1FormulaSection}
+${tier1FormulaSection}`}
 Break any Tier 1 rule and the output is unusable. These are architectural constraints.
 
 TIER 2 - QUALITY GATES (GO/NO-GO)
@@ -1651,6 +1665,7 @@ copyReadyPhrases list:
 ${copyReadyPhrasesList}
 verifiedNumericClaims (use these or use no numbers):
 ${verifiedNumericClaims.length > 0 ? verifiedNumericClaims.map((claim, idx) => `${idx + 1}. ${claim}`).join('\n') : "None provided"}
+- Each beat VO must not exceed ${wordsPerBeat} words. Count words before outputting. Beats exceeding this limit fail the quality gate.
 finalBeatOutcome requirement:
 "${successLooksLikeQuote || "MISSING"}"
 Pass all three gates or the script fails review.
@@ -1717,6 +1732,8 @@ type ScriptJobPayload = {
   customerAnalysisJobId?: unknown;
   targetDuration?: unknown;
   beatCount?: unknown;
+  beatCountExplicit?: unknown;
+  clipDurationSeconds?: unknown;
   beatRatios?: unknown;
   scriptStrategy?: unknown;
   swipeTemplateAdId?: unknown;
@@ -1725,8 +1742,7 @@ type ScriptJobPayload = {
 type ScriptGenerationJobConfig = {
   customerAnalysisJobId: string | null;
   targetDuration: number;
-  beatCount: number;
-  beatRatios: BeatRatio[];
+  clipDurationSeconds: 10 | 15;
   scriptStrategy: ScriptStrategy;
   swipeTemplateAdId: string | null;
 };
@@ -1736,8 +1752,7 @@ async function getRequestedScriptGenerationConfig(jobId?: string): Promise<Scrip
     return {
       customerAnalysisJobId: null,
       targetDuration: DEFAULT_SCRIPT_TARGET_DURATION,
-      beatCount: DEFAULT_SCRIPT_BEAT_COUNT,
-      beatRatios: [],
+      clipDurationSeconds: 10,
       scriptStrategy: "swipe_template",
       swipeTemplateAdId: null,
     };
@@ -1761,13 +1776,12 @@ async function getRequestedScriptGenerationConfig(jobId?: string): Promise<Scrip
   const swipeTemplateAdIdRaw =
     typeof payload?.swipeTemplateAdId === "string" ? payload.swipeTemplateAdId.trim() : "";
   const targetDuration = normalizeTargetDurationValue(payload?.targetDuration);
-  const beatCount = normalizeBeatCountValue(payload?.beatCount);
-  const beatRatios = normalizeBeatRatios(payload?.beatRatios);
+  const clipDurationSecondsRaw = payload?.clipDurationSeconds;
+  const clipDurationSeconds: 10 | 15 = clipDurationSecondsRaw === 15 ? 15 : 10;
   return {
     customerAnalysisJobId: selectedId || null,
     targetDuration,
-    beatCount,
-    beatRatios,
+    clipDurationSeconds,
     scriptStrategy,
     swipeTemplateAdId: swipeTemplateAdIdRaw || null,
   };
@@ -1777,6 +1791,12 @@ async function getAvatarForScript(
   projectId: string,
   customerAnalysisJobId: string | null
 ): Promise<AvatarSelection> {
+  const loadFallbackAvatar = async () =>
+    prisma.customerAvatar.findFirst({
+      where: { projectId },
+      orderBy: { createdAt: "desc" },
+    });
+
   if (!customerAnalysisJobId) {
     const latestAnalysisJob = await prisma.job.findFirst({
       where: {
@@ -1815,10 +1835,7 @@ async function getAvatarForScript(
       }
     }
 
-    const fallbackAvatar = await prisma.customerAvatar.findFirst({
-      where: { projectId },
-      orderBy: { createdAt: "desc" },
-    });
+    const fallbackAvatar = await loadFallbackAvatar();
     return { avatar: fallbackAvatar, customerAnalysis: null };
   }
 
@@ -1839,14 +1856,24 @@ async function getAvatarForScript(
   });
 
   if (!analysisJob) {
-    throw new Error('Selected research run is invalid or not completed.');
+    const fallbackAvatar = await loadFallbackAvatar();
+    return { avatar: fallbackAvatar, customerAnalysis: null };
   }
 
   const summary = asObject(analysisJob.resultSummary);
   const avatarId = asString(summary?.avatarId);
 
   if (!avatarId) {
-    throw new Error('Selected research run has no linked customer avatar.');
+    const fallbackAvatar = await loadFallbackAvatar();
+    return {
+      avatar: fallbackAvatar,
+      customerAnalysis: {
+        jobId: analysisJob.id,
+        runId: analysisJob.runId ?? null,
+        createdAt: analysisJob.createdAt,
+        completedAt: analysisJob.updatedAt,
+      },
+    };
   }
 
   const avatar = await prisma.customerAvatar.findFirst({
@@ -1854,7 +1881,16 @@ async function getAvatarForScript(
   });
 
   if (!avatar) {
-    throw new Error('Customer avatar for the selected research run was not found.');
+    const fallbackAvatar = await loadFallbackAvatar();
+    return {
+      avatar: fallbackAvatar,
+      customerAnalysis: {
+        jobId: analysisJob.id,
+        runId: analysisJob.runId ?? null,
+        createdAt: analysisJob.createdAt,
+        completedAt: analysisJob.updatedAt,
+      },
+    };
   }
 
   return {
@@ -2029,9 +2065,9 @@ async function selectSwipeFile(
         FROM "ad_asset" a
         LEFT JOIN "job" j ON j."id" = a."jobId"
         WHERE a."projectId" = ${projectId}
-          AND COALESCE(a."isSwipeFile", false) = true
           AND COALESCE(a."contentViable", false) = true
-          AND a."swipeMetadata" IS NOT NULL
+          AND (a."rawJson"->>'transcript') IS NOT NULL
+          AND LENGTH(TRIM(a."rawJson"->>'transcript')) > 100
           ${runId ? Prisma.sql`AND j."runId" = ${runId}` : Prisma.empty}
         ORDER BY
           COALESCE(
@@ -2045,7 +2081,7 @@ async function selectSwipeFile(
             0
           ) DESC,
           a."createdAt" DESC
-        LIMIT 40
+        LIMIT 60
       `
     );
 
@@ -2078,26 +2114,80 @@ async function selectSwipeFile(
     );
   };
 
+  const orderedCandidates = scopedCandidates
+    .map((candidate) => ({
+      candidate,
+      score: scoreSwipe(candidate.rawJson),
+      views: extractSwipeViews(candidate.rawJson),
+    }))
+    .sort((a, b) => {
+      const aViews = a.views ?? 0;
+      const bViews = b.views ?? 0;
+      if (aViews !== bViews) return bViews - aViews;
+      if (a.score !== b.score) return b.score - a.score;
+      return b.candidate.createdAt.getTime() - a.candidate.createdAt.getTime();
+    });
+
+  const MAX_INLINE_EXTRACT = 5;
   const candidates: Array<SwipeFileSelection & { createdAt: Date; score: number }> = [];
-  for (const candidate of scopedCandidates) {
-    const swipeMetadata = normalizeSwipeTemplate(candidate.swipeMetadata);
+  for (let index = 0; index < orderedCandidates.length; index += 1) {
+    const entry = orderedCandidates[index];
+    const candidate = entry.candidate;
+    const raw = asObject(candidate.rawJson) ?? {};
+    const transcript =
+      asString(raw.transcript) ||
+      asString(raw.transcriptText) ||
+      asString(raw.transcript_text) ||
+      asString(raw.whisperTranscript) ||
+      asString(raw.assemblyTranscript) ||
+      null;
+    let swipeMetadata = normalizeSwipeTemplate(candidate.swipeMetadata);
+
+    const shouldExtractInline =
+      !swipeMetadata &&
+      (index < MAX_INLINE_EXTRACT || candidate.id === requestedSwipeTemplateAdId);
+    if (!swipeMetadata && shouldExtractInline) {
+      if (transcript && transcript.length > 100) {
+        try {
+          const duration = Math.max(
+            1,
+            Math.round(
+              asNumber(raw.videoDuration) ??
+                asNumber(raw.duration) ??
+                asNumber(asObject(raw.metrics)?.duration) ??
+                15
+            )
+          );
+          const extracted = await extractSwipePatterns(transcript, duration);
+          swipeMetadata = normalizeSwipeTemplate(extracted);
+          if (swipeMetadata) {
+            const swipeMetadataJson = JSON.stringify(swipeMetadata);
+            await prisma.$executeRaw`
+              UPDATE "ad_asset"
+              SET "swipeMetadata" = ${swipeMetadataJson}::jsonb,
+                  "updatedAt" = NOW()
+              WHERE "id" = ${candidate.id}
+            `;
+          }
+        } catch (err) {
+          console.warn("[ScriptGen] Inline swipe metadata extraction failed", {
+            candidateId: candidate.id,
+            error: String((err as any)?.message ?? err),
+          });
+        }
+      }
+    }
+
     if (!swipeMetadata) continue;
     candidates.push({
       id: candidate.id,
-      views: extractSwipeViews(candidate.rawJson),
+      views: entry.views,
+      transcript,
       swipeMetadata,
       createdAt: candidate.createdAt,
-      score: scoreSwipe(candidate.rawJson),
+      score: entry.score,
     });
   }
-
-  candidates.sort((a, b) => {
-    const aViews = a.views ?? 0;
-    const bViews = b.views ?? 0;
-    if (aViews !== bViews) return bViews - aViews;
-    if (a.score !== b.score) return b.score - a.score;
-    return b.createdAt.getTime() - a.createdAt.getTime();
-  });
 
   if (requestedSwipeTemplateAdId) {
     const requested = candidates.find((c) => c.id === requestedSwipeTemplateAdId) ?? null;
@@ -2108,6 +2198,7 @@ async function selectSwipeFile(
     return {
       id: requested.id,
       views: requested.views ?? null,
+      transcript: requested.transcript ?? null,
       swipeMetadata: requested.swipeMetadata,
     };
   }
@@ -2123,6 +2214,7 @@ async function selectSwipeFile(
   return {
     id: selected.id,
     views: selected.views ?? null,
+    transcript: selected.transcript ?? null,
     swipeMetadata: selected.swipeMetadata,
   };
 }
@@ -2200,8 +2292,7 @@ export async function runScriptGeneration(args: {
   jobId?: string;
   customerAnalysisJobId?: string;
   targetDuration?: number;
-  beatCount?: number;
-  beatRatios?: BeatRatio[];
+  clipDurationSeconds?: 10 | 15;
   scriptStrategy?: ScriptStrategy;
   swipeTemplateAdId?: string | null;
 }) {
@@ -2210,8 +2301,7 @@ export async function runScriptGeneration(args: {
     jobId,
     customerAnalysisJobId,
     targetDuration,
-    beatCount,
-    beatRatios,
+    clipDurationSeconds,
     scriptStrategy,
     swipeTemplateAdId,
   } = args;
@@ -2230,12 +2320,12 @@ export async function runScriptGeneration(args: {
   const selectedTargetDuration = normalizeTargetDurationValue(
     targetDuration ?? requestedConfig.targetDuration
   );
-  const selectedBeatCount = normalizeBeatCountValue(
-    beatCount ?? requestedConfig.beatCount
-  );
-  const selectedBeatRatios = normalizeBeatRatios(
-    beatRatios ?? requestedConfig.beatRatios
-  );
+  const selectedClipDurationSeconds: 10 | 15 =
+    clipDurationSeconds === 15
+      ? 15
+      : requestedConfig.clipDurationSeconds === 15
+        ? 15
+        : 10;
   const selectedScriptStrategy: ScriptStrategy =
     scriptStrategy ?? requestedConfig.scriptStrategy;
   const selectedSwipeTemplateAdId =
@@ -2307,19 +2397,22 @@ export async function runScriptGeneration(args: {
     throw new Error('No patterns found in pattern brain for this project.');
   }
 
-  const { system, prompt, promptInjections, validationInputs } = buildScriptPrompt({
+  const { system, prompt, promptInjections } = buildScriptPrompt({
     productName: project.name,
     avatar: (avatar?.persona as any) ?? {},
     productIntel: productIntelPayload,
     patternRawJson: patternResult?.rawJson ?? null,
     swipeFile,
     targetDuration: selectedTargetDuration,
-    beatCount: selectedBeatCount,
-    beatRatios: selectedBeatRatios,
+    clipDurationSeconds: selectedClipDurationSeconds,
     patterns,
     antiPatterns,
     stackingRules,
   });
+
+  if (!env('ANTHROPIC_API_KEY')) {
+    throw new Error("Anthropic is not configured for script generation.");
+  }
 
   const scriptRecord = await prisma.script.create({
     data: {
@@ -2328,24 +2421,10 @@ export async function runScriptGeneration(args: {
       mergedVideoUrl: null,
       upscaledVideoUrl: null,
       status: ScriptStatus.PENDING,
-      rawJson: {
-        targetDuration: selectedTargetDuration,
-        beatCount: selectedBeatCount,
-        beatRatios: toJsonBeatRatios(selectedBeatRatios),
-      },
+      rawJson: {},
       wordCount: 0,
     },
   });
-
-  if (!env('ANTHROPIC_API_KEY')) {
-    console.warn(
-      'ANTHROPIC_API_KEY not set – dev mode, skipping LLM call for script generation',
-    );
-    return {
-      script: scriptRecord,
-      researchSources,
-    };
-  }
 
   console.log(
     "[ScriptGeneration] Anthropic prompt injections",
@@ -2353,14 +2432,9 @@ export async function runScriptGeneration(args: {
   );
   const responseText = await callAnthropic(system, prompt);
   const scriptJson = parseJsonFromLLM(responseText);
-  const validationReport = validateScriptAgainstGates({
-    scriptJson,
-    copyReadyPhrases: validationInputs.copyReadyPhrases,
-    verifiedNumericClaims: validationInputs.verifiedNumericClaims,
-    successLooksLikeQuote: validationInputs.successLooksLikeQuote,
-  });
   const voFull = buildVoFullFromScriptJson(scriptJson);
   const derivedWordCount = countWords(voFull);
+  const selectedSwipeMetadata = swipeFile?.swipeMetadata ?? null;
 
   const updatedScript = await prisma.script.update({
     where: { id: scriptRecord.id },
@@ -2368,9 +2442,12 @@ export async function runScriptGeneration(args: {
       rawJson: {
         ...(scriptJson as Record<string, unknown>),
         vo_full: voFull,
-        targetDuration: selectedTargetDuration,
-        beatCount: selectedBeatCount,
-        validationReport,
+        ...(selectedSwipeMetadata
+          ? {
+              swipeMechanism: selectedSwipeMetadata.adMechanism,
+              swipeTranscript: swipeFile?.transcript ?? null,
+            }
+          : {}),
       } as any,
       wordCount:
         typeof scriptJson.word_count === 'number'
@@ -2383,7 +2460,6 @@ export async function runScriptGeneration(args: {
   return {
     script: updatedScript,
     researchSources,
-    validationReport,
   };
 }
 
@@ -2404,18 +2480,13 @@ export async function startScriptGenerationJob(projectId: string, job: Job) {
     const generation = await runScriptGeneration({ projectId, jobId: job.id });
     const script = generation.script;
     const researchSources = generation.researchSources ?? {};
-    const validationReport = generation.validationReport ?? null;
-    const warningCount = Array.isArray(validationReport?.warnings)
-      ? validationReport.warnings.length
-      : 0;
     const completionSummary = {
-      summary: `Script generated (scriptId=${script.id}, words=${script.wordCount ?? 'unknown'})${warningCount > 0 ? ` | ${warningCount} quality warning${warningCount === 1 ? "" : "s"}` : ""}`,
+      summary: `Script generated (scriptId=${script.id}, words=${script.wordCount ?? 'unknown'})`,
       scriptId: script.id,
       customerAnalysisRunDate: researchSources.customerAnalysisRunDate ?? null,
       patternAnalysisRunDate: researchSources.patternAnalysisRunDate ?? null,
       productIntelDate: researchSources.productIntelDate ?? null,
       researchSources,
-      validationReport,
     };
 
     // Persist result metadata in the same completion transition.

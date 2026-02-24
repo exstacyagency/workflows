@@ -52,27 +52,6 @@ function hasTextOverlayWithTiming(entries: string[]): boolean {
   });
 }
 
-function isGenericCharacterAction(value: string): boolean {
-  const normalized = String(value ?? "").trim().toLowerCase();
-  if (!normalized) return true;
-  if (normalized.length < 24) return true;
-
-  const genericPatterns = [
-    "talks to camera",
-    "talking to camera",
-    "speaks to camera",
-    "on camera",
-    "smiles at camera",
-    "holds product",
-    "shows product",
-    "creator talks",
-    "talking head",
-    "looks at camera",
-  ];
-
-  return genericPatterns.some((pattern) => normalized.includes(pattern));
-}
-
 function hasExplicitShotDescription(value: string): boolean {
   const normalized = String(value ?? "").trim().toLowerCase();
   if (!normalized) return false;
@@ -125,13 +104,7 @@ export function validateStoryboardAgainstGates(
     })
     .filter((index): index is number => typeof index === "number");
 
-  const onCameraGenericCharacterActionPanels = panels
-    .map((panel, index) => {
-      const panelType = panel.panelType === "B_ROLL_ONLY" ? "B_ROLL_ONLY" : "ON_CAMERA";
-      if (panelType !== "ON_CAMERA") return null;
-      return isGenericCharacterAction(String(panel.characterAction ?? "")) ? index + 1 : null;
-    })
-    .filter((index): index is number => typeof index === "number");
+  const onCameraGenericCharacterActionPanels: number[] = [];
 
   const gate1Passed = missingTextOverlayTiming.length === 0;
   const gate2Passed = missingProductPlacementTiming.length === 0;

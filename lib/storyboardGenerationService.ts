@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { cfg } from "@/lib/config";
 import prisma from "./prisma.ts";
 import { JobStatus, JobType, type Prisma } from "@prisma/client";
-import { validateStoryboardAgainstGates, type StoryboardValidationReport } from "@/lib/storyboardValidation";
+import { SORA_CLIP_LENGTHS, type SoraClipLength } from "./soraConstants";
 
 type PanelTypeValue = "ON_CAMERA" | "B_ROLL_ONLY";
 
@@ -13,42 +13,76 @@ type BeatSpec = {
   vo: string;
 };
 
-const SORA_CLIP_LENGTHS = [10, 15] as const;
-type SoraClipLength = typeof SORA_CLIP_LENGTHS[number];
+function buildSoraClipPlan(
+  totalDurationSeconds: number,
+  preferredClipCount: number,
+  preferredClipDuration: SoraClipLength = 10,
+): SoraClipLength[] {
+  const target = Math.max(10, Math.round(totalDurationSeconds));
+  const combos: SoraClipLength[][] = [];
 
-function snapToSoraClip(durationSeconds: number): SoraClipLength {
-  return durationSeconds <= 12 ? 10 : 15;
+  function dfs(remaining: number, acc: SoraClipLength[]) {
+    if (remaining === 0) {
+      combos.push([...acc]);
+      return;
+    }
+    for (const len of SORA_CLIP_LENGTHS) {
+      if (remaining - len < 0) continue;
+      acc.push(len);
+      dfs(remaining - len, acc);
+      acc.pop();
+    }
+  }
+
+  dfs(target, []);
+  if (combos.length === 0) {
+    const fallbackCount = Math.max(1, Math.round(target / 10));
+    return Array.from({ length: fallbackCount }, () => 10);
+  }
+
+  combos.sort((a, b) => {
+    const aPreferredHits = a.filter((len) => len === preferredClipDuration).length;
+    const bPreferredHits = b.filter((len) => len === preferredClipDuration).length;
+    if (aPreferredHits !== bPreferredHits) return bPreferredHits - aPreferredHits;
+    const aDelta = Math.abs(a.length - preferredClipCount);
+    const bDelta = Math.abs(b.length - preferredClipCount);
+    if (aDelta !== bDelta) return aDelta - bDelta;
+    // Prefer fewer clips when equally close.
+    return a.length - b.length;
+  });
+  return combos[0];
 }
 
-function splitBeatIntoClips(
-  beat: BeatSpec & { durationSeconds: number }
-): Array<BeatSpec & { clipDurationSeconds: SoraClipLength }> {
-  const { durationSeconds, beatLabel, vo, startTime, endTime } = beat;
-
-  if (durationSeconds <= 15) {
-    return [{ beatLabel, vo, startTime, endTime, clipDurationSeconds: snapToSoraClip(durationSeconds) }];
+function mergeSourceBeatsIntoClipBuckets(
+  sourceBeats: BeatSpec[],
+  clipCount: number,
+): Array<Pick<BeatSpec, "beatLabel" | "vo">> {
+  if (sourceBeats.length === 0) {
+    return Array.from({ length: clipCount }, (_, idx) => ({
+      beatLabel: `Beat ${idx + 1}`,
+      vo: "",
+    }));
   }
 
-  const clips: Array<BeatSpec & { clipDurationSeconds: SoraClipLength }> = [];
-  let remaining = durationSeconds;
-  let clipIndex = 1;
-  let currentStart = parseFloat(startTime);
-
-  while (remaining > 0) {
-    const clipLength: SoraClipLength = remaining > 15 ? 15 : snapToSoraClip(remaining);
-    const clipEnd = currentStart + clipLength;
-    clips.push({
-      beatLabel: `${beatLabel} (${clipIndex})`,
-      vo: clipIndex === 1 ? vo : "",
-      startTime: `${formatSeconds(currentStart)}s`,
-      endTime: `${formatSeconds(clipEnd)}s`,
-      clipDurationSeconds: clipLength,
-    });
-    remaining -= clipLength;
-    currentStart = clipEnd;
-    clipIndex++;
+  const buckets: Array<Pick<BeatSpec, "beatLabel" | "vo">> = [];
+  for (let idx = 0; idx < clipCount; idx += 1) {
+    const startIdx = Math.floor((idx * sourceBeats.length) / clipCount);
+    const endExclusive = Math.floor(((idx + 1) * sourceBeats.length) / clipCount);
+    const group = sourceBeats.slice(startIdx, Math.max(startIdx + 1, endExclusive));
+    const first = group[0] ?? sourceBeats[Math.min(startIdx, sourceBeats.length - 1)];
+    const last = group[group.length - 1] ?? first;
+    const label =
+      group.length > 1
+        ? `${first.beatLabel} -> ${last.beatLabel}`
+        : first.beatLabel;
+    const vo = group
+      .map((beat) => beat.vo.trim())
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+    buckets.push({ beatLabel: label, vo });
   }
-  return clips;
+  return buckets;
 }
 
 type StoryboardPanel = {
@@ -63,6 +97,12 @@ type StoryboardPanel = {
   productPlacement: string;
   bRollSuggestions: string[];
   transitionType: string;
+  visualSpec: {
+    lightingType: "soft diffused natural" | "harsh direct" | "golden hour";
+    colorPalette: string;
+    backgroundDescription: string;
+    depthOfField: "shallow" | "natural" | "deep";
+  };
 };
 
 type StoryboardPromptContext = {
@@ -81,7 +121,22 @@ type ProductReferenceImages = {
 // Tiered storyboard prompt contract:
 // Tier 1 = fixed structural constraints, Tier 2 = pass/fail quality gates, Tier 3 = optional creative guidance.
 const STORYBOARD_SYSTEM_PROMPT =
-  "You're directing a UGC video shot on a phone. Real creator. Real environment. No actors. Output ONLY valid JSON.";
+  `You are a JSON API for UGC video storyboards. Output ONLY valid JSON. No markdown, no explanation, no extra fields.
+
+Canonical field names - use these exactly:
+- panelType (ON_CAMERA or B_ROLL_ONLY)
+- beatLabel
+- startTime
+- endTime
+- vo
+- characterAction (string if ON_CAMERA, null if B_ROLL_ONLY)
+- cameraDirection
+- productPlacement
+- bRollSuggestions (array of strings)
+- transitionType
+- environment
+
+Any other field name is a critical error that breaks the pipeline.`;
 
 function asObject(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -215,6 +270,85 @@ function parseJsonFromModelText(text: string): unknown {
   return JSON.parse(trimmed.slice(start, end + 1));
 }
 
+function normalizePanel(raw: unknown): Record<string, unknown> {
+  const panel = asObject(raw) ?? {};
+  const remapped: string[] = [];
+
+  // bRollSuggestions - handle array or legacy string
+  const bRollRaw =
+    panel.bRollSuggestions ?? panel["B-roll Suggestions"] ?? panel["broll_suggestions"];
+  const bRollSuggestions = Array.isArray(bRollRaw)
+    ? bRollRaw.map((entry) => String(entry ?? "").trim()).filter(Boolean)
+    : typeof bRollRaw === "string" && bRollRaw.trim().length > 0
+      ? [bRollRaw.trim()]
+      : [];
+
+  // textOverlay - legacy field, fold into bRollSuggestions
+  const textOverlay =
+    asString(panel.textOverlay) ??
+    asString(panel["Text Overlay"]) ??
+    asString(panel["textOverlay"]) ??
+    null;
+  if (textOverlay && !bRollSuggestions.some((value) => value.includes(textOverlay))) {
+    bRollSuggestions.unshift(`TEXT OVERLAY ${textOverlay}`);
+    remapped.push("textOverlay -> bRollSuggestions");
+  }
+
+  // characterAction - accept legacy creatorAction
+  const characterAction =
+    asString(panel.characterAction) ??
+    asString(panel.creatorAction) ??
+    asString(panel["Character Action"]) ??
+    asString(panel["creatorAction"]) ??
+    null;
+  if (!panel.characterAction && (panel.creatorAction || panel["Character Action"])) {
+    remapped.push("creatorAction/Character Action -> characterAction");
+  }
+
+  // cameraDirection - accept legacy visualDescription
+  const cameraDirection =
+    asString(panel.cameraDirection) ??
+    asString(panel["Camera Direction"]) ??
+    asString(panel.visualDescription) ??
+    asString(panel["Visual Description"]) ??
+    "";
+  if (!panel.cameraDirection && (panel.visualDescription || panel["Camera Direction"])) {
+    remapped.push("visualDescription/Camera Direction -> cameraDirection");
+  }
+
+  // panelType - accept legacy clipType
+  const panelType =
+    asString(panel.panelType) ??
+    asString(panel["Panel Type"]) ??
+    (asString(panel.clipType) === "B_ROLL" ? "B_ROLL_ONLY" : null) ??
+    (asString(panel["Clip Type"]) === "B_ROLL" ? "B_ROLL_ONLY" : null) ??
+    "ON_CAMERA";
+  if (!panel.panelType && (panel.clipType || panel["Clip Type"])) {
+    remapped.push("clipType/Clip Type -> panelType");
+  }
+
+  if (remapped.length > 0) {
+    console.warn(`[storyboard] normalizePanel remapped legacy fields: ${remapped.join(", ")}`);
+  }
+
+  return {
+    panelType,
+    beatLabel: asString(panel.beatLabel) ?? asString(panel["Beat Label"]) ?? "",
+    startTime: asString(panel.startTime) ?? asString(panel["Start Time"]) ?? "",
+    endTime: asString(panel.endTime) ?? asString(panel["End Time"]) ?? "",
+    vo: asString(panel.vo) ?? asString(panel.VO) ?? "",
+    characterAction,
+    cameraDirection,
+    productPlacement:
+      asString(panel.productPlacement) ??
+      asString(panel["Product Placement"]) ??
+      "none",
+    bRollSuggestions,
+    transitionType: asString(panel.transitionType) ?? asString(panel["Transition Type"]) ?? "Cut",
+    environment: asString(panel.environment) ?? asString(panel["Environment"]) ?? null,
+  };
+}
+
 function validatePanel(rawPanel: unknown, beat: BeatSpec, index: number): StoryboardPanel {
   const panel = asObject(rawPanel);
   if (!panel) {
@@ -224,16 +358,15 @@ function validatePanel(rawPanel: unknown, beat: BeatSpec, index: number): Storyb
   const panelTypeRaw = asString(panel.panelType);
   const panelType: PanelTypeValue = panelTypeRaw === "B_ROLL_ONLY" ? "B_ROLL_ONLY" : "ON_CAMERA";
   const characterAction = asString(panel.characterAction);
-  const environment = asString(panel.environment);
-  const cameraDirection = asString(panel.cameraDirection);
-  const productPlacement = asString(panel.productPlacement);
-  const transitionType = asString(panel.transitionType);
-  if (!cameraDirection || !productPlacement || !transitionType) {
-    throw new Error(`Panel ${index + 1} is missing required visual fields.`);
-  }
+  const environment = asString(panel.environment) || null;
+  const cameraDirection = asString(panel.cameraDirection) || "Natural handheld UGC framing.";
+  const productPlacement = asString(panel.productPlacement) || "none";
+  const transitionType = asString(panel.transitionType) || "Cut";
   if (panelType === "ON_CAMERA" && !characterAction) {
     throw new Error(`Panel ${index + 1} is ON_CAMERA but missing characterAction.`);
   }
+
+  const bRollSuggestionsBase = asStringArray(panel.bRollSuggestions);
 
   return {
     panelType,
@@ -245,8 +378,15 @@ function validatePanel(rawPanel: unknown, beat: BeatSpec, index: number): Storyb
     environment: panelType === "B_ROLL_ONLY" ? environment || null : environment,
     cameraDirection,
     productPlacement,
-    bRollSuggestions: asStringArray(panel.bRollSuggestions),
+    bRollSuggestions: bRollSuggestionsBase,
     transitionType,
+    visualSpec: {
+      lightingType: "soft diffused natural",
+      colorPalette: "neutral warm tones",
+      backgroundDescription:
+        environment || "Real home/work environment matching creator setting",
+      depthOfField: "natural",
+    },
   };
 }
 
@@ -263,12 +403,15 @@ function buildBeatSpecsFromScript(
     throw new Error("Script has no scenes. Generate or save script beats before storyboard generation.");
   }
 
-  const beatCountFromRaw = normalizePositiveInt(root.beatCount, scenesRaw.length);
-  const beatCount = beatCountFromRaw === scenesRaw.length ? beatCountFromRaw : scenesRaw.length;
-  const targetDuration = normalizePositiveInt(root.targetDuration, 30);
-  const fallbackSecondsPerBeat = targetDuration / beatCount;
+  const beatCountFromRaw = scenesRaw.length;
+  const targetDurationFromRaw = normalizePositiveInt(root.targetDuration, 0);
+  const sourceBeatCount = beatCountFromRaw;
+  const fallbackTargetDuration =
+    targetDurationFromRaw > 0 ? targetDurationFromRaw : Math.max(10, sourceBeatCount * 10);
+  const targetDuration = fallbackTargetDuration;
+  const fallbackSecondsPerBeat = targetDuration / Math.max(1, sourceBeatCount);
 
-  const beats = scenesRaw.map((scene, index) => {
+  const sourceBeats = scenesRaw.map((scene, index) => {
     const sceneObj = asObject(scene) ?? {};
     const label = asString(sceneObj.beat) || `Beat ${index + 1}`;
     const vo = asString(sceneObj.vo) || "";
@@ -279,7 +422,7 @@ function buildBeatSpecsFromScript(
     );
 
     const fallbackStart = fallbackSecondsPerBeat * index;
-    const fallbackEnd = index === beatCount - 1 ? targetDuration : fallbackStart + fallbackSecondsPerBeat;
+    const fallbackEnd = index === sourceBeatCount - 1 ? targetDuration : fallbackStart + fallbackSecondsPerBeat;
     const start = durationParsed?.start ?? fallbackStart;
     const end = durationParsed?.end ?? fallbackEnd;
 
@@ -291,10 +434,22 @@ function buildBeatSpecsFromScript(
     };
   });
 
-  const soraScenes = beats.flatMap((beat) => {
-    const start = parseFloat(beat.startTime);
-    const end = parseFloat(beat.endTime);
-    return splitBeatIntoClips({ ...beat, durationSeconds: end - start });
+  const clipPlan = buildSoraClipPlan(targetDuration, sourceBeats.length);
+  const clipBuckets = mergeSourceBeatsIntoClipBuckets(sourceBeats, clipPlan.length);
+
+  let timelineCursor = 0;
+  const soraScenes: Array<BeatSpec & { clipDurationSeconds: SoraClipLength }> = clipPlan.map((clipDurationSeconds, idx) => {
+    const start = timelineCursor;
+    const end = start + clipDurationSeconds;
+    timelineCursor = end;
+    const source = clipBuckets[idx] ?? { beatLabel: `Beat ${idx + 1}`, vo: "" };
+    return {
+      beatLabel: source.beatLabel || `Beat ${idx + 1}`,
+      vo: source.vo || "",
+      startTime: `${formatSeconds(start)}s`,
+      endTime: `${formatSeconds(end)}s`,
+      clipDurationSeconds,
+    };
   });
 
   return { beatCount: soraScenes.length, targetDuration, beats: soraScenes };
@@ -330,64 +485,57 @@ function buildStoryboardUserPrompt(args: {
         `- Beat ${index + 1}: ${beat.beatLabel} (${beat.startTime}-${beat.endTime}) | VO: "${beat.vo}"`
     )
     .join("\n");
-  const overlayPatternLower = textOverlayPattern.toLowerCase();
-  const requiresSingleKeywordAtPeaks =
-    (overlayPatternLower.includes("single keyword") ||
-      overlayPatternLower.includes("single-word") ||
-      overlayPatternLower.includes("single word")) &&
-    (overlayPatternLower.includes("emotional peak") || overlayPatternLower.includes("emotional peaks"));
-  const singleKeywordRule = requiresSingleKeywordAtPeaks
-    ? "If the pattern says single keywords at emotional peaks, every panel must include exact single-keyword overlay copy with explicit peak timing."
-    : "";
-
   return `TIER 1 - STRUCTURE (NON-NEGOTIABLE)
-targetDuration: ${targetDuration}
-beatCount: ${beatCount}
-scriptBeatsWithExactVO:
+panels required: ${beatCount} — one per beat, no exceptions.
 ${beatLines}
-Panel count must equal beat count. Timing must match script exactly.
 
-TIER 2 - QUALITY GATES (GO/NO-GO)
-- Product placement must include exact timing in each panel.
-- Text overlay pattern must include exact timing and exact copy in each panel.
-- Character action must be authentic and specific; no generic descriptions.
-- Panel type decision: If the beat content is pure product demonstration, visual metaphor, or montage that doesn't require the creator speaking directly to camera, set panelType to B_ROLL_ONLY. When B_ROLL_ONLY, characterAction can be null and bRollSuggestions becomes the primary direction with shot-by-shot breakdown.
-Text overlay pattern:
-${textOverlayPattern}
-Use explicit timing format in bRollSuggestions: TEXT OVERLAY 12.0s-13.5s: COPY
-${singleKeywordRule}
+TIER 2 - FIELD RULES
+vo: copy exact VO from beat spec above, verbatim
+creatorAction: specific physical action (not generic). null if B_ROLL.
+textOverlay: exact copy + timing — format: "COPY (Xs-Xs)"
+visualDescription: one sentence only — what Sora renders
+productPlacement: when and how product appears, or "none"
+clipType: ON_CAMERA if creator speaks to camera. B_ROLL if product demo, hands, environment, or montage with no creator face.
 
-TIER 3 - GUIDANCE (INFORM DON'T DICTATE)
-environmentContext:
-- lifeStage: ${lifeStage || "MISSING"}
-- buyTriggerSituation: ${buyTriggerSituation || "MISSING"}
-mechanismProcess: ${mechanismProcess || "MISSING"}
-visualFlowPattern: ${visualFlowPattern || "MISSING"}
-creatorReferenceImageUrl: ${creatorReferenceImageUrl || "MISSING"}
-productReferenceImageUrl: ${productReferenceImageUrl || "MISSING"}
-Use Tier 3 for creative decisions. Don't force it if the shot doesn't support it.
-If reference image URLs are present, keep subject/product appearance consistent with them.
+TIER 3 - CREATIVE CONTEXT (inform visuals, don't force)
+lifeStage: ${lifeStage || "not provided"}
+buyTriggerSituation: ${buyTriggerSituation || "not provided"}
+mechanismProcess: ${mechanismProcess || "not provided"}
+${visualFlowPattern ? `visualFlow: ${visualFlowPattern}` : ""}
+${creatorReferenceImageUrl ? `creatorReference: ${creatorReferenceImageUrl}` : ""}
+${productReferenceImageUrl ? `productReference: ${productReferenceImageUrl}` : ""}
 
-Output JSON schema:
+OUTPUT SCHEMA — use these exact field names, no others:
 {
   "panels": [
     {
-      "panelType": "ON_CAMERA | B_ROLL_ONLY",
-      "beatLabel": "string",
-      "startTime": "string",
-      "endTime": "string",
-      "vo": "string copied from script",
-      "characterAction": "string | null",
-      "environment": "string | null",
-      "cameraDirection": "string",
-      "productPlacement": "string",
-      "bRollSuggestions": ["string"],
-      "transitionType": "string"
+      "panelType": "ON_CAMERA",
+      "beatLabel": "Hook",
+      "startTime": "0s",
+      "endTime": "10s",
+      "vo": "exact vo text here",
+      "characterAction": "specific physical action — null if B_ROLL_ONLY",
+      "cameraDirection": "single sentence — what Sora renders",
+      "productPlacement": "when and how product appears, or none",
+      "bRollSuggestions": ["TEXT OVERLAY COPY HERE (0s-3s)"],
+      "transitionType": "Cut",
+      "environment": "real location description or null"
     }
   ]
 }
 
-Return ONLY valid JSON.`;
+FIELD RULES:
+- panelType: ON_CAMERA if creator speaks to camera. B_ROLL_ONLY if product demo, hands, or montage with no creator face.
+- characterAction: specific physical action, not generic. null if B_ROLL_ONLY.
+- cameraDirection: one sentence describing what Sora should render.
+- bRollSuggestions: array. Include text overlays as "TEXT OVERLAY COPY (Xs-Xs)".
+- vo: copy exact VO from beat spec above, verbatim.
+- transitionType: Cut or Fade.
+
+BANNED FIELD NAMES — these will break the pipeline:
+clipType, creatorAction, textOverlay, visualDescription, 
+Character Action, Camera Direction, B-roll Suggestions, 
+Character Handle, Environment, Transition Type, Clip Type`;
 }
 
 function extractPatternTextOverlays(rawJson: unknown): string | null {
@@ -605,12 +753,25 @@ async function loadStoryboardPromptContextForScriptRun(args: {
 
 export async function generateStoryboard(
   scriptId: string,
-  opts?: { productId?: string | null; characterHandle?: string | null },
+  opts?: {
+    productId?: string | null;
+    characterHandle?: string | null;
+    storyboardMode?: "ai" | "manual";
+    manualPanels?: Array<{
+      beatLabel?: string | null;
+      startTime?: string | null;
+      endTime?: string | null;
+      vo?: string | null;
+      creatorAction?: string | null;
+      textOverlay?: string | null;
+      visualDescription?: string | null;
+      productPlacement?: string | null;
+    }> | null;
+  },
 ): Promise<{
   storyboardId: string;
   panelCount: number;
   targetDuration: number;
-  validationReport: StoryboardValidationReport;
 }> {
   const normalizedScriptId = String(scriptId ?? "").trim();
   if (!normalizedScriptId) {
@@ -635,20 +796,13 @@ export async function generateStoryboard(
     throw new Error(`Script not found for id=${normalizedScriptId}.`);
   }
 
-  const { beatCount, targetDuration, beats } = buildBeatSpecsFromScript(script.rawJson);
+  const { beatCount, targetDuration, beats } = buildBeatSpecsFromScript(
+    script.rawJson,
+  );
   if (!beats.length) {
     throw new Error("Script scenes are empty; cannot generate storyboard.");
   }
-
-  const anthropicApiKey = cfg.raw("ANTHROPIC_API_KEY");
-  if (!anthropicApiKey) {
-    throw new Error("ANTHROPIC_API_KEY is not configured.");
-  }
-
-  const anthropic = new Anthropic({
-    apiKey: anthropicApiKey,
-    timeout: 90_000,
-  });
+  const storyboardMode = opts?.storyboardMode === "manual" ? "manual" : "ai";
 
   const scriptRunId = script.job?.runId ?? null;
   const scriptJobPayload = asObject(script.job?.payload) ?? {};
@@ -667,49 +821,104 @@ export async function generateStoryboard(
     projectId: script.projectId,
     runId: scriptRunId,
   });
-  const userPrompt = buildStoryboardUserPrompt({
-    beatCount,
-    targetDuration,
-    beats,
-    textOverlayPattern: promptContext.textOverlayPattern,
-    lifeStage: promptContext.lifeStage,
-    buyTriggerSituation: promptContext.buyTriggerSituation,
-    mechanismProcess: promptContext.mechanismProcess,
-    visualFlowPattern: promptContext.visualFlowPattern,
-    creatorReferenceImageUrl: productReferenceImages.creatorReferenceImageUrl,
-    productReferenceImageUrl: productReferenceImages.productReferenceImageUrl,
-  });
-  const response = await anthropic.messages.create({
-    model: "claude-sonnet-4-5-20250929",
-    max_tokens: 4000,
-    system: STORYBOARD_SYSTEM_PROMPT,
-    messages: [{ role: "user", content: userPrompt }],
-  });
-  console.log("[storyboardGeneration] Anthropic raw response:", response);
-  const responseText = extractTextContent(response);
-  const parsed = parseJsonFromModelText(responseText);
-  const parsedObject = asObject(parsed);
-  const panelsRaw = Array.isArray(parsedObject?.panels)
-    ? parsedObject.panels
-    : Array.isArray(parsed)
-      ? parsed
-      : [];
-  console.log("[storyboardGeneration] Parsed panels:", {
-    panelCount: panelsRaw.length,
-    panels: panelsRaw,
-  });
+  let panels: StoryboardPanel[];
+  if (storyboardMode === "manual") {
+    const manualPanels = Array.isArray(opts?.manualPanels) ? opts?.manualPanels : [];
+    const hasManualPanels = manualPanels.length > 0;
+    if (hasManualPanels && manualPanels.length !== beats.length) {
+      throw new Error(
+        `Manual storyboard requires ${beats.length} panel(s), received ${manualPanels.length}.`,
+      );
+    }
 
-  if (panelsRaw.length !== beatCount) {
-    throw new Error(
-      `Storyboard panel count mismatch. Expected ${beatCount} panels but Claude returned ${panelsRaw.length}.`,
+    panels = beats.map((beat, index) => {
+      const manual = hasManualPanels
+        ? ((manualPanels[index] ?? {}) as {
+            beatLabel?: string | null;
+            startTime?: string | null;
+            endTime?: string | null;
+            vo?: string | null;
+            creatorAction?: string | null;
+            textOverlay?: string | null;
+            visualDescription?: string | null;
+            productPlacement?: string | null;
+          })
+        : null;
+      const textOverlay = asString(manual?.textOverlay);
+      const visualDescription = asString(manual?.visualDescription);
+      return {
+        panelType: "ON_CAMERA",
+        beatLabel: asString(manual?.beatLabel) || beat.beatLabel,
+        startTime: asString(manual?.startTime) || beat.startTime,
+        endTime: asString(manual?.endTime) || beat.endTime,
+        vo: asString(manual?.vo) || beat.vo,
+        characterAction:
+          asString(manual?.creatorAction) || "Describe creator action for this beat.",
+        environment: visualDescription || "Describe location and visual setup for this beat.",
+        cameraDirection: visualDescription || "Describe framing, angle, and movement for this beat.",
+        productPlacement:
+          asString(manual?.productPlacement) || "Add exact timing for product placement in this beat.",
+        bRollSuggestions: textOverlay ? [`TEXT OVERLAY ${textOverlay}`] : [],
+        transitionType: "Cut",
+        visualSpec: {
+          lightingType: "soft diffused natural",
+          colorPalette: "neutral warm tones",
+          backgroundDescription: "Real home/work environment matching creator setting",
+          depthOfField: "natural",
+        },
+      };
+    });
+  } else {
+    const anthropicApiKey = cfg.raw("ANTHROPIC_API_KEY");
+    if (!anthropicApiKey) {
+      throw new Error("ANTHROPIC_API_KEY is not configured.");
+    }
+    const anthropic = new Anthropic({
+      apiKey: anthropicApiKey,
+      timeout: 90_000,
+    });
+    const userPrompt = buildStoryboardUserPrompt({
+      beatCount,
+      targetDuration,
+      beats,
+      textOverlayPattern: promptContext.textOverlayPattern,
+      lifeStage: promptContext.lifeStage,
+      buyTriggerSituation: promptContext.buyTriggerSituation,
+      mechanismProcess: promptContext.mechanismProcess,
+      visualFlowPattern: promptContext.visualFlowPattern,
+      creatorReferenceImageUrl: productReferenceImages.creatorReferenceImageUrl,
+      productReferenceImageUrl: productReferenceImages.productReferenceImageUrl,
+    });
+    const response = await anthropic.messages.create({
+      model: "claude-sonnet-4-5-20250929",
+      max_tokens: 4000,
+      system: STORYBOARD_SYSTEM_PROMPT,
+      messages: [{ role: "user", content: userPrompt }],
+    });
+    console.log("[storyboardGeneration] Anthropic raw response:", response);
+    const responseText = extractTextContent(response);
+    const parsed = parseJsonFromModelText(responseText);
+    const parsedObject = asObject(parsed);
+    const panelsRaw = Array.isArray(parsedObject?.panels)
+      ? parsedObject.panels
+      : Array.isArray(parsed)
+        ? parsed
+        : [];
+    console.log("[storyboardGeneration] Parsed panels:", {
+      panelCount: panelsRaw.length,
+      panels: panelsRaw,
+    });
+
+    if (panelsRaw.length !== beatCount) {
+      throw new Error(
+        `Storyboard panel count mismatch. Expected ${beatCount} panels but Claude returned ${panelsRaw.length}.`,
+      );
+    }
+
+    panels = panelsRaw.map((panel, index) =>
+      validatePanel(normalizePanel(panel), beats[index] ?? beats[beats.length - 1], index),
     );
   }
-
-  const panels = panelsRaw.map((panel, index) =>
-    validatePanel(panel, beats[index] ?? beats[beats.length - 1], index),
-  );
-  const validationReport = validateStoryboardAgainstGates(panels);
-  console.log("[storyboardGeneration] Validation report:", validationReport);
 
   const existingStoryboard = await prisma.storyboard.findFirst({
     where: {
@@ -779,6 +988,5 @@ export async function generateStoryboard(
     storyboardId: result.id,
     panelCount: panels.length,
     targetDuration,
-    validationReport,
   };
 }
