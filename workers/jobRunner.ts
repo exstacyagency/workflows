@@ -879,6 +879,7 @@ async function runJob(
         });
         const storyboardId = String(payload?.storyboardId ?? "").trim();
         const productId = String(payload?.productId ?? "").trim() || null;
+        const characterHandle = String(payload?.characterHandle ?? "").trim() || null;
         if (!storyboardId) {
           await markFailed({ jobId, error: "Invalid payload: missing storyboardId" });
           return;
@@ -904,6 +905,7 @@ async function runJob(
             storyboardId,
             jobId,
             productId,
+            characterHandle,
           });
           console.log("[Worker][VIDEO_PROMPT_GENERATION] Video prompt generation completed", {
             jobId,

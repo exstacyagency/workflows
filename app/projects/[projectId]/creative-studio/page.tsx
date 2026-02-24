@@ -2545,6 +2545,12 @@ export default function CreativeStudioPage() {
     try {
       const activeRunId = String(selectedRunId ?? "").trim();
       const activeStoryboardCharacterId = String(selectedStoryboardCharacterId ?? "").trim();
+      const selectedCharacter = activeStoryboardCharacterId
+        ? runCharacters.find((char) => String(char.id) === activeStoryboardCharacterId) ?? null
+        : null;
+      const selectedCharacterHandle = selectedCharacter?.characterUserName
+        ? `@${String(selectedCharacter.characterUserName).replace(/^@+/, "")}`
+        : null;
       let endpoint = "";
       let payload: any = {
         ...(extraPayload || {}),
@@ -2602,6 +2608,13 @@ export default function CreativeStudioPage() {
         payload = {
           ...payload,
           storyboardId,
+        };
+      }
+
+      if (step.key === "video_prompts" && selectedCharacterHandle) {
+        payload = {
+          ...payload,
+          characterHandle: selectedCharacterHandle,
         };
       }
 
