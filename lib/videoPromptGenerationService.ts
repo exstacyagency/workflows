@@ -1,6 +1,10 @@
 // lib/videoPromptGenerationService.ts
 import Anthropic from "@anthropic-ai/sdk";
 import { cfg } from "@/lib/config";
+import {
+  assertProductSetupReferenceReachable,
+  assertProductSetupReferenceUrl,
+} from "@/lib/productSetupReferencePolicy";
 import prisma from '@/lib/prisma';
 import { JobStatus, PanelType } from '@prisma/client';
 import { updateJobStatus } from '@/lib/jobs/updateJobStatus';
@@ -22,9 +26,9 @@ VISUAL IDENTITY (apply to every scene):
 - Audio: iPhone mic, slight room reverb, ambient background noise, NO music
 
 CHARACTER CONSISTENCY:
-- Use the same actor identity across all scenes
-- Maintain identical face, hair, skin, clothing, and age throughout
-- If character reference image provided, match it exactly`;
+- CHARACTER ANCHOR overrides all other character instructions when present
+- Match the anchor description exactly - face, hair, skin, clothing, age
+- If no anchor provided, maintain consistent identity across scenes`;
 
 const VIDEO_PROMPT_MODEL = cfg.raw("ANTHROPIC_MODEL") || "claude-sonnet-4-5-20250929";
 
@@ -78,9 +82,27 @@ async function loadProductReferenceImages(args: {
       AND "project_id" = ${args.projectId}
     LIMIT 1
   `;
+  const creatorReferenceImageUrl = normalizeUrl(productRows[0]?.creatorReferenceImageUrl);
+  const productReferenceImageUrl = normalizeUrl(productRows[0]?.productReferenceImageUrl);
+
+  if (creatorReferenceImageUrl) {
+    assertProductSetupReferenceUrl(creatorReferenceImageUrl, "creatorReferenceImageUrl");
+    await assertProductSetupReferenceReachable(
+      creatorReferenceImageUrl,
+      "creatorReferenceImageUrl",
+    );
+  }
+  if (productReferenceImageUrl) {
+    assertProductSetupReferenceUrl(productReferenceImageUrl, "productReferenceImageUrl");
+    await assertProductSetupReferenceReachable(
+      productReferenceImageUrl,
+      "productReferenceImageUrl",
+    );
+  }
+
   return {
-    creatorReferenceImageUrl: normalizeUrl(productRows[0]?.creatorReferenceImageUrl),
-    productReferenceImageUrl: normalizeUrl(productRows[0]?.productReferenceImageUrl),
+    creatorReferenceImageUrl,
+    productReferenceImageUrl,
   };
 }
 
@@ -183,6 +205,7 @@ function buildVideoPromptUserPrompt(args: {
   cameraDirection: string;
   productPlacement: string;
   bRollSuggestions: string[];
+  characterAnchor: string | null;
   characterDescription: string;
   hasCreatorRef: boolean;
   hasProductRef: boolean;
@@ -201,6 +224,7 @@ function buildVideoPromptUserPrompt(args: {
     cameraDirection,
     productPlacement,
     bRollSuggestions,
+    characterAnchor,
     characterDescription,
     hasCreatorRef,
     hasProductRef,
@@ -228,8 +252,8 @@ ${normalizedCharacterHandle ? `Character handle: ${normalizedCharacterHandle} (i
 ${hasCreatorRef ? "Subject: match creator reference image exactly." : ""}
 ${hasProductRef ? "Product: match product reference image exactly." : ""}
 
-CHARACTER (maintain across all scenes):
-${characterDescription}
+CHARACTER ANCHOR (non-negotiable, apply exactly):
+${characterAnchor || characterDescription}
 
 OUTPUT STRUCTURE - use these exact labels:
 
@@ -281,6 +305,7 @@ async function generateKlingPromptWithClaude(args: {
   cameraDirection: string;
   productPlacement: string;
   bRollSuggestions: string[];
+  characterAnchor: string | null;
   characterDescription: string;
   hasCreatorRef: boolean;
   hasProductRef: boolean;
@@ -309,6 +334,7 @@ async function generateKlingPromptWithClaude(args: {
     cameraDirection: args.cameraDirection,
     productPlacement: args.productPlacement,
     bRollSuggestions: args.bRollSuggestions,
+    characterAnchor: args.characterAnchor,
     characterDescription: args.characterDescription,
     hasCreatorRef: args.hasCreatorRef,
     hasProductRef: args.hasProductRef,
@@ -455,7 +481,15 @@ export async function runVideoPromptGeneration(args: {
 
   if (scenes.length === 0) {
     const panelType: PanelType = 'ON_CAMERA';
-    const fallbackSceneBeat = asObject(scriptScenes[0]) ?? null;
+    const fallbackSceneBeatRaw = asObject(scriptScenes[0]) ?? null;
+    const fallbackSceneBeat: { beat?: string; duration?: string; vo?: string } | null =
+      fallbackSceneBeatRaw
+        ? {
+            beat: asString(fallbackSceneBeatRaw.beat) || undefined,
+            duration: asString(fallbackSceneBeatRaw.duration) || undefined,
+            vo: asString(fallbackSceneBeatRaw.vo) || undefined,
+          }
+        : null;
     const fallbackRequiredVo = asString(fallbackSceneBeat?.vo);
     if (!fallbackRequiredVo) {
       throw new Error("Scene 1 missing VO. Cannot generate video prompt without scene VO.");
@@ -481,6 +515,7 @@ export async function runVideoPromptGeneration(args: {
       cameraDirection: "",
       productPlacement: "",
       bRollSuggestions: [],
+      characterAnchor: null,
       characterDescription: "Same creator identity as the ad context. Maintain face, hair, clothing, and age consistency.",
       hasCreatorRef: Boolean(sceneReferenceFrames.find((frame) => frame.kind === 'creator')?.url),
       hasProductRef: Boolean(sceneReferenceFrames.find((frame) => frame.kind === 'product')?.url),
@@ -544,7 +579,14 @@ export async function runVideoPromptGeneration(args: {
       sceneReferenceFrames.find((frame) => frame.kind === 'product')?.url ?? null;
 
     const vo = asString(raw.vo);
-    const sceneBeat = asObject(scriptScenes[sceneNumber - 1]) ?? null;
+    const sceneBeatRaw = asObject(scriptScenes[sceneNumber - 1]) ?? null;
+    const sceneBeat: { beat?: string; duration?: string; vo?: string } | null = sceneBeatRaw
+      ? {
+          beat: asString(sceneBeatRaw.beat) || undefined,
+          duration: asString(sceneBeatRaw.duration) || undefined,
+          vo: asString(sceneBeatRaw.vo) || undefined,
+        }
+      : null;
     const sceneBeatVo = asString(sceneBeat?.vo);
     const requiredVo = vo || sceneBeatVo;
     if (!requiredVo) {
@@ -561,6 +603,7 @@ export async function runVideoPromptGeneration(args: {
       (characterHandle
         ? `Creator handle ${normalizeCharacterHandleForPrompt(characterHandle)}. Keep identity and styling consistent across scenes.`
         : "Same creator identity across scenes. Keep face, hair, clothing, and age consistent.");
+    const characterAnchor = asString((raw as any).characterAnchor) || null;
 
     const prompt = await generateKlingPromptWithClaude({
       sceneNumber,
@@ -577,6 +620,7 @@ export async function runVideoPromptGeneration(args: {
       cameraDirection,
       productPlacement,
       bRollSuggestions,
+      characterAnchor,
       characterDescription,
       hasCreatorRef: Boolean(sceneCreatorReferenceImageUrl),
       hasProductRef: Boolean(sceneProductReferenceImageUrl),

@@ -1,5 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { cfg } from "@/lib/config";
+import {
+  assertProductSetupReferenceReachable,
+  assertProductSetupReferenceUrl,
+} from "@/lib/productSetupReferencePolicy";
 import prisma from "@/lib/prisma";
 
 const IMAGE_PROMPT_MODEL = cfg.raw("ANTHROPIC_HAIKU_MODEL") || "claude-haiku-4-5-20251001";
@@ -54,9 +58,27 @@ async function loadProductReferenceImages(args: {
       AND "project_id" = ${args.projectId}
     LIMIT 1
   `;
+  const creatorReferenceImageUrl = asString(rows[0]?.creatorReferenceImageUrl) || null;
+  const productReferenceImageUrl = asString(rows[0]?.productReferenceImageUrl) || null;
+
+  if (creatorReferenceImageUrl) {
+    assertProductSetupReferenceUrl(creatorReferenceImageUrl, "creatorReferenceImageUrl");
+    await assertProductSetupReferenceReachable(
+      creatorReferenceImageUrl,
+      "creatorReferenceImageUrl",
+    );
+  }
+  if (productReferenceImageUrl) {
+    assertProductSetupReferenceUrl(productReferenceImageUrl, "productReferenceImageUrl");
+    await assertProductSetupReferenceReachable(
+      productReferenceImageUrl,
+      "productReferenceImageUrl",
+    );
+  }
+
   return {
-    creatorReferenceImageUrl: asString(rows[0]?.creatorReferenceImageUrl) || null,
-    productReferenceImageUrl: asString(rows[0]?.productReferenceImageUrl) || null,
+    creatorReferenceImageUrl,
+    productReferenceImageUrl,
   };
 }
 

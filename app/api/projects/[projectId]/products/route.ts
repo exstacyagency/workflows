@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionUserId } from "@/lib/getSessionUserId";
+import { assertProductSetupReferenceUrl } from "@/lib/productSetupReferencePolicy";
 import { prisma } from "@/lib/prisma";
 import { randomUUID } from "crypto";
 
@@ -413,6 +414,19 @@ export async function PATCH(
         ? normalizedProductReferenceImageUrl
         : existing.productReferenceImageUrl;
 
+    if (normalizedCreatorReferenceImageUrl !== undefined && nextCreatorReferenceImageUrl) {
+      assertProductSetupReferenceUrl(
+        nextCreatorReferenceImageUrl,
+        "creatorReferenceImageUrl",
+      );
+    }
+    if (normalizedProductReferenceImageUrl !== undefined && nextProductReferenceImageUrl) {
+      assertProductSetupReferenceUrl(
+        nextProductReferenceImageUrl,
+        "productReferenceImageUrl",
+      );
+    }
+
     if (nextName !== existing.name) {
       const nameConflict = await prisma.$queryRaw<Array<{ id: string }>>`
         SELECT "id"
@@ -466,7 +480,13 @@ export async function PATCH(
     return NextResponse.json({ success: true, product: updated }, { status: 200 });
   } catch (error) {
     console.error("Failed to update product", error);
-    return NextResponse.json({ error: "Failed to update product" }, { status: 500 });
+    const message =
+      error instanceof Error && error.message
+        ? error.message
+        : "Failed to update product";
+    const status =
+      message.includes("must be hosted in AWS_S3_BUCKET_PRODUCT_SETUP") ? 400 : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }
 

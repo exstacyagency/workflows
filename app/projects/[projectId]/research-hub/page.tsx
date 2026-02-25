@@ -1551,14 +1551,15 @@ export default function ResearchHubPage() {
                               </div>
                             </div>
                           )}
-                          {stepWithStatus.status === "RUNNING" && stepWithStatus.lastJob && (
+                          {(stepWithStatus.status === "RUNNING" || stepWithStatus.status === "PENDING") &&
+                            stepWithStatus.lastJob && (
                             <button
                               onClick={() => cancelJob(stepWithStatus.lastJob!.id)}
                               className="px-2 py-1 text-xs text-red-400 hover:text-red-300"
                             >
                               Cancel
                             </button>
-                          )}
+                            )}
                         </div>
 
                         {/* Step Modal - Render inline */}
@@ -1629,11 +1630,22 @@ export default function ResearchHubPage() {
         <div className="space-y-2">
           {recentResearchJobs.map(job => {
             const rs = job.resultSummary as any;
+            const isCancelable = job.status === "RUNNING" || job.status === "PENDING";
             return (
               <div key={job.id} className="flex items-start justify-between gap-4 p-3 rounded-lg bg-slate-900/50 border border-slate-800">
                 <div className="flex-1">
                   <div className="text-sm font-medium text-slate-200">{job.type}</div>
                   <div className="text-xs text-slate-500">{new Date(job.createdAt).toLocaleString()}</div>
+                  {isCancelable && (
+                    <div className="mt-2">
+                      <button
+                        onClick={() => cancelJob(job.id)}
+                        className="px-2 py-1 text-xs text-red-400 hover:text-red-300 border border-red-500/30 rounded"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
                   {rs?.amazon && (
                     <div className="mt-2 rounded border border-slate-800 p-2 text-sm text-slate-300">
                       <div className="font-medium text-slate-200">Amazon</div>

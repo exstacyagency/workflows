@@ -10,6 +10,7 @@ type ProductSetupRow = {
   creatorReferenceImageUrl: string | null;
   productReferenceImageUrl: string | null;
   characterReferenceVideoUrl: string | null;
+  characterAvatarImageUrl: string | null;
   soraCharacterId: string | null;
   characterCameoCreatedAt: Date | null;
   creatorVisualPrompt: string | null;
@@ -50,6 +51,7 @@ export default async function ProductSetupPage({
       p."creator_reference_image_url" AS "creatorReferenceImageUrl",
       p."product_reference_image_url" AS "productReferenceImageUrl",
       p."character_reference_video_url" AS "characterReferenceVideoUrl",
+      p."character_avatar_image_url" AS "characterAvatarImageUrl",
       p."sora_character_id" AS "soraCharacterId",
       p."character_cameo_created_at" AS "characterCameoCreatedAt",
       p."creator_visual_prompt" AS "creatorVisualPrompt",
@@ -103,6 +105,7 @@ export default async function ProductSetupPage({
     creatorReferenceImageUrl: product.creatorReferenceImageUrl,
     productReferenceImageUrl: product.productReferenceImageUrl,
     characterReferenceVideoUrl: product.characterReferenceVideoUrl,
+    characterAvatarImageUrl: product.characterAvatarImageUrl,
     soraCharacterId: product.soraCharacterId,
     characterCameoCreatedAt: product.characterCameoCreatedAt
       ? product.characterCameoCreatedAt.toISOString()

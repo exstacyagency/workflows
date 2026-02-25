@@ -504,8 +504,11 @@ export default function CreativeStudioPage() {
   const [sceneActionError, setSceneActionError] = useState<string | null>(null);
   const [resettingVideoImageJobId, setResettingVideoImageJobId] = useState<string | null>(null);
   const [cleaningOrphanedJobs, setCleaningOrphanedJobs] = useState(false);
+  const [cancellingJobIds, setCancellingJobIds] = useState<Record<string, boolean>>({});
   const [expandedCompletedStepKeys, setExpandedCompletedStepKeys] = useState<Record<string, boolean>>({});
   const [showRunManagerModal, setShowRunManagerModal] = useState(false);
+  const [showMissingProductImageWarning, setShowMissingProductImageWarning] = useState(false);
+  const [pendingVideoStep, setPendingVideoStep] = useState<ProductionStep | null>(null);
   const [projectRunsById, setProjectRunsById] = useState<Record<string, ProjectRunMetadata>>({});
   const selectedProductRef = useRef<string | null>(selectedProductIdFromUrl);
   const hasInitializedRunSelection = useRef(false);
@@ -695,6 +698,39 @@ export default function CreativeStudioPage() {
     [jobs]
   );
 
+  const isCancelableJob = useCallback((job: Job | null | undefined): boolean => {
+    if (!job) return false;
+    return job.status === JobStatus.PENDING || job.status === JobStatus.RUNNING;
+  }, []);
+
+  const cancelJob = useCallback(
+    async (jobId: string) => {
+      setCancellingJobIds((prev) => ({ ...prev, [jobId]: true }));
+      try {
+        const res = await fetch(`/api/jobs/${jobId}/cancel`, { method: "POST" });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(
+            typeof data?.error === "string" && data.error.trim().length > 0
+              ? data.error
+              : "Failed to cancel job",
+          );
+        }
+        toast.success("Job cancelled");
+        await loadJobs(selectedProductId);
+      } catch (err: any) {
+        toast.error(err?.message || "Failed to cancel job");
+      } finally {
+        setCancellingJobIds((prev) => {
+          const next = { ...prev };
+          delete next[jobId];
+          return next;
+        });
+      }
+    },
+    [loadJobs, selectedProductId],
+  );
+
   const runGroupsList = useMemo(() => Object.values(runGroups), [runGroups]);
   const selectedScriptResearchRun = useMemo(
     () => scriptResearchRuns.find((run) => run.jobId === selectedScriptResearchJobId) ?? null,
@@ -813,6 +849,9 @@ export default function CreativeStudioPage() {
   const allCharacters = useMemo(() => runCharacters, [runCharacters]);
   const hasSelectedProductCreatorReference = Boolean(
     String(selectedProduct?.creatorReferenceImageUrl ?? "").trim(),
+  );
+  const hasSelectedProductReferenceImage = Boolean(
+    String(selectedProduct?.productReferenceImageUrl ?? "").trim(),
   );
   const hasSelectedProductSoraCharacter = Boolean(
     String(selectedProduct?.soraCharacterId ?? "").trim(),
@@ -2618,6 +2657,38 @@ export default function CreativeStudioPage() {
         };
       }
 
+      if (step.key === "video") {
+        const storyboardId = String(latestCompletedStoryboardId ?? "").trim();
+        if (!storyboardId) {
+          throw new Error(
+            "No completed storyboard found for the selected run. Run Create Storyboard first.",
+          );
+        }
+        const sortByNewest = (a: Job, b: Job) =>
+          new Date(b.updatedAt ?? b.createdAt).getTime() - new Date(a.updatedAt ?? a.createdAt).getTime();
+        const latestScriptJob =
+          jobsInActiveRun
+            .filter((job) => job.type === JobType.SCRIPT_GENERATION && job.status === JobStatus.COMPLETED)
+            .sort(sortByNewest)[0] ??
+          jobs
+            .filter((job) => job.type === JobType.SCRIPT_GENERATION && job.status === JobStatus.COMPLETED)
+            .sort(sortByNewest)[0] ??
+          null;
+        const scriptId = getScriptIdFromJob(latestScriptJob);
+        if (!scriptId) {
+          throw new Error(
+            "No completed script found for the selected run. Run Generate Script first.",
+          );
+        }
+
+        payload = {
+          ...payload,
+          storyboardId,
+          scriptId,
+          forceNew: true,
+        };
+      }
+
       console.log("[Creative] runStep request payload", {
         step: step.key,
         endpoint,
@@ -2651,14 +2722,39 @@ export default function CreativeStudioPage() {
         throw new Error(apiError);
       }
       console.log("[Creative] Job created:", data.jobId);
-      if (data?.runId) {
-        setSelectedRunId(String(data.runId));
+      const resolvedRunId =
+        typeof data?.runId === "string" && data.runId.trim().length > 0
+          ? String(data.runId)
+          : activeRunId || null;
+      if (resolvedRunId) {
+        setSelectedRunId(resolvedRunId);
+      }
+      if (typeof data?.jobId === "string" && data.jobId.trim().length > 0) {
+        const nowIso = new Date().toISOString();
+        const optimisticJob: Job = {
+          id: String(data.jobId),
+          type: step.jobType,
+          status: JobStatus.PENDING,
+          createdAt: nowIso,
+          updatedAt: nowIso,
+          runId: resolvedRunId,
+          payload: {
+            ...(payload || {}),
+            ...(resolvedRunId ? { runId: resolvedRunId } : {}),
+          } as Record<string, unknown>,
+        };
+        setJobs((prev) => {
+          if (prev.some((job) => job.id === optimisticJob.id)) {
+            return prev;
+          }
+          return [optimisticJob, ...prev];
+        });
       }
       void loadProjectRuns();
 
       // Reload jobs
       await loadJobs(selectedProductId);
-      toast.success("Job started successfully!");
+      toast.success("Job queued successfully.");
       return true;
     } catch (err: any) {
       setError(err.message);
@@ -2782,6 +2878,11 @@ export default function CreativeStudioPage() {
         }
       }
       toggleCompletedStepOutput(step.key);
+      return;
+    }
+    if (step.key === "video" && step.canRun && !step.locked && !hasSelectedProductReferenceImage) {
+      setPendingVideoStep(step);
+      setShowMissingProductImageWarning(true);
       return;
     }
     void runStep(step);
@@ -3755,40 +3856,86 @@ export default function CreativeStudioPage() {
                 </div>
                 <div style={{ minWidth: 130, display: "flex", justifyContent: "flex-end" }}>
                   {!isVideoImagesStep ? (
-                    <button
-                      onClick={() => {
-                        handleStepRunClick(step);
-                      }}
-                      disabled={isPrimaryActionDisabled}
-                      style={{
-                        padding: "8px 16px",
-                        borderRadius: 8,
-                        border: "none",
-                        backgroundColor:
-                          isPrimaryActionDisabled
-                            ? "#1e293b"
-                            : "#0ea5e9",
-                        color:
-                          isPrimaryActionDisabled
-                            ? "#64748b"
-                            : "#ffffff",
-                        cursor:
-                          isPrimaryActionDisabled
-                            ? "not-allowed"
-                            : "pointer",
-                        fontSize: 14,
-                        fontWeight: 600,
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 8,
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {submitting === step.key && <Spinner />}
-                      {primaryActionLabel}
-                    </button>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      {isCancelableJob(step.lastJob) && step.lastJob ? (
+                        <button
+                          type="button"
+                          onClick={() => void cancelJob(step.lastJob!.id)}
+                          disabled={Boolean(cancellingJobIds[step.lastJob.id])}
+                          style={{
+                            border: "1px solid rgba(248, 113, 113, 0.6)",
+                            backgroundColor: cancellingJobIds[step.lastJob.id]
+                              ? "#1e293b"
+                              : "rgba(127, 29, 29, 0.3)",
+                            color: cancellingJobIds[step.lastJob.id] ? "#64748b" : "#fecaca",
+                            borderRadius: 8,
+                            padding: "8px 10px",
+                            fontSize: 12,
+                            fontWeight: 600,
+                            cursor: cancellingJobIds[step.lastJob.id] ? "not-allowed" : "pointer",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {cancellingJobIds[step.lastJob.id] ? "Cancelling..." : "Cancel"}
+                        </button>
+                      ) : null}
+                      <button
+                        onClick={() => {
+                          handleStepRunClick(step);
+                        }}
+                        disabled={isPrimaryActionDisabled}
+                        style={{
+                          padding: "8px 16px",
+                          borderRadius: 8,
+                          border: "none",
+                          backgroundColor:
+                            isPrimaryActionDisabled
+                              ? "#1e293b"
+                              : "#0ea5e9",
+                          color:
+                            isPrimaryActionDisabled
+                              ? "#64748b"
+                              : "#ffffff",
+                          cursor:
+                            isPrimaryActionDisabled
+                              ? "not-allowed"
+                              : "pointer",
+                          fontSize: 14,
+                          fontWeight: 600,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 8,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {submitting === step.key && <Spinner />}
+                        {primaryActionLabel}
+                      </button>
+                    </div>
                   ) : (
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      {isCancelableJob(step.lastJob) && step.lastJob ? (
+                        <button
+                          type="button"
+                          onClick={() => void cancelJob(step.lastJob!.id)}
+                          disabled={Boolean(cancellingJobIds[step.lastJob.id])}
+                          style={{
+                            border: "1px solid rgba(248, 113, 113, 0.6)",
+                            backgroundColor: cancellingJobIds[step.lastJob.id]
+                              ? "#1e293b"
+                              : "rgba(127, 29, 29, 0.3)",
+                            color: cancellingJobIds[step.lastJob.id] ? "#64748b" : "#fecaca",
+                            borderRadius: 8,
+                            padding: "8px 10px",
+                            fontSize: 12,
+                            fontWeight: 600,
+                            cursor: cancellingJobIds[step.lastJob.id] ? "not-allowed" : "pointer",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {cancellingJobIds[step.lastJob.id] ? "Cancelling..." : "Cancel"}
+                        </button>
+                      ) : null}
                       <span style={{ color: "#94a3b8", fontSize: 12 }}>Use scene controls below</span>
                       {runningVideoImageJobId && (
                         <button
@@ -6367,6 +6514,84 @@ export default function CreativeStudioPage() {
         </div>
       )}
 
+      {showMissingProductImageWarning && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            backgroundColor: "rgba(2, 6, 23, 0.75)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+            padding: 16,
+          }}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 560,
+              backgroundColor: "#0f172a",
+              border: "1px solid #334155",
+              borderRadius: 12,
+              padding: 20,
+            }}
+          >
+            <h3 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: "#f8fafc" }}>
+              Product Image Missing
+            </h3>
+            <p style={{ margin: "10px 0 0 0", color: "#cbd5e1", fontSize: 14 }}>
+              No product image has been uploaded for this product. Video generation can continue, but quality may be lower without a product reference image.
+            </p>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 16 }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMissingProductImageWarning(false);
+                  setPendingVideoStep(null);
+                  void router.push(`/projects/${projectId}/products`);
+                }}
+                style={{
+                  border: "1px solid #334155",
+                  backgroundColor: "#0b1220",
+                  color: "#cbd5e1",
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Go to product setup page
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const step = pendingVideoStep;
+                  setShowMissingProductImageWarning(false);
+                  setPendingVideoStep(null);
+                  if (step) {
+                    void runStep(step);
+                  }
+                }}
+                style={{
+                  border: "none",
+                  backgroundColor: "#0ea5e9",
+                  color: "#ffffff",
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Generate anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="mt-8 border-t border-slate-800 pt-6">
         <h2 className="text-lg font-semibold text-slate-200 mb-4">Recent Jobs</h2>
         <div className="space-y-2">
@@ -6380,6 +6605,18 @@ export default function CreativeStudioPage() {
                 <div className="text-xs text-slate-500">
                   {new Date(job.updatedAt ?? job.createdAt).toLocaleString()}
                 </div>
+                {isCancelableJob(job) ? (
+                  <div className="mt-2">
+                    <button
+                      type="button"
+                      onClick={() => void cancelJob(job.id)}
+                      disabled={Boolean(cancellingJobIds[job.id])}
+                      className="px-2 py-1 text-xs text-red-300 border border-red-500/40 rounded hover:bg-red-500/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {cancellingJobIds[job.id] ? "Cancelling..." : "Cancel"}
+                    </button>
+                  </div>
+                ) : null}
               </div>
               <div
                 className={`px-2 py-1 rounded text-xs ${
