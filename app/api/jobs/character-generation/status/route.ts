@@ -15,18 +15,15 @@ type PipelineJobRow = {
 
 const CREATOR_AVATAR_JOB_TYPE = "CREATOR_AVATAR_GENERATION" as JobType;
 const CHARACTER_SEED_VIDEO_JOB_TYPE = "CHARACTER_SEED_VIDEO" as JobType;
-const CHARACTER_REFERENCE_VIDEO_JOB_TYPE = "CHARACTER_REFERENCE_VIDEO" as JobType;
 
 const STAGE_ORDER: JobType[] = [
   CREATOR_AVATAR_JOB_TYPE,
   CHARACTER_SEED_VIDEO_JOB_TYPE,
-  CHARACTER_REFERENCE_VIDEO_JOB_TYPE,
 ];
 
 const STAGE_LABELS: Record<string, string> = {
   [CREATOR_AVATAR_JOB_TYPE]: "Creator Avatar Generation",
-  [CHARACTER_SEED_VIDEO_JOB_TYPE]: "Character Seed Video",
-  [CHARACTER_REFERENCE_VIDEO_JOB_TYPE]: "Character Reference Video",
+  [CHARACTER_SEED_VIDEO_JOB_TYPE]: "Character Avatar Image",
 };
 
 function toErrorString(error: unknown): string | null {
@@ -85,6 +82,7 @@ export async function GET(req: NextRequest) {
             soraCharacterId: null,
             characterUserName: null,
             characterReferenceVideoUrl: null,
+            characterAvatarImageUrl: product.characterAvatarImageUrl ?? null,
             characterCameoCreatedAt: null,
           },
         },
@@ -106,8 +104,7 @@ export async function GET(req: NextRequest) {
         AND j."runId" = ${runId}
         AND j."type" IN (
           CAST('CREATOR_AVATAR_GENERATION' AS "JobType"),
-          CAST('CHARACTER_SEED_VIDEO' AS "JobType"),
-          CAST('CHARACTER_REFERENCE_VIDEO' AS "JobType")
+          CAST('CHARACTER_SEED_VIDEO' AS "JobType")
         )
         AND COALESCE(j."payload"->>'productId', '') = ${productId}
       ORDER BY j."createdAt" DESC
@@ -156,13 +153,14 @@ export async function GET(req: NextRequest) {
         productId: product.id,
         projectId: product.projectId,
         runId,
-        isComplete: Boolean(runCharacter?.soraCharacterId),
+        isComplete: stages.every((s) => s.status === "COMPLETED"),
         activeStage: activeStage?.type ?? null,
         stages,
         character: {
           soraCharacterId: runCharacter?.soraCharacterId ?? null,
           characterUserName: runCharacter?.characterUserName ?? null,
           characterReferenceVideoUrl: runCharacter?.seedVideoUrl ?? null,
+          characterAvatarImageUrl: product.characterAvatarImageUrl ?? null,
           characterCameoCreatedAt: runCharacter?.createdAt ?? null,
         },
       },

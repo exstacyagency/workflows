@@ -27,6 +27,13 @@ export async function POST(
     return NextResponse.json({ error: "Not Found" }, { status: 404 });
   }
 
+  if (job.status !== JobStatus.PENDING && job.status !== JobStatus.RUNNING) {
+    return NextResponse.json(
+      { error: "Only pending or running jobs can be cancelled." },
+      { status: 400 },
+    );
+  }
+
   await prisma.job.update({
     where: { id: params.jobId },
     data: {

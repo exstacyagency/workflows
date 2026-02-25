@@ -1,5 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { cfg } from "@/lib/config";
+import {
+  assertProductSetupReferenceReachable,
+  assertProductSetupReferenceUrl,
+} from "@/lib/productSetupReferencePolicy";
 import prisma from "./prisma.ts";
 import { JobStatus, JobType, type Prisma } from "@prisma/client";
 import { SORA_CLIP_LENGTHS, type SoraClipLength } from "./soraConstants";
@@ -116,6 +120,7 @@ type StoryboardPromptContext = {
 type ProductReferenceImages = {
   creatorReferenceImageUrl: string | null;
   productReferenceImageUrl: string | null;
+  characterAnchorPrompt: string | null;
 };
 
 // Tiered storyboard prompt contract:
@@ -135,6 +140,7 @@ Canonical field names - use these exactly:
 - bRollSuggestions (array of strings)
 - transitionType
 - environment
+- characterAnchor
 
 Any other field name is a critical error that breaks the pipeline.`;
 
@@ -158,25 +164,48 @@ async function loadProductReferenceImages(args: {
     return {
       creatorReferenceImageUrl: null,
       productReferenceImageUrl: null,
+      characterAnchorPrompt: null,
     };
   }
 
   const rows = await prisma.$queryRaw<Array<{
     creatorReferenceImageUrl: string | null;
     productReferenceImageUrl: string | null;
+    characterAnchorPrompt: string | null;
   }>>`
     SELECT
       "creator_reference_image_url" AS "creatorReferenceImageUrl",
-      "product_reference_image_url" AS "productReferenceImageUrl"
+      "product_reference_image_url" AS "productReferenceImageUrl",
+      "character_anchor_prompt" AS "characterAnchorPrompt"
     FROM "product"
     WHERE "id" = ${args.productId}
       AND "project_id" = ${args.projectId}
     LIMIT 1
   `;
 
+  const creatorReferenceImageUrl = asString(rows[0]?.creatorReferenceImageUrl);
+  const productReferenceImageUrl = asString(rows[0]?.productReferenceImageUrl);
+  const characterAnchorPrompt = asString(rows[0]?.characterAnchorPrompt);
+
+  if (creatorReferenceImageUrl) {
+    assertProductSetupReferenceUrl(creatorReferenceImageUrl, "creatorReferenceImageUrl");
+    await assertProductSetupReferenceReachable(
+      creatorReferenceImageUrl,
+      "creatorReferenceImageUrl",
+    );
+  }
+  if (productReferenceImageUrl) {
+    assertProductSetupReferenceUrl(productReferenceImageUrl, "productReferenceImageUrl");
+    await assertProductSetupReferenceReachable(
+      productReferenceImageUrl,
+      "productReferenceImageUrl",
+    );
+  }
+
   return {
-    creatorReferenceImageUrl: asString(rows[0]?.creatorReferenceImageUrl),
-    productReferenceImageUrl: asString(rows[0]?.productReferenceImageUrl),
+    creatorReferenceImageUrl,
+    productReferenceImageUrl,
+    characterAnchorPrompt,
   };
 }
 
@@ -466,6 +495,7 @@ function buildStoryboardUserPrompt(args: {
   visualFlowPattern: string | null;
   creatorReferenceImageUrl: string | null;
   productReferenceImageUrl: string | null;
+  characterAnchorPrompt: string | null;
 }): string {
   const {
     beatCount,
@@ -478,6 +508,7 @@ function buildStoryboardUserPrompt(args: {
     visualFlowPattern,
     creatorReferenceImageUrl,
     productReferenceImageUrl,
+    characterAnchorPrompt,
   } = args;
   const beatLines = beats
     .map(
@@ -504,6 +535,7 @@ mechanismProcess: ${mechanismProcess || "not provided"}
 ${visualFlowPattern ? `visualFlow: ${visualFlowPattern}` : ""}
 ${creatorReferenceImageUrl ? `creatorReference: ${creatorReferenceImageUrl}` : ""}
 ${productReferenceImageUrl ? `productReference: ${productReferenceImageUrl}` : ""}
+${characterAnchorPrompt ? `CHARACTER ANCHOR (copy into every panel's characterAnchor field verbatim):\n${characterAnchorPrompt}` : ""}
 
 OUTPUT SCHEMA — use these exact field names, no others:
 {
@@ -519,7 +551,8 @@ OUTPUT SCHEMA — use these exact field names, no others:
       "productPlacement": "when and how product appears, or none",
       "bRollSuggestions": ["TEXT OVERLAY COPY HERE (0s-3s)"],
       "transitionType": "Cut",
-      "environment": "real location description or null"
+      "environment": "real location description or null",
+      "characterAnchor": "copy the provided CHARACTER ANCHOR verbatim when present"
     }
   ]
 }
@@ -888,6 +921,7 @@ export async function generateStoryboard(
       visualFlowPattern: promptContext.visualFlowPattern,
       creatorReferenceImageUrl: productReferenceImages.creatorReferenceImageUrl,
       productReferenceImageUrl: productReferenceImages.productReferenceImageUrl,
+      characterAnchorPrompt: productReferenceImages.characterAnchorPrompt,
     });
     const response = await anthropic.messages.create({
       model: "claude-sonnet-4-5-20250929",
@@ -954,6 +988,9 @@ export async function generateStoryboard(
           : {}),
         ...(productReferenceImages.productReferenceImageUrl
           ? { productReferenceImageUrl: productReferenceImages.productReferenceImageUrl }
+          : {}),
+        ...(productReferenceImages.characterAnchorPrompt
+          ? { characterAnchor: productReferenceImages.characterAnchorPrompt }
           : {}),
         ...(panel.panelType === "ON_CAMERA" && normalizedCharacterHandle
           ? { characterHandle: normalizedCharacterHandle }
