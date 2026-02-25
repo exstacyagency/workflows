@@ -5,6 +5,7 @@ import { z } from "zod";
 import { getSessionUserId } from "@/lib/getSessionUserId";
 import { prisma } from "@/lib/prisma";
 import { ensureProductTableColumns, findOwnedProductById } from "@/lib/productStore";
+import { saveCharacterAnchorPrompt } from "@/lib/productCharacterStore";
 
 const StartCharacterPipelineSchema = z.object({
   productId: z.string().trim().min(1, "productId is required"),
@@ -37,6 +38,26 @@ export async function POST(req: NextRequest) {
 
     const productId = parsed.data.productId;
     const manualDescription = parsed.data.manualDescription?.trim() || null;
+    if (manualDescription) {
+      const requiredFields = [
+        "Age:",
+        "Ethnicity:",
+        "Hair:",
+        "Eyes:",
+        "Skin tone:",
+        "Face:",
+        "Build:",
+        "Wardrobe:",
+        "Vocal tone:",
+      ];
+      const missing = requiredFields.filter((field) => !manualDescription.includes(field));
+      if (missing.length > 0) {
+        return NextResponse.json(
+          { error: `Description missing required fields: ${missing.join(", ")}` },
+          { status: 400 },
+        );
+      }
+    }
     const incomingRunId = parsed.data.runId?.trim() || null;
 
     await ensureProductTableColumns();
@@ -131,6 +152,10 @@ export async function POST(req: NextRequest) {
         status: true,
       },
     });
+
+    if (manualDescription) {
+      await saveCharacterAnchorPrompt(productId, manualDescription);
+    }
 
     return NextResponse.json(
       {

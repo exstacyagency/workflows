@@ -20,9 +20,6 @@ type ProductItem = {
 
 type ProductEditDraft = {
   name: string;
-  productProblemSolved: string;
-  amazonAsin: string;
-  creatorReferenceImageUrl: string;
   productReferenceImageUrl: string;
 };
 
@@ -45,9 +42,6 @@ function extractErrorMessage(data: unknown, fallback: string): string {
 function makeEditDraft(product: ProductItem): ProductEditDraft {
   return {
     name: String(product.name ?? ""),
-    productProblemSolved: String(product.productProblemSolved ?? ""),
-    amazonAsin: String(product.amazonAsin ?? ""),
-    creatorReferenceImageUrl: String(product.creatorReferenceImageUrl ?? ""),
     productReferenceImageUrl: String(product.productReferenceImageUrl ?? ""),
   };
 }
@@ -63,6 +57,8 @@ export default function ProjectProductsPage() {
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [editingDraft, setEditingDraft] = useState<ProductEditDraft | null>(null);
   const [savingProductId, setSavingProductId] = useState<string | null>(null);
+  const [uploadingReferenceProductId, setUploadingReferenceProductId] = useState<string | null>(null);
+  const [deletingReferenceProductId, setDeletingReferenceProductId] = useState<string | null>(null);
 
   const sortedProducts = useMemo(
     () =>
@@ -122,9 +118,6 @@ export default function ProjectProductsPage() {
         body: JSON.stringify({
           productId,
           name: editingDraft.name.trim(),
-          productProblemSolved: editingDraft.productProblemSolved,
-          amazonAsin: editingDraft.amazonAsin,
-          creatorReferenceImageUrl: editingDraft.creatorReferenceImageUrl,
           productReferenceImageUrl: editingDraft.productReferenceImageUrl,
         }),
       });
@@ -165,6 +158,102 @@ export default function ProjectProductsPage() {
       setError(err?.message || "Failed to delete product");
     } finally {
       setDeletingProductId(null);
+    }
+  }
+
+  async function handleUploadProductReferenceImage(productId: string, file: File) {
+    if (!editingDraft || uploadingReferenceProductId) return;
+
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setError("Invalid file type. Accepted types: image/jpeg, image/png, image/webp.");
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setError("File too large. Max size is 10.0MB.");
+      return;
+    }
+
+    setUploadingReferenceProductId(productId);
+    setError(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("productId", productId);
+      formData.append("file", file);
+
+      const res = await fetch(`/api/projects/${projectId}/products/upload-reference`, {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success || typeof data?.url !== "string") {
+        throw new Error(extractErrorMessage(data, "Failed to upload product reference image"));
+      }
+      const uploadedUrl = String(data.url);
+
+      setEditingDraft((prev) =>
+        prev ? { ...prev, productReferenceImageUrl: uploadedUrl } : prev,
+      );
+
+      const patchRes = await fetch(`/api/projects/${projectId}/products`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          productId,
+          productReferenceImageUrl: uploadedUrl,
+        }),
+      });
+      const patchData = await patchRes.json().catch(() => ({}));
+      if (!patchRes.ok || !patchData?.success || !patchData?.product) {
+        throw new Error(
+          extractErrorMessage(patchData, "Uploaded image but failed to save product reference URL"),
+        );
+      }
+
+      const updatedProduct = patchData.product as ProductItem;
+      setProducts((prev) =>
+        prev.map((product) => (product.id === productId ? updatedProduct : product)),
+      );
+    } catch (err: any) {
+      setError(err?.message || "Failed to upload product reference image");
+    } finally {
+      setUploadingReferenceProductId(null);
+    }
+  }
+
+  async function handleDeleteProductReferenceImage(productId: string) {
+    if (deletingReferenceProductId) return;
+
+    setDeletingReferenceProductId(productId);
+    setError(null);
+
+    try {
+      const patchRes = await fetch(`/api/projects/${projectId}/products`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          productId,
+          productReferenceImageUrl: null,
+        }),
+      });
+      const patchData = await patchRes.json().catch(() => ({}));
+      if (!patchRes.ok || !patchData?.success || !patchData?.product) {
+        throw new Error(
+          extractErrorMessage(patchData, "Failed to delete product reference URL"),
+        );
+      }
+
+      const updatedProduct = patchData.product as ProductItem;
+      setProducts((prev) =>
+        prev.map((product) => (product.id === productId ? updatedProduct : product)),
+      );
+      setEditingDraft((prev) =>
+        prev ? { ...prev, productReferenceImageUrl: "" } : prev,
+      );
+    } catch (err: any) {
+      setError(err?.message || "Failed to delete product reference URL");
+    } finally {
+      setDeletingReferenceProductId(null);
     }
   }
 
@@ -298,7 +387,7 @@ export default function ProjectProductsPage() {
 
                   {editingProductId === product.id && editingDraft && (
                     <div className="rounded-lg border border-slate-700 bg-slate-900/60 p-3 space-y-3">
-                      <div className="grid gap-3 md:grid-cols-2">
+                      <div className="grid gap-3 md:grid-cols-1">
                         <div className="space-y-1">
                           <label className="block text-xs font-medium text-slate-300">Name</label>
                           <input
@@ -311,71 +400,76 @@ export default function ProjectProductsPage() {
                             className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
                           />
                         </div>
-                        <div className="space-y-1">
-                          <label className="block text-xs font-medium text-slate-300">Amazon ASIN</label>
-                          <input
-                            value={editingDraft.amazonAsin}
-                            onChange={(event) =>
-                              setEditingDraft((prev) =>
-                                prev ? { ...prev, amazonAsin: event.target.value } : prev,
-                              )
-                            }
-                            className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
-                            placeholder="Optional"
-                          />
-                        </div>
                       </div>
 
-                      <div className="space-y-1">
-                        <label className="block text-xs font-medium text-slate-300">
-                          Problem Solved
-                        </label>
-                        <textarea
-                          value={editingDraft.productProblemSolved}
-                          onChange={(event) =>
-                            setEditingDraft((prev) =>
-                              prev ? { ...prev, productProblemSolved: event.target.value } : prev,
-                            )
-                          }
-                          className="w-full min-h-[70px] rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
-                          placeholder="Optional"
-                        />
-                      </div>
-
-                      <div className="grid gap-3 md:grid-cols-2">
+                      <div className="grid gap-3 md:grid-cols-1">
                         <div className="space-y-1">
                           <label className="block text-xs font-medium text-slate-300">
-                            Creator Reference Image URL
+                            Product Reference Image
                           </label>
-                          <input
-                            value={editingDraft.creatorReferenceImageUrl}
-                            onChange={(event) =>
-                              setEditingDraft((prev) =>
-                                prev
-                                  ? { ...prev, creatorReferenceImageUrl: event.target.value }
-                                  : prev,
-                              )
-                            }
-                            className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-100"
-                            placeholder="https://..."
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="block text-xs font-medium text-slate-300">
-                            Product Reference Image URL
-                          </label>
-                          <input
-                            value={editingDraft.productReferenceImageUrl}
-                            onChange={(event) =>
-                              setEditingDraft((prev) =>
-                                prev
-                                  ? { ...prev, productReferenceImageUrl: event.target.value }
-                                  : prev,
-                              )
-                            }
-                            className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-100"
-                            placeholder="https://..."
-                          />
+                          <div className="pt-1">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const input = document.getElementById(
+                                  `product-ref-upload-${product.id}`,
+                                ) as HTMLInputElement | null;
+                                input?.click();
+                              }}
+                              disabled={uploadingReferenceProductId === product.id}
+                              className="inline-flex cursor-pointer items-center rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-medium text-slate-200 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {uploadingReferenceProductId === product.id
+                                ? "Uploading..."
+                                : "Upload Product Image"}
+                            </button>
+                            <input
+                              id={`product-ref-upload-${product.id}`}
+                              type="file"
+                              accept="image/jpeg,image/png,image/webp"
+                              style={{
+                                position: "absolute",
+                                width: 1,
+                                height: 1,
+                                padding: 0,
+                                margin: -1,
+                                overflow: "hidden",
+                                clip: "rect(0, 0, 0, 0)",
+                                whiteSpace: "nowrap",
+                                border: 0,
+                              }}
+                              tabIndex={-1}
+                              aria-hidden="true"
+                              disabled={uploadingReferenceProductId === product.id}
+                              onChange={(event) => {
+                                const file = event.target.files?.[0];
+                                if (file) {
+                                  void handleUploadProductReferenceImage(product.id, file);
+                                }
+                                event.currentTarget.value = "";
+                              }}
+                            />
+                          </div>
+                          <p className="text-[11px] text-amber-300">
+                            Accepted types: image/jpeg, image/png, image/webp; Max size: 10.0MB
+                          </p>
+                          {editingDraft.productReferenceImageUrl ? (
+                            <div className="space-y-2">
+                              <p className="text-[11px] text-slate-400 break-all">
+                                Uploaded URL: {editingDraft.productReferenceImageUrl}
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => void handleDeleteProductReferenceImage(product.id)}
+                                disabled={deletingReferenceProductId === product.id}
+                                className="inline-flex items-center rounded-md border border-red-500/40 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-300 hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {deletingReferenceProductId === product.id
+                                  ? "Deleting..."
+                                  : "Delete Product Image URL"}
+                              </button>
+                            </div>
+                          ) : null}
                         </div>
                       </div>
 

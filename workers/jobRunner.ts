@@ -40,16 +40,15 @@ import { generateStoryboard } from "../lib/storyboardGenerationService.ts";
 import { startVideoPromptGenerationJob } from "../lib/videoPromptGenerationService.ts";
 import { generateCreatorAvatar } from "../lib/creatorAvatarGenerationService.ts";
 import {
-  createSeedVideo,
-  createCharacter,
+  createCharacterAvatarImage,
+  extractImageUrl,
   getTask,
   normalizeState as normalizeKieState,
 } from "../lib/kieCharacterService.ts";
 import {
   getProductCharacterState,
   saveCreatorVisualPrompt,
-  saveSeedVideoResult,
-  saveCharacterToTable,
+  saveCharacterAvatarImage,
 } from "../lib/productCharacterStore.ts";
 // ARCHIVED: IMAGE_PROMPT_GENERATION and VIDEO_IMAGE_GENERATION handlers removed.
 import { runVideoGenerationJob } from "../lib/videoGenerationService.ts";
@@ -100,7 +99,7 @@ if (pipelineContext.mode === "alpha" && cfg.raw("NODE_ENV") === "production") {
   throw new Error("INVALID CONFIG: MODE=alpha cannot run with NODE_ENV=production");
 }
 
-const POLL_MS = Math.max(2000, parseInt(cfg.raw("WORKER_POLL_MS") || "2000", 10));
+const POLL_MS = 2000;
 const ARCHIVED_JOB_TYPES: JobType[] = [
   JobType.IMAGE_PROMPT_GENERATION,
   JobType.VIDEO_IMAGE_GENERATION,
@@ -164,75 +163,6 @@ async function runWithJobTypeMaxRuntime<T>(
 function asObject(value: unknown): JsonObject {
   if (value && typeof value === "object" && !Array.isArray(value)) return value as JsonObject;
   return {};
-}
-
-function extractKieVideoUrl(raw: unknown): string {
-  const rawObj = asObject(raw);
-  const dataObj = asObject(rawObj.data);
-  try {
-    const resultJson = dataObj.resultJson;
-    const parsed = typeof resultJson === "string" ? JSON.parse(resultJson) : asObject(resultJson);
-    const urls = (asObject(parsed).resultUrls ?? dataObj.resultUrls) as unknown;
-    if (Array.isArray(urls) && typeof urls[0] === "string") return urls[0];
-  } catch {
-    // Ignore parse errors and continue with fallbacks.
-  }
-
-  const direct = dataObj.videoUrl ?? dataObj.video_url;
-  if (typeof direct === "string") return direct;
-
-  const resultObj = asObject(dataObj.result);
-  const nestedUrls = resultObj.resultUrls;
-  if (Array.isArray(nestedUrls) && typeof nestedUrls[0] === "string") return nestedUrls[0];
-
-  const nestedDirect = resultObj.videoUrl ?? resultObj.video_url;
-  return typeof nestedDirect === "string" ? nestedDirect : "";
-}
-
-async function enqueueReferenceVideoJob({
-  job,
-  jobId,
-  productId,
-  taskId,
-}: {
-  job: {
-    projectId: string;
-    userId: string;
-  };
-  jobId: string;
-  productId: string;
-  taskId: string;
-}) {
-  const key = JSON.stringify([
-    job.projectId,
-    CHARACTER_REFERENCE_VIDEO_JOB_TYPE,
-    productId,
-    "from",
-    jobId,
-  ]);
-
-  try {
-    await prisma.job.create({
-      data: {
-        projectId: job.projectId,
-        userId: job.userId,
-        type: CHARACTER_REFERENCE_VIDEO_JOB_TYPE,
-        status: JobStatus.PENDING,
-        idempotencyKey: key,
-        payload: {
-          projectId: job.projectId,
-          productId,
-          originTaskId: taskId,
-          upstreamJobId: jobId,
-        },
-      },
-    });
-  } catch (e: any) {
-    const code = String(e?.code ?? "");
-    const msg = String(e?.message ?? "").toLowerCase();
-    const isUnique = code === "P2002" || msg.includes("unique constraint");
-    if (!isUnique) throw e;
-  }
 }
 
 function serializeResult(value: any) {
@@ -477,7 +407,7 @@ async function claimNextJob(exclusions?: ClaimExclusions) {
       FOR UPDATE SKIP LOCKED
       LIMIT 1
     )
-    RETURNING "id", "type", "projectId", "userId", "payload", "idempotencyKey", "status";
+    RETURNING "id", "type", "projectId", "userId", "runId", "payload", "idempotencyKey", "status";
   `;
 
   console.log('[Worker] Raw query result:', claimed);
@@ -490,6 +420,7 @@ async function claimNextJob(exclusions?: ClaimExclusions) {
     type: JobType;
     projectId: string;
     userId: string;
+    runId: string | null;
     payload: unknown;
     idempotencyKey: string | null;
     status: JobStatus;
@@ -502,6 +433,7 @@ async function runJob(
     type: JobType;
     projectId: string;
     userId: string;
+    runId: string | null;
     payload: unknown;
     idempotencyKey: string | null;
     status: JobStatus;
@@ -1135,12 +1067,14 @@ async function runJob(
             data: {
               projectId: job.projectId,
               userId: job.userId,
+              runId: job.runId ?? null,
               type: CHARACTER_SEED_VIDEO_JOB_TYPE,
               status: JobStatus.PENDING,
               idempotencyKey: nextIdempotencyKey,
               payload: {
                 projectId: job.projectId,
                 productId,
+                runId: job.runId ?? null,
                 creatorVisualPrompt: avatarResult.videoPrompt,
                 upstreamJobId: jobId,
               },
@@ -1175,13 +1109,13 @@ async function runJob(
           return;
         }
 
-        const MAX_WALL_MS = 5 * 60 * 1000;
+        const MAX_WALL_MS = 10 * 60 * 1000;
         const POLL_INTERVAL_MS = 10_000;
         const seedStartedAt = Number(payload?.seedStartedAt ?? Date.now());
         const elapsed = Date.now() - seedStartedAt;
 
         if (elapsed > MAX_WALL_MS) {
-          await markFailed({ jobId, error: "Character seed video timed out after 5 minutes" });
+          await markFailed({ jobId, error: "Character avatar image timed out after 10 minutes" });
           return;
         }
 
@@ -1192,19 +1126,19 @@ async function runJob(
             typeof raw === "string" ? "RUNNING" : normalizeKieState(raw as Record<string, unknown>);
 
           if (normalized === "SUCCEEDED") {
-            const videoUrl = extractKieVideoUrl(raw);
-            await saveSeedVideoResult(productId, { taskId: seedTaskId, videoUrl });
-            await enqueueReferenceVideoJob({ job, jobId, productId, taskId: seedTaskId });
+            const imageUrl =
+              typeof raw === "string" ? null : extractImageUrl(raw as Record<string, unknown>);
+            await saveCharacterAvatarImage(productId, { taskId: seedTaskId, imageUrl });
             await markCompleted({
               jobId,
-              result: { ok: true, productId, taskId: seedTaskId, seedVideoUrl: videoUrl },
-              summary: "Character seed video generated",
+              result: { ok: true, productId, taskId: seedTaskId, characterAvatarImageUrl: imageUrl },
+              summary: "Character avatar image generated",
             });
             return;
           }
 
           if (normalized === "FAILED") {
-            await markFailed({ jobId, error: "KIE seed video task failed" });
+            await markFailed({ jobId, error: "KIE character avatar image task failed" });
             return;
           }
 
@@ -1237,10 +1171,7 @@ async function runJob(
           return;
         }
 
-        const seedCreate = await createSeedVideo({
-          prompt: creatorVisualPrompt,
-          creatorReferenceImageUrl: productState.creatorReferenceImageUrl,
-        });
+        const seedCreate = await createCharacterAvatarImage({ prompt: creatorVisualPrompt });
 
         await prisma.job.update({
           where: { id: jobId },
@@ -1258,158 +1189,10 @@ async function runJob(
       }
 
       case CHARACTER_REFERENCE_VIDEO_JOB_TYPE: {
-        const providerCfg = await handleProviderConfig(jobId, "KIE", ["KIE_API_KEY"]);
-        if (!providerCfg.ok) {
-          return;
-        }
-
-        const productId = String(payload?.productId ?? "").trim();
-        if (!productId) {
-          await markFailed({ jobId, error: "Invalid payload: missing productId" });
-          return;
-        }
-
-        const MAX_WALL_MS = 5 * 60 * 1000;
-        const POLL_INTERVAL_MS = 10_000;
-        const refStartedAt = Number(payload?.refStartedAt ?? Date.now());
-
-        if (Date.now() - refStartedAt > MAX_WALL_MS) {
-          await markFailed({ jobId, error: "Character reference video timed out after 5 minutes" });
-          return;
-        }
-
-        const productState = await getProductCharacterState(productId, job.projectId);
-        if (!productState) {
-          await markFailed({ jobId, error: `Product not found: ${productId}` });
-          return;
-        }
-
-        if (payload?.refTaskId) {
-          const refTaskId = String(payload.refTaskId).trim();
-          const raw = await getTask(refTaskId);
-          const normalized =
-            typeof raw === "string" ? "RUNNING" : normalizeKieState(raw as Record<string, unknown>);
-
-          if (normalized === "SUCCEEDED") {
-            const rawObj = asObject(raw);
-            const dataObj = asObject(rawObj.data);
-            let parsed: Record<string, unknown> = {};
-
-            try {
-              const resultJson = dataObj.resultJson;
-              parsed =
-                typeof resultJson === "string"
-                  ? asObject(JSON.parse(resultJson))
-                  : asObject(resultJson);
-            } catch {
-              parsed = {};
-            }
-
-            const resultObject = asObject(parsed.resultObject);
-            const characterId = String(
-              resultObject.character_id ??
-                resultObject.characterId ??
-                dataObj.character_id ??
-                dataObj.characterId ??
-                "",
-            ).trim();
-            const characterUserName = String(
-              resultObject.character_user_name ??
-                resultObject.characterUserName ??
-                dataObj.character_user_name ??
-                dataObj.characterUserName ??
-                "",
-            ).trim();
-
-            if (!characterId) {
-              await markFailed({
-                jobId,
-                error: "Character reference task succeeded but returned no character_id",
-              });
-              return;
-            }
-
-            try {
-              await saveCharacterToTable({
-                productId,
-                runId: String(payload?.runId ?? "") || null,
-                name: `${productState.name} Character ${Date.now()}`,
-                soraCharacterId: characterId,
-                characterUserName: characterUserName || "",
-                seedVideoTaskId: String(payload?.originTaskId ?? ""),
-                seedVideoUrl: productState.characterSeedVideoUrl ?? "",
-                creatorVisualPrompt: productState.creatorVisualPrompt ?? "",
-              });
-            } catch (err) {
-              console.error("saveCharacterToTable failed:", err);
-              await markFailed({ jobId, error: `Failed to save character: ${String(err)}` });
-              return;
-            }
-
-            await prisma.$executeRaw`
-              UPDATE "product"
-              SET "sora_character_id" = ${characterId},
-                  "character_user_name" = ${characterUserName || null},
-                  "character_cameo_created_at" = NOW(),
-                  "updated_at" = NOW()
-              WHERE "id" = ${productId}
-            `;
-
-            await markCompleted({
-              jobId,
-              result: { ok: true, productId, characterId, characterUserName, taskId: refTaskId },
-              summary: "Character reference created",
-            });
-            return;
-          }
-
-          if (normalized === "FAILED") {
-            await markFailed({ jobId, error: "KIE character reference task failed" });
-            return;
-          }
-
-          await prisma.job.update({
-            where: { id: jobId },
-            data: {
-              status: JobStatus.PENDING,
-              payload: {
-                ...payload,
-                refTaskId,
-                refStartedAt,
-                nextRunAt: Date.now() + POLL_INTERVAL_MS,
-              },
-            },
-          });
-          return;
-        }
-
-        const originTaskId = String(payload?.originTaskId ?? "").trim();
-        if (!originTaskId) {
-          await markFailed({ jobId, error: "Missing origin seed video task id" });
-          return;
-        }
-
-        const characterPrompt = String(
-          payload?.characterPrompt ?? productState.creatorVisualPrompt ?? "",
-        ).trim();
-        if (!characterPrompt) {
-          await markFailed({ jobId, error: "Missing character prompt" });
-          return;
-        }
-
-        const createResult = await createCharacter({ originTaskId, characterPrompt });
-
-        await prisma.job.update({
-          where: { id: jobId },
-          data: {
-            status: JobStatus.PENDING,
-            payload: {
-              ...payload,
-              refTaskId: createResult.taskId,
-              refStartedAt: Date.now(),
-              nextRunAt: Date.now() + POLL_INTERVAL_MS,
-            },
-          },
+        await markCompleted({
+          jobId,
+          result: { ok: true, skipped: true, reason: "Legacy CHARACTER_REFERENCE_VIDEO stage retired" },
+          summary: "Skipped retired character reference stage",
         });
         return;
       }
@@ -1492,6 +1275,15 @@ async function loop() {
         });
         console.log('[Worker] Found jobs:', allPending.length);
         console.log('[Worker] Job types:', allPending.map(j => j.type));
+        const pendingSeeds = await prisma.$queryRaw<
+          Array<{ id: string; next_run_at: string | null; updatedAt: Date }>
+        >`
+          SELECT id, payload->>'nextRunAt' as next_run_at, "updatedAt"
+          FROM job
+          WHERE type = CAST('CHARACTER_SEED_VIDEO' AS "JobType")
+            AND status = CAST('PENDING' AS "JobStatus")
+        `;
+        console.log('[Worker] Pending seed jobs:', pendingSeeds);
         writeLog(
           `[WORKER] PENDING jobs in database: ${JSON.stringify(allPending, null, 2)}`,
         );

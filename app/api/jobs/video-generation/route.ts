@@ -18,6 +18,7 @@ const BodySchema = z.object({
   storyboardId: z.string().min(1),
   productId: z.string().trim().min(1).max(200).optional(),
   runId: z.string().trim().min(1).max(200).optional(),
+  forceNew: z.boolean().optional().default(false),
 });
 
 export async function POST(req: NextRequest) {
@@ -65,7 +66,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: parsed.error.message }, { status: 400 });
     }
 
-    const { projectId, scriptId, storyboardId } = parsed.data;
+    const { projectId, scriptId, storyboardId, forceNew } = parsed.data;
     const requestedProductId = parsed.data.productId ? String(parsed.data.productId).trim() : "";
     const requestedRunId = parsed.data.runId ? String(parsed.data.runId).trim() : "";
     let effectiveRunId: string | null = null;
@@ -169,6 +170,9 @@ export async function POST(req: NextRequest) {
     // SECURITY_SWEEP: do NOT require frames to exist. Return deterministic success.
     // Still respects plan + ownership + quota.
     if (securitySweep) {
+      const forceNonce = forceNew
+        ? (globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`)
+        : null;
       const idempotencyKey = JSON.stringify([
         projectId,
         "VIDEO_GENERATION",
@@ -176,6 +180,7 @@ export async function POST(req: NextRequest) {
         scriptId,
         effectiveProductId ?? "no_product",
         effectiveRunId ?? "no_run",
+        ...(forceNonce ? [`force:${forceNonce}`] : []),
       ]);
 
       // If an existing job exists, reuse it but still mark skipped for sweep-mode determinism.
@@ -267,35 +272,14 @@ export async function POST(req: NextRequest) {
     if (!storyboard.scenes.length) {
       await rollbackReservation();
       return NextResponse.json(
-        { error: "Frames not ready", missing: [] },
-        { status: 409 },
-      );
-    }
-    const missing = storyboard.scenes
-      .map((scene) => {
-        const missingFields: string[] = [];
-        const rawData = scene.rawJson as any;
-        const firstFrameUrl = rawData?.firstFrameUrl;
-        const lastFrameUrl = rawData?.lastFrameUrl;
-        if (!firstFrameUrl || String(firstFrameUrl).trim().length === 0) {
-          missingFields.push("firstFrameUrl");
-        }
-        if (!lastFrameUrl || String(lastFrameUrl).trim().length === 0) {
-          missingFields.push("lastFrameUrl");
-        }
-        return missingFields.length > 0
-          ? { sceneId: scene.id, missing: missingFields }
-          : null;
-      })
-      .filter((entry): entry is { sceneId: string; missing: string[] } => !!entry);
-    if (missing.length > 0) {
-      await rollbackReservation();
-      return NextResponse.json(
-        { error: "Frames not ready", missing },
+        { error: "Storyboard has no scenes" },
         { status: 409 },
       );
     }
 
+    const forceNonce = forceNew
+      ? (globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`)
+      : null;
     const idempotencyKey = JSON.stringify([
       projectId,
       "VIDEO_GENERATION",
@@ -303,18 +287,21 @@ export async function POST(req: NextRequest) {
       scriptId,
       effectiveProductId ?? "no_product",
       effectiveRunId ?? "no_run",
+      ...(forceNonce ? [`force:${forceNonce}`] : []),
     ]);
 
-    const existing = await prisma.job.findFirst({
-      where: {
-        projectId,
-        type: JobType.VIDEO_GENERATION,
-        idempotencyKey,
-        status: { in: [JobStatus.PENDING, JobStatus.RUNNING] },
-      },
-      orderBy: { createdAt: "desc" },
-      select: { id: true, runId: true },
-    });
+    const existing = forceNew
+      ? null
+      : await prisma.job.findFirst({
+          where: {
+            projectId,
+            type: JobType.VIDEO_GENERATION,
+            idempotencyKey,
+            status: { in: [JobStatus.PENDING, JobStatus.RUNNING] },
+          },
+          orderBy: { createdAt: "desc" },
+          select: { id: true, runId: true },
+        });
 
     if (existing?.id) {
       await rollbackReservation();
@@ -338,6 +325,7 @@ export async function POST(req: NextRequest) {
             storyboardId,
             scriptId,
             ...(effectiveProductId ? { productId: effectiveProductId } : {}),
+            ...(forceNew ? { forceNew: true } : {}),
             idempotencyKey,
             ...(effectiveRunId ? { runId: effectiveRunId } : {}),
             quotaReservation: {

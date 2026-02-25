@@ -12,6 +12,7 @@ export type ProductCharacterState = {
   characterSeedVideoTaskId: string | null;
   characterSeedVideoUrl: string | null;
   characterUserName: string | null;
+  characterAnchorPrompt: string | null;
 };
 
 export async function ensureProductCharacterColumns() {
@@ -51,7 +52,8 @@ export async function getProductCharacterState(
           p."creator_visual_prompt" AS "creatorVisualPrompt",
           p."character_seed_video_task_id" AS "characterSeedVideoTaskId",
           p."character_seed_video_url" AS "characterSeedVideoUrl",
-          p."character_user_name" AS "characterUserName"
+          p."character_user_name" AS "characterUserName",
+          p."character_anchor_prompt" AS "characterAnchorPrompt"
         FROM "product" p
         WHERE p."id" = ${productId}
           AND p."project_id" = ${projectId}
@@ -68,7 +70,8 @@ export async function getProductCharacterState(
           p."creator_visual_prompt" AS "creatorVisualPrompt",
           p."character_seed_video_task_id" AS "characterSeedVideoTaskId",
           p."character_seed_video_url" AS "characterSeedVideoUrl",
-          p."character_user_name" AS "characterUserName"
+          p."character_user_name" AS "characterUserName",
+          p."character_anchor_prompt" AS "characterAnchorPrompt"
         FROM "product" p
         WHERE p."id" = ${productId}
         LIMIT 1
@@ -87,17 +90,28 @@ export async function saveCreatorVisualPrompt(productId: string, creatorVisualPr
   `;
 }
 
-export async function saveSeedVideoResult(
+export async function saveCharacterAnchorPrompt(productId: string, prompt: string) {
+  await ensureProductCharacterColumns();
+  await prisma.$executeRaw`
+    UPDATE "product"
+    SET "character_anchor_prompt" = ${prompt}, "updated_at" = NOW()
+    WHERE "id" = ${productId}
+  `;
+}
+
+export async function saveCharacterAvatarImage(
   productId: string,
-  args: { taskId: string; videoUrl: string | null },
+  args: { taskId: string; imageUrl: string | null },
 ) {
   await ensureProductCharacterColumns();
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "product" ADD COLUMN IF NOT EXISTS "character_avatar_image_url" text;
+  `);
   await prisma.$executeRaw`
     UPDATE "product"
     SET
       "character_seed_video_task_id" = ${args.taskId},
-      "character_seed_video_url" = ${args.videoUrl},
-      "character_reference_video_url" = COALESCE(${args.videoUrl}, "character_reference_video_url"),
+      "character_avatar_image_url" = ${args.imageUrl},
       "updated_at" = NOW()
     WHERE "id" = ${productId}
   `;
