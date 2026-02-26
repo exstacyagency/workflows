@@ -45,6 +45,7 @@
     "verify:prod-routes": "tsx scripts/verify-prod-routes.ts",
     "verify:prod-guardrails": "bash scripts/verify-prod-guardrails.sh",
     "verify:prod-env": "bash scripts/verify-no-security-sweep-prod.sh",
+    "cleanup:storyboard-legacy": "tsx scripts/cleanup_storyboard_legacy_character_fields.ts",
     "start": "next start",
     "start:all": "concurrently \"npm start\" \"npm run worker\"",
     "lint": "next lint",

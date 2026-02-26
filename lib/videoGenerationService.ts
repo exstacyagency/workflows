@@ -68,11 +68,12 @@ type SceneLike = {
 
 type ProductReferenceImages = {
   productReferenceImageUrl: string | null;
+  characterAvatarImageUrl: string | null;
 };
 
 type SceneReferenceFrame = {
-  kind: 'product';
-  role: 'product';
+  kind: 'product' | 'character';
+  role: 'product' | 'character';
   url: string;
 };
 
@@ -125,8 +126,8 @@ function normalizeReferenceFrames(value: unknown): SceneReferenceFrame[] {
   return value
     .map((entry) => {
       const raw = asObject(entry);
-      const kind = raw.kind === 'product' ? raw.kind : null;
-      const role = raw.role === 'product' ? raw.role : null;
+      const kind = raw.kind === 'product' ? 'product' : raw.kind === 'character' ? 'character' : null;
+      const role = raw.role === 'product' ? 'product' : raw.role === 'character' ? 'character' : null;
       const url = normalizeUrl(raw.url);
       if (!kind || !role || !url) return null;
       return { kind, role, url };
@@ -140,12 +141,23 @@ function buildSceneReferenceFrames(args: {
 }): SceneReferenceFrame[] {
   const rawFrames = normalizeReferenceFrames(args.raw.referenceFrames);
   const productFromRaw = rawFrames.find((frame) => frame.kind === 'product')?.url;
+  const characterFromRaw = rawFrames.find((frame) => frame.kind === 'character')?.url;
 
   const productReferenceImageUrl = normalizeUrl(
     productFromRaw ?? args.raw.productReferenceImageUrl ?? args.productReferenceImages.productReferenceImageUrl,
   );
+  const characterAvatarImageUrl = normalizeUrl(
+    characterFromRaw ?? args.raw.characterAvatarImageUrl ?? args.productReferenceImages.characterAvatarImageUrl,
+  );
 
   const frames: SceneReferenceFrame[] = [];
+  if (characterAvatarImageUrl) {
+    frames.push({
+      kind: 'character',
+      role: 'character',
+      url: characterAvatarImageUrl,
+    });
+  }
   if (productReferenceImageUrl) {
     frames.push({
       kind: 'product',
@@ -474,12 +486,17 @@ async function loadProductReferenceImages(args: {
   if (!args.productId) {
     return {
       productReferenceImageUrl: null,
+      characterAvatarImageUrl: null,
     };
   }
 
-  const productRows = await prisma.$queryRaw<Array<{ productReferenceImageUrl: string | null }>>`
+  const productRows = await prisma.$queryRaw<Array<{
+    productReferenceImageUrl: string | null;
+    characterAvatarImageUrl: string | null;
+  }>>`
     SELECT
-      "product_reference_image_url" AS "productReferenceImageUrl"
+      "product_reference_image_url" AS "productReferenceImageUrl",
+      "character_avatar_image_url" AS "characterAvatarImageUrl"
     FROM "product"
     WHERE "id" = ${args.productId}
       AND "project_id" = ${args.projectId}
@@ -487,6 +504,7 @@ async function loadProductReferenceImages(args: {
   `;
 
   const productReferenceImageUrl = normalizeUrl(productRows[0]?.productReferenceImageUrl);
+  const characterAvatarImageUrl = normalizeUrl(productRows[0]?.characterAvatarImageUrl);
 
   if (productReferenceImageUrl) {
     assertProductSetupReferenceUrl(productReferenceImageUrl, "productReferenceImageUrl");
@@ -498,6 +516,7 @@ async function loadProductReferenceImages(args: {
 
   return {
     productReferenceImageUrl,
+    characterAvatarImageUrl,
   };
 }
 
