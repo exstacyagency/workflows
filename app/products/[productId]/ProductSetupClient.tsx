@@ -185,6 +185,9 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const [isDeletingCharacters, setIsDeletingCharacters] = useState(false);
+  const [renamingCharacterId, setRenamingCharacterId] = useState<string | null>(null);
+  const [editingCharacterId, setEditingCharacterId] = useState<string | null>(null);
+  const [editingCharacterName, setEditingCharacterName] = useState<string>("");
   const [cancellingCharacterJobId, setCancellingCharacterJobId] = useState<string | null>(null);
   const [addingCharacter, setAddingCharacter] = useState(false);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(product.selectedRunId ?? null);
@@ -341,6 +344,45 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
       setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
       setCancellingCharacterJobId(null);
+    }
+  }
+
+  function beginCharacterRename(characterId: string, currentName: string) {
+    setEditingCharacterId(characterId);
+    setEditingCharacterName(currentName);
+    setError(null);
+  }
+
+  function cancelCharacterRename() {
+    setEditingCharacterId(null);
+    setEditingCharacterName("");
+  }
+
+  async function handleRenameCharacter(characterId: string) {
+    const nextName = editingCharacterName.trim();
+    if (!nextName) {
+      setError("Character name is required.");
+      return;
+    }
+    setRenamingCharacterId(characterId);
+    setError(null);
+    try {
+      const res = await fetch(`/api/products/${product.id}/characters`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          characterId,
+          name: nextName,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(extractError(data, "Failed to rename character"));
+      cancelCharacterRename();
+      window.location.reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unknown error");
+    } finally {
+      setRenamingCharacterId(null);
     }
   }
 
@@ -599,8 +641,46 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
                         }}
                       />
                     </label>
-                    <p className="text-sm font-medium text-slate-100">{char.name}</p>
+                    {editingCharacterId === char.id ? (
+                      <input
+                        type="text"
+                        value={editingCharacterName}
+                        onChange={(e) => setEditingCharacterName(e.target.value)}
+                        className="flex-1 rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
+                        maxLength={120}
+                      />
+                    ) : (
+                      <p className="text-sm font-medium text-slate-100 flex-1">{char.name}</p>
+                    )}
                     <p className="text-xs text-slate-500">{new Date(char.createdAt).toLocaleString()}</p>
+                    {editingCharacterId === char.id ? (
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void handleRenameCharacter(char.id)}
+                          disabled={renamingCharacterId === char.id}
+                          className="inline-flex items-center rounded-md bg-sky-500 hover:bg-sky-400 px-2 py-1 text-[11px] font-medium text-white disabled:opacity-60"
+                        >
+                          {renamingCharacterId === char.id ? "Saving..." : "Save"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={cancelCharacterRename}
+                          disabled={renamingCharacterId === char.id}
+                          className="inline-flex items-center rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-[11px] font-medium text-slate-200 hover:bg-slate-800 disabled:opacity-60"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => beginCharacterRename(char.id, char.name)}
+                        className="inline-flex items-center rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-[11px] font-medium text-slate-200 hover:bg-slate-800"
+                      >
+                        Rename
+                      </button>
+                    )}
                   </div>
                   {char.seedVideoUrl && (
                     <img

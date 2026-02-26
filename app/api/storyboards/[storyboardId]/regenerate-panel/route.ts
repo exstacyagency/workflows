@@ -71,35 +71,84 @@ function parseJsonFromModelText(text: string): unknown {
     throw new Error("Claude returned an empty response.");
   }
 
-  try {
-    return JSON.parse(trimmed);
-  } catch {}
+  const tryParse = (candidate: string): unknown | null => {
+    try {
+      return JSON.parse(candidate);
+    } catch {
+      return null;
+    }
+  };
 
-  const fenced = trimmed.match(/```json\s*([\s\S]*?)```/i) || trimmed.match(/```\s*([\s\S]*?)```/);
+  const parseWithRepairs = (candidate: string): unknown | null => {
+    const normalizedQuotes = candidate
+      .replace(/[\u2018\u2019]/g, "'")
+      .replace(/[\u201C\u201D]/g, '"');
+    const noTrailingCommas = normalizedQuotes.replace(/,\s*([}\]])/g, "$1");
+    const quotedKeys = noTrailingCommas.replace(
+      /([{,]\s*)([A-Za-z_][A-Za-z0-9_ ]*)(\s*:)/g,
+      (_match, p1, p2, p3) => `${p1}"${String(p2).trim()}"${p3}`,
+    );
+    const doubleQuotedStrings = quotedKeys.replace(
+      /'([^'\\]*(?:\\.[^'\\]*)*)'/g,
+      (_match, p1) => `"${String(p1).replace(/"/g, '\\"')}"`,
+    );
+    return tryParse(doubleQuotedStrings);
+  };
+
+  const extractFirstBalancedObject = (source: string): string | null => {
+    const start = source.indexOf("{");
+    if (start < 0) return null;
+    let depth = 0;
+    let inString = false;
+    let escape = false;
+    for (let idx = start; idx < source.length; idx += 1) {
+      const char = source[idx];
+      if (inString) {
+        if (escape) {
+          escape = false;
+        } else if (char === "\\") {
+          escape = true;
+        } else if (char === "\"") {
+          inString = false;
+        }
+        continue;
+      }
+      if (char === "\"") {
+        inString = true;
+        continue;
+      }
+      if (char === "{") depth += 1;
+      if (char === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          return source.slice(start, idx + 1);
+        }
+      }
+    }
+    return null;
+  };
+
+  const direct = tryParse(trimmed);
+  if (direct !== null) return direct;
+
+  const fenced =
+    trimmed.match(/```json\s*([\s\S]*?)```/i) ||
+    trimmed.match(/```\s*([\s\S]*?)```/);
   if (fenced?.[1]) {
-    return JSON.parse(fenced[1].trim());
+    const parsedFenced = tryParse(fenced[1].trim()) ?? parseWithRepairs(fenced[1].trim());
+    if (parsedFenced !== null) return parsedFenced;
   }
 
-  const objStart = trimmed.indexOf("{");
-  if (objStart < 0) {
+  const balanced = extractFirstBalancedObject(trimmed);
+  if (!balanced) {
     throw new Error("Claude response does not contain JSON.");
   }
 
-  let depth = 0;
-  let end = -1;
-  for (let idx = objStart; idx < trimmed.length; idx += 1) {
-    const char = trimmed[idx];
-    if (char === "{") depth += 1;
-    if (char === "}") depth -= 1;
-    if (depth === 0) {
-      end = idx;
-      break;
-    }
-  }
-  if (end === -1) {
-    throw new Error("Claude response contains invalid JSON.");
-  }
-  return JSON.parse(trimmed.slice(objStart, end + 1));
+  const parsedBalanced = tryParse(balanced) ?? parseWithRepairs(balanced);
+  if (parsedBalanced !== null) return parsedBalanced;
+
+  const preview = balanced.slice(0, 240).replace(/\s+/g, " ").trim();
+  throw new Error(`Claude response contains invalid JSON. Preview: ${preview}`);
 }
 
 function normalizePanel(
