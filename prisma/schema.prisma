@@ -275,6 +275,8 @@ model StoryboardScene {
   sceneNumber  Int
   clipDurationSeconds Int? @default(10)
   panelType    PanelType? @default(ON_CAMERA)
+  firstFrameImageUrl String?
+  lastFrameImageUrl  String?
   rawJson      Json?
   approved     Boolean    @default(false)
   status       String     @default("pending")

@@ -97,6 +97,58 @@ function getStoryboardIdFromCompletedJob(job: StoryboardJobRow | null): string |
   return null;
 }
 
+function buildFirstFramePrompt(args: {
+  sceneNumber: number;
+  panelType: string;
+  beatLabel: string;
+  vo: string;
+  characterAction: string;
+  cameraDirection: string;
+  environment: string;
+  productPlacement: string;
+  bRollSuggestions: string[];
+  characterName: string;
+  characterDescription: string;
+  productReferenceImageUrl: string;
+}): string {
+  const {
+    sceneNumber,
+    panelType,
+    beatLabel,
+    vo,
+    characterAction,
+    cameraDirection,
+    environment,
+    productPlacement,
+    bRollSuggestions,
+    characterName,
+    characterDescription,
+    productReferenceImageUrl,
+  } = args;
+  const broll = bRollSuggestions.filter(Boolean).join(" | ");
+  const creatorPresent =
+    panelType === "ON_CAMERA"
+      ? "Creator is visible and speaking to camera."
+      : "B-roll scene: creator voiceover is present but creator is NOT shown.";
+  return [
+    "STYLE: Authentic smartphone UGC. NOT cinematic. NOT a production still. NOT commercial photography.",
+    `UGC ad first-frame still for Scene ${sceneNumber}${beatLabel ? ` (${beatLabel})` : ""}.`,
+    creatorPresent,
+    `Character name: ${characterName}`,
+    `Character description: ${characterDescription}`,
+    vo ? `VO context: ${vo}` : "",
+    characterAction ? `Character action: ${characterAction}` : "",
+    cameraDirection ? `Camera direction: ${cameraDirection}` : "",
+    environment ? `Environment: ${environment}` : "",
+    productPlacement ? `Product placement: ${productPlacement}` : "",
+    broll ? `Text overlays / b-roll intent: ${broll}` : "",
+    `Use this product reference image exactly for packaging/label details: ${productReferenceImageUrl}`,
+    "Render as smartphone-shot UGC (not commercial): natural lighting, real room, handheld realism, vertical 9:16.",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
 export async function POST(req: NextRequest) {
   const userId = await getSessionUserId();
   if (!userId) {
@@ -110,13 +162,15 @@ export async function POST(req: NextRequest) {
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
-  const runId = asString(body.runId);
 
+  const runId = asString(body.runId);
+  const characterId = asString(body.characterId);
   const projectId = asString(body.projectId);
+  const productId = asString(body.productId);
+
   if (!projectId) {
     return NextResponse.json({ error: "Missing projectId" }, { status: 400 });
   }
-  const productId = asString(body.productId);
   if (!productId) {
     return NextResponse.json({ error: "Missing productId" }, { status: 400 });
   }
@@ -132,10 +186,7 @@ export async function POST(req: NextRequest) {
   ) {
     return NextResponse.json({ error: "sceneNumber must be a positive integer when provided." }, { status: 400 });
   }
-  const requestedSceneNumber =
-    hasRequestedSceneNumber
-      ? Math.trunc(requestedSceneNumberRaw)
-      : null;
+  const requestedSceneNumber = hasRequestedSceneNumber ? Math.trunc(requestedSceneNumberRaw) : null;
 
   const deny = await requireProjectOwner404(projectId);
   if (deny) return deny;
@@ -145,12 +196,13 @@ export async function POST(req: NextRequest) {
   if (!ownedProduct || ownedProduct.projectId !== projectId) {
     return NextResponse.json({ error: "Product not found for this project." }, { status: 404 });
   }
-  const creatorReferenceImageUrl = asString(ownedProduct.creatorReferenceImageUrl);
-  if (!creatorReferenceImageUrl) {
+
+  const productReferenceImageUrl = asString(ownedProduct.productReferenceImageUrl);
+  if (!productReferenceImageUrl) {
     return NextResponse.json(
       {
         error:
-          "Image generation requires an active creator reference image. Set product.creatorReferenceImageUrl first.",
+          "First-frame generation requires a product reference image. Upload product image in Product Setup first.",
       },
       { status: 409 },
     );
@@ -201,132 +253,130 @@ export async function POST(req: NextRequest) {
   });
 
   if (!storyboard) {
-    return NextResponse.json(
-      { error: "Latest completed storyboard no longer exists." },
-      { status: 404 },
-    );
+    return NextResponse.json({ error: "Latest completed storyboard no longer exists." }, { status: 404 });
   }
 
   if (!storyboard.scenes.length) {
+    return NextResponse.json({ error: "Storyboard has no scenes. Regenerate storyboard first." }, { status: 409 });
+  }
+
+  const requestedCharacter = characterId
+    ? await prisma.character.findFirst({
+        where: {
+          id: characterId,
+          projectId,
+        },
+        select: {
+          id: true,
+          runId: true,
+          productId: true,
+          name: true,
+          creatorVisualPrompt: true,
+          seedVideoUrl: true,
+        },
+      })
+    : null;
+  if (characterId && !requestedCharacter) {
+    return NextResponse.json({ error: "characterId not found for this project." }, { status: 400 });
+  }
+  if (runId && requestedCharacter && String(requestedCharacter.runId ?? "") !== runId) {
+    return NextResponse.json({ error: "characterId does not belong to selected run." }, { status: 400 });
+  }
+  if (requestedCharacter && String(requestedCharacter.productId ?? "") !== productId) {
+    return NextResponse.json({ error: "characterId does not belong to selected product." }, { status: 400 });
+  }
+
+  const firstSceneRaw = asObject(storyboard.scenes[0]?.rawJson) ?? {};
+  const resolvedCharacterName = asString(requestedCharacter?.name) || asString(firstSceneRaw.characterName);
+  const resolvedCharacterDescription =
+    asString(requestedCharacter?.creatorVisualPrompt) || asString(firstSceneRaw.characterDescription);
+  const resolvedAvatarImageUrl =
+    asString(requestedCharacter?.seedVideoUrl) ||
+    asString(ownedProduct.characterAvatarImageUrl) ||
+    asString(ownedProduct.creatorReferenceImageUrl);
+
+  if (!resolvedCharacterName || !resolvedCharacterDescription) {
     return NextResponse.json(
-      { error: "Storyboard has no scenes. Regenerate storyboard first." },
+      {
+        error:
+          "Missing selected character context. Ensure character has name + description and regenerate storyboard if needed.",
+      },
       { status: 409 },
     );
   }
 
-  let approvalRows: Array<{ id: string; approved: boolean | null }> = [];
-  try {
-    approvalRows = await prisma.$queryRaw<Array<{ id: string; approved: boolean | null }>>`
-      SELECT "id", "approved"
-      FROM "storyboard_scene"
-      WHERE "storyboardId" = ${storyboard.id}
-    `;
-  } catch {
-    // Backward compatibility for environments before approval migration is applied.
-    approvalRows = [];
-  }
-  const approvalBySceneId = new Map<string, boolean>();
-  for (const row of approvalRows) {
-    approvalBySceneId.set(String(row.id), Boolean(row.approved));
+  if (!resolvedAvatarImageUrl) {
+    return NextResponse.json(
+      {
+        error: "Missing selected avatar image. Generate/select a character avatar before generating first frames.",
+      },
+      { status: 409 },
+    );
   }
 
-  const scenesWithPrompts = storyboard.scenes.map((scene) => {
+  const scenesWithContext = storyboard.scenes.map((scene) => {
     const rawJson = asObject(scene.rawJson) ?? {};
     const frameUrls = extractSceneFrameUrls(rawJson);
     return {
       sceneId: asString(scene.id),
       sceneNumber: Number(scene.sceneNumber),
-      approved: approvalBySceneId.get(scene.id) ?? Boolean(rawJson.approved),
-      firstFramePrompt: asString(rawJson.firstFramePrompt),
-      lastFramePrompt: asString(rawJson.lastFramePrompt),
+      panelType: asString(rawJson.panelType) || "ON_CAMERA",
+      beatLabel: asString(rawJson.beatLabel),
+      vo: asString(rawJson.vo),
+      characterAction: asString(rawJson.characterAction),
+      cameraDirection: asString(rawJson.cameraDirection),
+      environment: asString(rawJson.environment),
+      productPlacement: asString(rawJson.productPlacement),
+      bRollSuggestions: Array.isArray(rawJson.bRollSuggestions)
+        ? rawJson.bRollSuggestions.map((entry) => asString(entry)).filter(Boolean)
+        : [],
       firstFrameImageUrl: frameUrls.firstFrameImageUrl,
       lastFrameImageUrl: frameUrls.lastFrameImageUrl,
     };
   });
 
-  const missingPromptScenes = scenesWithPrompts
-    .filter((entry) => !entry.firstFramePrompt || !entry.lastFramePrompt)
-    .map((entry) => entry.sceneNumber);
-  if (missingPromptScenes.length > 0) {
-    return NextResponse.json(
-      {
-        error: "Storyboard scenes are missing image prompts. Run Generate Image Prompts first.",
-        missingPromptScenes,
-      },
-      { status: 409 },
-    );
-  }
-
-  let targetScenes = scenesWithPrompts;
+  let targetScenes = scenesWithContext;
   if (requestedSceneNumber !== null) {
-    const targetScene = scenesWithPrompts.find((scene) => scene.sceneNumber === requestedSceneNumber);
+    const targetScene = scenesWithContext.find((scene) => scene.sceneNumber === requestedSceneNumber);
     if (!targetScene) {
-      return NextResponse.json(
-        { error: `Scene ${requestedSceneNumber} not found in storyboard.` },
-        { status: 404 },
-      );
+      return NextResponse.json({ error: `Scene ${requestedSceneNumber} not found in storyboard.` }, { status: 404 });
     }
-
-    if (requestedSceneNumber > 1) {
-      const previousScene = scenesWithPrompts.find((scene) => scene.sceneNumber === requestedSceneNumber - 1) ?? null;
-      if (!previousScene) {
-        return NextResponse.json(
-          { error: `Scene ${requestedSceneNumber - 1} is missing; cannot generate Scene ${requestedSceneNumber}.` },
-          { status: 409 },
-        );
-      }
-      if (!previousScene.approved) {
-        return NextResponse.json(
-          {
-            error: `Scene ${requestedSceneNumber} is locked. Approve Scene ${requestedSceneNumber - 1} first.`,
-          },
-          { status: 409 },
-        );
-      }
-      if (!previousScene.lastFrameImageUrl) {
-        return NextResponse.json(
-          {
-            error: `Scene ${requestedSceneNumber - 1} is approved but missing a last frame image URL. Regenerate Scene ${requestedSceneNumber - 1}.`,
-          },
-          { status: 409 },
-        );
-      }
-    }
-
     targetScenes = [targetScene];
   }
 
-  const scenesByNumber = new Map<number, (typeof scenesWithPrompts)[number]>();
-  for (const scene of scenesWithPrompts) {
+  const scenesByNumber = new Map<number, (typeof scenesWithContext)[number]>();
+  for (const scene of scenesWithContext) {
     scenesByNumber.set(scene.sceneNumber, scene);
   }
 
-  const prompts = targetScenes.flatMap((scene) => {
-    const sceneNumber = Number(scene.sceneNumber);
-    const safeSceneNumber = Number.isFinite(sceneNumber) ? sceneNumber : 0;
-    const previousScene = scenesByNumber.get(safeSceneNumber - 1);
-    const previousSceneLastFrameImageUrl = previousScene?.lastFrameImageUrl ?? null;
+  const prompts = targetScenes.map((scene) => {
+    const previousScene = scenesByNumber.get(scene.sceneNumber - 1) ?? null;
+    const previousSceneLastFrameImageUrl =
+      previousScene?.firstFrameImageUrl || previousScene?.lastFrameImageUrl || null;
 
-    return [
-      {
-        frameIndex: safeSceneNumber * 2,
-        sceneId: scene.sceneId,
-        sceneNumber: safeSceneNumber,
-        promptKind: "first" as const,
-        prompt: scene.firstFramePrompt,
-        inputImageUrl: creatorReferenceImageUrl,
-        previousSceneLastFrameImageUrl,
-      },
-      {
-        frameIndex: safeSceneNumber * 2 + 1,
-        sceneId: scene.sceneId,
-        sceneNumber: safeSceneNumber,
-        promptKind: "last" as const,
-        prompt: scene.lastFramePrompt,
-        inputImageUrl: creatorReferenceImageUrl,
-        previousSceneLastFrameImageUrl,
-      },
-    ];
+    return {
+      frameIndex: scene.sceneNumber * 2,
+      sceneId: scene.sceneId,
+      sceneNumber: scene.sceneNumber,
+      promptKind: "first" as const,
+      prompt: buildFirstFramePrompt({
+        sceneNumber: scene.sceneNumber,
+        panelType: scene.panelType,
+        beatLabel: scene.beatLabel,
+        vo: scene.vo,
+        characterAction: scene.characterAction,
+        cameraDirection: scene.cameraDirection,
+        environment: scene.environment,
+        productPlacement: scene.productPlacement,
+        bRollSuggestions: scene.bRollSuggestions,
+        characterName: resolvedCharacterName,
+        characterDescription: resolvedCharacterDescription,
+        productReferenceImageUrl,
+      }),
+      inputImageUrl: resolvedAvatarImageUrl,
+      referenceImageUrls: [productReferenceImageUrl],
+      previousSceneLastFrameImageUrl,
+    };
   });
 
   if (targetScenes.length > 0) {
@@ -349,14 +399,14 @@ export async function POST(req: NextRequest) {
   }
 
   const runNonceFromBody = asString(body.runNonce);
-  const runNonce = runNonceFromBody ||
-    (requestedSceneNumber !== null ? `scene-${requestedSceneNumber}-${Date.now()}` : "");
+  const runNonce = runNonceFromBody || (requestedSceneNumber !== null ? `scene-${requestedSceneNumber}-${Date.now()}` : "");
 
   const forwardedBody = {
     projectId,
     productId,
     ...(runId ? { runId } : {}),
     storyboardId: storyboard.id,
+    characterId: requestedCharacter?.id ?? null,
     prompts,
     force: body.force === true,
     providerId: body.providerId ? asString(body.providerId) : undefined,

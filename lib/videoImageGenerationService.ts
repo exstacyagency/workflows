@@ -95,6 +95,24 @@ export async function runVideoImageGenerationJob(args: RunArgs): Promise<void> {
     normalizedPollStatus === "SUCCEEDED" ||
     normalizedPollStatus === "SUCCESS" ||
     (allTasksHaveUrls && !hasAnyFailedTask);
+  const resolvedImages =
+    polled.images.length > 0
+      ? polled.images
+      : polled.tasks
+          .filter((task) => Boolean(String(task.url ?? "").trim()))
+          .map((task) => ({
+            frameIndex: Number(task.frameIndex),
+            sceneId: String(task.sceneId ?? "").trim() || null,
+            sceneNumber: Number.isFinite(Number(task.sceneNumber))
+              ? Number(task.sceneNumber)
+              : Number(task.frameIndex),
+            frameType:
+              task.frameType === "last" || task.promptKind === "last" ? ("last" as const) : ("first" as const),
+            promptKind:
+              task.frameType === "last" || task.promptKind === "last" ? ("last" as const) : ("first" as const),
+            url: String(task.url ?? "").trim(),
+          }))
+          .filter((image) => Boolean(image.url));
   const taskStatusSnapshot = polled.tasks.map((task) => ({
     taskId: task.taskId,
     sceneNumber: task.sceneNumber,
@@ -165,7 +183,7 @@ export async function runVideoImageGenerationJob(args: RunArgs): Promise<void> {
       data: {
         error: null,
         payload: updatedPayload as any,
-        resultSummary: `Video frames saved: ${polled.images.length}`,
+        resultSummary: `Video frames saved: ${resolvedImages.length}`,
       } as any,
     });
     console.log("[VIG-SERVICE] DB update complete: completed-branch", {
@@ -174,7 +192,7 @@ export async function runVideoImageGenerationJob(args: RunArgs): Promise<void> {
     });
 
     const storyboardId = payload?.storyboardId;
-    if (storyboardId && polled.images.length > 0) {
+    if (storyboardId && resolvedImages.length > 0) {
       const safePolledRaw = polled.raw && typeof polled.raw === "object" ? polled.raw : { value: polled.raw };
       const sceneRows = await prisma.storyboardScene.findMany({
         where: { storyboardId },
@@ -198,10 +216,17 @@ export async function runVideoImageGenerationJob(args: RunArgs): Promise<void> {
           sceneNumber: number;
           firstFrameUrl: string | null;
           lastFrameUrl: string | null;
-          images: typeof polled.images;
+          images: Array<{
+            frameIndex: number;
+            sceneId: string | null;
+            sceneNumber: number;
+            frameType: "first" | "last";
+            promptKind?: "first" | "last";
+            url: string;
+          }>;
         }
       >();
-      for (const image of polled.images) {
+      for (const image of resolvedImages) {
         const sceneId = String((image as any).sceneId ?? "").trim() || null;
         const sceneNumber = Number.isFinite(Number(image.sceneNumber))
           ? Number(image.sceneNumber)
