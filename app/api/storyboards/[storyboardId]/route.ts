@@ -118,10 +118,20 @@ function normalizePanelFromRaw(args: {
   sceneId: string;
   sceneNumber: number;
   approved: boolean;
+  firstFrameImageUrlFromDb?: string | null;
+  lastFrameImageUrlFromDb?: string | null;
 }): StoryboardPanelResponse {
   const raw = asObject(args.rawValue) ?? {};
   const panelType = normalizePanelType(raw.panelType);
-  const frameUrls = extractSceneFrameUrls(raw);
+  const frameUrlsFromJson = extractSceneFrameUrls(raw);
+  const frameUrls = {
+    firstFrameImageUrl: args.firstFrameImageUrlFromDb ?? frameUrlsFromJson.firstFrameImageUrl,
+    lastFrameImageUrl:
+      args.lastFrameImageUrlFromDb ??
+      frameUrlsFromJson.lastFrameImageUrl ??
+      args.firstFrameImageUrlFromDb ??
+      frameUrlsFromJson.firstFrameImageUrl,
+  };
   return {
     sceneId: args.sceneId,
     sceneNumber: args.sceneNumber,
@@ -224,6 +234,8 @@ export async function GET(
           select: {
             id: true,
             sceneNumber: true,
+            firstFrameImageUrl: true,
+            lastFrameImageUrl: true,
             // TODO: Restore after panelType migration runs.
             // panelType: true,
             rawJson: true,
@@ -258,6 +270,8 @@ export async function GET(
         sceneId: scene.id,
         sceneNumber: scene.sceneNumber,
         approved: approvalBySceneId.get(scene.id) ?? false,
+        firstFrameImageUrlFromDb: scene.firstFrameImageUrl ?? null,
+        lastFrameImageUrlFromDb: scene.lastFrameImageUrl ?? null,
       }),
     );
 
@@ -381,6 +395,8 @@ export async function PATCH(
           select: {
             id: true,
             sceneNumber: true,
+            firstFrameImageUrl: true,
+            lastFrameImageUrl: true,
             // TODO: Restore after panelType migration runs.
             // panelType: true,
             rawJson: true,
@@ -399,6 +415,8 @@ export async function PATCH(
         sceneId: scene.id,
         sceneNumber: scene.sceneNumber,
         approved: false,
+        firstFrameImageUrlFromDb: scene.firstFrameImageUrl ?? null,
+        lastFrameImageUrlFromDb: scene.lastFrameImageUrl ?? null,
       }),
     );
     return NextResponse.json(

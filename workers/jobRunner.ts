@@ -38,6 +38,7 @@ import { runPatternAnalysis } from "../lib/patternAnalysisService.ts";
 import { startScriptGenerationJob } from "../lib/scriptGenerationService.ts";
 import { generateStoryboard } from "../lib/storyboardGenerationService.ts";
 import { startVideoPromptGenerationJob } from "../lib/videoPromptGenerationService.ts";
+import { runVideoImageGenerationJob } from "../lib/videoImageGenerationService.ts";
 import { generateCreatorAvatar } from "../lib/creatorAvatarGenerationService.ts";
 import {
   createCharacterAvatarImage,
@@ -51,7 +52,7 @@ import {
   saveCharacterAvatarImage,
   saveCharacterToTable,
 } from "../lib/productCharacterStore.ts";
-// ARCHIVED: IMAGE_PROMPT_GENERATION and VIDEO_IMAGE_GENERATION handlers removed.
+// ARCHIVED: IMAGE_PROMPT_GENERATION handler removed.
 import { runVideoGenerationJob } from "../lib/videoGenerationService.ts";
 import { collectProductIntelWithWebFetch } from "../lib/productDataCollectionService.ts";
 import { analyzeProductData } from "../lib/productAnalysisService.ts";
@@ -104,7 +105,6 @@ if (pipelineContext.mode === "alpha" && cfg.raw("NODE_ENV") === "production") {
 const POLL_MS = 2000;
 const ARCHIVED_JOB_TYPES: JobType[] = [
   JobType.IMAGE_PROMPT_GENERATION,
-  JobType.VIDEO_IMAGE_GENERATION,
 ];
 const RUN_ONCE = cfg.raw("RUN_ONCE") === "1";
 const WORKER_JOB_MAX_RUNTIME_MS = Number(cfg.raw("WORKER_JOB_MAX_RUNTIME_MS") ?? 20 * 60_000);
@@ -776,8 +776,9 @@ async function runJob(
             storyboardMode,
             manualPanels,
           });
-          const warningCount = Array.isArray(result.validationReport?.warnings)
-            ? result.validationReport.warnings.length
+          const validationReport = (result as any)?.validationReport;
+          const warningCount = Array.isArray(validationReport?.warnings)
+            ? validationReport.warnings.length
             : 0;
 
           await markCompleted({
@@ -788,7 +789,7 @@ async function runJob(
               scriptId,
               panelCount: result.panelCount,
               targetDuration: result.targetDuration,
-              validationReport: result.validationReport,
+              ...(validationReport && { validationReport }),
             },
             summary: {
               summary: `Generated ${result.panelCount} panels for ${result.targetDuration}s video.${warningCount > 0 ? ` ${warningCount} quality warning${warningCount === 1 ? "" : "s"}.` : ""}`,
@@ -796,7 +797,7 @@ async function runJob(
               scriptId,
               panelCount: result.panelCount,
               targetDuration: result.targetDuration,
-              validationReport: result.validationReport,
+              ...(validationReport && { validationReport }),
             },
           });
         } catch (e: any) {
@@ -815,6 +816,8 @@ async function runJob(
         });
         const storyboardId = String(payload?.storyboardId ?? "").trim();
         const productId = String(payload?.productId ?? "").trim() || null;
+        const characterName = String(payload?.characterName ?? "").trim() || null;
+        const characterDescription = String(payload?.characterDescription ?? "").trim() || null;
         if (!storyboardId) {
           await markFailed({ jobId, error: "Invalid payload: missing storyboardId" });
           return;
@@ -840,6 +843,8 @@ async function runJob(
             storyboardId,
             jobId,
             productId,
+            characterName,
+            characterDescription,
           });
           console.log("[Worker][VIDEO_PROMPT_GENERATION] Video prompt generation completed", {
             jobId,
@@ -898,10 +903,18 @@ async function runJob(
       //   return;
       // }
 
-      // ARCHIVED: Use Sora 2 Character Cameos for direct video generation.
-      // case JobType.VIDEO_IMAGE_GENERATION: {
-      //   return;
-      // }
+      case JobType.VIDEO_IMAGE_GENERATION: {
+        const providerCfg = await handleProviderConfig(jobId, "KIE", ["KIE_API_KEY"]);
+        if (!providerCfg.ok) return;
+        try {
+          await runVideoImageGenerationJob({ jobId });
+        } catch (e: any) {
+          const msg = String(e?.message ?? e ?? "Unknown error");
+          await markFailed({ jobId, error: e });
+          await appendResultSummary(jobId, `Video image generation failed: ${msg}`);
+        }
+        return;
+      }
 
       case JobType.VIDEO_GENERATION: {
         const cfg = await handleProviderConfig(jobId, "KIE", ["KIE_API_KEY"]);

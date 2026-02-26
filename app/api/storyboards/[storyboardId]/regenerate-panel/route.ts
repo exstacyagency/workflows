@@ -190,6 +190,29 @@ function normalizeKlingPrompt(text: string): string {
   return normalized.slice(0, 2400).trimEnd();
 }
 
+function ensurePromptContainsCharacterProfile(
+  prompt: string,
+  characterName: string | null,
+  characterDescription: string | null,
+): string {
+  let next = String(prompt ?? "").trim();
+  const name = asString(characterName);
+  const description = asString(characterDescription);
+  if (name) {
+    const line = `Character name: ${name}`;
+    if (!next.toLowerCase().includes(line.toLowerCase())) {
+      next = `${next}\n\n${line}`.trim();
+    }
+  }
+  if (description) {
+    const line = `Character description: ${description}`;
+    if (!next.toLowerCase().includes(line.toLowerCase())) {
+      next = `${next}\n\n${line}`.trim();
+    }
+  }
+  return next;
+}
+
 function formatDurationLabel(durationSec: number): string {
   const rounded = Number.isFinite(durationSec) ? Math.round(durationSec * 10) / 10 : 8;
   return Number.isInteger(rounded) ? String(rounded) : String(rounded);
@@ -376,12 +399,17 @@ export async function POST(
       if (!promptText) {
         throw new Error("Claude returned an empty video prompt.");
       }
+      const promptWithCharacterProfile = ensurePromptContainsCharacterProfile(
+        normalizeKlingPrompt(promptText),
+        targetPanel.characterName || null,
+        targetPanel.characterDescription || null,
+      );
 
       return NextResponse.json(
         {
           success: true,
           panelIndex,
-          videoPrompt: normalizeKlingPrompt(promptText),
+          videoPrompt: promptWithCharacterProfile,
         },
         { status: 200 },
       );

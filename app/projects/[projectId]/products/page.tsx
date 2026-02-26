@@ -298,8 +298,6 @@ export default function ProjectProductsPage() {
         ) : (
           <div className="space-y-4">
             {sortedProducts.map((product) => {
-              const hasCharacter = Boolean(String(product.soraCharacterId ?? "").trim());
-
               return (
                 <div
                   key={product.id}
@@ -362,27 +360,6 @@ export default function ProjectProductsPage() {
                         {deletingProductId === product.id ? "Deleting..." : "Delete"}
                       </button>
                     </div>
-                  </div>
-
-                  <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-3">
-                    <div className="text-xs text-slate-500 mb-2">Sora Character</div>
-                    {hasCharacter ? (
-                      <div className="space-y-1">
-                        <p className="text-xs text-emerald-300">Character Ready</p>
-                        <p className="text-xs text-slate-400">
-                          ID: <span className="font-mono">{product.soraCharacterId}</span>
-                        </p>
-                        {product.characterCameoCreatedAt && (
-                          <p className="text-xs text-slate-500">
-                            Created {dateFormatter.format(new Date(product.characterCameoCreatedAt))}
-                          </p>
-                        )}
-                      </div>
-                    ) : (
-                      <p className="text-xs text-amber-300">
-                        Character missing. Complete Product Setup before running Creative Studio.
-                      </p>
-                    )}
                   </div>
 
                   {editingProductId === product.id && editingDraft && (
