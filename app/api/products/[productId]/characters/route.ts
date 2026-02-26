@@ -50,3 +50,75 @@ export async function DELETE(
   }
 }
 
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: { productId: string } },
+) {
+  try {
+    const userId = await getSessionUserId();
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const product = await findOwnedProductById(params.productId, userId);
+    if (!product) {
+      return NextResponse.json({ error: "Product not found" }, { status: 404 });
+    }
+
+    const body = await req.json().catch(() => ({}));
+    const characterId =
+      typeof (body as any)?.characterId === "string"
+        ? (body as any).characterId.trim()
+        : "";
+    const name =
+      typeof (body as any)?.name === "string"
+        ? (body as any).name.trim()
+        : "";
+
+    if (!characterId) {
+      return NextResponse.json(
+        { error: "characterId is required" },
+        { status: 400 },
+      );
+    }
+
+    if (!name) {
+      return NextResponse.json(
+        { error: "name is required" },
+        { status: 400 },
+      );
+    }
+
+    if (name.length > 120) {
+      return NextResponse.json(
+        { error: "name must be 120 characters or fewer" },
+        { status: 400 },
+      );
+    }
+
+    const character = await prisma.character.findFirst({
+      where: {
+        id: characterId,
+        productId: params.productId,
+      },
+      select: { id: true },
+    });
+    if (!character) {
+      return NextResponse.json({ error: "Character not found" }, { status: 404 });
+    }
+
+    const updated = await prisma.character.update({
+      where: { id: characterId },
+      data: { name },
+      select: { id: true, name: true },
+    });
+
+    return NextResponse.json({ success: true, character: updated });
+  } catch (error) {
+    console.error("[rename-character] Error:", error);
+    return NextResponse.json(
+      { error: "Failed to update character" },
+      { status: 500 },
+    );
+  }
+}
