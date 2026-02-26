@@ -23,6 +23,7 @@ export type ProductSetupData = {
     characterUserName: string | null;
     soraCharacterId: string | null;
     seedVideoUrl: string | null;
+    creatorVisualPrompt: string | null;
     createdAt: string;
   }[];
   runs: { id: string; name: string | null }[];
@@ -120,6 +121,30 @@ const CUSTOM_FIELDS = [
   { key: "Wardrobe:", placeholder: "e.g. Sage green fitted tee, no logos" },
   { key: "Vocal tone:", placeholder: "e.g. Warm, conversational, like a trusted friend" },
 ];
+
+const CHARACTER_PROFILE_KEYS = [
+  "Age:",
+  "Ethnicity:",
+  "Hair:",
+  "Eyes:",
+  "Skin tone:",
+  "Face:",
+  "Build:",
+  "Wardrobe:",
+  "Vocal tone:",
+] as const;
+
+function getCharacterProfileField(prompt: string | null | undefined, key: string): string {
+  const source = String(prompt ?? "");
+  if (!source) return "Not provided";
+  const line = source
+    .split("\n")
+    .map((entry) => entry.trim())
+    .find((entry) => entry.startsWith(key));
+  if (!line) return "Not provided";
+  const value = line.slice(key.length).trim();
+  return value || "Not provided";
+}
 
 function buildCustomAnchor(fields: Record<string, string>): string {
   return CUSTOM_FIELDS.map(({ key }) => `${key} ${(fields[key] ?? "").trim()}`)
@@ -221,7 +246,10 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
   const effectiveCharacterId =
     pipelineStatus?.character?.soraCharacterId ?? selectedRunCharacter?.soraCharacterId ?? null;
   const resolvedAvatarImageUrl =
-    pipelineStatus?.character?.characterAvatarImageUrl ?? product.characterAvatarImageUrl ?? null;
+    pipelineStatus?.character?.characterReferenceVideoUrl ??
+    pipelineStatus?.character?.characterAvatarImageUrl ??
+    product.characterAvatarImageUrl ??
+    null;
   const allCharactersSelected =
     product.characters.length > 0 && selectedCharacterIds.length === product.characters.length;
 
@@ -486,17 +514,6 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
             </div>
 
             <StageList />
-            {resolvedAvatarImageUrl && (
-              <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
-                <p className="mb-2 text-xs text-slate-400">Generated avatar image</p>
-                <img
-                  src={resolvedAvatarImageUrl}
-                  alt="Generated character avatar"
-                  className="w-full max-w-xs rounded border border-slate-700"
-                />
-              </div>
-            )}
-
             {hasFailedStage && (
               <p className="text-xs text-amber-300">
                 A stage failed. Reset and rerun, or retry after fixing configuration.
@@ -505,16 +522,6 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
           </>
         ) : (
           <div className="space-y-4">
-            {resolvedAvatarImageUrl && (
-              <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
-                <p className="mb-2 text-xs text-slate-400">Generated avatar image</p>
-                <img
-                  src={resolvedAvatarImageUrl}
-                  alt="Generated character avatar"
-                  className="w-full max-w-xs rounded border border-slate-700"
-                />
-              </div>
-            )}
             <div className="flex items-center justify-between">
               <p className="text-sm font-medium text-emerald-300">
                 {product.characters.length} Character{product.characters.length !== 1 ? "s" : ""} Ready
@@ -595,16 +602,22 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
                     <p className="text-sm font-medium text-slate-100">{char.name}</p>
                     <p className="text-xs text-slate-500">{new Date(char.createdAt).toLocaleString()}</p>
                   </div>
-                  <p className="text-xs text-slate-400">
-                    <span className="text-slate-500">Handle:</span> @{char.characterUserName}
-                  </p>
-                  <p className="text-xs text-slate-500">
-                    <span className="text-slate-600">ID:</span>{" "}
-                    <code className="rounded bg-slate-800 px-1">{char.soraCharacterId}</code>
-                  </p>
                   {char.seedVideoUrl && (
-                    <video src={char.seedVideoUrl} controls className="w-full max-w-lg rounded border border-slate-700" />
+                    <img
+                      src={char.seedVideoUrl}
+                      alt="Character avatar"
+                      style={{ height: "96px", width: "64px", objectFit: "cover", objectPosition: "top", display: "block" }}
+                      className="rounded border border-slate-700"
+                    />
                   )}
+                  <div className="space-y-1 pt-1">
+                    {CHARACTER_PROFILE_KEYS.map((key) => (
+                      <p key={key} className="text-xs text-slate-400">
+                        <span className="text-slate-500">{key}</span>{" "}
+                        {getCharacterProfileField(char.creatorVisualPrompt, key)}
+                      </p>
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>

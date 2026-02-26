@@ -109,6 +109,9 @@ type StoryboardPanel = {
   };
 };
 
+const DEFAULT_ENVIRONMENT_DESCRIPTION =
+  "Same environment as Scene 1, with consistent room layout, props, and lighting.";
+
 type StoryboardPromptContext = {
   textOverlayPattern: string;
   visualFlowPattern: string | null;
@@ -121,12 +124,19 @@ type ProductReferenceImages = {
   creatorReferenceImageUrl: string | null;
   productReferenceImageUrl: string | null;
   characterAnchorPrompt: string | null;
+  characterAvatarImageUrl: string | null;
 };
 
 // Tiered storyboard prompt contract:
 // Tier 1 = fixed structural constraints, Tier 2 = pass/fail quality gates, Tier 3 = optional creative guidance.
 const STORYBOARD_SYSTEM_PROMPT =
   `You are a JSON API for UGC video storyboards. Output ONLY valid JSON. No markdown, no explanation, no extra fields.
+
+Creative intent is mandatory:
+- This is a UGC direct-response ad optimized for conversion on social feeds.
+- Tone must feel native, personal, creator-shot, and believable.
+- Avoid polished brand-commercial language and cinematic ad treatment.
+- Prioritize hook speed, product clarity, and persuasive payoff.
 
 Canonical field names - use these exactly:
 - panelType (ON_CAMERA or B_ROLL_ONLY)
@@ -135,6 +145,8 @@ Canonical field names - use these exactly:
 - endTime
 - vo
 - characterAction (string if ON_CAMERA, null if B_ROLL_ONLY)
+- characterName
+- characterDescription
 - cameraDirection
 - productPlacement
 - bRollSuggestions (array of strings)
@@ -156,6 +168,16 @@ function asString(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+function stripLegacyCharacterHandleLine(value: string | null): string | null {
+  if (!value) return null;
+  const cleaned = value
+    .split(/\r?\n/)
+    .filter((line) => !/^character\s*handle\s*:/i.test(line.trim()))
+    .join("\n")
+    .trim();
+  return cleaned.length > 0 ? cleaned : null;
+}
+
 async function loadProductReferenceImages(args: {
   projectId: string;
   productId: string | null;
@@ -165,6 +187,7 @@ async function loadProductReferenceImages(args: {
       creatorReferenceImageUrl: null,
       productReferenceImageUrl: null,
       characterAnchorPrompt: null,
+      characterAvatarImageUrl: null,
     };
   }
 
@@ -172,11 +195,13 @@ async function loadProductReferenceImages(args: {
     creatorReferenceImageUrl: string | null;
     productReferenceImageUrl: string | null;
     characterAnchorPrompt: string | null;
+    characterAvatarImageUrl: string | null;
   }>>`
     SELECT
       "creator_reference_image_url" AS "creatorReferenceImageUrl",
       "product_reference_image_url" AS "productReferenceImageUrl",
-      "character_anchor_prompt" AS "characterAnchorPrompt"
+      "character_anchor_prompt" AS "characterAnchorPrompt",
+      "character_avatar_image_url" AS "characterAvatarImageUrl"
     FROM "product"
     WHERE "id" = ${args.productId}
       AND "project_id" = ${args.projectId}
@@ -186,6 +211,7 @@ async function loadProductReferenceImages(args: {
   const creatorReferenceImageUrl = asString(rows[0]?.creatorReferenceImageUrl);
   const productReferenceImageUrl = asString(rows[0]?.productReferenceImageUrl);
   const characterAnchorPrompt = asString(rows[0]?.characterAnchorPrompt);
+  const characterAvatarImageUrl = asString(rows[0]?.characterAvatarImageUrl);
 
   if (creatorReferenceImageUrl) {
     assertProductSetupReferenceUrl(creatorReferenceImageUrl, "creatorReferenceImageUrl");
@@ -206,6 +232,7 @@ async function loadProductReferenceImages(args: {
     creatorReferenceImageUrl,
     productReferenceImageUrl,
     characterAnchorPrompt,
+    characterAvatarImageUrl,
   };
 }
 
@@ -362,19 +389,28 @@ function normalizePanel(raw: unknown): Record<string, unknown> {
 
   return {
     panelType,
-    beatLabel: asString(panel.beatLabel) ?? asString(panel["Beat Label"]) ?? "",
+    beatLabel:
+      stripLegacyCharacterHandleLine(asString(panel.beatLabel) ?? asString(panel["Beat Label"])) ??
+      "",
     startTime: asString(panel.startTime) ?? asString(panel["Start Time"]) ?? "",
     endTime: asString(panel.endTime) ?? asString(panel["End Time"]) ?? "",
     vo: asString(panel.vo) ?? asString(panel.VO) ?? "",
-    characterAction,
-    cameraDirection,
+    characterAction: stripLegacyCharacterHandleLine(characterAction),
+    cameraDirection: stripLegacyCharacterHandleLine(cameraDirection) ?? "",
     productPlacement:
-      asString(panel.productPlacement) ??
+      stripLegacyCharacterHandleLine(
+        asString(panel.productPlacement) ??
       asString(panel["Product Placement"]) ??
       "none",
-    bRollSuggestions,
-    transitionType: asString(panel.transitionType) ?? asString(panel["Transition Type"]) ?? "Cut",
-    environment: asString(panel.environment) ?? asString(panel["Environment"]) ?? null,
+      ) ?? "none",
+    bRollSuggestions: bRollSuggestions.filter((entry) => !/^character\s*handle\s*:/i.test(entry)),
+    transitionType:
+      stripLegacyCharacterHandleLine(
+        asString(panel.transitionType) ?? asString(panel["Transition Type"]),
+      ) ?? "Cut",
+    environment: stripLegacyCharacterHandleLine(
+      asString(panel.environment) ?? asString(panel["Environment"]),
+    ),
   };
 }
 
@@ -386,16 +422,20 @@ function validatePanel(rawPanel: unknown, beat: BeatSpec, index: number): Storyb
 
   const panelTypeRaw = asString(panel.panelType);
   const panelType: PanelTypeValue = panelTypeRaw === "B_ROLL_ONLY" ? "B_ROLL_ONLY" : "ON_CAMERA";
-  const characterAction = asString(panel.characterAction);
-  const environment = asString(panel.environment) || null;
-  const cameraDirection = asString(panel.cameraDirection) || "Natural handheld UGC framing.";
-  const productPlacement = asString(panel.productPlacement) || "none";
-  const transitionType = asString(panel.transitionType) || "Cut";
+  const characterAction = stripLegacyCharacterHandleLine(asString(panel.characterAction));
+  const environment = stripLegacyCharacterHandleLine(asString(panel.environment)) || null;
+  const cameraDirection =
+    stripLegacyCharacterHandleLine(asString(panel.cameraDirection)) ||
+    "Natural handheld UGC framing.";
+  const productPlacement = stripLegacyCharacterHandleLine(asString(panel.productPlacement)) || "none";
+  const transitionType = stripLegacyCharacterHandleLine(asString(panel.transitionType)) || "Cut";
   if (panelType === "ON_CAMERA" && !characterAction) {
     throw new Error(`Panel ${index + 1} is ON_CAMERA but missing characterAction.`);
   }
 
-  const bRollSuggestionsBase = asStringArray(panel.bRollSuggestions);
+  const bRollSuggestionsBase = asStringArray(panel.bRollSuggestions).filter(
+    (entry) => !/^character\s*handle\s*:/i.test(entry),
+  );
 
   return {
     panelType,
@@ -404,7 +444,10 @@ function validatePanel(rawPanel: unknown, beat: BeatSpec, index: number): Storyb
     endTime: asString(panel.endTime) || beat.endTime,
     vo: beat.vo,
     characterAction: panelType === "B_ROLL_ONLY" ? characterAction || null : characterAction!,
-    environment: panelType === "B_ROLL_ONLY" ? environment || null : environment,
+    environment:
+      panelType === "B_ROLL_ONLY"
+        ? environment || DEFAULT_ENVIRONMENT_DESCRIPTION
+        : environment,
     cameraDirection,
     productPlacement,
     bRollSuggestions: bRollSuggestionsBase,
@@ -417,6 +460,20 @@ function validatePanel(rawPanel: unknown, beat: BeatSpec, index: number): Storyb
       depthOfField: "natural",
     },
   };
+}
+
+function lockEnvironmentToSceneOne(panels: StoryboardPanel[]): StoryboardPanel[] {
+  if (!panels.length) return panels;
+  const canonical =
+    (panels[0]?.environment ?? "").trim() ||
+    panels
+      .map((panel) => String(panel.environment ?? "").trim())
+      .find(Boolean) ||
+    DEFAULT_ENVIRONMENT_DESCRIPTION;
+  return panels.map((panel) => ({
+    ...panel,
+    environment: canonical,
+  }));
 }
 
 function buildBeatSpecsFromScript(
@@ -496,6 +553,8 @@ function buildStoryboardUserPrompt(args: {
   creatorReferenceImageUrl: string | null;
   productReferenceImageUrl: string | null;
   characterAnchorPrompt: string | null;
+  characterName: string;
+  characterDescription: string;
 }): string {
   const {
     beatCount,
@@ -509,6 +568,8 @@ function buildStoryboardUserPrompt(args: {
     creatorReferenceImageUrl,
     productReferenceImageUrl,
     characterAnchorPrompt,
+    characterName,
+    characterDescription,
   } = args;
   const beatLines = beats
     .map(
@@ -522,11 +583,16 @@ ${beatLines}
 
 TIER 2 - FIELD RULES
 vo: copy exact VO from beat spec above, verbatim
-creatorAction: specific physical action (not generic). null if B_ROLL.
-textOverlay: exact copy + timing — format: "COPY (Xs-Xs)"
-visualDescription: one sentence only — what Sora renders
+characterAction: specific physical action (not generic). null if B_ROLL_ONLY.
+bRollSuggestions: array of strings. include text overlays as "TEXT OVERLAY COPY (Xs-Xs)"
+cameraDirection: one sentence only — what Sora renders
 productPlacement: when and how product appears, or "none"
-clipType: ON_CAMERA if creator speaks to camera. B_ROLL if product demo, hands, environment, or montage with no creator face.
+panelType: ON_CAMERA if creator speaks to camera. B_ROLL_ONLY if product demo, hands, environment, or montage with no creator face.
+characterName: REQUIRED. copy exactly from CHARACTER NAME context.
+characterDescription: REQUIRED. copy exactly from CHARACTER DESCRIPTION context.
+characterAnchor: REQUIRED. copy exactly from CHARACTER ANCHOR context.
+environment consistency: Scene 1 environment is canonical. Use the exact same environment description string for every panel.
+UGC conversion style: creator-native, handheld-smartphone realism, direct-response pacing, fast early hook, clear product value, no cinematic polish.
 
 TIER 3 - CREATIVE CONTEXT (inform visuals, don't force)
 lifeStage: ${lifeStage || "not provided"}
@@ -535,7 +601,11 @@ mechanismProcess: ${mechanismProcess || "not provided"}
 ${visualFlowPattern ? `visualFlow: ${visualFlowPattern}` : ""}
 ${creatorReferenceImageUrl ? `creatorReference: ${creatorReferenceImageUrl}` : ""}
 ${productReferenceImageUrl ? `productReference: ${productReferenceImageUrl}` : ""}
-${characterAnchorPrompt ? `CHARACTER ANCHOR (copy into every panel's characterAnchor field verbatim):\n${characterAnchorPrompt}` : ""}
+CHARACTER NAME: ${characterName}
+CHARACTER DESCRIPTION (copy into every panel's characterDescription field verbatim):
+${characterDescription}
+CHARACTER ANCHOR (copy into every panel's characterAnchor field verbatim):
+${characterAnchorPrompt || characterDescription}
 
 OUTPUT SCHEMA — use these exact field names, no others:
 {
@@ -547,11 +617,13 @@ OUTPUT SCHEMA — use these exact field names, no others:
       "endTime": "10s",
       "vo": "exact vo text here",
       "characterAction": "specific physical action — null if B_ROLL_ONLY",
+      "characterName": "copy CHARACTER NAME verbatim",
+      "characterDescription": "copy CHARACTER DESCRIPTION verbatim",
       "cameraDirection": "single sentence — what Sora renders",
       "productPlacement": "when and how product appears, or none",
       "bRollSuggestions": ["TEXT OVERLAY COPY HERE (0s-3s)"],
       "transitionType": "Cut",
-      "environment": "real location description or null",
+      "environment": "real location description (required)",
       "characterAnchor": "copy the provided CHARACTER ANCHOR verbatim when present"
     }
   ]
@@ -564,11 +636,13 @@ FIELD RULES:
 - bRollSuggestions: array. Include text overlays as "TEXT OVERLAY COPY (Xs-Xs)".
 - vo: copy exact VO from beat spec above, verbatim.
 - transitionType: Cut or Fade.
+- environment: required for every panel, including B_ROLL_ONLY.
+- style: UGC conversion-first, not commercial. Keep it raw, intimate, and social-native.
 
 BANNED FIELD NAMES — these will break the pipeline:
-clipType, creatorAction, textOverlay, visualDescription, 
+clipType, creatorAction, textOverlay, visualDescription, characterHandle,
 Character Action, Camera Direction, B-roll Suggestions, 
-Character Handle, Environment, Transition Type, Clip Type`;
+Environment, Transition Type, Clip Type`;
 }
 
 function extractPatternTextOverlays(rawJson: unknown): string | null {
@@ -788,7 +862,8 @@ export async function generateStoryboard(
   scriptId: string,
   opts?: {
     productId?: string | null;
-    characterHandle?: string | null;
+    characterName?: string | null;
+    characterDescription?: string | null;
     storyboardMode?: "ai" | "manual";
     manualPanels?: Array<{
       beatLabel?: string | null;
@@ -840,10 +915,6 @@ export async function generateStoryboard(
   const scriptRunId = script.job?.runId ?? null;
   const scriptJobPayload = asObject(script.job?.payload) ?? {};
   const explicitProductId = asString(opts?.productId) || null;
-  const explicitCharacterHandle = asString(opts?.characterHandle) || null;
-  const normalizedCharacterHandle = explicitCharacterHandle
-    ? `@${explicitCharacterHandle.replace(/^@+/, "")}`
-    : null;
   const productIdFromScriptPayload = asString(scriptJobPayload.productId) || null;
   const effectiveProductId = explicitProductId || productIdFromScriptPayload;
   const productReferenceImages = await loadProductReferenceImages({
@@ -910,6 +981,11 @@ export async function generateStoryboard(
       apiKey: anthropicApiKey,
       timeout: 90_000,
     });
+    const requiredCharacterName = asString(opts?.characterName);
+    const requiredCharacterDescription = asString(opts?.characterDescription);
+    if (!requiredCharacterName || !requiredCharacterDescription) {
+      throw new Error("Storyboard generation requires characterName and characterDescription.");
+    }
     const userPrompt = buildStoryboardUserPrompt({
       beatCount,
       targetDuration,
@@ -922,6 +998,8 @@ export async function generateStoryboard(
       creatorReferenceImageUrl: productReferenceImages.creatorReferenceImageUrl,
       productReferenceImageUrl: productReferenceImages.productReferenceImageUrl,
       characterAnchorPrompt: productReferenceImages.characterAnchorPrompt,
+      characterName: requiredCharacterName,
+      characterDescription: requiredCharacterDescription,
     });
     const response = await anthropic.messages.create({
       model: "claude-sonnet-4-5-20250929",
@@ -953,6 +1031,7 @@ export async function generateStoryboard(
       validatePanel(normalizePanel(panel), beats[index] ?? beats[beats.length - 1], index),
     );
   }
+  panels = lockEnvironmentToSceneOne(panels);
 
   const existingStoryboard = await prisma.storyboard.findFirst({
     where: {
@@ -992,9 +1071,11 @@ export async function generateStoryboard(
         ...(productReferenceImages.characterAnchorPrompt
           ? { characterAnchor: productReferenceImages.characterAnchorPrompt }
           : {}),
-        ...(panel.panelType === "ON_CAMERA" && normalizedCharacterHandle
-          ? { characterHandle: normalizedCharacterHandle }
+        ...(productReferenceImages.characterAvatarImageUrl
+          ? { characterAvatarImageUrl: productReferenceImages.characterAvatarImageUrl }
           : {}),
+        ...(opts?.characterName ? { characterName: opts.characterName } : {}),
+        ...(opts?.characterDescription ? { characterDescription: opts.characterDescription } : {}),
       };
       await tx.storyboardScene.create({
         data: {

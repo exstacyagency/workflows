@@ -27,6 +27,7 @@ type CharacterRow = {
   characterUserName: string | null;
   soraCharacterId: string | null;
   seedVideoUrl: string | null;
+  creatorVisualPrompt: string | null;
   createdAt: Date;
 };
 
@@ -92,6 +93,7 @@ export default async function ProductSetupPage({
           characterUserName: true,
           soraCharacterId: true,
           seedVideoUrl: true,
+          creatorVisualPrompt: true,
           createdAt: true,
         },
         orderBy: { createdAt: "asc" },
@@ -120,6 +122,7 @@ export default async function ProductSetupPage({
       characterUserName: char.characterUserName,
       soraCharacterId: char.soraCharacterId,
       seedVideoUrl: char.seedVideoUrl,
+      creatorVisualPrompt: char.creatorVisualPrompt,
       createdAt: char.createdAt.toISOString(),
     })),
     runs: runs.map((run) => ({ id: run.id, name: run.name })),

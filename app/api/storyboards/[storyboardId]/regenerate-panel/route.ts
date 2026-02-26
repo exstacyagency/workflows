@@ -10,7 +10,8 @@ type RegenerateTarget = "panel_direction" | "video_prompt";
 const VIDEO_PROMPT_SYSTEM_PROMPT = `You are a video director writing production-grade Sora 2 prompts for UGC supplement ads.
 Return only the final prompt text.
 Write clear cinematic direction with concrete subject action, camera language, lighting, and environment details.
-Keep temporal continuity and character consistency across the shot.`;
+Keep temporal continuity and character consistency across the shot.
+Must be UGC conversion-focused (creator-native, handheld, social-feed direct response), not a polished commercial.`;
 const VIDEO_PROMPT_MODEL = cfg.raw("ANTHROPIC_MODEL") || "claude-sonnet-4-5-20250929";
 
 type StoryboardPanel = {
@@ -20,12 +21,17 @@ type StoryboardPanel = {
   endTime: string;
   vo: string;
   characterAction: string | null;
+  characterName: string | null;
+  characterDescription: string | null;
   environment: string | null;
   cameraDirection: string;
   productPlacement: string;
   bRollSuggestions: string[];
   transitionType: string;
 };
+
+const DEFAULT_ENVIRONMENT_DESCRIPTION =
+  "Same environment as Scene 1, with consistent room layout, props, and lighting.";
 
 function asObject(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -111,12 +117,24 @@ function normalizePanel(
     endTime: asString(raw.endTime),
     vo: asString(raw.vo),
     characterAction: characterAction || null,
+    characterName: asString(raw.characterName) || null,
+    characterDescription: asString(raw.characterDescription) || null,
     environment: environment || null,
     cameraDirection: asString(raw.cameraDirection),
     productPlacement: asString(raw.productPlacement),
     bRollSuggestions: asStringArray(raw.bRollSuggestions),
     transitionType: asString(raw.transitionType),
   };
+}
+
+function canonicalEnvironmentFromPanels(panels: StoryboardPanel[]): string | null {
+  if (!panels.length) return null;
+  const sceneOneEnvironment = (panels[0]?.environment ?? "").trim();
+  if (sceneOneEnvironment) return sceneOneEnvironment;
+  const firstAvailable = panels
+    .map((panel) => String(panel.environment ?? "").trim())
+    .find(Boolean);
+  return firstAvailable || DEFAULT_ENVIRONMENT_DESCRIPTION;
 }
 
 function buildPrompt(args: {
@@ -135,6 +153,8 @@ Beat: ${targetPanel.beatLabel}
 Timing: ${targetPanel.startTime}-${targetPanel.endTime}
 VO: ${targetPanel.vo}
 Panel Type: ${targetPanel.panelType}
+Character Name: ${targetPanel.characterName || "Not provided"}
+Character Description: ${targetPanel.characterDescription || "Not provided"}
 
 Previous panel context:
 ${previousPanel ? `${previousPanel.beatLabel}: ${previousPanel.vo}` : "None"}
@@ -142,11 +162,18 @@ ${previousPanel ? `${previousPanel.beatLabel}: ${previousPanel.vo}` : "None"}
 Next panel context:
 ${nextPanel ? `${nextPanel.beatLabel}: ${nextPanel.vo}` : "None"}
 
+Style requirement:
+- UGC conversion ad, not commercial.
+- Creator-native, phone-shot realism, direct-response clarity.
+- No cinematic polish, no brand-commercial staging.
+
 Output JSON schema:
 {
   "panelType": "ON_CAMERA | B_ROLL_ONLY",
   "beatLabel": "string",
   "characterAction": "string | null",
+  "characterName": "string | null",
+  "characterDescription": "string | null",
   "environment": "string | null",
   "cameraDirection": "string",
   "productPlacement": "string",
@@ -384,6 +411,7 @@ export async function POST(
     const parsedObject = asObject(parsed) ?? {};
 
     const regeneratedPanelType = normalizePanelType(parsedObject.panelType ?? targetPanel.panelType);
+    const canonicalEnvironment = canonicalEnvironmentFromPanels(panels);
     const regeneratedPanel: StoryboardPanel = {
       panelType: regeneratedPanelType,
       beatLabel: asString(parsedObject.beatLabel) || targetPanel.beatLabel,
@@ -394,10 +422,10 @@ export async function POST(
         regeneratedPanelType === "B_ROLL_ONLY"
           ? asString(parsedObject.characterAction) || targetPanel.characterAction || null
           : asString(parsedObject.characterAction) || targetPanel.characterAction || "",
-      environment:
-        regeneratedPanelType === "B_ROLL_ONLY"
-          ? asString(parsedObject.environment) || targetPanel.environment || null
-          : asString(parsedObject.environment) || targetPanel.environment || null,
+      characterName: asString(parsedObject.characterName) || targetPanel.characterName || null,
+      characterDescription:
+        asString(parsedObject.characterDescription) || targetPanel.characterDescription || null,
+      environment: canonicalEnvironment,
       cameraDirection: asString(parsedObject.cameraDirection) || targetPanel.cameraDirection,
       productPlacement: asString(parsedObject.productPlacement) || targetPanel.productPlacement,
       bRollSuggestions: asStringArray(parsedObject.bRollSuggestions),

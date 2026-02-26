@@ -19,7 +19,8 @@ type StoryboardPanelResponse = {
   lastFrameImageUrl: string | null;
   videoPrompt: string | null;
   characterAction: string | null;
-  characterHandle: string | null;
+  characterName: string | null;
+  characterDescription: string | null;
   environment: string | null;
   cameraDirection: string;
   productPlacement: string;
@@ -36,6 +37,9 @@ type StoryboardResponseBody = {
   panels: StoryboardPanelResponse[];
 };
 
+const DEFAULT_ENVIRONMENT_DESCRIPTION =
+  "Same environment as Scene 1, with consistent room layout, props, and lighting.";
+
 function asObject(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -51,6 +55,7 @@ function asStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value
     .map((entry) => (typeof entry === "string" ? entry.trim() : String(entry ?? "").trim()))
+    .filter((entry) => !/^character\s*handle\s*:/i.test(entry))
     .filter(Boolean);
 }
 
@@ -61,12 +66,6 @@ function normalizePanelType(value: unknown): "ON_CAMERA" | "B_ROLL_ONLY" {
 function asNullableString(value: unknown): string | null {
   const normalized = asString(value);
   return normalized || null;
-}
-
-function normalizeCharacterHandle(value: unknown): string | null {
-  const normalized = asNullableString(value);
-  if (!normalized) return null;
-  return `@${normalized.replace(/^@+/, "")}`;
 }
 
 function extractSceneFrameUrls(rawValue: unknown): {
@@ -138,7 +137,8 @@ function normalizePanelFromRaw(args: {
     lastFrameImageUrl: frameUrls.lastFrameImageUrl,
     videoPrompt: asNullableString(raw.videoPrompt),
     characterAction: asNullableString(raw.characterAction),
-    characterHandle: asNullableString(raw.characterHandle),
+    characterName: asNullableString(raw.characterName),
+    characterDescription: asNullableString(raw.characterDescription),
     environment: asNullableString(raw.environment),
     cameraDirection: asString(raw.cameraDirection),
     productPlacement: asString(raw.productPlacement),
@@ -165,13 +165,28 @@ function normalizePanelFromInput(value: unknown, index: number): StoryboardPanel
     lastFrameImageUrl: asNullableString(raw.lastFrameImageUrl),
     videoPrompt: asNullableString(raw.videoPrompt),
     characterAction: panelType === "B_ROLL_ONLY" ? asNullableString(raw.characterAction) : asString(raw.characterAction),
-    characterHandle: normalizeCharacterHandle(raw.characterHandle),
+    characterName: asNullableString(raw.characterName),
+    characterDescription: asNullableString(raw.characterDescription),
     environment: panelType === "B_ROLL_ONLY" ? asNullableString(raw.environment) : asString(raw.environment),
     cameraDirection: asString(raw.cameraDirection),
     productPlacement: asString(raw.productPlacement),
     bRollSuggestions: asStringArray(raw.bRollSuggestions),
     transitionType: asString(raw.transitionType),
   };
+}
+
+function lockEnvironmentToSceneOne(panels: StoryboardPanelResponse[]): StoryboardPanelResponse[] {
+  if (!panels.length) return panels;
+  const canonical =
+    (panels[0]?.environment ?? "").trim() ||
+    panels
+      .map((panel) => String(panel.environment ?? "").trim())
+      .find(Boolean) ||
+    DEFAULT_ENVIRONMENT_DESCRIPTION;
+  return panels.map((panel) => ({
+    ...panel,
+    environment: canonical,
+  }));
 }
 
 export async function GET(
@@ -321,23 +336,15 @@ export async function PATCH(
       return NextResponse.json({ error: "Storyboard not found" }, { status: 404 });
     }
 
-    const panels = rawPanels.map((panel, index) => normalizePanelFromInput(panel, index));
-    const availableCharacterHandle =
-      panels.find((panel) => panel.panelType === "ON_CAMERA" && panel.characterHandle)?.characterHandle ??
-      panels.find((panel) => panel.characterHandle)?.characterHandle ??
-      null;
-    const panelsWithCharacterHandle = panels.map((panel) =>
-      panel.panelType === "ON_CAMERA" && availableCharacterHandle
-        ? { ...panel, characterHandle: availableCharacterHandle }
-        : panel,
+    const panels = lockEnvironmentToSceneOne(
+      rawPanels.map((panel, index) => normalizePanelFromInput(panel, index)),
     );
-
     await prisma.$transaction(async (tx) => {
       await tx.storyboardScene.deleteMany({
         where: { storyboardId: storyboard.id },
       });
 
-      for (let index = 0; index < panelsWithCharacterHandle.length; index += 1) {
+      for (let index = 0; index < panels.length; index += 1) {
         await tx.storyboardScene.create({
           data: {
             storyboardId: storyboard.id,
@@ -345,7 +352,7 @@ export async function PATCH(
             // TODO: Restore after panelType migration runs.
             // panelType: panels[index].panelType,
             status: "ready",
-            rawJson: panelsWithCharacterHandle[index] as unknown as Prisma.InputJsonValue,
+            rawJson: panels[index] as unknown as Prisma.InputJsonValue,
           },
         });
       }

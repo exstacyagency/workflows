@@ -40,6 +40,7 @@ type CharacterOption = {
   runId?: string | null;
   characterUserName?: string | null;
   soraCharacterId?: string | null;
+  creatorVisualPrompt?: string | null;
   createdAt?: string | Date;
   productName?: string;
 };
@@ -635,6 +636,8 @@ export default function CreativeStudioPage() {
           typeof entry?.product?.name === "string"
             ? entry.product.name
             : (products.find((p) => p.id === String(entry?.productId ?? ""))?.name ?? "Product"),
+        creatorVisualPrompt:
+          typeof entry?.creatorVisualPrompt === "string" ? entry.creatorVisualPrompt : null,
       }));
 
       setRunCharacters(mapped);
@@ -1101,6 +1104,8 @@ export default function CreativeStudioPage() {
     const panelTypeRaw = asValue(raw.panelType);
     const panelType = panelTypeRaw === "B_ROLL_ONLY" ? "B_ROLL_ONLY" : "ON_CAMERA";
     const characterAction = asValue(raw.characterAction);
+    const characterName = asValue(raw.characterName);
+    const characterDescription = asValue(raw.characterDescription);
     const environment = asValue(raw.environment);
     const sceneNumberRaw = Number(raw.sceneNumber);
     const sceneNumber = Number.isFinite(sceneNumberRaw) && sceneNumberRaw > 0
@@ -1121,13 +1126,15 @@ export default function CreativeStudioPage() {
       lastFrameImageUrl: asValue(raw.lastFrameImageUrl) || null,
       videoPrompt: asValue(raw.videoPrompt) || null,
       characterAction: characterAction || null,
-      characterHandle: asValue(raw.characterHandle) || null,
+      characterName: characterName || null,
+      characterDescription: characterDescription || null,
       environment: environment || null,
       cameraDirection: asValue(raw.cameraDirection),
       productPlacement: asValue(raw.productPlacement),
       bRollSuggestions: Array.isArray(raw.bRollSuggestions)
         ? raw.bRollSuggestions
             .map((entry) => (typeof entry === "string" ? entry.trim() : String(entry ?? "").trim()))
+            .filter((entry) => !/^character\s*handle\s*:/i.test(entry))
             .filter(Boolean)
         : [],
       transitionType: asValue(raw.transitionType),
@@ -1151,7 +1158,8 @@ export default function CreativeStudioPage() {
       lastFrameImageUrl: null,
       videoPrompt: null,
       characterAction: null,
-      characterHandle: null,
+      characterName: previousPanel?.characterName ?? null,
+      characterDescription: previousPanel?.characterDescription ?? null,
       environment: null,
       cameraDirection: "",
       productPlacement: "",
@@ -1844,9 +1852,24 @@ export default function CreativeStudioPage() {
     panelIndex: number,
     updater: (panel: StoryboardPanel) => StoryboardPanel,
   ) {
-    setStoryboardDraftPanels((prev) =>
-      prev.map((panel, index) => (index === panelIndex ? updater(panel) : panel)),
-    );
+    setStoryboardDraftPanels((prev) => {
+      const next = prev.map((panel, index) => (index === panelIndex ? updater(panel) : panel));
+      return lockStoryboardDraftEnvironmentToSceneOne(next);
+    });
+  }
+
+  function lockStoryboardDraftEnvironmentToSceneOne(panels: StoryboardPanel[]): StoryboardPanel[] {
+    if (!panels.length) return panels;
+    const canonical =
+      String(panels[0]?.environment ?? "").trim() ||
+      panels
+        .map((panel) => String(panel.environment ?? "").trim())
+        .find(Boolean) ||
+      "Same environment as Scene 1, with consistent room layout, props, and lighting.";
+    return panels.map((panel) => ({
+      ...panel,
+      environment: canonical,
+    }));
   }
 
   function handleAddStoryboardPanel(afterIndex: number) {
@@ -1855,22 +1878,22 @@ export default function CreativeStudioPage() {
       const previousPanel = prev[afterIndex];
       const next = [...prev];
       next.splice(insertionIndex, 0, createEmptyStoryboardPanel(insertionIndex, previousPanel));
-      return next.map((panel, index) => ({
+      return lockStoryboardDraftEnvironmentToSceneOne(next.map((panel, index) => ({
         ...panel,
         beatLabel: `Beat ${index + 1}`,
-      }));
+      })));
     });
   }
 
   function handleDeleteStoryboardPanel(panelIndex: number) {
     setStoryboardDraftPanels((prev) => {
       if (prev.length <= 1) return prev;
-      return prev
+      return lockStoryboardDraftEnvironmentToSceneOne(prev
         .filter((_, index) => index !== panelIndex)
         .map((panel, index) => ({
           ...panel,
           beatLabel: `Beat ${index + 1}`,
-        }));
+        })));
     });
   }
 
@@ -1883,7 +1906,7 @@ export default function CreativeStudioPage() {
       const next = [...prev];
       const [moved] = next.splice(panelIndex, 1);
       next.splice(destination, 0, moved);
-      return next;
+      return lockStoryboardDraftEnvironmentToSceneOne(next);
     });
   }
 
@@ -1956,7 +1979,7 @@ export default function CreativeStudioPage() {
       ...storyboardDraftPanels.slice(panelIndex + 2),
     ];
 
-    setStoryboardDraftPanels(newPanels);
+    setStoryboardDraftPanels(lockStoryboardDraftEnvironmentToSceneOne(newPanels));
   }
 
   async function handleRegenerateStoryboardPanel(panelIndex: number) {
@@ -1987,7 +2010,6 @@ export default function CreativeStudioPage() {
         startTime: panel.startTime,
         endTime: panel.endTime,
         vo: panel.vo,
-        characterHandle: panel.characterHandle,
       }));
       toast.success(`Panel ${panelIndex + 1} regenerated.`);
     } catch (err: any) {
@@ -2584,12 +2606,6 @@ export default function CreativeStudioPage() {
     try {
       const activeRunId = String(selectedRunId ?? "").trim();
       const activeStoryboardCharacterId = String(selectedStoryboardCharacterId ?? "").trim();
-      const selectedCharacter = activeStoryboardCharacterId
-        ? runCharacters.find((char) => String(char.id) === activeStoryboardCharacterId) ?? null
-        : null;
-      const selectedCharacterHandle = selectedCharacter?.characterUserName
-        ? `@${String(selectedCharacter.characterUserName).replace(/^@+/, "")}`
-        : null;
       let endpoint = "";
       let payload: any = {
         ...(extraPayload || {}),
@@ -2647,13 +2663,6 @@ export default function CreativeStudioPage() {
         payload = {
           ...payload,
           storyboardId,
-        };
-      }
-
-      if (step.key === "video_prompts" && selectedCharacterHandle) {
-        payload = {
-          ...payload,
-          characterHandle: selectedCharacterHandle,
         };
       }
 
@@ -3622,7 +3631,6 @@ export default function CreativeStudioPage() {
               {runCharacters.map((char) => (
                 <option key={char.id} value={char.id}>
                   {(char.productName ? `${char.productName} - ` : "") + char.name}
-                  {char.characterUserName ? ` (@${String(char.characterUserName).replace(/^@+/, "")})` : ""}
                 </option>
               ))}
             </select>
@@ -4714,37 +4722,6 @@ export default function CreativeStudioPage() {
                                         resize: "vertical",
                                       }}
                                     />
-                                    <div style={{ color: "#94a3b8", fontSize: 11, marginTop: 8, marginBottom: 4 }}>
-                                      Character Handle
-                                    </div>
-                                    <select
-                                      value={panel.characterHandle ?? ""}
-                                      onChange={(e) =>
-                                        updateStoryboardDraftPanel(panelIndex, (prev) => ({
-                                          ...prev,
-                                          characterHandle: e.target.value || null,
-                                        }))
-                                      }
-                                      style={{
-                                        width: "100%",
-                                        boxSizing: "border-box",
-                                        borderRadius: 8,
-                                        border: "1px solid #334155",
-                                        backgroundColor: "#0f172a",
-                                        color: "#e2e8f0",
-                                        padding: 8,
-                                        fontSize: 12,
-                                      }}
-                                    >
-                                      <option value="">No character</option>
-                                      {allCharacters
-                                        .filter((c) => c.characterUserName)
-                                        .map((c) => (
-                                          <option key={c.id} value={`@${c.characterUserName}`}>
-                                            {c.productName} - {c.name} ({`@${c.characterUserName}`})
-                                          </option>
-                                        ))}
-                                    </select>
                                   </div>
                                 )}
 
@@ -4753,20 +4730,40 @@ export default function CreativeStudioPage() {
                                   <textarea
                                     value={panel.environment ?? ""}
                                     onChange={(e) =>
-                                      updateStoryboardDraftPanel(panelIndex, (prev) => ({
-                                        ...prev,
-                                        environment: e.target.value.trim()
-                                          ? e.target.value
-                                          : null,
-                                      }))
+                                      panelIndex === 0
+                                        ? setStoryboardDraftPanels((prev) => {
+                                            const nextEnvironment = e.target.value.trim()
+                                              ? e.target.value
+                                              : null;
+                                            return prev.map((draft) => ({
+                                              ...draft,
+                                              environment: nextEnvironment,
+                                            }));
+                                          })
+                                        : updateStoryboardDraftPanel(panelIndex, (prev) => ({
+                                            ...prev,
+                                            environment: e.target.value.trim()
+                                              ? e.target.value
+                                              : null,
+                                          }))
                                     }
                                     onBlur={(e) =>
-                                      updateStoryboardDraftPanel(panelIndex, (prev) => ({
-                                        ...prev,
-                                        environment: e.target.value.trim()
-                                          ? enforceBlankLineBetweenTextLines(e.target.value)
-                                          : null,
-                                      }))
+                                      panelIndex === 0
+                                        ? setStoryboardDraftPanels((prev) => {
+                                            const nextEnvironment = e.target.value.trim()
+                                              ? enforceBlankLineBetweenTextLines(e.target.value)
+                                              : null;
+                                            return prev.map((draft) => ({
+                                              ...draft,
+                                              environment: nextEnvironment,
+                                            }));
+                                          })
+                                        : updateStoryboardDraftPanel(panelIndex, (prev) => ({
+                                            ...prev,
+                                            environment: e.target.value.trim()
+                                              ? enforceBlankLineBetweenTextLines(e.target.value)
+                                              : null,
+                                          }))
                                     }
                                     rows={2}
                                     style={{
@@ -4939,6 +4936,8 @@ export default function CreativeStudioPage() {
                               <div style={{ display: "grid", gap: 6, fontSize: 12, color: "#cbd5e1" }}>
                                 {panel.panelType === "B_ROLL_ONLY" ? (
                                   <>
+                                    <div><strong style={{ color: "#f1f5f9" }}>Character Name:</strong> {panel.characterName || "Not provided"}</div>
+                                    <div><strong style={{ color: "#f1f5f9" }}>Character Description:</strong> {panel.characterDescription || "Not provided"}</div>
                                     <div>
                                       <strong style={{ color: "#f1f5f9" }}>B-roll Suggestions:</strong>
                                       {panel.bRollSuggestions.length > 0 ? (
@@ -4957,8 +4956,9 @@ export default function CreativeStudioPage() {
                                   </>
                                 ) : (
                                   <>
+                                    <div><strong style={{ color: "#f1f5f9" }}>Character Name:</strong> {panel.characterName || "Not provided"}</div>
+                                    <div><strong style={{ color: "#f1f5f9" }}>Character Description:</strong> {panel.characterDescription || "Not provided"}</div>
                                     <div><strong style={{ color: "#f1f5f9" }}>Character Action:</strong> {panel.characterAction || "Not provided"}</div>
-                                    <div><strong style={{ color: "#f1f5f9" }}>Character Handle:</strong> {panel.characterHandle || "Not provided"}</div>
                                     <div><strong style={{ color: "#f1f5f9" }}>Environment:</strong> {panel.environment || "Not provided"}</div>
                                     <div><strong style={{ color: "#f1f5f9" }}>Camera Direction:</strong> {panel.cameraDirection || "Not provided"}</div>
                                     <div><strong style={{ color: "#f1f5f9" }}>Product Placement:</strong> {panel.productPlacement || "Not provided"}</div>

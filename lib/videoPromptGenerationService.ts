@@ -207,6 +207,7 @@ function buildVideoPromptUserPrompt(args: {
   bRollSuggestions: string[];
   characterAnchor: string | null;
   characterDescription: string;
+  characterName: string | null;
   hasCreatorRef: boolean;
   hasProductRef: boolean;
 }): string {
@@ -226,6 +227,7 @@ function buildVideoPromptUserPrompt(args: {
     bRollSuggestions,
     characterAnchor,
     characterDescription,
+    characterName,
     hasCreatorRef,
     hasProductRef,
   } = args;
@@ -252,6 +254,7 @@ ${normalizedCharacterHandle ? `Character handle: ${normalizedCharacterHandle} (i
 ${hasCreatorRef ? "Subject: match creator reference image exactly." : ""}
 ${hasProductRef ? "Product: match product reference image exactly." : ""}
 
+${characterName ? `Character name: ${characterName}` : ""}
 CHARACTER ANCHOR (non-negotiable, apply exactly):
 ${characterAnchor || characterDescription}
 
@@ -307,6 +310,7 @@ async function generateKlingPromptWithClaude(args: {
   bRollSuggestions: string[];
   characterAnchor: string | null;
   characterDescription: string;
+  characterName: string | null;
   hasCreatorRef: boolean;
   hasProductRef: boolean;
 }): Promise<string> {
@@ -336,6 +340,7 @@ async function generateKlingPromptWithClaude(args: {
     bRollSuggestions: args.bRollSuggestions,
     characterAnchor: args.characterAnchor,
     characterDescription: args.characterDescription,
+    characterName: args.characterName,
     hasCreatorRef: args.hasCreatorRef,
     hasProductRef: args.hasProductRef,
   });
@@ -449,16 +454,8 @@ export async function runVideoPromptGeneration(args: {
   const scriptRaw = (storyboard.script?.rawJson ?? {}) as any;
   const scriptVoFull = asString(scriptRaw.vo_full) || null;
   const scriptScenes = Array.isArray(scriptRaw.scenes) ? scriptRaw.scenes : [];
-  const handleFromScriptPayload = asString((scriptJobPayload as any).characterHandle) || null;
-  const handleFromStoryboardScenes =
-    storyboard.scenes
-      .map((scene) => {
-        const raw = asObject((scene as any).rawJson);
-        return asString((raw as any).characterHandle);
-      })
-      .find((value) => value.length > 0) || null;
   const globalCharacterHandle = normalizeCharacterHandleForPrompt(
-    args.characterHandle ?? handleFromScriptPayload ?? handleFromStoryboardScenes ?? null,
+    args.characterHandle ?? null,
   );
   const effectiveProductId =
     normalizeUrl(args.productId) ||
@@ -517,6 +514,7 @@ export async function runVideoPromptGeneration(args: {
       bRollSuggestions: [],
       characterAnchor: null,
       characterDescription: "Same creator identity as the ad context. Maintain face, hair, clothing, and age consistency.",
+      characterName: null,
       hasCreatorRef: Boolean(sceneReferenceFrames.find((frame) => frame.kind === 'creator')?.url),
       hasProductRef: Boolean(sceneReferenceFrames.find((frame) => frame.kind === 'product')?.url),
     });
@@ -593,7 +591,7 @@ export async function runVideoPromptGeneration(args: {
       throw new Error(`Scene ${sceneNumber} missing VO. Cannot generate video prompt without scene VO.`);
     }
     const characterAction = asString(raw.characterAction) || null;
-    const characterHandle = asString((raw as any).characterHandle) || globalCharacterHandle || null;
+    const characterHandle = globalCharacterHandle || null;
     const environment = asString(raw.environment) || null;
     const cameraDirection = asString(raw.cameraDirection);
     const productPlacement = asString(raw.productPlacement);
@@ -603,6 +601,7 @@ export async function runVideoPromptGeneration(args: {
       (characterHandle
         ? `Creator handle ${normalizeCharacterHandleForPrompt(characterHandle)}. Keep identity and styling consistent across scenes.`
         : "Same creator identity across scenes. Keep face, hair, clothing, and age consistent.");
+    const characterName = asString((raw as any).characterName) || null;
     const characterAnchor = asString((raw as any).characterAnchor) || null;
 
     const prompt = await generateKlingPromptWithClaude({
@@ -622,6 +621,7 @@ export async function runVideoPromptGeneration(args: {
       bRollSuggestions,
       characterAnchor,
       characterDescription,
+      characterName,
       hasCreatorRef: Boolean(sceneCreatorReferenceImageUrl),
       hasProductRef: Boolean(sceneProductReferenceImageUrl),
     });
