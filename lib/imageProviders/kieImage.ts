@@ -185,8 +185,16 @@ export class KieImageProvider implements VideoImageProvider {
           .map((url) => String(url ?? "").trim())
           .filter(Boolean)
       : [];
+    // Continuity frame goes FIRST — KIE weights image_input[0] most heavily.
+    // For Scene 1 continuityReferenceUrl is empty and falls out of the Set.
     const imageInputUrls = Array.from(
-      new Set([primaryInputImageUrl, ...extraReferenceUrls, continuityReferenceUrl].filter(Boolean)),
+      new Set(
+        [
+          continuityReferenceUrl,  // previous scene last frame (highest consistency weight)
+          primaryInputImageUrl,    // creator anchor
+          ...extraReferenceUrls,   // product reference
+        ].filter((url): url is string => typeof url === "string" && url.length > 0),
+      ),
     );
     const contextImageUrls = imageInputUrls;
 
@@ -230,9 +238,9 @@ export class KieImageProvider implements VideoImageProvider {
             ...(p.inputImageUrl || p.previousSceneLastFrameImageUrl || (Array.isArray(p.referenceImageUrls) && p.referenceImageUrls.length > 0)
               ? {
                   contextImageUrls: [
-                    p.inputImageUrl,
+                    p.previousSceneLastFrameImageUrl, // continuity first
+                    p.inputImageUrl,                  // creator anchor
                     ...(Array.isArray(p.referenceImageUrls) ? p.referenceImageUrls : []),
-                    p.previousSceneLastFrameImageUrl,
                   ]
                     .map((url) => String(url ?? "").trim())
                     .filter((url): url is string => Boolean(url)),

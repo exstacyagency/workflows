@@ -1103,7 +1103,10 @@ export default function CreativeStudioPage() {
     const asValue = (value: unknown) => (typeof value === "string" ? value.trim() : "");
     const panelTypeRaw = asValue(raw.panelType);
     const panelType = panelTypeRaw === "B_ROLL_ONLY" ? "B_ROLL_ONLY" : "ON_CAMERA";
-    const characterAction = asValue(raw.characterAction);
+    const characterAction =
+      asValue(raw.characterAction) ||
+      asValue(raw.creatorAction) ||
+      asValue(raw["Character Action"]);
     const characterName = asValue(raw.characterName);
     const characterDescription = asValue(raw.characterDescription);
     const environment = asValue(raw.environment);
@@ -1176,15 +1179,106 @@ export default function CreativeStudioPage() {
     };
   }
 
-  function bRollSuggestionsToTextarea(value: string[]): string {
-    return value.join("\n");
+  function buildStoryboardBeatEditorText(panel: StoryboardPanel): string {
+    const bRollLines = panel.bRollSuggestions.length > 0
+      ? panel.bRollSuggestions.map((entry) => `- ${entry}`).join("\n")
+      : "- ";
+    return [
+      `Character Name: ${panel.characterName ?? ""}`,
+      `Character Description: ${panel.characterDescription ?? ""}`,
+      `Character Action: ${panel.characterAction ?? ""}`,
+      `Environment: ${panel.environment ?? ""}`,
+      `Camera Direction: ${panel.cameraDirection ?? ""}`,
+      `Product Placement: ${panel.productPlacement ?? ""}`,
+      `B-roll Suggestions:\n${bRollLines}`,
+      `Transition Type: ${panel.transitionType ?? ""}`,
+    ].join("\n\n");
   }
 
-  function parseBrollSuggestionsTextarea(value: string): string[] {
-    return value
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean);
+  function parseStoryboardBeatEditorText(
+    value: string,
+    fallbackPanel: StoryboardPanel,
+  ): {
+    characterName: string | null;
+    characterDescription: string | null;
+    characterAction: string | null;
+    environment: string | null;
+    cameraDirection: string;
+    productPlacement: string;
+    bRollSuggestions: string[];
+    transitionType: string;
+  } {
+    const labelMap: Array<{ label: string; key: string }> = [
+      { label: "Character Name", key: "characterName" },
+      { label: "Character Description", key: "characterDescription" },
+      { label: "Character Action", key: "characterAction" },
+      { label: "Environment", key: "environment" },
+      { label: "Camera Direction", key: "cameraDirection" },
+      { label: "Product Placement", key: "productPlacement" },
+      { label: "B-roll Suggestions", key: "bRollSuggestions" },
+      { label: "Transition Type", key: "transitionType" },
+    ];
+    const sections: Record<string, string> = {};
+    let activeKey: string | null = null;
+    const lines = String(value ?? "").replace(/\r\n/g, "\n").split("\n");
+    for (const rawLine of lines) {
+      const line = rawLine;
+      const matchedLabel = labelMap.find(({ label }) =>
+        new RegExp(`^${label}\\s*:`, "i").test(line.trim()),
+      );
+      if (matchedLabel) {
+        const content = line.replace(new RegExp(`^${matchedLabel.label}\\s*:`, "i"), "").trim();
+        sections[matchedLabel.key] = content;
+        activeKey = matchedLabel.key;
+        continue;
+      }
+      if (!activeKey) continue;
+      sections[activeKey] = sections[activeKey]
+        ? `${sections[activeKey]}\n${line}`
+        : line;
+    }
+
+    const parseNullable = (
+      key: string,
+      fallback: string | null,
+      preserveFallbackWhenEmpty = false,
+    ): string | null => {
+      if (!(key in sections)) return fallback;
+      const normalized = normalizeMultilineText(sections[key] ?? "");
+      if (normalized) return normalized;
+      return preserveFallbackWhenEmpty ? fallback : null;
+    };
+
+    const parseText = (key: string, fallback: string): string => {
+      if (!(key in sections)) return fallback;
+      return normalizeMultilineText(sections[key] ?? "");
+    };
+
+    const parseBroll = (): string[] => {
+      if (!("bRollSuggestions" in sections)) return fallbackPanel.bRollSuggestions;
+      return String(sections.bRollSuggestions ?? "")
+        .split("\n")
+        .map((entry) => entry.replace(/^\s*[-*]\s*/, "").trim())
+        .filter(Boolean);
+    };
+
+    return {
+      characterName: parseNullable("characterName", fallbackPanel.characterName ?? null),
+      characterDescription: parseNullable(
+        "characterDescription",
+        fallbackPanel.characterDescription ?? null,
+      ),
+      characterAction: parseNullable(
+        "characterAction",
+        fallbackPanel.characterAction ?? null,
+        true,
+      ),
+      environment: parseNullable("environment", fallbackPanel.environment ?? null),
+      cameraDirection: parseText("cameraDirection", fallbackPanel.cameraDirection),
+      productPlacement: parseText("productPlacement", fallbackPanel.productPlacement),
+      bRollSuggestions: parseBroll(),
+      transitionType: parseText("transitionType", fallbackPanel.transitionType),
+    };
   }
 
   function getSourceRowContent(source: ScriptRunSummarySource, fallback: string): {
@@ -1836,7 +1930,26 @@ export default function CreativeStudioPage() {
   function openStoryboardEditMode() {
     setStoryboardDraftPanels(
       Array.isArray(storyboardPanelData?.panels)
-        ? storyboardPanelData.panels.map((panel, index) => normalizeStoryboardPanel(panel, index))
+        ? storyboardPanelData.panels.map((panel, index) => {
+            const normalized = normalizeStoryboardPanel(panel, index);
+            const source = panel as Record<string, unknown>;
+            const fallbackAction =
+              typeof source?.characterAction === "string"
+                ? source.characterAction
+                : typeof source?.creatorAction === "string"
+                  ? source.creatorAction
+                  : typeof source?.["Character Action"] === "string"
+                    ? source["Character Action"]
+                    : null;
+            return {
+              ...normalized,
+              characterAction:
+                normalized.characterAction ??
+                (typeof fallbackAction === "string" && fallbackAction.trim()
+                  ? fallbackAction.trim()
+                  : null),
+            };
+          })
         : [],
     );
     setStoryboardEditMode(true);
@@ -1847,7 +1960,26 @@ export default function CreativeStudioPage() {
   function cancelStoryboardEditMode() {
     setStoryboardDraftPanels(
       Array.isArray(storyboardPanelData?.panels)
-        ? storyboardPanelData.panels.map((panel, index) => normalizeStoryboardPanel(panel, index))
+        ? storyboardPanelData.panels.map((panel, index) => {
+            const normalized = normalizeStoryboardPanel(panel, index);
+            const source = panel as Record<string, unknown>;
+            const fallbackAction =
+              typeof source?.characterAction === "string"
+                ? source.characterAction
+                : typeof source?.creatorAction === "string"
+                  ? source.creatorAction
+                  : typeof source?.["Character Action"] === "string"
+                    ? source["Character Action"]
+                    : null;
+            return {
+              ...normalized,
+              characterAction:
+                normalized.characterAction ??
+                (typeof fallbackAction === "string" && fallbackAction.trim()
+                  ? fallbackAction.trim()
+                  : null),
+            };
+          })
         : [],
     );
     setStoryboardEditMode(false);
@@ -3030,15 +3162,34 @@ export default function CreativeStudioPage() {
     if (!videoImagesStep) return;
     setSceneActionError(null);
     setSceneGeneratingNumber(sceneNumber);
+    setSceneReviewOpenByNumber((prev) => ({
+      ...prev,
+      [sceneNumber]: false,
+    }));
+    setStoryboardPanelData((prev) => {
+      if (!prev || !Array.isArray(prev.panels)) return prev;
+      const nextPanels = prev.panels.map((panel) => {
+        const panelSceneNumber = Number(panel.sceneNumber);
+        if (!Number.isInteger(panelSceneNumber) || panelSceneNumber !== sceneNumber) {
+          return panel;
+        }
+        return {
+          ...panel,
+          approved: false,
+          firstFrameImageUrl: null,
+          lastFrameImageUrl: null,
+        };
+      });
+      return {
+        ...prev,
+        panels: nextPanels,
+      };
+    });
     const ok = await runStep(videoImagesStep, {
       sceneNumber,
       runNonce: `scene-${sceneNumber}-${Date.now()}`,
     });
     if (ok) {
-      setSceneReviewOpenByNumber((prev) => ({
-        ...prev,
-        [sceneNumber]: true,
-      }));
       const activeStoryboardId = String(storyboardPanelId || latestCompletedStoryboardId || "").trim();
       if (activeStoryboardId) {
         void refreshStoryboardForOutput(activeStoryboardId);
@@ -3750,11 +3901,8 @@ export default function CreativeStudioPage() {
                       const bNum = Number(b.sceneNumber) || 0;
                       return aNum - bNum;
                     })
-                    .map((panel, index, sortedPanels) => {
+                    .map((panel, index) => {
                       const sceneNumber = Number(panel.sceneNumber) || index + 1;
-                      const previousPanel = index > 0 ? sortedPanels[index - 1] : null;
-                      const isLockedByPreviousScene =
-                        index > 0 && !Boolean(previousPanel?.approved);
                       const firstFrameImageUrl = String(
                         panel?.firstFrameImageUrl || (panel as any)?.firstFrameUrl || "",
                       ).trim();
@@ -3769,14 +3917,12 @@ export default function CreativeStudioPage() {
                         lastFrameImageUrl: (lastFrameImageUrl || firstFrameImageUrl) || null,
                         approved: Boolean(panel?.approved),
                         hasImages,
-                        locked: step.locked || isLockedByPreviousScene || !panel,
+                        locked: step.locked || !panel,
                         lockReason: !panel
                           ? "Scene missing from storyboard."
                           : step.locked
                             ? step.lockReason || "Blocked by pipeline prerequisites."
-                            : isLockedByPreviousScene
-                              ? `Approve Scene ${sceneNumber - 1} first.`
-                              : undefined,
+                            : undefined,
                         isReviewOpen: Boolean(sceneReviewOpenByNumber[sceneNumber]),
                       };
                     })
@@ -4037,7 +4183,7 @@ export default function CreativeStudioPage() {
                   ) : (
                     <>
                       <p style={{ margin: "0 0 10px 0", color: "#94a3b8", fontSize: 12 }}>
-                        Scenes 1-6 unlock sequentially. Scene N requires Scene N-1 approval.
+                        Generate or re-generate first-frame output per scene.
                       </p>
                       {sceneActionError && (
                         <p style={{ margin: "0 0 10px 0", color: "#fca5a5", fontSize: 12 }}>
@@ -4047,9 +4193,7 @@ export default function CreativeStudioPage() {
                       <div style={{ display: "grid", gap: 10 }}>
                         {sceneFlowRows.map((row) => {
                           const isGenerating = sceneGeneratingNumber === row.sceneNumber;
-                          const isApproving = sceneApprovingNumber === row.sceneNumber;
                           const canReview = row.hasImages;
-                          const canApprove = row.hasImages && !row.locked && !row.approved;
                           const firstFramePrompt = String(row.panel?.firstFramePrompt || "").trim();
                           return (
                             <div
@@ -4135,28 +4279,6 @@ export default function CreativeStudioPage() {
                                   }}
                                 >
                                   {row.isReviewOpen ? "Hide Review" : "Review"}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => void handleApproveScene(row.sceneNumber)}
-                                  disabled={!canApprove || isApproving}
-                                  style={{
-                                    border: "1px solid rgba(16, 185, 129, 0.5)",
-                                    backgroundColor:
-                                      row.approved
-                                        ? "rgba(16, 185, 129, 0.2)"
-                                        : canApprove && !isApproving
-                                          ? "rgba(16, 185, 129, 0.15)"
-                                          : "#0b1220",
-                                    color: row.approved ? "#6ee7b7" : canApprove ? "#a7f3d0" : "#64748b",
-                                    borderRadius: 7,
-                                    padding: "6px 10px",
-                                    fontSize: 12,
-                                    fontWeight: 600,
-                                    cursor: !canApprove || isApproving ? "not-allowed" : "pointer",
-                                  }}
-                                >
-                                  {row.approved ? "Approved" : isApproving ? "Approving..." : "Approve"}
                                 </button>
                               </div>
 
@@ -4675,231 +4797,42 @@ export default function CreativeStudioPage() {
                                     resize: "vertical",
                                   }}
                                 />
-
-                                {panel.panelType !== "B_ROLL_ONLY" && (
-                                  <div>
-                                    <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>Character Action</div>
-                                    <textarea
-                                      value={panel.characterAction ?? ""}
-                                      onChange={(e) =>
-                                        updateStoryboardDraftPanel(panelIndex, (prev) => ({
-                                          ...prev,
-                                          characterAction: e.target.value.trim()
-                                            ? e.target.value
-                                            : null,
-                                        }))
-                                      }
-                                      onBlur={(e) =>
-                                        updateStoryboardDraftPanel(panelIndex, (prev) => ({
-                                          ...prev,
-                                          characterAction: e.target.value.trim()
-                                            ? enforceBlankLineBetweenTextLines(e.target.value)
-                                            : null,
-                                        }))
-                                      }
-                                      rows={2}
-                                      style={{
-                                        width: "100%",
-                                        boxSizing: "border-box",
-                                        borderRadius: 8,
-                                        border: "1px solid #334155",
-                                        backgroundColor: "#0f172a",
-                                        color: "#e2e8f0",
-                                        padding: 8,
-                                        fontSize: 12,
-                                        resize: "vertical",
-                                      }}
-                                    />
-                                  </div>
-                                )}
-
-                                <div>
-                                  <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>Environment</div>
-                                  <textarea
-                                    value={panel.environment ?? ""}
-                                    onChange={(e) =>
-                                      panelIndex === 0
-                                        ? setStoryboardDraftPanels((prev) => {
-                                            const nextEnvironment = e.target.value.trim()
-                                              ? e.target.value
-                                              : null;
-                                            return prev.map((draft) => ({
-                                              ...draft,
-                                              environment: nextEnvironment,
-                                            }));
-                                          })
-                                        : updateStoryboardDraftPanel(panelIndex, (prev) => ({
-                                            ...prev,
-                                            environment: e.target.value.trim()
-                                              ? e.target.value
-                                              : null,
-                                          }))
-                                    }
-                                    onBlur={(e) =>
-                                      panelIndex === 0
-                                        ? setStoryboardDraftPanels((prev) => {
-                                            const nextEnvironment = e.target.value.trim()
-                                              ? enforceBlankLineBetweenTextLines(e.target.value)
-                                              : null;
-                                            return prev.map((draft) => ({
-                                              ...draft,
-                                              environment: nextEnvironment,
-                                            }));
-                                          })
-                                        : updateStoryboardDraftPanel(panelIndex, (prev) => ({
-                                            ...prev,
-                                            environment: e.target.value.trim()
-                                              ? enforceBlankLineBetweenTextLines(e.target.value)
-                                              : null,
-                                          }))
-                                    }
-                                    rows={2}
-                                    style={{
-                                      width: "100%",
-                                      boxSizing: "border-box",
-                                      borderRadius: 8,
-                                      border: "1px solid #334155",
-                                      backgroundColor: "#0f172a",
-                                      color: "#e2e8f0",
-                                      padding: 8,
-                                      fontSize: 12,
-                                      resize: "vertical",
-                                    }}
-                                  />
+                                <div style={{ color: "#94a3b8", fontSize: 11 }}>
+                                  Edit this beat as one block. Keep the labels and write under each one.
                                 </div>
-
-                                <div>
-                                  <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>Camera Direction</div>
-                                  <textarea
-                                    value={panel.cameraDirection}
-                                    onChange={(e) =>
-                                      updateStoryboardDraftPanel(panelIndex, (prev) => ({
-                                        ...prev,
-                                        cameraDirection: e.target.value,
-                                      }))
-                                    }
-                                    onBlur={(e) =>
-                                      updateStoryboardDraftPanel(panelIndex, (prev) => ({
-                                        ...prev,
-                                        cameraDirection: enforceBlankLineBetweenTextLines(e.target.value),
-                                      }))
-                                    }
-                                    rows={2}
-                                    style={{
-                                      width: "100%",
-                                      boxSizing: "border-box",
-                                      borderRadius: 8,
-                                      border: "1px solid #334155",
-                                      backgroundColor: "#0f172a",
-                                      color: "#e2e8f0",
-                                      padding: 8,
-                                      fontSize: 12,
-                                      resize: "vertical",
-                                    }}
-                                  />
-                                </div>
-
-                                <div>
-                                  <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>Product Placement</div>
-                                  <textarea
-                                    value={panel.productPlacement}
-                                    onChange={(e) =>
-                                      updateStoryboardDraftPanel(panelIndex, (prev) => ({
-                                        ...prev,
-                                        productPlacement: e.target.value,
-                                      }))
-                                    }
-                                    onBlur={(e) =>
-                                      updateStoryboardDraftPanel(panelIndex, (prev) => ({
-                                        ...prev,
-                                        productPlacement: enforceBlankLineBetweenTextLines(e.target.value),
-                                      }))
-                                    }
-                                    rows={2}
-                                    style={{
-                                      width: "100%",
-                                      boxSizing: "border-box",
-                                      borderRadius: 8,
-                                      border: "1px solid #334155",
-                                      backgroundColor: "#0f172a",
-                                      color: "#e2e8f0",
-                                      padding: 8,
-                                      fontSize: 12,
-                                      resize: "vertical",
-                                    }}
-                                  />
-                                </div>
-
-                                <div>
-                                  <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>Transition Type</div>
-                                  <textarea
-                                    value={panel.transitionType}
-                                    onChange={(e) =>
-                                      updateStoryboardDraftPanel(panelIndex, (prev) => ({
-                                        ...prev,
-                                        transitionType: e.target.value,
-                                      }))
-                                    }
-                                    onBlur={(e) =>
-                                      updateStoryboardDraftPanel(panelIndex, (prev) => ({
-                                        ...prev,
-                                        transitionType: enforceBlankLineBetweenTextLines(e.target.value),
-                                      }))
-                                    }
-                                    rows={2}
-                                    style={{
-                                      width: "100%",
-                                      boxSizing: "border-box",
-                                      borderRadius: 8,
-                                      border: "1px solid #334155",
-                                      backgroundColor: "#0f172a",
-                                      color: "#e2e8f0",
-                                      padding: 8,
-                                      fontSize: 12,
-                                      resize: "vertical",
-                                    }}
-                                  />
-                                </div>
-
-                                <div>
-                                  <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>
-                                    {panel.panelType === "B_ROLL_ONLY"
-                                      ? "B-roll Shot Breakdown (one per line)"
-                                      : "B-roll Suggestions (one per line)"}
-                                  </div>
-                                  <textarea
-                                    value={bRollSuggestionsToTextarea(panel.bRollSuggestions)}
-                                    onChange={(e) =>
-                                      updateStoryboardDraftPanel(panelIndex, (prev) => ({
-                                        ...prev,
-                                        bRollSuggestions: parseBrollSuggestionsTextarea(e.target.value),
-                                      }))
-                                    }
-                                    onBlur={(e) =>
-                                      updateStoryboardDraftPanel(panelIndex, (prev) => ({
-                                        ...prev,
-                                        bRollSuggestions: parseBrollSuggestionsTextarea(
-                                          enforceBlankLineBetweenTextLines(e.target.value),
-                                        ),
-                                      }))
-                                    }
-                                    rows={panel.panelType === "B_ROLL_ONLY" ? 8 : 3}
-                                    style={{
-                                      width: "100%",
-                                      boxSizing: "border-box",
-                                      borderRadius: 8,
-                                      border:
-                                        panel.panelType === "B_ROLL_ONLY"
-                                          ? "1px solid rgba(14, 165, 233, 0.6)"
-                                          : "1px solid #334155",
-                                      backgroundColor: "#0f172a",
-                                      color: "#e2e8f0",
-                                      padding: 8,
-                                      fontSize: 12,
-                                      resize: "vertical",
-                                    }}
-                                  />
-                                </div>
+                                <textarea
+                                  value={buildStoryboardBeatEditorText(panel)}
+                                  onChange={(e) => {
+                                    const parsed = parseStoryboardBeatEditorText(e.target.value, panel);
+                                    updateStoryboardDraftPanel(panelIndex, (prev) => ({
+                                      ...prev,
+                                      characterName: parsed.characterName,
+                                      characterDescription: parsed.characterDescription,
+                                      characterAction: parsed.characterAction,
+                                      environment: parsed.environment,
+                                      cameraDirection: parsed.cameraDirection,
+                                      productPlacement: parsed.productPlacement,
+                                      bRollSuggestions: parsed.bRollSuggestions,
+                                      transitionType: parsed.transitionType,
+                                    }));
+                                  }}
+                                  rows={panel.panelType === "B_ROLL_ONLY" ? 14 : 16}
+                                  style={{
+                                    width: "100%",
+                                    boxSizing: "border-box",
+                                    borderRadius: 8,
+                                    border:
+                                      panel.panelType === "B_ROLL_ONLY"
+                                        ? "1px solid rgba(14, 165, 233, 0.6)"
+                                        : "1px solid #334155",
+                                    backgroundColor: "#0f172a",
+                                    color: "#e2e8f0",
+                                    padding: 8,
+                                    fontSize: 12,
+                                    resize: "vertical",
+                                    lineHeight: 1.5,
+                                  }}
+                                />
 
                                 <div style={{ marginTop: 2 }}>
                                   <button

@@ -110,6 +110,7 @@ function buildFirstFramePrompt(args: {
   characterName: string;
   characterDescription: string;
   productReferenceImageUrl: string;
+  previousSceneLastFrameImageUrl: string | null;
 }): string {
   const {
     sceneNumber,
@@ -124,6 +125,7 @@ function buildFirstFramePrompt(args: {
     characterName,
     characterDescription,
     productReferenceImageUrl,
+    previousSceneLastFrameImageUrl,
   } = args;
   const broll = bRollSuggestions.filter(Boolean).join(" | ");
   const creatorPresent =
@@ -131,7 +133,10 @@ function buildFirstFramePrompt(args: {
       ? "Creator is visible and speaking to camera."
       : "B-roll scene: creator voiceover is present but creator is NOT shown.";
   return [
-    "STYLE: Authentic smartphone UGC. NOT cinematic. NOT a production still. NOT commercial photography.",
+    "STYLE: Authentic smartphone UGC. Raw image content only — NO UI chrome, NO app interface, NO status bar, NO Instagram/TikTok frame, NO social media overlay, NO profile header, NO message bar, NO screen recording frame. Just the image itself. NOT cinematic. NOT a production still. NOT commercial photography.",
+    previousSceneLastFrameImageUrl
+      ? "CONTINUITY: The first reference image provided is the final frame of the PREVIOUS scene in this video. You must match exactly: same creator face and appearance, same room, same lighting mood, same product. This scene is a direct continuation — maintain visual consistency throughout."
+      : "",
     `UGC ad first-frame still for Scene ${sceneNumber}${beatLabel ? ` (${beatLabel})` : ""}.`,
     creatorPresent,
     `Character name: ${characterName}`,
@@ -143,7 +148,7 @@ function buildFirstFramePrompt(args: {
     productPlacement ? `Product placement: ${productPlacement}` : "",
     broll ? `Text overlays / b-roll intent: ${broll}` : "",
     `Use this product reference image exactly for packaging/label details: ${productReferenceImageUrl}`,
-    "Render as smartphone-shot UGC (not commercial): natural lighting, real room, handheld realism, vertical 9:16.",
+    "Render as smartphone-shot UGC (not commercial): natural lighting, real room, handheld realism, vertical 9:16. Output is the raw photo frame only — no phone UI, no app chrome, no overlaid interface elements.",
   ]
     .filter(Boolean)
     .join("\n");
@@ -352,7 +357,7 @@ export async function POST(req: NextRequest) {
   const prompts = targetScenes.map((scene) => {
     const previousScene = scenesByNumber.get(scene.sceneNumber - 1) ?? null;
     const previousSceneLastFrameImageUrl =
-      previousScene?.firstFrameImageUrl || previousScene?.lastFrameImageUrl || null;
+      previousScene?.lastFrameImageUrl || previousScene?.firstFrameImageUrl || null;
 
     return {
       frameIndex: scene.sceneNumber * 2,
@@ -372,6 +377,7 @@ export async function POST(req: NextRequest) {
         characterName: resolvedCharacterName,
         characterDescription: resolvedCharacterDescription,
         productReferenceImageUrl,
+        previousSceneLastFrameImageUrl,
       }),
       inputImageUrl: resolvedAvatarImageUrl,
       referenceImageUrls: [productReferenceImageUrl],
@@ -385,13 +391,39 @@ export async function POST(req: NextRequest) {
       .filter((sceneNumber): sceneNumber is number => Number.isInteger(sceneNumber) && sceneNumber > 0);
     if (sceneNumbersToReset.length > 0) {
       try {
-        await prisma.$executeRaw`
-          UPDATE "storyboard_scene"
-          SET "approved" = false,
-              "updatedAt" = NOW()
-          WHERE "storyboardId" = ${storyboard.id}
-            AND "sceneNumber" IN (${Prisma.join(sceneNumbersToReset)})
-        `;
+        const scenesToClear = await prisma.storyboardScene.findMany({
+          where: {
+            storyboardId: storyboard.id,
+            sceneNumber: { in: sceneNumbersToReset },
+          },
+          select: {
+            id: true,
+            rawJson: true,
+          },
+        });
+        if (scenesToClear.length > 0) {
+          await prisma.$transaction(
+            scenesToClear.map((scene) => {
+              const raw = asObject(scene.rawJson) ?? {};
+              const nextRaw = {
+                ...raw,
+                firstFrameImageUrl: null,
+                lastFrameImageUrl: null,
+                images: [],
+                polled: null,
+              };
+              return prisma.storyboardScene.update({
+                where: { id: scene.id },
+                data: {
+                  approved: false,
+                  firstFrameImageUrl: null,
+                  lastFrameImageUrl: null,
+                  rawJson: nextRaw as any,
+                },
+              });
+            }),
+          );
+        }
       } catch {
         // Backward compatibility for environments before approval migration is applied.
       }
