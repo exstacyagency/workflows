@@ -16,6 +16,8 @@ const BodySchema = z.object({
   productId: z.string().optional(),
   runId: z.string().optional(),
   characterId: z.string().optional(),
+  characterName: z.string().optional(),
+  characterDescription: z.string().optional(),
   storyboardMode: z.enum(["ai", "manual"]).optional(),
   manualPanels: z
     .array(
@@ -107,6 +109,12 @@ export async function POST(req: NextRequest) {
     const requestedRunId = String(rawRunId ?? "").trim();
     const requestedProductId = String(rawProductId ?? "").trim();
     const requestedCharacterId = String(rawCharacterId ?? "").trim();
+    if (!requestedCharacterId) {
+      return NextResponse.json(
+        { error: "characterId is required for storyboard generation" },
+        { status: 400 },
+      );
+    }
     const storyboardMode = rawStoryboardMode === "manual" ? "manual" : "ai";
     const manualPanels = storyboardMode === "manual" && Array.isArray(rawManualPanels)
       ? rawManualPanels
@@ -115,7 +123,8 @@ export async function POST(req: NextRequest) {
     let effectiveRunId: string | null = null;
     let effectiveProductId: string | null = null;
     let effectiveCharacterId: string | null = null;
-    let effectiveCharacterHandle: string | null = null;
+    let effectiveCharacterName: string | null = null;
+    let effectiveCharacterDescription: string | null = null;
     if (requestedRunId) {
       const run = await prisma.researchRun.findUnique({
         where: { id: requestedRunId },
@@ -157,7 +166,8 @@ export async function POST(req: NextRequest) {
           id: true,
           runId: true,
           productId: true,
-          characterUserName: true,
+          name: true,
+          creatorVisualPrompt: true,
         },
       });
       if (!character) {
@@ -178,15 +188,15 @@ export async function POST(req: NextRequest) {
           { status: 400 },
         );
       }
-      const username = String(character.characterUserName ?? "").trim();
-      if (!username) {
-        return NextResponse.json(
-          { error: "Selected character has no character handle" },
-          { status: 400 },
-        );
-      }
       effectiveCharacterId = character.id;
-      effectiveCharacterHandle = `@${username.replace(/^@+/, "")}`;
+      effectiveCharacterName = String(character.name ?? "").trim() || null;
+      effectiveCharacterDescription = String(character.creatorVisualPrompt ?? "").trim() || null;
+    }
+    if (!effectiveCharacterName || !effectiveCharacterDescription) {
+      return NextResponse.json(
+        { error: "Selected character is missing name or creatorVisualPrompt" },
+        { status: 400 },
+      );
     }
 
     const requestedScriptId = String(rawScriptId ?? "").trim();
@@ -290,7 +300,8 @@ export async function POST(req: NextRequest) {
       scriptId: scriptIdUsed,
       ...(effectiveProductId ? { productId: effectiveProductId } : {}),
       ...(effectiveCharacterId ? { characterId: effectiveCharacterId } : {}),
-      ...(effectiveCharacterHandle ? { characterHandle: effectiveCharacterHandle } : {}),
+      ...(effectiveCharacterName ? { characterName: effectiveCharacterName } : {}),
+      ...(effectiveCharacterDescription ? { characterDescription: effectiveCharacterDescription } : {}),
       storyboardMode,
       ...(manualPanels ? { manualPanels } : {}),
       idempotencyKey,
@@ -326,7 +337,6 @@ export async function POST(req: NextRequest) {
         scriptIdUsed,
         storyboardMode,
         ...(effectiveCharacterId ? { characterId: effectiveCharacterId } : {}),
-        ...(effectiveCharacterHandle ? { characterHandle: effectiveCharacterHandle } : {}),
         reused: false,
         started: !securitySweep,
         ...(securitySweep ? { skipped: true, reason: 'SECURITY_SWEEP' } : {}),

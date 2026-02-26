@@ -49,6 +49,7 @@ import {
   getProductCharacterState,
   saveCreatorVisualPrompt,
   saveCharacterAvatarImage,
+  saveCharacterToTable,
 } from "../lib/productCharacterStore.ts";
 // ARCHIVED: IMAGE_PROMPT_GENERATION and VIDEO_IMAGE_GENERATION handlers removed.
 import { runVideoGenerationJob } from "../lib/videoGenerationService.ts";
@@ -57,6 +58,7 @@ import { analyzeProductData } from "../lib/productAnalysisService.ts";
 import prisma from "../lib/prisma.ts";
 import { rollbackQuota } from "../lib/billing/usage.ts";
 import { updateJobStatus } from "@/lib/jobs/updateJobStatus";
+import { generateRandomCharacterName } from "../lib/characterNameService.ts";
 
 console.log("=== WORKER ENVIRONMENT CHECK ===");
 console.log("ANTHROPIC_API_KEY present:", !!cfg.raw("ANTHROPIC_API_KEY"));
@@ -756,7 +758,8 @@ async function runJob(
       case JobType.STORYBOARD_GENERATION: {
         const scriptId = String(payload?.scriptId ?? "").trim();
         const productId = String(payload?.productId ?? "").trim() || null;
-        const characterHandle = String(payload?.characterHandle ?? "").trim() || null;
+        const characterName = String(payload?.characterName ?? "").trim() || null;
+        const characterDescription = String(payload?.characterDescription ?? "").trim() || null;
         const storyboardMode = String(payload?.storyboardMode ?? "").trim() === "manual" ? "manual" : "ai";
         const manualPanels = Array.isArray(payload?.manualPanels) ? payload.manualPanels : undefined;
         if (!scriptId) {
@@ -768,7 +771,8 @@ async function runJob(
         try {
           const result = await generateStoryboard(scriptId, {
             productId,
-            characterHandle,
+            characterName,
+            characterDescription,
             storyboardMode,
             manualPanels,
           });
@@ -811,7 +815,6 @@ async function runJob(
         });
         const storyboardId = String(payload?.storyboardId ?? "").trim();
         const productId = String(payload?.productId ?? "").trim() || null;
-        const characterHandle = String(payload?.characterHandle ?? "").trim() || null;
         if (!storyboardId) {
           await markFailed({ jobId, error: "Invalid payload: missing storyboardId" });
           return;
@@ -837,7 +840,6 @@ async function runJob(
             storyboardId,
             jobId,
             productId,
-            characterHandle,
           });
           console.log("[Worker][VIDEO_PROMPT_GENERATION] Video prompt generation completed", {
             jobId,
@@ -1129,6 +1131,16 @@ async function runJob(
             const imageUrl =
               typeof raw === "string" ? null : extractImageUrl(raw as Record<string, unknown>);
             await saveCharacterAvatarImage(productId, { taskId: seedTaskId, imageUrl });
+            await saveCharacterToTable({
+              productId,
+              runId: job.runId ?? null,
+              name: generateRandomCharacterName(),
+              seedVideoUrl: imageUrl ?? undefined,
+              seedVideoTaskId: seedTaskId,
+              soraCharacterId: seedTaskId,
+              characterUserName: `avatar_${seedTaskId.slice(0, 8)}`,
+              creatorVisualPrompt: String(payload?.creatorVisualPrompt ?? ""),
+            });
             await markCompleted({
               jobId,
               result: { ok: true, productId, taskId: seedTaskId, characterAvatarImageUrl: imageUrl },
