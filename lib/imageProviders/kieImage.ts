@@ -180,7 +180,14 @@ export class KieImageProvider implements VideoImageProvider {
     const primaryInputImageUrl = input.prompts[0]?.inputImageUrl
       ? String(input.prompts[0].inputImageUrl).trim()
       : "";
-    const imageInputUrls = [primaryInputImageUrl, continuityReferenceUrl].filter(Boolean);
+    const extraReferenceUrls = Array.isArray(input.prompts[0]?.referenceImageUrls)
+      ? input.prompts[0].referenceImageUrls
+          .map((url) => String(url ?? "").trim())
+          .filter(Boolean)
+      : [];
+    const imageInputUrls = Array.from(
+      new Set([primaryInputImageUrl, ...extraReferenceUrls, continuityReferenceUrl].filter(Boolean)),
+    );
     const contextImageUrls = imageInputUrls;
 
     const payload = {
@@ -206,14 +213,29 @@ export class KieImageProvider implements VideoImageProvider {
         frames: input.prompts.map((p) => {
           return {
             previousSceneLastFrameImageUrl: p.previousSceneLastFrameImageUrl ?? null,
-            ...(p.previousSceneLastFrameImageUrl
-              ? { additionalInputImageUrls: [p.previousSceneLastFrameImageUrl] }
-              : {}),
-            ...(p.inputImageUrl || p.previousSceneLastFrameImageUrl
+            ...(p.previousSceneLastFrameImageUrl || (Array.isArray(p.referenceImageUrls) && p.referenceImageUrls.length > 0)
               ? {
-                  contextImageUrls: [p.inputImageUrl, p.previousSceneLastFrameImageUrl].filter(
-                    (url): url is string => Boolean(url),
-                  ),
+                  additionalInputImageUrls: [
+                    ...(Array.isArray(p.referenceImageUrls)
+                      ? p.referenceImageUrls
+                          .map((url) => String(url ?? "").trim())
+                          .filter(Boolean)
+                      : []),
+                    ...(p.previousSceneLastFrameImageUrl
+                      ? [String(p.previousSceneLastFrameImageUrl).trim()]
+                      : []),
+                  ],
+                }
+              : {}),
+            ...(p.inputImageUrl || p.previousSceneLastFrameImageUrl || (Array.isArray(p.referenceImageUrls) && p.referenceImageUrls.length > 0)
+              ? {
+                  contextImageUrls: [
+                    p.inputImageUrl,
+                    ...(Array.isArray(p.referenceImageUrls) ? p.referenceImageUrls : []),
+                    p.previousSceneLastFrameImageUrl,
+                  ]
+                    .map((url) => String(url ?? "").trim())
+                    .filter((url): url is string => Boolean(url)),
                 }
               : {}),
             frameIndex: p.frameIndex,

@@ -756,7 +756,7 @@ export default function CreativeStudioPage() {
       STORYBOARD_GENERATION: "Create Storyboard",
       IMAGE_PROMPT_GENERATION: "Generate Image Prompts",
       VIDEO_PROMPT_GENERATION: "Generate Video Prompts",
-      VIDEO_IMAGE_GENERATION: "Generate Images",
+      VIDEO_IMAGE_GENERATION: "Generate First Frames",
       VIDEO_GENERATION: "Generate Video",
       VIDEO_REVIEW: "Review Video",
       VIDEO_UPSCALER: "Upscale & Export",
@@ -1122,8 +1122,16 @@ export default function CreativeStudioPage() {
       vo: asValue(raw.vo),
       firstFramePrompt: asValue(raw.firstFramePrompt) || null,
       lastFramePrompt: asValue(raw.lastFramePrompt) || null,
-      firstFrameImageUrl: asValue(raw.firstFrameImageUrl) || null,
-      lastFrameImageUrl: asValue(raw.lastFrameImageUrl) || null,
+      firstFrameImageUrl:
+        asValue(raw.firstFrameImageUrl) ||
+        asValue(raw.firstFrameUrl) ||
+        asValue(raw.first_frame_url) ||
+        null,
+      lastFrameImageUrl:
+        asValue(raw.lastFrameImageUrl) ||
+        asValue(raw.lastFrameUrl) ||
+        asValue(raw.last_frame_url) ||
+        null,
       videoPrompt: asValue(raw.videoPrompt) || null,
       characterAction: characterAction || null,
       characterName: characterName || null,
@@ -2454,7 +2462,7 @@ export default function CreativeStudioPage() {
 
   const storyboardPanelsForSceneFlow = useMemo(() => {
     if (!latestCompletedStoryboardId) return [] as StoryboardPanel[];
-    if (!storyboardPanelData || storyboardPanelId !== latestCompletedStoryboardId) return [] as StoryboardPanel[];
+    if (!storyboardPanelData) return [] as StoryboardPanel[];
     return Array.isArray(storyboardPanelData.panels) ? storyboardPanelData.panels : [];
   }, [latestCompletedStoryboardId, storyboardPanelData, storyboardPanelId]);
 
@@ -2468,23 +2476,18 @@ export default function CreativeStudioPage() {
     return map;
   }, [storyboardPanelsForSceneFlow]);
 
-  const requiredSceneNumbers = [1, 2, 3, 4, 5, 6];
-  const requiredScenePanels = requiredSceneNumbers.map((sceneNumber) =>
-    sceneFlowPanelByNumber.get(sceneNumber) ?? null,
-  );
-  const allRequiredScenesApproved =
-    requiredScenePanels.length === requiredSceneNumbers.length &&
-    requiredScenePanels.every((panel) => Boolean(panel?.approved));
-  const anyRequiredSceneGenerated = requiredScenePanels.some((panel) => Boolean(getSceneLastFrameImageUrl(panel)));
-
   const videoImagesDerivedStatus: ProductionStep["status"] = (() => {
-    if (allRequiredScenesApproved) return "completed";
     const jobStatus = getStepStatus(JobType.VIDEO_IMAGE_GENERATION);
+    const sceneFlowPanels = Array.from(sceneFlowPanelByNumber.values());
+    const allSceneFramesGenerated =
+      sceneFlowPanels.length > 0 &&
+      sceneFlowPanels.every((panel) => Boolean(getSceneLastFrameImageUrl(panel)));
+    if (allSceneFramesGenerated) return "completed";
+    if (jobStatus === "completed") return "completed";
     if (sceneGeneratingNumber !== null || submitting === "video_images" || jobStatus === "running") {
       return "running";
     }
     if (jobStatus === "failed") return "failed";
-    if (anyRequiredSceneGenerated) return "running";
     return "not_started";
   })();
   const storyboardCompleted = getStepStatus(JobType.STORYBOARD_GENERATION) === "completed";
@@ -2524,18 +2527,22 @@ export default function CreativeStudioPage() {
     },
     {
       key: "video_images",
-      label: "Generate Images",
+      label: "Generate First Frames",
       jobType: JobType.VIDEO_IMAGE_GENERATION,
       status: videoImagesDerivedStatus,
       canRun:
-        hasCompletedJob("IMAGE_PROMPT_GENERATION" as JobType) &&
-        hasSelectedProductCreatorReference,
+        storyboardCompleted &&
+        hasSelectedProductReferenceImage &&
+        (runCharacters.length === 0 || Boolean(selectedStoryboardCharacterId)),
       locked:
-        !hasCompletedJob("IMAGE_PROMPT_GENERATION" as JobType) ||
-        !hasSelectedProductCreatorReference,
-      lockReason: !hasCompletedJob("IMAGE_PROMPT_GENERATION" as JobType)
-        ? "Generate image prompts first"
-        : "Set an active creator face in product settings first",
+        !storyboardCompleted ||
+        !hasSelectedProductReferenceImage ||
+        (runCharacters.length > 0 && !selectedStoryboardCharacterId),
+      lockReason: !storyboardCompleted
+        ? "Create storyboard first"
+        : !hasSelectedProductReferenceImage
+          ? "Upload product image in Product Setup first"
+          : "Select a character from Character Casting first",
       lastJob: latestVideoImageJob,
     },
     {
@@ -2543,9 +2550,9 @@ export default function CreativeStudioPage() {
       label: "Generate Video Prompts",
       jobType: JobType.VIDEO_PROMPT_GENERATION,
       status: getStepStatus(JobType.VIDEO_PROMPT_GENERATION),
-      canRun: storyboardCompleted,
-      locked: !storyboardCompleted,
-      lockReason: "Complete storyboard first",
+      canRun: getStepStatus(JobType.VIDEO_IMAGE_GENERATION) === "completed",
+      locked: getStepStatus(JobType.VIDEO_IMAGE_GENERATION) !== "completed",
+      lockReason: "Generate first frames first",
       lastJob: getJobsForType(JobType.VIDEO_PROMPT_GENERATION)[0],
     },
     {
@@ -2580,9 +2587,7 @@ export default function CreativeStudioPage() {
     },
   ];
   // ARCHIVED: Image generation replaced by Sora 2 Character Cameos.
-  const visibleSteps = steps.filter(
-    (step) => step.key !== "image_prompts" && step.key !== "video_images",
-  );
+  const visibleSteps = steps.filter((step) => step.key !== "image_prompts");
 
   async function runStep(
     step: ProductionStep,
@@ -2593,9 +2598,9 @@ export default function CreativeStudioPage() {
       setError("Select or create a product first.");
       return false;
     }
-    if (step.key === "video_images" && !hasSelectedProductCreatorReference) {
+    if (step.key === "video_images" && !hasSelectedProductReferenceImage) {
       setError(
-        "Set an active creator face in product settings before generating images.",
+        "Upload product image in Product Setup before generating first frames.",
       );
       return false;
     }
@@ -2663,6 +2668,7 @@ export default function CreativeStudioPage() {
         payload = {
           ...payload,
           storyboardId,
+          ...(activeStoryboardCharacterId ? { characterId: activeStoryboardCharacterId } : {}),
         };
       }
 
@@ -3738,41 +3744,42 @@ export default function CreativeStudioPage() {
                 : [];
             const sceneFlowRows =
               step.key === "video_images"
-                ? [1, 2, 3, 4, 5, 6].map((sceneNumber) => {
-                    const panel = storyboardPanels.find(
-                      (candidate, panelIndex) =>
-                        (Number(candidate.sceneNumber) || panelIndex + 1) === sceneNumber,
-                    );
-                    const previousPanel =
-                      sceneNumber > 1
-                        ? storyboardPanels.find(
-                            (candidate, panelIndex) =>
-                              (Number(candidate.sceneNumber) || panelIndex + 1) === sceneNumber - 1,
-                          ) ?? null
-                        : null;
-                    const isLockedByPreviousScene =
-                      sceneNumber > 1 && !Boolean(previousPanel?.approved);
-                    const firstFrameImageUrl = String(panel?.firstFrameImageUrl || "").trim();
-                    const lastFrameImageUrl = getSceneLastFrameImageUrl(panel);
-                    const hasImages = Boolean(firstFrameImageUrl && lastFrameImageUrl);
-                    return {
-                      sceneNumber,
-                      panel: panel ?? null,
-                      firstFrameImageUrl: firstFrameImageUrl || null,
-                      lastFrameImageUrl: lastFrameImageUrl || null,
-                      approved: Boolean(panel?.approved),
-                      hasImages,
-                      locked: step.locked || isLockedByPreviousScene || !panel,
-                      lockReason: !panel
-                        ? "Scene missing from storyboard."
-                        : step.locked
-                          ? step.lockReason || "Blocked by pipeline prerequisites."
-                          : isLockedByPreviousScene
-                            ? `Approve Scene ${sceneNumber - 1} first.`
-                            : undefined,
-                      isReviewOpen: Boolean(sceneReviewOpenByNumber[sceneNumber]),
-                    };
-                  })
+                ? [...storyboardPanels]
+                    .sort((a, b) => {
+                      const aNum = Number(a.sceneNumber) || 0;
+                      const bNum = Number(b.sceneNumber) || 0;
+                      return aNum - bNum;
+                    })
+                    .map((panel, index, sortedPanels) => {
+                      const sceneNumber = Number(panel.sceneNumber) || index + 1;
+                      const previousPanel = index > 0 ? sortedPanels[index - 1] : null;
+                      const isLockedByPreviousScene =
+                        index > 0 && !Boolean(previousPanel?.approved);
+                      const firstFrameImageUrl = String(
+                        panel?.firstFrameImageUrl || (panel as any)?.firstFrameUrl || "",
+                      ).trim();
+                      const lastFrameImageUrl = String(
+                        panel?.lastFrameImageUrl || (panel as any)?.lastFrameUrl || "",
+                      ).trim();
+                      const hasImages = Boolean(firstFrameImageUrl || lastFrameImageUrl);
+                      return {
+                        sceneNumber,
+                        panel: panel ?? null,
+                        firstFrameImageUrl: firstFrameImageUrl || null,
+                        lastFrameImageUrl: (lastFrameImageUrl || firstFrameImageUrl) || null,
+                        approved: Boolean(panel?.approved),
+                        hasImages,
+                        locked: step.locked || isLockedByPreviousScene || !panel,
+                        lockReason: !panel
+                          ? "Scene missing from storyboard."
+                          : step.locked
+                            ? step.lockReason || "Blocked by pipeline prerequisites."
+                            : isLockedByPreviousScene
+                              ? `Approve Scene ${sceneNumber - 1} first.`
+                              : undefined,
+                        isReviewOpen: Boolean(sceneReviewOpenByNumber[sceneNumber]),
+                      };
+                    })
                 : [];
             const isOutputViewMode = isViewableCompleted && !isOutputExpanded;
             const usesBottomOutputToggle = isViewableCompleted;
@@ -4041,10 +4048,9 @@ export default function CreativeStudioPage() {
                         {sceneFlowRows.map((row) => {
                           const isGenerating = sceneGeneratingNumber === row.sceneNumber;
                           const isApproving = sceneApprovingNumber === row.sceneNumber;
-                          const canReview = row.hasImages && !row.locked;
+                          const canReview = row.hasImages;
                           const canApprove = row.hasImages && !row.locked && !row.approved;
                           const firstFramePrompt = String(row.panel?.firstFramePrompt || "").trim();
-                          const lastFramePrompt = String(row.panel?.lastFramePrompt || "").trim();
                           return (
                             <div
                               key={`scene-flow-${row.sceneNumber}`}
@@ -4159,7 +4165,7 @@ export default function CreativeStudioPage() {
                                   <div
                                     style={{
                                       display: "grid",
-                                      gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                                      gridTemplateColumns: "minmax(180px, 1fr)",
                                       gap: 8,
                                     }}
                                   >
@@ -4171,6 +4177,9 @@ export default function CreativeStudioPage() {
                                           alt={`Scene ${row.sceneNumber} first frame`}
                                           style={{
                                             width: "100%",
+                                            maxWidth: 540,
+                                            aspectRatio: "9 / 16",
+                                            objectFit: "cover",
                                             borderRadius: 8,
                                             border: "1px solid #334155",
                                             display: "block",
@@ -4180,31 +4189,10 @@ export default function CreativeStudioPage() {
                                         <div style={{ color: "#94a3b8", fontSize: 11 }}>No first frame image.</div>
                                       )}
                                     </div>
-                                    <div>
-                                      <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>Last Frame</div>
-                                      {row.lastFrameImageUrl ? (
-                                        <img
-                                          src={row.lastFrameImageUrl}
-                                          alt={`Scene ${row.sceneNumber} last frame`}
-                                          style={{
-                                            width: "100%",
-                                            borderRadius: 8,
-                                            border: "1px solid #334155",
-                                            display: "block",
-                                          }}
-                                        />
-                                      ) : (
-                                        <div style={{ color: "#94a3b8", fontSize: 11 }}>No last frame image.</div>
-                                      )}
-                                    </div>
                                   </div>
                                   <div style={{ color: "#94a3b8", fontSize: 11 }}>First Frame Prompt</div>
                                   <div style={{ color: "#e2e8f0", fontSize: 12 }}>
                                     {firstFramePrompt || "No first-frame prompt."}
-                                  </div>
-                                  <div style={{ color: "#94a3b8", fontSize: 11 }}>Last Frame Prompt</div>
-                                  <div style={{ color: "#e2e8f0", fontSize: 12 }}>
-                                    {lastFramePrompt || "No last-frame prompt."}
                                   </div>
                                 </div>
                               )}

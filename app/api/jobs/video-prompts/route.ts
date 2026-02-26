@@ -72,6 +72,7 @@ export async function POST(req: NextRequest) {
     const BodySchema = z.object({
       storyboardId: z.string().min(1),
       productId: z.string().trim().min(1).max(200).optional(),
+      characterId: z.string().trim().min(1).max(200).optional(),
       characterHandle: z.string().trim().min(1).max(200).optional(),
       attemptKey: z.string().trim().min(1).max(200).optional(),
       runId: z.string().trim().min(1).max(200).optional(),
@@ -87,12 +88,16 @@ export async function POST(req: NextRequest) {
 
     const requestedStoryboardId = parsed.data.storyboardId;
     const requestedProductId = parsed.data.productId ? String(parsed.data.productId).trim() : "";
+    const requestedCharacterId = parsed.data.characterId ? String(parsed.data.characterId).trim() : "";
     const requestedCharacterHandle = parsed.data.characterHandle
       ? String(parsed.data.characterHandle).trim()
       : "";
     const requestedRunId = parsed.data.runId ? String(parsed.data.runId).trim() : "";
     let effectiveProductId: string | null = null;
     let effectiveRunId: string | null = null;
+    let effectiveCharacterId: string | null = null;
+    let effectiveCharacterName: string | null = null;
+    let effectiveCharacterDescription: string | null = null;
     // Keep idempotency scoped to a single generation attempt.
     // If client does not supply attemptKey, generate a unique nonce per request.
     const attemptKey = parsed.data.attemptKey || `${Date.now()}-${randomUUID()}`;
@@ -191,6 +196,110 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const completedVideoImageJob = await prisma.job.findFirst({
+      where: {
+        userId,
+        projectId,
+        type: JobType.VIDEO_IMAGE_GENERATION,
+        status: JobStatus.COMPLETED,
+        ...(effectiveRunId ? { runId: effectiveRunId } : {}),
+        payload: {
+          path: ["storyboardId"],
+          equals: storyboard.id,
+        } as any,
+      },
+      orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+      select: { id: true },
+    });
+    if (!completedVideoImageJob) {
+      return NextResponse.json(
+        {
+          error:
+            "Generate First Frames before Video Prompts. Missing completed VIDEO_IMAGE_GENERATION job for this storyboard.",
+        },
+        { status: 409 },
+      );
+    }
+
+    const scriptJobPayload = asObject(storyboard.script?.job?.payload) ?? {};
+    const effectiveProductFromScript = asString(scriptJobPayload.productId) || null;
+    const resolvedProductId = effectiveProductId ?? effectiveProductFromScript;
+
+    if (requestedCharacterId) {
+      const character = await prisma.character.findFirst({
+        where: {
+          id: requestedCharacterId,
+          projectId,
+        },
+        select: {
+          id: true,
+          runId: true,
+          productId: true,
+          name: true,
+          creatorVisualPrompt: true,
+        },
+      });
+      if (!character) {
+        return NextResponse.json(
+          { error: "characterId not found for this project" },
+          { status: 400 },
+        );
+      }
+      if (effectiveRunId && character.runId !== effectiveRunId) {
+        return NextResponse.json(
+          { error: "characterId does not belong to selected run" },
+          { status: 400 },
+        );
+      }
+      if (effectiveProductId && character.productId !== effectiveProductId) {
+        return NextResponse.json(
+          { error: "characterId does not belong to selected product" },
+          { status: 400 },
+        );
+      }
+      effectiveCharacterId = character.id;
+      effectiveCharacterName = asString(character.name) || null;
+      effectiveCharacterDescription = asString(character.creatorVisualPrompt) || null;
+    }
+
+    if (!effectiveCharacterDescription) {
+      const firstSceneRaw = asObject(storyboard.scenes[0]?.rawJson) ?? {};
+      effectiveCharacterName = effectiveCharacterName || asString(firstSceneRaw.characterName) || null;
+      effectiveCharacterDescription = asString(firstSceneRaw.characterDescription) || null;
+    }
+
+    if (!effectiveCharacterDescription) {
+      const fallbackCharacter = await prisma.character.findFirst({
+        where: {
+          projectId,
+          ...(effectiveRunId ? { runId: effectiveRunId } : {}),
+          ...(resolvedProductId ? { productId: resolvedProductId } : {}),
+        },
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          name: true,
+          creatorVisualPrompt: true,
+        },
+      });
+      if (fallbackCharacter) {
+        effectiveCharacterId = effectiveCharacterId || fallbackCharacter.id;
+        effectiveCharacterName = effectiveCharacterName || asString(fallbackCharacter.name) || null;
+        effectiveCharacterDescription =
+          asString(fallbackCharacter.creatorVisualPrompt) || null;
+      }
+    }
+
+    if (!effectiveCharacterDescription) {
+      return NextResponse.json(
+        {
+          error:
+            "Missing characterDescription for video prompts. Select a character with creatorVisualPrompt or regenerate storyboard with character context.",
+        },
+        { status: 400 },
+      );
+    }
+
     // Plan check AFTER ownership to avoid leaking project existence via 402.
     try {
       planId = await assertMinPlan(userId, 'GROWTH');
@@ -223,9 +332,6 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const scriptJobPayload = asObject(storyboard.script?.job?.payload) ?? {};
-    const effectiveProductFromScript = asString(scriptJobPayload.productId) || null;
-    const resolvedProductId = effectiveProductId ?? effectiveProductFromScript;
     const idempotencyKey = JSON.stringify([
       projectId,
       JobType.VIDEO_PROMPT_GENERATION,
@@ -287,6 +393,9 @@ export async function POST(req: NextRequest) {
             storyboardId: storyboard.id,
             ...(storyboard.scriptId ? { scriptId: storyboard.scriptId } : {}),
             ...(resolvedProductId ? { productId: resolvedProductId } : {}),
+            ...(effectiveCharacterId ? { characterId: effectiveCharacterId } : {}),
+            ...(effectiveCharacterName ? { characterName: effectiveCharacterName } : {}),
+            ...(effectiveCharacterDescription ? { characterDescription: effectiveCharacterDescription } : {}),
             ...(requestedCharacterHandle ? { characterHandle: requestedCharacterHandle } : {}),
             idempotencyKey,
             ...(effectiveRunId ? { runId: effectiveRunId } : {}),
@@ -331,6 +440,9 @@ export async function POST(req: NextRequest) {
           storyboardId: storyboard.id,
           ...(storyboard.scriptId ? { scriptId: storyboard.scriptId } : {}),
           ...(resolvedProductId ? { productId: resolvedProductId } : {}),
+          ...(effectiveCharacterId ? { characterId: effectiveCharacterId } : {}),
+          ...(effectiveCharacterName ? { characterName: effectiveCharacterName } : {}),
+          ...(effectiveCharacterDescription ? { characterDescription: effectiveCharacterDescription } : {}),
           ...(requestedCharacterHandle ? { characterHandle: requestedCharacterHandle } : {}),
           idempotencyKey,
           ...(effectiveRunId ? { runId: effectiveRunId } : {}),
