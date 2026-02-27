@@ -80,7 +80,7 @@ type ScriptBeat = {
   beat: string;
   duration: string | number | null;
   vo: string;
-  aiDataQuality?: "partial" | "minimal" | null;
+  aiDataQuality?: "full" | "partial" | "minimal" | null;
 };
 
 type GeneratedBeatDataQuality = "full" | "partial" | "minimal";
@@ -183,6 +183,45 @@ type AddBeatExpansionProps = {
   disabled: boolean;
   onWriteYourself: (afterIndex: number, beatLabel: string) => void;
   onGenerateWithAi: (afterIndex: number, beatLabel: string) => Promise<void>;
+};
+
+const STALE_RUNNING_JOB_MS = 5 * 60 * 1000; // 5 minutes
+
+type StoryboardPanel = {
+  id?: string;
+  sceneNumber?: number;
+  panelType?: "ON_CAMERA" | "PRODUCT_ONLY" | "B_ROLL_ONLY";
+  beatLabel?: string | null;
+  startTime?: string | null;
+  endTime?: string | null;
+  vo?: string | null;
+  characterAction?: string | null;
+  characterName?: string | null;
+  characterDescription?: string | null;
+  characterAnchor?: string | null;
+  characterHandle?: string | null;
+  cameraDirection?: string | null;
+  productPlacement?: string | null;
+  bRollSuggestions?: string[] | null;
+  transitionType?: string | null;
+  environment?: string | null;
+  videoPrompt?: string | null;
+  videoUrl?: string | null;
+  approved?: boolean | null;
+  status?: string | null;
+  rawJson?: Record<string, unknown> | null;
+  clipDurationSeconds?: number | null;
+  firstFrameImageUrl?: string | null;
+  lastFrameImageUrl?: string | null;
+  firstFramePrompt?: string | null;
+  lastFramePrompt?: string | null;
+};
+
+type StoryboardDetails = {
+  id: string;
+  status?: string | null;
+  targetDuration?: number | null;
+  panels: StoryboardPanel[];
 };
 
 function defaultInsertBeatLabel(afterIndex: number): string {
@@ -1102,7 +1141,12 @@ export default function CreativeStudioPage() {
     const raw = panel && typeof panel === "object" ? (panel as Record<string, unknown>) : {};
     const asValue = (value: unknown) => (typeof value === "string" ? value.trim() : "");
     const panelTypeRaw = asValue(raw.panelType);
-    const panelType = panelTypeRaw === "B_ROLL_ONLY" ? "B_ROLL_ONLY" : "ON_CAMERA";
+    const panelType =
+      panelTypeRaw === "B_ROLL_ONLY"
+        ? "B_ROLL_ONLY"
+        : panelTypeRaw === "PRODUCT_ONLY"
+          ? "PRODUCT_ONLY"
+          : "ON_CAMERA";
     const characterAction =
       asValue(raw.characterAction) ||
       asValue(raw.creatorAction) ||
@@ -1115,7 +1159,6 @@ export default function CreativeStudioPage() {
       ? Math.trunc(sceneNumberRaw)
       : index + 1;
     return {
-      sceneId: asValue(raw.sceneId) || undefined,
       sceneNumber,
       approved: Boolean(raw.approved),
       panelType,
@@ -1155,7 +1198,6 @@ export default function CreativeStudioPage() {
   function createEmptyStoryboardPanel(index: number, previousPanel?: StoryboardPanel): StoryboardPanel {
     const anchorTime = String(previousPanel?.endTime || previousPanel?.startTime || "0s").trim() || "0s";
     return {
-      sceneId: undefined,
       sceneNumber: index + 1,
       approved: false,
       panelType: "ON_CAMERA",
@@ -1180,8 +1222,8 @@ export default function CreativeStudioPage() {
   }
 
   function buildStoryboardBeatEditorText(panel: StoryboardPanel): string {
-    const bRollLines = panel.bRollSuggestions.length > 0
-      ? panel.bRollSuggestions.map((entry) => `- ${entry}`).join("\n")
+    const bRollLines = (panel.bRollSuggestions ?? []).length > 0
+      ? (panel.bRollSuggestions ?? []).map((entry) => `- ${entry}`).join("\n")
       : "- ";
     return [
       `Character Name: ${panel.characterName ?? ""}`,
@@ -1255,7 +1297,7 @@ export default function CreativeStudioPage() {
     };
 
     const parseBroll = (): string[] => {
-      if (!("bRollSuggestions" in sections)) return fallbackPanel.bRollSuggestions;
+      if (!("bRollSuggestions" in sections)) return fallbackPanel.bRollSuggestions ?? [];
       return String(sections.bRollSuggestions ?? "")
         .split("\n")
         .map((entry) => entry.replace(/^\s*[-*]\s*/, "").trim())
@@ -1274,10 +1316,10 @@ export default function CreativeStudioPage() {
         true,
       ),
       environment: parseNullable("environment", fallbackPanel.environment ?? null),
-      cameraDirection: parseText("cameraDirection", fallbackPanel.cameraDirection),
-      productPlacement: parseText("productPlacement", fallbackPanel.productPlacement),
+      cameraDirection: parseText("cameraDirection", fallbackPanel.cameraDirection ?? ""),
+      productPlacement: parseText("productPlacement", fallbackPanel.productPlacement ?? ""),
       bRollSuggestions: parseBroll(),
-      transitionType: parseText("transitionType", fallbackPanel.transitionType),
+      transitionType: parseText("transitionType", fallbackPanel.transitionType ?? ""),
     };
   }
 
@@ -2177,19 +2219,19 @@ export default function CreativeStudioPage() {
         return {
           ...normalized,
           beatLabel: `Beat ${index + 1}`,
-          startTime: normalizeSingleLineText(normalized.startTime),
-          endTime: normalizeSingleLineText(normalized.endTime),
-          vo: enforceBlankLineBetweenTextLines(normalized.vo),
+          startTime: normalizeSingleLineText(normalized.startTime ?? ""),
+          endTime: normalizeSingleLineText(normalized.endTime ?? ""),
+          vo: enforceBlankLineBetweenTextLines(normalized.vo ?? ""),
           characterAction: normalized.characterAction
             ? enforceBlankLineBetweenTextLines(normalized.characterAction)
             : null,
           environment: normalized.environment
             ? enforceBlankLineBetweenTextLines(normalized.environment)
             : null,
-          cameraDirection: enforceBlankLineBetweenTextLines(normalized.cameraDirection),
-          productPlacement: enforceBlankLineBetweenTextLines(normalized.productPlacement),
-          transitionType: enforceBlankLineBetweenTextLines(normalized.transitionType),
-          bRollSuggestions: normalized.bRollSuggestions
+          cameraDirection: enforceBlankLineBetweenTextLines(normalized.cameraDirection ?? ""),
+          productPlacement: enforceBlankLineBetweenTextLines(normalized.productPlacement ?? ""),
+          transitionType: enforceBlankLineBetweenTextLines(normalized.transitionType ?? ""),
+          bRollSuggestions: (normalized.bRollSuggestions ?? [])
             .map((entry) => enforceBlankLineBetweenTextLines(entry))
             .filter(Boolean),
         };
@@ -3161,6 +3203,21 @@ export default function CreativeStudioPage() {
     const videoImagesStep = steps.find((step) => step.key === "video_images");
     if (!videoImagesStep) return;
     setSceneActionError(null);
+
+    // Warn if regenerating Scene 1 when subsequent scenes already exist
+    if (sceneNumber === 1) {
+      const subsequentScenesWithImages = storyboardPanelsForSceneFlow.filter((panel) => {
+        const n = Number(panel.sceneNumber);
+        return n > 1 && Boolean(panel.firstFrameImageUrl || panel.lastFrameImageUrl);
+      });
+      if (subsequentScenesWithImages.length > 0) {
+        const confirmed = window.confirm(
+          `Regenerating Scene 1 will change the identity anchor for this video.\n\nScenes ${subsequentScenesWithImages.map((p) => p.sceneNumber).join(", ")} were generated using the current Scene 1 as the character reference.\n\nRegenerate those scenes afterwards to maintain consistency.`,
+        );
+        if (!confirmed) return;
+      }
+    }
+
     setSceneGeneratingNumber(sceneNumber);
     setSceneReviewOpenByNumber((prev) => ({
       ...prev,
@@ -4740,7 +4797,9 @@ export default function CreativeStudioPage() {
                                     onChange={(e) =>
                                       updateStoryboardDraftPanel(panelIndex, (prev) => ({
                                         ...prev,
-                                        panelType: e.target.value === "B_ROLL_ONLY" ? "B_ROLL_ONLY" : "ON_CAMERA",
+                                        panelType: e.target.value === "B_ROLL_ONLY" ? "B_ROLL_ONLY"
+                                          : e.target.value === "PRODUCT_ONLY" ? "PRODUCT_ONLY"
+                                          : "ON_CAMERA",
                                       }))
                                     }
                                     style={{
@@ -4755,6 +4814,7 @@ export default function CreativeStudioPage() {
                                     }}
                                   >
                                     <option value="ON_CAMERA">Creator Present</option>
+                                    <option value="PRODUCT_ONLY">Product Demo (hand/arm only)</option>
                                     <option value="B_ROLL_ONLY">B-roll Only</option>
                                   </select>
                                 </div>
@@ -4782,7 +4842,7 @@ export default function CreativeStudioPage() {
                                 </div>
                                 <div style={{ color: "#94a3b8", fontSize: 11 }}>VO</div>
                                 <textarea
-                                  value={panel.vo}
+                                  value={panel.vo ?? ""}
                                   readOnly
                                   rows={2}
                                   style={{
@@ -4861,9 +4921,9 @@ export default function CreativeStudioPage() {
                                     <div><strong style={{ color: "#f1f5f9" }}>Character Description:</strong> {panel.characterDescription || "Not provided"}</div>
                                     <div>
                                       <strong style={{ color: "#f1f5f9" }}>B-roll Suggestions:</strong>
-                                      {panel.bRollSuggestions.length > 0 ? (
+                                      {(panel.bRollSuggestions ?? []).length > 0 ? (
                                         <div style={{ marginTop: 4, display: "grid", gap: 4 }}>
-                                          {panel.bRollSuggestions.map((suggestion, suggestionIndex) => (
+                                          {(panel.bRollSuggestions ?? []).map((suggestion, suggestionIndex) => (
                                             <div key={`broll-${panelIndex}-${suggestionIndex}`}>• {suggestion}</div>
                                           ))}
                                         </div>
@@ -4885,8 +4945,8 @@ export default function CreativeStudioPage() {
                                     <div><strong style={{ color: "#f1f5f9" }}>Product Placement:</strong> {panel.productPlacement || "Not provided"}</div>
                                     <div>
                                       <strong style={{ color: "#f1f5f9" }}>B-roll Suggestions:</strong>{" "}
-                                      {panel.bRollSuggestions.length > 0
-                                        ? panel.bRollSuggestions.join(", ")
+                                      {(panel.bRollSuggestions ?? []).length > 0
+                                        ? (panel.bRollSuggestions ?? []).join(", ")
                                         : "Not provided"}
                                     </div>
                                     <div><strong style={{ color: "#f1f5f9" }}>Transition Type:</strong> {panel.transitionType || "Not provided"}</div>
@@ -6247,23 +6307,23 @@ export default function CreativeStudioPage() {
                         {panel.beatLabel} {panel.startTime || panel.endTime ? `(${panel.startTime}-${panel.endTime})` : ""}
                       </div>
                       <div>
-                        <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>VO (from script)</div>
-                        <textarea
-                          readOnly
-                          value={panel.vo}
-                          rows={2}
-                          style={{
-                            width: "100%",
-                            boxSizing: "border-box",
-                            borderRadius: 8,
-                            border: "1px solid #1e293b",
-                            backgroundColor: "#020617",
-                            color: "#94a3b8",
-                            padding: 8,
-                            fontSize: 12,
-                            resize: "vertical",
-                          }}
-                        />
+                          <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>VO (from script)</div>
+                          <textarea
+                            readOnly
+                            value={panel.vo ?? ""}
+                            rows={2}
+                            style={{
+                              width: "100%",
+                              boxSizing: "border-box",
+                              borderRadius: 8,
+                              border: "1px solid #1e293b",
+                              backgroundColor: "#020617",
+                              color: "#94a3b8",
+                              padding: 8,
+                              fontSize: 12,
+                              resize: "vertical",
+                            }}
+                          />
                       </div>
                       <div>
                         <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>creatorAction</div>

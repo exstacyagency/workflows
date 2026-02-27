@@ -472,6 +472,8 @@ model product {
   characterSeedVideoTaskId   String?   @map("character_seed_video_task_id")
   characterSeedVideoUrl      String?   @map("character_seed_video_url")
   characterUserName          String?   @map("character_user_name")
+  character_anchor_prompt    String?
+  character_avatar_image_url String?
   created_at                 DateTime  @default(now()) @db.Timestamptz(6)
   updated_at                 DateTime  @default(now()) @db.Timestamptz(6)
   characters                 Character[]
@@ -569,5 +571,6 @@ enum RunStatus {
 
 enum PanelType {
   ON_CAMERA
+  PRODUCT_ONLY
   B_ROLL_ONLY
 }
