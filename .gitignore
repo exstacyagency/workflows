@@ -35,3 +35,5 @@ e2e/golden/output/
 /tmp/golden-output/
 logs/anthropic/
 .vercel
+.codex-dumps/
+artifacts/

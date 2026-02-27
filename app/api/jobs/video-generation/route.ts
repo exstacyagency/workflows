@@ -241,6 +241,9 @@ export async function POST(req: NextRequest) {
             storyboardId,
             scriptId,
             ...(requestedSceneNumber !== null ? { sceneNumber: requestedSceneNumber } : {}),
+            ...(requestedSceneNumber !== null
+              ? { jobLabel: `Generate Video Scene ${requestedSceneNumber}` }
+              : { jobLabel: "Generate Video" }),
             ...(effectiveProductId ? { productId: effectiveProductId } : {}),
             idempotencyKey,
             ...(effectiveRunId ? { runId: effectiveRunId } : {}),
@@ -330,6 +333,9 @@ export async function POST(req: NextRequest) {
             storyboardId,
             scriptId,
             ...(requestedSceneNumber !== null ? { sceneNumber: requestedSceneNumber } : {}),
+            ...(requestedSceneNumber !== null
+              ? { jobLabel: `Generate Video Scene ${requestedSceneNumber}` }
+              : { jobLabel: "Generate Video" }),
             ...(effectiveProductId ? { productId: effectiveProductId } : {}),
             ...(forceNew ? { forceNew: true } : {}),
             idempotencyKey,

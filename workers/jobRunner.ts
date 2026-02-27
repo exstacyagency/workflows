@@ -60,6 +60,7 @@ import prisma from "../lib/prisma.ts";
 import { rollbackQuota } from "../lib/billing/usage.ts";
 import { updateJobStatus } from "@/lib/jobs/updateJobStatus";
 import { generateRandomCharacterName } from "../lib/characterNameService.ts";
+import { uploadAvatarCharacterObject } from "@/lib/s3Service";
 
 console.log("=== WORKER ENVIRONMENT CHECK ===");
 console.log("ANTHROPIC_API_KEY present:", !!cfg.raw("ANTHROPIC_API_KEY"));
@@ -135,6 +136,71 @@ function sleep(ms: number) {
 
 function nowMs() {
   return Date.now();
+}
+
+function inferImageExtension(args: { contentType: string | null; url: string }): string {
+  const contentType = String(args.contentType ?? "").toLowerCase();
+  if (contentType.includes("image/jpeg") || contentType.includes("image/jpg")) return "jpg";
+  if (contentType.includes("image/webp")) return "webp";
+  if (contentType.includes("image/avif")) return "avif";
+  if (contentType.includes("image/gif")) return "gif";
+  if (contentType.includes("image/png")) return "png";
+  const cleanUrl = String(args.url ?? "").split("?")[0].toLowerCase();
+  if (cleanUrl.endsWith(".jpg") || cleanUrl.endsWith(".jpeg")) return "jpg";
+  if (cleanUrl.endsWith(".webp")) return "webp";
+  if (cleanUrl.endsWith(".avif")) return "avif";
+  if (cleanUrl.endsWith(".gif")) return "gif";
+  return "png";
+}
+
+async function persistCharacterAvatarToS3(args: {
+  projectId: string;
+  productId: string;
+  taskId: string;
+  sourceUrl: string;
+}): Promise<string> {
+  const sourceUrl = String(args.sourceUrl ?? "").trim();
+  if (!sourceUrl) {
+    throw new Error("Character avatar image URL is empty");
+  }
+  const res = await fetch(sourceUrl);
+  if (!res.ok) {
+    throw new Error(`Failed to download character avatar image (status=${res.status})`);
+  }
+  const arrayBuffer = await res.arrayBuffer();
+  const body = new Uint8Array(arrayBuffer);
+  const contentTypeHeader = res.headers.get("content-type");
+  const ext = inferImageExtension({ contentType: contentTypeHeader, url: sourceUrl });
+  const contentType =
+    contentTypeHeader && contentTypeHeader.toLowerCase().startsWith("image/")
+      ? contentTypeHeader
+      : ext === "jpg"
+        ? "image/jpeg"
+        : ext === "webp"
+          ? "image/webp"
+          : ext === "avif"
+            ? "image/avif"
+            : ext === "gif"
+              ? "image/gif"
+              : "image/png";
+  const key = [
+    "projects",
+    args.projectId,
+    "products",
+    args.productId,
+    "character-avatars",
+    `${Date.now()}-${args.taskId}.${ext}`,
+  ].join("/");
+  const uploadedUrl = await uploadAvatarCharacterObject({
+    key,
+    body,
+    contentType,
+    cacheControl: "public,max-age=31536000,immutable",
+  });
+  if (!uploadedUrl) {
+    throw new Error("Avatar character generation S3 upload returned null; check avatar bucket configuration");
+  }
+  return uploadedUrl;
 }
 
 async function runWithJobTypeMaxRuntime<T>(
@@ -1066,6 +1132,7 @@ async function runJob(
           projectId: job.projectId,
           productId,
           manualDescription,
+          characterName: String(payload?.characterName ?? "").trim() || null,
         });
         await saveCreatorVisualPrompt(productId, avatarResult.videoPrompt);
 
@@ -1142,8 +1209,18 @@ async function runJob(
             typeof raw === "string" ? "RUNNING" : normalizeKieState(raw as Record<string, unknown>);
 
           if (normalized === "SUCCEEDED") {
-            const imageUrl =
+            const rawImageUrl =
               typeof raw === "string" ? null : extractImageUrl(raw as Record<string, unknown>);
+            if (!rawImageUrl) {
+              await markFailed({ jobId, error: "KIE character avatar image task succeeded but image URL is missing" });
+              return;
+            }
+            const imageUrl = await persistCharacterAvatarToS3({
+              projectId: String(job.projectId),
+              productId,
+              taskId: seedTaskId,
+              sourceUrl: rawImageUrl,
+            });
             const requestedCharacterName = String(payload?.characterName ?? "").trim();
             await saveCharacterAvatarImage(productId, { taskId: seedTaskId, imageUrl });
             await saveCharacterToTable({

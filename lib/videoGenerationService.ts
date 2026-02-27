@@ -7,12 +7,24 @@ import {
 } from "@/lib/productSetupReferencePolicy";
 
 const KIE_BASE = env('KIE_API_BASE') ?? 'https://api.kie.ai/api/v1';
-const KIE_IMAGE_TO_VIDEO_MODEL =
-  env('KIE_IMAGE_TO_VIDEO_MODEL') ?? 'sora-2-image-to-video-stable';
-const KIE_TEXT_TO_VIDEO_MODEL =
-  env('KIE_TEXT_TO_VIDEO_MODEL') ?? 'sora-2-text-to-video-stable';
-const KIE_IMAGE_TO_VIDEO_MODEL_FALLBACK = 'sora-2-image-to-video';
-const KIE_TEXT_TO_VIDEO_MODEL_FALLBACK = 'sora-2-text-to-video';
+function normalizeKieVideoModel(value: string | null | undefined, fallback: 'veo3' | 'veo3_fast'): 'veo3' | 'veo3_fast' {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (normalized === 'veo3' || normalized === 'veo3_fast') {
+    return normalized;
+  }
+  return fallback;
+}
+
+const KIE_IMAGE_TO_VIDEO_MODEL = normalizeKieVideoModel(
+  env('KIE_IMAGE_TO_VIDEO_MODEL'),
+  'veo3_fast',
+);
+const KIE_TEXT_TO_VIDEO_MODEL = normalizeKieVideoModel(
+  env('KIE_TEXT_TO_VIDEO_MODEL'),
+  'veo3_fast',
+);
+const KIE_IMAGE_TO_VIDEO_MODEL_FALLBACK = 'veo3';
+const KIE_TEXT_TO_VIDEO_MODEL_FALLBACK = 'veo3';
 const DEFAULT_DURATION_SEC = Number(env('KIE_VIDEO_DURATION_SEC') ?? 6);
 
 function getKieHeaders() {
@@ -61,6 +73,7 @@ type SceneLike = {
   rawJson: unknown;
   panelType?: 'ON_CAMERA' | 'PRODUCT_ONLY' | 'B_ROLL_ONLY' | null;
   videoPrompt: string | null;
+  firstFrameImageUrl?: string | null;
   firstFrameUrl: string | null;
   lastFrameUrl: string | null;
   videoUrl: string | null;
@@ -252,6 +265,14 @@ async function createKieVideoJob(params: {
     aspectRatio,
     uploadMethod,
   } = params;
+  const normalizedImageInputs = Array.from(
+    new Set(
+      imageInputs
+        .map((url) => normalizeUrl(url))
+        .filter((url): url is string => Boolean(url))
+        .slice(0, 2),
+    ),
+  );
 
   const parseTaskId = (data: any): string => {
     const taskId =
@@ -283,18 +304,19 @@ async function createKieVideoJob(params: {
   });
 
   const postCreateTask = async (body: Record<string, any>): Promise<string> => {
+    console.log('[KIE POST]', JSON.stringify(body, null, 2));
     const res = await fetch(`${KIE_BASE}/jobs/createTask`, {
       method: 'POST',
       headers: getKieHeaders(),
       body: JSON.stringify(body),
     });
+    const text = await res.text();
+    console.log('[KIE RESPONSE]', res.status, text);
 
     if (!res.ok) {
-      const text = await res.text();
       throw new Error(`KIE createTask failed: ${res.status} ${text}`);
     }
 
-    const text = await res.text();
     let data: any = null;
     try {
       data = JSON.parse(text);
@@ -307,27 +329,26 @@ async function createKieVideoJob(params: {
 
   const imageToVideoBody: Record<string, any> = {
     model: KIE_IMAGE_TO_VIDEO_MODEL,
-    input: {
-      prompt,
-      image_urls: imageInputs,
-      aspect_ratio: aspectRatio,
-      n_frames: String(nFrames),
-      upload_method: uploadMethod,
-    },
+    prompt,
+    imageUrls: normalizedImageInputs,
+    aspect_ratio: '9:16',
+    generationType: 'FIRST_AND_LAST_FRAMES_2_VIDEO',
   };
 
   const textToVideoBody: Record<string, any> = {
     model: KIE_TEXT_TO_VIDEO_MODEL,
-    input: {
-      prompt,
-      aspect_ratio: aspectRatio,
-      n_frames: String(nFrames),
-      upload_method: uploadMethod,
-    },
+    prompt,
+    aspect_ratio: '9:16',
+    generationType: 'TEXT_2_VIDEO',
   };
 
-  // Image-to-video requires input.image_urls. If none exist, always use text-to-video.
-  if (imageInputs.length === 0) {
+  console.log(
+    '[KIE DEBUG] payload:',
+    JSON.stringify(normalizedImageInputs.length > 0 ? imageToVideoBody : textToVideoBody, null, 2),
+  );
+
+  // If no images are available, use text-to-video.
+  if (normalizedImageInputs.length === 0) {
     try {
       return await postCreateTask(textToVideoBody);
     } catch (error: any) {
@@ -440,11 +461,16 @@ async function generateVideoForScene(
 
   // First-frame image is the primary visual anchor for this scene.
   const firstFrameImageUrl = normalizeUrl(
+    asString((scene as any).firstFrameS3Url) ||
+    asString(raw.firstFrameS3Url) ||
     asString((scene as any).firstFrameImageUrl) ||
     asString(raw.firstFrameImageUrl) ||
     asString(raw.firstFrameUrl) ||
     null,
   );
+  if (!firstFrameImageUrl) {
+    throw new Error(`Scene ${(scene as any).sceneNumber ?? (scene as any).id} missing firstFrameImageUrl`);
+  }
 
   const clipDurationFromScene = Number((scene as any).clipDurationSeconds);
   const fallbackDuration = Number((scene as any).durationSec ?? raw.durationSec ?? raw.duration ?? DEFAULT_DURATION_SEC) || DEFAULT_DURATION_SEC;
@@ -458,13 +484,7 @@ async function generateVideoForScene(
     raw,
     productReferenceImages,
   });
-  const referenceUrls = referenceFrames.map((frame) => frame.url).filter(Boolean);
-  const imageInputs = Array.from(
-    new Set([
-      ...(firstFrameImageUrl ? [firstFrameImageUrl] : []),
-      ...referenceUrls,
-    ]),
-  );
+  const imageInputs = [firstFrameImageUrl];
 
   const taskId = await createKieVideoJob({
     prompt,
@@ -670,6 +690,26 @@ export async function runVideoGenerationJob(job: JobLike): Promise<RunResult> {
     requestedSceneNumber !== null
       ? filteredScenes
       : filteredScenes.filter(scene => !((scene as any).videoUrl ?? (scene.rawJson as any)?.videoUrl ?? (scene.rawJson as any)?.video_url));
+  const scenesMissingFirstFrame = targetScenes
+    .map((scene) => ({
+      sceneNumber: Number((scene as any).sceneNumber ?? 0),
+      firstFrameImageUrl: normalizeUrl(
+        asString((scene as any).firstFrameS3Url) ||
+          asString((scene as any).rawJson?.firstFrameS3Url) ||
+        asString((scene as any).firstFrameImageUrl) ||
+          asString((scene as any).rawJson?.firstFrameImageUrl) ||
+          asString((scene as any).rawJson?.firstFrameUrl) ||
+          null,
+      ),
+    }))
+    .filter((scene) => !scene.firstFrameImageUrl)
+    .map((scene) => scene.sceneNumber)
+    .filter((sceneNumber) => Number.isInteger(sceneNumber) && sceneNumber > 0);
+  if (scenesMissingFirstFrame.length > 0) {
+    throw new Error(
+      `Missing first-frame image for scene(s): ${scenesMissingFirstFrame.join(", ")}. Generate first frames before video generation.`,
+    );
+  }
 
   if (targetScenes.length === 0 && requestedSceneNumber === null) {
     let mergedVideoUrl = script.mergedVideoUrl ?? null;
