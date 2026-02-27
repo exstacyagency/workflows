@@ -1134,7 +1134,7 @@ async function runJob(
           manualDescription,
           characterName: String(payload?.characterName ?? "").trim() || null,
         });
-        await saveCreatorVisualPrompt(productId, avatarResult.videoPrompt);
+        await saveCreatorVisualPrompt(productId, avatarResult.creatorVisualPrompt);
 
         const nextIdempotencyKey = JSON.stringify([
           job.projectId,
@@ -1157,7 +1157,8 @@ async function runJob(
                 projectId: job.projectId,
                 productId,
                 runId: job.runId ?? null,
-                creatorVisualPrompt: avatarResult.videoPrompt,
+                creatorVisualPrompt: avatarResult.creatorVisualPrompt,
+                avatarImagePrompt: avatarResult.imagePrompt,
                 characterName: String(payload?.characterName ?? "").trim() || null,
                 upstreamJobId: jobId,
               },
@@ -1174,7 +1175,12 @@ async function runJob(
 
         await markCompleted({
           jobId,
-          result: { ok: true, productId, source: avatarResult.source, creatorVisualPrompt: avatarResult.videoPrompt },
+          result: {
+            ok: true,
+            productId,
+            source: avatarResult.source,
+            creatorVisualPrompt: avatarResult.creatorVisualPrompt,
+          },
           summary: `Creator avatar prompt generated (${avatarResult.source})`,
         });
         return;
@@ -1267,15 +1273,15 @@ async function runJob(
           return;
         }
 
-        const creatorVisualPrompt = String(
-          payload?.creatorVisualPrompt ?? productState.creatorVisualPrompt ?? "",
+        const avatarImagePrompt = String(
+          payload?.avatarImagePrompt ?? payload?.creatorVisualPrompt ?? productState.creatorVisualPrompt ?? "",
         ).trim();
-        if (!creatorVisualPrompt) {
-          await markFailed({ jobId, error: "Missing creator visual prompt" });
+        if (!avatarImagePrompt) {
+          await markFailed({ jobId, error: "Missing avatar image prompt" });
           return;
         }
 
-        const seedCreate = await createCharacterAvatarImage({ prompt: creatorVisualPrompt });
+        const seedCreate = await createCharacterAvatarImage({ prompt: avatarImagePrompt });
 
         await prisma.job.update({
           where: { id: jobId },

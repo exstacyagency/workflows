@@ -7,7 +7,7 @@ export async function generateCreatorAvatar(args: {
   productId: string;
   manualDescription?: string | null;
   characterName?: string | null;
-}): Promise<{ videoPrompt: string; source: "manual" }> {
+}): Promise<{ creatorVisualPrompt: string; imagePrompt: string; source: "manual" }> {
   const referenceTemplate = [
     "Full-body character reference image. Plain white or transparent background.",
     "",
@@ -38,5 +38,11 @@ export async function generateCreatorAvatar(args: {
     "",
     referenceTemplate,
   ].join("\n");
-  return { videoPrompt: manualFirstPrompt, source: "manual" };
+  return {
+    // Persisted description used across storyboard/first-frame/video prompt pipelines.
+    creatorVisualPrompt: manual,
+    // Full generation prompt used only for Nano Banana avatar image generation.
+    imagePrompt: manualFirstPrompt,
+    source: "manual",
+  };
 }
