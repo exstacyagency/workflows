@@ -8,7 +8,7 @@ import prisma from "./prisma.ts";
 import { JobStatus, JobType, type Prisma } from "@prisma/client";
 import { SORA_CLIP_LENGTHS, type SoraClipLength } from "./soraConstants";
 
-type PanelTypeValue = "ON_CAMERA" | "B_ROLL_ONLY";
+type PanelTypeValue = "ON_CAMERA" | "PRODUCT_ONLY" | "B_ROLL_ONLY";
 
 type BeatSpec = {
   beatLabel: string;
@@ -139,12 +139,12 @@ Creative intent is mandatory:
 - Prioritize hook speed, product clarity, and persuasive payoff.
 
 Canonical field names - use these exactly:
-- panelType (ON_CAMERA or B_ROLL_ONLY)
+- panelType (ON_CAMERA, PRODUCT_ONLY, or B_ROLL_ONLY)
 - beatLabel
 - startTime
 - endTime
 - vo
-- characterAction (string if ON_CAMERA, null if B_ROLL_ONLY)
+- characterAction (string if ON_CAMERA or PRODUCT_ONLY, null if B_ROLL_ONLY)
 - characterName
 - characterDescription
 - cameraDirection
@@ -421,7 +421,12 @@ function validatePanel(rawPanel: unknown, beat: BeatSpec, index: number): Storyb
   }
 
   const panelTypeRaw = asString(panel.panelType);
-  const panelType: PanelTypeValue = panelTypeRaw === "B_ROLL_ONLY" ? "B_ROLL_ONLY" : "ON_CAMERA";
+  const panelType: PanelTypeValue =
+    panelTypeRaw === "B_ROLL_ONLY"
+      ? "B_ROLL_ONLY"
+      : panelTypeRaw === "PRODUCT_ONLY"
+        ? "PRODUCT_ONLY"
+        : "ON_CAMERA";
   const characterAction = stripLegacyCharacterHandleLine(asString(panel.characterAction));
   const environment = stripLegacyCharacterHandleLine(asString(panel.environment)) || null;
   const cameraDirection =
@@ -429,8 +434,8 @@ function validatePanel(rawPanel: unknown, beat: BeatSpec, index: number): Storyb
     "Natural handheld UGC framing.";
   const productPlacement = stripLegacyCharacterHandleLine(asString(panel.productPlacement)) || "none";
   const transitionType = stripLegacyCharacterHandleLine(asString(panel.transitionType)) || "Cut";
-  if (panelType === "ON_CAMERA" && !characterAction) {
-    throw new Error(`Panel ${index + 1} is ON_CAMERA but missing characterAction.`);
+  if (panelType !== "B_ROLL_ONLY" && !characterAction) {
+    throw new Error(`Panel ${index + 1} is ${panelType} but missing characterAction.`);
   }
 
   const bRollSuggestionsBase = asStringArray(panel.bRollSuggestions).filter(
@@ -587,7 +592,10 @@ characterAction: specific physical action (not generic). null if B_ROLL_ONLY.
 bRollSuggestions: array of strings. include text overlays as "TEXT OVERLAY COPY (Xs-Xs)"
 cameraDirection: one sentence only — what Sora renders
 productPlacement: when and how product appears, or "none"
-panelType: ON_CAMERA if creator speaks to camera. B_ROLL_ONLY if product demo, hands, environment, or montage with no creator face.
+panelType rules:
+  ON_CAMERA — creator face visible, speaking to camera, product may be present
+  PRODUCT_ONLY — creator hand/arm visible holding or interacting with product, NO face shown. Use for product demos, mixing shots, hand holding product.
+  B_ROLL_ONLY — no person at all. Pure product, environment, or lifestyle shot.
 characterName: REQUIRED. copy exactly from CHARACTER NAME context.
 characterDescription: REQUIRED. copy exactly from CHARACTER DESCRIPTION context.
 characterAnchor: REQUIRED. copy exactly from CHARACTER ANCHOR context.
@@ -630,7 +638,10 @@ OUTPUT SCHEMA — use these exact field names, no others:
 }
 
 FIELD RULES:
-- panelType: ON_CAMERA if creator speaks to camera. B_ROLL_ONLY if product demo, hands, or montage with no creator face.
+- panelType:
+  ON_CAMERA for creator face visible speaking to camera.
+  PRODUCT_ONLY for creator hand/arm product interaction with no face shown.
+  B_ROLL_ONLY for no person at all.
 - characterAction: specific physical action, not generic. null if B_ROLL_ONLY.
 - cameraDirection: one sentence describing what Sora should render.
 - bRollSuggestions: array. Include text overlays as "TEXT OVERLAY COPY (Xs-Xs)".
@@ -640,9 +651,9 @@ FIELD RULES:
 - style: UGC conversion-first, not commercial. Keep it raw, intimate, and social-native.
 
 BANNED FIELD NAMES — these will break the pipeline:
-clipType, creatorAction, textOverlay, visualDescription, characterHandle,
-Character Action, Camera Direction, B-roll Suggestions, 
-Environment, Transition Type, Clip Type`;
+clipType, creatorAction, textOverlay, visualDescription,
+Character Action, Camera Direction, B-roll Suggestions,
+Character Handle, Environment, Transition Type, Clip Type, panelType values other than ON_CAMERA/PRODUCT_ONLY/B_ROLL_ONLY`;
 }
 
 function extractPatternTextOverlays(rawJson: unknown): string | null {

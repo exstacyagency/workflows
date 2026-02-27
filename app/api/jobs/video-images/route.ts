@@ -111,6 +111,7 @@ function buildFirstFramePrompt(args: {
   characterDescription: string;
   productReferenceImageUrl: string;
   previousSceneLastFrameImageUrl: string | null;
+  scene1AnchorUrl: string | null;
 }): string {
   const {
     sceneNumber,
@@ -126,17 +127,28 @@ function buildFirstFramePrompt(args: {
     characterDescription,
     productReferenceImageUrl,
     previousSceneLastFrameImageUrl,
+    scene1AnchorUrl,
   } = args;
   const broll = bRollSuggestions.filter(Boolean).join(" | ");
   const creatorPresent =
     panelType === "ON_CAMERA"
       ? "Creator is visible and speaking to camera."
       : "B-roll scene: creator voiceover is present but creator is NOT shown.";
+
+  const hasBothAnchors =
+    !!previousSceneLastFrameImageUrl &&
+    !!scene1AnchorUrl &&
+    previousSceneLastFrameImageUrl !== scene1AnchorUrl;
+
+  const continuityLine = hasBothAnchors
+    ? "CONTINUITY: Two anchor reference images are provided. The FIRST is the Scene 1 establishing frame — match this exactly for creator face, wardrobe, room, and lighting for the entire video. The SECOND is the immediately preceding scene — match this for moment-to-moment visual flow. Both must be honored."
+    : previousSceneLastFrameImageUrl
+      ? "CONTINUITY: The first reference image is the previous scene. Match exactly: same creator face, same room, same lighting, same product. This is a direct continuation."
+      : "";
+
   return [
     "STYLE: Authentic smartphone UGC. Raw image content only — NO UI chrome, NO app interface, NO status bar, NO Instagram/TikTok frame, NO social media overlay, NO profile header, NO message bar, NO screen recording frame. Just the image itself. NOT cinematic. NOT a production still. NOT commercial photography.",
-    previousSceneLastFrameImageUrl
-      ? "CONTINUITY: The first reference image provided is the final frame of the PREVIOUS scene in this video. You must match exactly: same creator face and appearance, same room, same lighting mood, same product. This scene is a direct continuation — maintain visual consistency throughout."
-      : "",
+    continuityLine,
     `UGC ad first-frame still for Scene ${sceneNumber}${beatLabel ? ` (${beatLabel})` : ""}.`,
     creatorPresent,
     `Character name: ${characterName}`,
@@ -354,10 +366,33 @@ export async function POST(req: NextRequest) {
     scenesByNumber.set(scene.sceneNumber, scene);
   }
 
+  // Scene 1 output is the hard identity anchor for all subsequent scenes.
+  // Locks creator face, wardrobe, room, and lighting regardless of chain length.
+  const scene1 = scenesByNumber.get(1) ?? null;
+  const scene1AnchorUrl =
+    scene1?.lastFrameImageUrl || scene1?.firstFrameImageUrl || null;
+
   const prompts = targetScenes.map((scene) => {
     const previousScene = scenesByNumber.get(scene.sceneNumber - 1) ?? null;
     const previousSceneLastFrameImageUrl =
       previousScene?.lastFrameImageUrl || previousScene?.firstFrameImageUrl || null;
+
+    // Scene 1: no anchor exists yet, use creator avatar only
+    // Scene 2: anchor === previous (same image), dedupe to avoid passing it twice
+    // Scene 3+: anchor (Scene 1) + previous scene both passed — full robust continuity
+    const isScene1 = scene.sceneNumber === 1;
+    const anchorUrl = isScene1 ? null : scene1AnchorUrl;
+    const anchorIsSameAsPrevious =
+      !!anchorUrl &&
+      !!previousSceneLastFrameImageUrl &&
+      anchorUrl === previousSceneLastFrameImageUrl;
+
+    // Build referenceImageUrls: anchor first (identity lock), product second
+    // Anchor is omitted for Scene 1 (doesn't exist) and Scene 2 (same as previous, already in chain)
+    const referenceImageUrls = [
+      anchorIsSameAsPrevious ? null : anchorUrl,
+      productReferenceImageUrl,
+    ].filter((url): url is string => typeof url === "string" && url.length > 0);
 
     return {
       frameIndex: scene.sceneNumber * 2,
@@ -378,9 +413,10 @@ export async function POST(req: NextRequest) {
         characterDescription: resolvedCharacterDescription,
         productReferenceImageUrl,
         previousSceneLastFrameImageUrl,
+        scene1AnchorUrl: anchorUrl,
       }),
       inputImageUrl: resolvedAvatarImageUrl,
-      referenceImageUrls: [productReferenceImageUrl],
+      referenceImageUrls,
       previousSceneLastFrameImageUrl,
     };
   });

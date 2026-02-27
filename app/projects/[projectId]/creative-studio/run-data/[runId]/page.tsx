@@ -28,6 +28,34 @@ const CREATIVE_JOB_LABELS: Record<string, string> = {
   VIDEO_UPSCALER: "Upscale & Export",
 };
 
+function getSceneLabel(job: CreativeJob): string | null {
+  if (job.type !== "VIDEO_IMAGE_GENERATION") return null;
+  const payload = job.payload;
+  if (!payload) return null;
+
+  // Single scene regeneration — sceneNumber at top level
+  const topLevel = payload.sceneNumber;
+  if (typeof topLevel === "number") return `Scene ${topLevel}`;
+
+  // Batch — extract unique scene numbers from prompts array
+  const prompts = payload.prompts;
+  if (Array.isArray(prompts) && prompts.length > 0) {
+    const sceneNumbers = [
+      ...new Set(
+        prompts
+          .map((p: any) => p?.sceneNumber)
+          .filter((n): n is number => typeof n === "number"),
+      ),
+    ].sort((a, b) => a - b);
+
+    if (sceneNumbers.length === 1) return `Scene ${sceneNumbers[0]}`;
+    if (sceneNumbers.length > 1)
+      return `Scenes ${sceneNumbers[0]}–${sceneNumbers[sceneNumbers.length - 1]}`;
+  }
+
+  return null;
+}
+
 function formatDate(value: string): string {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
@@ -248,7 +276,12 @@ export default function CreativeRunDataPage() {
                       />
                     </td>
                     <td className="px-3 py-2 text-slate-200">
-                      {CREATIVE_JOB_LABELS[job.type] ?? job.type}
+                      <span>{CREATIVE_JOB_LABELS[job.type] ?? job.type}</span>
+                      {getSceneLabel(job) ? (
+                        <span className="ml-2 rounded bg-slate-700 px-1.5 py-0.5 text-xs text-slate-300">
+                          {getSceneLabel(job)}
+                        </span>
+                      ) : null}
                     </td>
                     <td className="px-3 py-2 text-slate-300">{job.status}</td>
                     <td className="px-3 py-2 text-slate-400">{formatDate(job.createdAt)}</td>

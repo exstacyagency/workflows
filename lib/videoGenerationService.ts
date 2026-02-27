@@ -59,7 +59,7 @@ type SceneLike = {
   clipDurationSeconds?: number | null;
   aspectRatio: string;
   rawJson: unknown;
-  panelType?: 'ON_CAMERA' | 'B_ROLL_ONLY' | null;
+  panelType?: 'ON_CAMERA' | 'PRODUCT_ONLY' | 'B_ROLL_ONLY' | null;
   videoPrompt: string | null;
   firstFrameUrl: string | null;
   lastFrameUrl: string | null;
@@ -139,6 +139,9 @@ function buildSceneReferenceFrames(args: {
   raw: Record<string, any>;
   productReferenceImages: ProductReferenceImages;
 }): SceneReferenceFrame[] {
+  const panelType = String(args.raw.panelType ?? "ON_CAMERA");
+  const includeCharacter = panelType === "ON_CAMERA" || panelType === "PRODUCT_ONLY";
+
   const rawFrames = normalizeReferenceFrames(args.raw.referenceFrames);
   const productFromRaw = rawFrames.find((frame) => frame.kind === 'product')?.url;
   const characterFromRaw = rawFrames.find((frame) => frame.kind === 'character')?.url;
@@ -151,7 +154,7 @@ function buildSceneReferenceFrames(args: {
   );
 
   const frames: SceneReferenceFrame[] = [];
-  if (characterAvatarImageUrl) {
+  if (includeCharacter && characterAvatarImageUrl) {
     frames.push({
       kind: 'character',
       role: 'character',
