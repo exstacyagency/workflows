@@ -522,6 +522,7 @@ export default function CreativeStudioPage() {
   const [storyboardPanelId, setStoryboardPanelId] = useState<string | null>(null);
   const [storyboardEditMode, setStoryboardEditMode] = useState(false);
   const [storyboardDraftPanels, setStoryboardDraftPanels] = useState<StoryboardPanel[]>([]);
+  const [storyboardBeatEditorDrafts, setStoryboardBeatEditorDrafts] = useState<string[]>([]);
   const [storyboardSaveError, setStoryboardSaveError] = useState<string | null>(null);
   const [storyboardSaving, setStoryboardSaving] = useState(false);
   const [storyboardRegeneratingIndex, setStoryboardRegeneratingIndex] = useState<number | null>(null);
@@ -792,6 +793,9 @@ export default function CreativeStudioPage() {
       !selectedSwipeTemplateAdId);
 
   function getRunJobName(job: Job) {
+    const payloadLabel =
+      typeof job?.payload?.jobLabel === "string" ? String(job.payload.jobLabel).trim() : "";
+    if (payloadLabel) return payloadLabel;
     const names: Record<string, string> = {
       SCRIPT_GENERATION: "Generate Script",
       STORYBOARD_GENERATION: "Create Storyboard",
@@ -886,6 +890,64 @@ export default function CreativeStudioPage() {
     () => (selectedRunId ? selectedRunJobs : []),
     [selectedRunId, selectedRunJobs],
   );
+  const generatedFirstFrameScenesInActiveRun = useMemo(() => {
+    const sceneNumbers = new Set<number>();
+    for (const job of jobsInActiveRun) {
+      if (job.type !== JobType.VIDEO_IMAGE_GENERATION) continue;
+      const payload = job.payload && typeof job.payload === "object"
+        ? (job.payload as Record<string, unknown>)
+        : null;
+      if (!payload) continue;
+      const prompts = Array.isArray(payload.prompts) ? payload.prompts : [];
+      for (const prompt of prompts) {
+        const sceneNumber = Number((prompt as any)?.sceneNumber);
+        if (Number.isInteger(sceneNumber) && sceneNumber > 0) {
+          sceneNumbers.add(sceneNumber);
+        }
+      }
+      const tasks = Array.isArray(payload.tasks) ? payload.tasks : [];
+      for (const task of tasks) {
+        const sceneNumber = Number((task as any)?.sceneNumber);
+        if (Number.isInteger(sceneNumber) && sceneNumber > 0) {
+          sceneNumbers.add(sceneNumber);
+        }
+      }
+    }
+    return sceneNumbers;
+  }, [jobsInActiveRun]);
+  const latestFirstFrameGenerationBySceneInActiveRun = useMemo(() => {
+    const latestByScene = new Map<number, number>();
+    for (const job of jobsInActiveRun) {
+      if (job.type !== JobType.VIDEO_IMAGE_GENERATION) continue;
+      if (job.status !== JobStatus.COMPLETED) continue;
+      const ts = new Date(job.updatedAt ?? job.createdAt).getTime();
+      if (!Number.isFinite(ts)) continue;
+      const payload = job.payload && typeof job.payload === "object"
+        ? (job.payload as Record<string, unknown>)
+        : null;
+      if (!payload) continue;
+      const seenSceneNumbers = new Set<number>();
+      const prompts = Array.isArray(payload.prompts) ? payload.prompts : [];
+      for (const prompt of prompts) {
+        const sceneNumber = Number((prompt as any)?.sceneNumber);
+        if (Number.isInteger(sceneNumber) && sceneNumber > 0) {
+          seenSceneNumbers.add(sceneNumber);
+        }
+      }
+      const tasks = Array.isArray(payload.tasks) ? payload.tasks : [];
+      for (const task of tasks) {
+        const sceneNumber = Number((task as any)?.sceneNumber);
+        if (Number.isInteger(sceneNumber) && sceneNumber > 0) {
+          seenSceneNumbers.add(sceneNumber);
+        }
+      }
+      for (const sceneNumber of seenSceneNumbers) {
+        const prev = latestByScene.get(sceneNumber) ?? 0;
+        if (ts > prev) latestByScene.set(sceneNumber, ts);
+      }
+    }
+    return latestByScene;
+  }, [jobsInActiveRun]);
   const selectedProduct = useMemo(
     () => products.find((p) => p.id === selectedProductId) ?? null,
     [products, selectedProductId],
@@ -1249,6 +1311,20 @@ export default function CreativeStudioPage() {
       `Transition Type: ${panel.transitionType ?? ""}`,
     ].join("\n\n");
   }
+
+  function buildStoryboardBeatEditorDraftsFromPanels(panels: StoryboardPanel[]): string[] {
+    return panels.map((panel) => buildStoryboardBeatEditorText(panel));
+  }
+
+  useEffect(() => {
+    if (!storyboardEditMode) return;
+    setStoryboardBeatEditorDrafts((prev) =>
+      storyboardDraftPanels.map((panel, index) => {
+        if (typeof prev[index] === "string") return prev[index];
+        return buildStoryboardBeatEditorText(panel);
+      }),
+    );
+  }, [storyboardDraftPanels, storyboardEditMode]);
 
   function parseStoryboardBeatEditorText(
     value: string,
@@ -1983,60 +2059,60 @@ export default function CreativeStudioPage() {
   }
 
   function openStoryboardEditMode() {
-    setStoryboardDraftPanels(
-      Array.isArray(storyboardPanelData?.panels)
-        ? storyboardPanelData.panels.map((panel, index) => {
-            const normalized = normalizeStoryboardPanel(panel, index);
-            const source = panel as Record<string, unknown>;
-            const fallbackAction =
-              typeof source?.characterAction === "string"
-                ? source.characterAction
-                : typeof source?.creatorAction === "string"
-                  ? source.creatorAction
-                  : typeof source?.["Character Action"] === "string"
-                    ? source["Character Action"]
-                    : null;
-            return {
-              ...normalized,
-              characterAction:
-                normalized.characterAction ??
-                (typeof fallbackAction === "string" && fallbackAction.trim()
-                  ? fallbackAction.trim()
-                  : null),
-            };
-          })
-        : [],
-    );
+    const nextPanels = Array.isArray(storyboardPanelData?.panels)
+      ? storyboardPanelData.panels.map((panel, index) => {
+          const normalized = normalizeStoryboardPanel(panel, index);
+          const source = panel as Record<string, unknown>;
+          const fallbackAction =
+            typeof source?.characterAction === "string"
+              ? source.characterAction
+              : typeof source?.creatorAction === "string"
+                ? source.creatorAction
+                : typeof source?.["Character Action"] === "string"
+                  ? source["Character Action"]
+                  : null;
+          return {
+            ...normalized,
+            characterAction:
+              normalized.characterAction ??
+              (typeof fallbackAction === "string" && fallbackAction.trim()
+                ? fallbackAction.trim()
+                : null),
+          };
+        })
+      : [];
+    setStoryboardDraftPanels(nextPanels);
+    setStoryboardBeatEditorDrafts(buildStoryboardBeatEditorDraftsFromPanels(nextPanels));
     setStoryboardEditMode(true);
     setStoryboardSaveError(null);
     setStoryboardRegenerateError(null);
   }
 
   function cancelStoryboardEditMode() {
-    setStoryboardDraftPanels(
-      Array.isArray(storyboardPanelData?.panels)
-        ? storyboardPanelData.panels.map((panel, index) => {
-            const normalized = normalizeStoryboardPanel(panel, index);
-            const source = panel as Record<string, unknown>;
-            const fallbackAction =
-              typeof source?.characterAction === "string"
-                ? source.characterAction
-                : typeof source?.creatorAction === "string"
-                  ? source.creatorAction
-                  : typeof source?.["Character Action"] === "string"
-                    ? source["Character Action"]
-                    : null;
-            return {
-              ...normalized,
-              characterAction:
-                normalized.characterAction ??
-                (typeof fallbackAction === "string" && fallbackAction.trim()
-                  ? fallbackAction.trim()
-                  : null),
-            };
-          })
-        : [],
-    );
+    const nextPanels = Array.isArray(storyboardPanelData?.panels)
+      ? storyboardPanelData.panels.map((panel, index) => {
+          const normalized = normalizeStoryboardPanel(panel, index);
+          const source = panel as Record<string, unknown>;
+          const fallbackAction =
+            typeof source?.characterAction === "string"
+              ? source.characterAction
+              : typeof source?.creatorAction === "string"
+                ? source.creatorAction
+                : typeof source?.["Character Action"] === "string"
+                  ? source["Character Action"]
+                  : null;
+          return {
+            ...normalized,
+            characterAction:
+              normalized.characterAction ??
+              (typeof fallbackAction === "string" && fallbackAction.trim()
+                ? fallbackAction.trim()
+                : null),
+          };
+        })
+      : [];
+    setStoryboardDraftPanels(nextPanels);
+    setStoryboardBeatEditorDrafts(buildStoryboardBeatEditorDraftsFromPanels(nextPanels));
     setStoryboardEditMode(false);
     setStoryboardSaveError(null);
     setStoryboardRegenerateError(null);
@@ -2271,6 +2347,7 @@ export default function CreativeStudioPage() {
         panels: normalizedPanels,
       });
       setStoryboardDraftPanels(normalizedPanels);
+      setStoryboardBeatEditorDrafts(buildStoryboardBeatEditorDraftsFromPanels(normalizedPanels));
       setStoryboardEditMode(false);
       setStoryboardRegenerateError(null);
       toast.success("Storyboard updated.");
@@ -3224,15 +3301,18 @@ export default function CreativeStudioPage() {
     if (!videoImagesStep) return;
     setSceneActionError(null);
 
-    // Warn if regenerating Scene 1 when subsequent scenes already exist
+    // Warn only when Scene 1 has previously been generated in this run
+    // and there are downstream scenes generated from an older anchor.
     if (sceneNumber === 1) {
-      const subsequentScenesWithImages = storyboardPanelsForSceneFlow.filter((panel) => {
-        const n = Number(panel.sceneNumber);
-        return n > 1 && Boolean(panel.firstFrameImageUrl || panel.lastFrameImageUrl);
-      });
-      if (subsequentScenesWithImages.length > 0) {
+      const scene1LastGeneratedAt = latestFirstFrameGenerationBySceneInActiveRun.get(1) ?? 0;
+      const downstreamScenesImpacted = Array.from(latestFirstFrameGenerationBySceneInActiveRun.entries())
+        .filter(([n, ts]) => n > 1 && Number.isFinite(ts) && ts > 0)
+        .filter(([, ts]) => ts <= scene1LastGeneratedAt || scene1LastGeneratedAt > 0)
+        .map(([n]) => n)
+        .sort((a, b) => a - b);
+      if (scene1LastGeneratedAt > 0 && downstreamScenesImpacted.length > 0) {
         const confirmed = window.confirm(
-          `Regenerating Scene 1 will change the identity anchor for this video.\n\nScenes ${subsequentScenesWithImages.map((p) => p.sceneNumber).join(", ")} were generated using the current Scene 1 as the character reference.\n\nRegenerate those scenes afterwards to maintain consistency.`,
+          `Regenerating Scene 1 will change the identity anchor for this run.\n\nScenes ${downstreamScenesImpacted.join(", ")} have existing first-frame generations in this run and should be regenerated afterwards to maintain consistency.`,
         );
         if (!confirmed) return;
       }
@@ -3968,7 +4048,8 @@ export default function CreativeStudioPage() {
               step.key === "image_prompts" ||
               step.key === "video_prompts" ||
               step.key === "video_images" ||
-              step.key === "video";
+              step.key === "video" ||
+              step.key === "review";
             const storyboardId = isStoryboardRelatedStep
               ? (step.key === "storyboard" && step.lastJob
                   ? getStoryboardIdFromJob(step.lastJob)
@@ -4002,7 +4083,7 @@ export default function CreativeStudioPage() {
                     }))
                 : [];
             const sceneFlowRows =
-              step.key === "video_images" || step.key === "video"
+              step.key === "video_images" || step.key === "video" || step.key === "review"
                 ? [...storyboardPanels]
                     .sort((a, b) => {
                       const aNum = Number(a.sceneNumber) || 0;
@@ -4309,6 +4390,10 @@ export default function CreativeStudioPage() {
                           const isGenerating = sceneGeneratingNumber === row.sceneNumber;
                           const canReview = row.hasImages;
                           const firstFramePrompt = String(row.panel?.firstFramePrompt || "").trim();
+                          const showRegenerateLabel =
+                            Boolean(selectedRunId) &&
+                            generatedFirstFrameScenesInActiveRun.has(row.sceneNumber) &&
+                            row.hasImages;
                           return (
                             <div
                               key={`scene-flow-${row.sceneNumber}`}
@@ -4373,7 +4458,7 @@ export default function CreativeStudioPage() {
                                 >
                                   {isGenerating
                                     ? "Generating..."
-                                    : row.hasImages
+                                    : showRegenerateLabel
                                       ? "Re-generate"
                                       : "Generate"}
                                 </button>
@@ -4539,6 +4624,102 @@ export default function CreativeStudioPage() {
                                       ? "Re-generate"
                                       : "Generate"}
                                 </button>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleSceneVideoReview(row.sceneNumber)}
+                                  disabled={!hasVideo}
+                                  style={{
+                                    border: "1px solid #334155",
+                                    backgroundColor: "#0b1220",
+                                    color: hasVideo ? "#cbd5e1" : "#64748b",
+                                    borderRadius: 7,
+                                    padding: "6px 10px",
+                                    fontSize: 12,
+                                    fontWeight: 600,
+                                    cursor: hasVideo ? "pointer" : "not-allowed",
+                                  }}
+                                >
+                                  {isReviewOpen ? "Hide Review" : "Review"}
+                                </button>
+                              </div>
+
+                              {isReviewOpen && hasVideo && (
+                                <video
+                                  src={videoUrl}
+                                  controls
+                                  style={{
+                                    width: "100%",
+                                    maxWidth: 360,
+                                    aspectRatio: "9 / 16",
+                                    borderRadius: 8,
+                                    border: "1px solid #334155",
+                                    display: "block",
+                                  }}
+                                />
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {step.key === "review" && (
+                <div
+                  style={{
+                    marginTop: 12,
+                    borderRadius: 10,
+                    border: "1px solid #334155",
+                    backgroundColor: "#020617",
+                    padding: 12,
+                  }}
+                >
+                  {!storyboardId ? (
+                    <p style={{ margin: 0, color: "#fca5a5", fontSize: 13 }}>
+                      No storyboard found for this run.
+                    </p>
+                  ) : storyboardPanelLoading && storyboardMatchesCurrentFetch ? (
+                    <p style={{ margin: 0, color: "#94a3b8", fontSize: 13 }}>
+                      Loading scene flow...
+                    </p>
+                  ) : storyboardPanelError && storyboardMatchesCurrentFetch ? (
+                    <p style={{ margin: 0, color: "#fca5a5", fontSize: 13 }}>{storyboardPanelError}</p>
+                  ) : (
+                    <>
+                      <p style={{ margin: "0 0 10px 0", color: "#94a3b8", fontSize: 12 }}>
+                        Review generated scene videos.
+                      </p>
+                      <div style={{ display: "grid", gap: 10 }}>
+                        {sceneFlowRows.map((row) => {
+                          const hasVideo = row.hasVideo;
+                          const videoUrl = String(row.videoUrl || "").trim();
+                          const isReviewOpen = row.isVideoReviewOpen;
+                          return (
+                            <div
+                              key={`scene-review-${row.sceneNumber}`}
+                              style={{
+                                border: hasVideo
+                                  ? "1px solid rgba(16, 185, 129, 0.55)"
+                                  : "1px solid #334155",
+                                borderRadius: 8,
+                                backgroundColor: "#0b1220",
+                                padding: 10,
+                                display: "grid",
+                                gap: 8,
+                              }}
+                            >
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                <div style={{ color: "#e2e8f0", fontSize: 13, fontWeight: 600 }}>
+                                  Scene {row.sceneNumber}
+                                </div>
+                                <div style={{ fontSize: 11, color: hasVideo ? "#6ee7b7" : "#94a3b8" }}>
+                                  {hasVideo ? "Ready" : "No video yet"}
+                                </div>
+                              </div>
+
+                              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                                 <button
                                   type="button"
                                   onClick={() => toggleSceneVideoReview(row.sceneNumber)}
@@ -5058,9 +5239,22 @@ export default function CreativeStudioPage() {
                                   Edit this beat as one block. Keep the labels and write under each one.
                                 </div>
                                 <textarea
-                                  value={buildStoryboardBeatEditorText(panel)}
+                                  value={
+                                    storyboardBeatEditorDrafts[panelIndex] ??
+                                    buildStoryboardBeatEditorText(panel)
+                                  }
                                   onChange={(e) => {
-                                    const parsed = parseStoryboardBeatEditorText(e.target.value, panel);
+                                    const nextValue = e.target.value;
+                                    setStoryboardBeatEditorDrafts((prev) =>
+                                      storyboardDraftPanels.map((draftPanel, index) =>
+                                        index === panelIndex
+                                          ? nextValue
+                                          : typeof prev[index] === "string"
+                                            ? prev[index]
+                                            : buildStoryboardBeatEditorText(draftPanel),
+                                      ),
+                                    );
+                                    const parsed = parseStoryboardBeatEditorText(nextValue, panel);
                                     updateStoryboardDraftPanel(panelIndex, (prev) => ({
                                       ...prev,
                                       characterName: parsed.characterName,

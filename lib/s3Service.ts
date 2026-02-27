@@ -15,8 +15,32 @@ const productSetupRegion =
 const productSetupEndpoint =
   cfg.raw("AWS_S3_ENDPOINT_PRODUCT_SETUP") || cfg.raw("S3_PRODUCT_SETUP_ENDPOINT") || defaultEndpoint;
 const productSetupPublicBaseUrl = cfg.raw("S3_PRODUCT_SETUP_PUBLIC_BASE_URL");
+const videoFramesBucket =
+  cfg.raw("AWS_S3_BUCKET_VIDEO_FRAMES") || cfg.raw("S3_BUCKET_VIDEO_FRAMES");
+const videoFramesRegion =
+  cfg.raw("AWS_S3_REGION_VIDEO_FRAMES") || cfg.raw("S3_VIDEO_FRAMES_REGION") || defaultRegion;
+const videoFramesEndpoint =
+  cfg.raw("AWS_S3_ENDPOINT_VIDEO_FRAMES") || cfg.raw("S3_VIDEO_FRAMES_ENDPOINT") || defaultEndpoint;
+const videoFramesPublicBaseUrl = cfg.raw("S3_VIDEO_FRAMES_PUBLIC_BASE_URL");
+const avatarCharacterGenerationBucket =
+  cfg.raw("AWS_S3_BUCKET_AVATAR_CHARACTER_GENERATION") ||
+  cfg.raw("S3_BUCKET_AVATAR_CHARACTER_GENERATION");
+const avatarCharacterGenerationRegion =
+  cfg.raw("AWS_S3_REGION_AVATAR_CHARACTER_GENERATION") ||
+  cfg.raw("S3_AVATAR_CHARACTER_GENERATION_REGION") ||
+  defaultRegion;
+const avatarCharacterGenerationEndpoint =
+  cfg.raw("AWS_S3_ENDPOINT_AVATAR_CHARACTER_GENERATION") ||
+  cfg.raw("S3_AVATAR_CHARACTER_GENERATION_ENDPOINT") ||
+  defaultEndpoint;
+const avatarCharacterGenerationPublicBaseUrl =
+  cfg.raw("S3_AVATAR_CHARACTER_GENERATION_PUBLIC_BASE_URL");
 
-type BucketTarget = "default" | "product_setup";
+type BucketTarget =
+  | "default"
+  | "product_setup"
+  | "video_frames"
+  | "avatar_character_generation";
 
 type BucketConfig = {
   bucket: string | null;
@@ -37,6 +61,18 @@ const BUCKETS: Record<BucketTarget, BucketConfig> = {
     region: productSetupRegion,
     endpoint: productSetupEndpoint,
     publicBaseUrl: productSetupPublicBaseUrl,
+  },
+  video_frames: {
+    bucket: videoFramesBucket,
+    region: videoFramesRegion,
+    endpoint: videoFramesEndpoint,
+    publicBaseUrl: videoFramesPublicBaseUrl,
+  },
+  avatar_character_generation: {
+    bucket: avatarCharacterGenerationBucket,
+    region: avatarCharacterGenerationRegion,
+    endpoint: avatarCharacterGenerationEndpoint,
+    publicBaseUrl: avatarCharacterGenerationPublicBaseUrl,
   },
 };
 
@@ -125,6 +161,30 @@ export async function uploadProductSetupObject(args: {
   return uploadPublicObject({
     ...args,
     bucketTarget: "product_setup",
+  });
+}
+
+export async function uploadVideoFrameObject(args: {
+  key: string;
+  body: Uint8Array;
+  contentType: string;
+  cacheControl?: string;
+}): Promise<string | null> {
+  return uploadPublicObject({
+    ...args,
+    bucketTarget: "video_frames",
+  });
+}
+
+export async function uploadAvatarCharacterObject(args: {
+  key: string;
+  body: Uint8Array;
+  contentType: string;
+  cacheControl?: string;
+}): Promise<string | null> {
+  return uploadPublicObject({
+    ...args,
+    bucketTarget: "avatar_character_generation",
   });
 }
 

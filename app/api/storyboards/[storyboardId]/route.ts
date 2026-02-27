@@ -17,6 +17,7 @@ type StoryboardPanelResponse = {
   lastFramePrompt: string | null;
   firstFrameImageUrl: string | null;
   lastFrameImageUrl: string | null;
+  videoUrl: string | null;
   videoPrompt: string | null;
   characterAction: string | null;
   characterName: string | null;
@@ -145,6 +146,7 @@ function normalizePanelFromRaw(args: {
     lastFramePrompt: asNullableString(raw.lastFramePrompt),
     firstFrameImageUrl: frameUrls.firstFrameImageUrl,
     lastFrameImageUrl: frameUrls.lastFrameImageUrl,
+    videoUrl: asNullableString(raw.videoUrl) ?? asNullableString(raw.video_url),
     videoPrompt: asNullableString(raw.videoPrompt),
     characterAction: asNullableString(raw.characterAction),
     characterName: asNullableString(raw.characterName),
@@ -173,6 +175,7 @@ function normalizePanelFromInput(value: unknown, index: number): StoryboardPanel
     lastFramePrompt: asNullableString(raw.lastFramePrompt),
     firstFrameImageUrl: asNullableString(raw.firstFrameImageUrl),
     lastFrameImageUrl: asNullableString(raw.lastFrameImageUrl),
+    videoUrl: asNullableString(raw.videoUrl) ?? asNullableString(raw.video_url),
     videoPrompt: asNullableString(raw.videoPrompt),
     characterAction: panelType === "B_ROLL_ONLY" ? asNullableString(raw.characterAction) : asString(raw.characterAction),
     characterName: asNullableString(raw.characterName),
