@@ -276,7 +276,11 @@ export default function CreativeRunDataPage() {
                       />
                     </td>
                     <td className="px-3 py-2 text-slate-200">
-                      <span>{CREATIVE_JOB_LABELS[job.type] ?? job.type}</span>
+                      <span>
+                        {typeof job?.payload?.jobLabel === "string" && String(job.payload.jobLabel).trim()
+                          ? String(job.payload.jobLabel).trim()
+                          : CREATIVE_JOB_LABELS[job.type] ?? job.type}
+                      </span>
                       {getSceneLabel(job) ? (
                         <span className="ml-2 rounded bg-slate-700 px-1.5 py-0.5 text-xs text-slate-300">
                           {getSceneLabel(job)}

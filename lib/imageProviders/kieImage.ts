@@ -173,7 +173,6 @@ export class KieImageProvider implements VideoImageProvider {
       throw new Error(`Invalid input: prompts[0].prompt is required`);
     }
 
-    const firstNegative = input.prompts[0]?.negativePrompt?.trim() ?? "";
     const continuityReferenceUrl = input.prompts[0]?.previousSceneLastFrameImageUrl
       ? String(input.prompts[0].previousSceneLastFrameImageUrl).trim()
       : "";
@@ -185,14 +184,21 @@ export class KieImageProvider implements VideoImageProvider {
           .map((url) => String(url ?? "").trim())
           .filter(Boolean)
       : [];
-    // Continuity frame goes FIRST — KIE weights image_input[0] most heavily.
-    // For Scene 1 continuityReferenceUrl is empty and falls out of the Set.
+    const firstNegative = input.prompts[0]?.negativePrompt?.trim() ?? "";
+    // Ordered to match continuity prompt semantics:
+    // 1) Scene 1 establishing anchor (referenceImageUrls[0], when provided)
+    // 2) Previous-scene continuity frame
+    // 3) Product anchor (remaining referenceImageUrls entries)
+    // 4) Creator avatar anchor
+    const scene1AnchorUrl = extraReferenceUrls[0] ?? "";
+    const additionalReferenceUrls = extraReferenceUrls.slice(1);
     const imageInputUrls = Array.from(
       new Set(
         [
-          continuityReferenceUrl,  // previous scene last frame (highest consistency weight)
-          primaryInputImageUrl,    // creator anchor
-          ...extraReferenceUrls,   // product reference
+          scene1AnchorUrl,
+          continuityReferenceUrl,
+          ...additionalReferenceUrls,
+          primaryInputImageUrl,
         ].filter((url): url is string => typeof url === "string" && url.length > 0),
       ),
     );

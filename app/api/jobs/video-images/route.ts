@@ -23,6 +23,12 @@ function asString(value: unknown): string {
   return value.trim();
 }
 
+function isS3Url(value: string | null | undefined): boolean {
+  const url = String(value ?? "").trim();
+  if (!url) return false;
+  return /^https?:\/\/[^/]*s3[^/]*amazonaws\.com\/.+/i.test(url);
+}
+
 function extractSceneFrameUrls(rawValue: unknown): {
   firstFrameImageUrl: string | null;
   lastFrameImageUrl: string | null;
@@ -139,9 +145,12 @@ function buildFirstFramePrompt(args: {
     !!previousSceneLastFrameImageUrl &&
     !!scene1AnchorUrl &&
     previousSceneLastFrameImageUrl !== scene1AnchorUrl;
+  const hasThreeAnchors = hasBothAnchors && !!productReferenceImageUrl;
 
-  const continuityLine = hasBothAnchors
-    ? "CONTINUITY: Two anchor reference images are provided. The FIRST is the Scene 1 establishing frame — match this exactly for creator face, wardrobe, room, and lighting for the entire video. The SECOND is the immediately preceding scene — match this for moment-to-moment visual flow. Both must be honored."
+  const continuityLine = hasThreeAnchors
+    ? "CONTINUITY: Three anchor reference images are provided. The FIRST is the Scene 1 establishing frame — match this exactly for creator face, wardrobe, room, and lighting for the entire video. The SECOND is the immediately preceding scene — match this for moment-to-moment visual flow. The THIRD is the product image — match packaging, label text, colors, and container shape exactly. All three must be honored."
+    : hasBothAnchors
+      ? "CONTINUITY: Two anchor reference images are provided. The FIRST is the Scene 1 establishing frame — match this exactly for creator face, wardrobe, room, and lighting for the entire video. The SECOND is the immediately preceding scene — match this for moment-to-moment visual flow. Both must be honored."
     : previousSceneLastFrameImageUrl
       ? "CONTINUITY: The first reference image is the previous scene. Match exactly: same creator face, same room, same lighting, same product. This is a direct continuation."
       : "";
@@ -160,6 +169,12 @@ function buildFirstFramePrompt(args: {
     productPlacement ? `Product placement: ${productPlacement}` : "",
     broll ? `Text overlays / b-roll intent: ${broll}` : "",
     `Use this product reference image exactly for packaging/label details: ${productReferenceImageUrl}`,
+    "Realism: ultra-realistic.",
+    "Detail level: high skin and fabric texture detail.",
+    "Natural skin imperfections: pores, subtle texture visible.",
+    "Shot on iPhone, slightly imperfect framing.",
+    "Available light only.",
+    "Negative prompt: no blurry image, no glossy skin, no overexposed highlights, no flat lighting, no plastic skin texture, no symmetrical lighting, no HDR effect, no airbrushed skin, no UI chrome, no app interface overlays.",
     "Render as smartphone-shot UGC (not commercial): natural lighting, real room, handheld realism, vertical 9:16. Output is the raw photo frame only — no phone UI, no app chrome, no overlaid interface elements.",
   ]
     .filter(Boolean)
@@ -307,10 +322,11 @@ export async function POST(req: NextRequest) {
   const resolvedCharacterName = asString(requestedCharacter?.name) || asString(firstSceneRaw.characterName);
   const resolvedCharacterDescription =
     asString(requestedCharacter?.creatorVisualPrompt) || asString(firstSceneRaw.characterDescription);
-  const resolvedAvatarImageUrl =
-    asString(requestedCharacter?.seedVideoUrl) ||
-    asString(ownedProduct.characterAvatarImageUrl) ||
-    asString(ownedProduct.creatorReferenceImageUrl);
+  const resolvedAvatarImageUrl = [
+    asString(ownedProduct.characterAvatarImageUrl),
+    asString(ownedProduct.creatorReferenceImageUrl),
+    asString(requestedCharacter?.seedVideoUrl),
+  ].find((url) => isS3Url(url)) || "";
 
   if (!resolvedCharacterName || !resolvedCharacterDescription) {
     return NextResponse.json(
@@ -325,7 +341,8 @@ export async function POST(req: NextRequest) {
   if (!resolvedAvatarImageUrl) {
     return NextResponse.json(
       {
-        error: "Missing selected avatar image. Generate/select a character avatar before generating first frames.",
+        error:
+          "Missing selected avatar image on S3. Generate/select a character avatar stored in S3 before generating first frames.",
       },
       { status: 409 },
     );
@@ -365,34 +382,35 @@ export async function POST(req: NextRequest) {
   for (const scene of scenesWithContext) {
     scenesByNumber.set(scene.sceneNumber, scene);
   }
-
-  // Scene 1 output is the hard identity anchor for all subsequent scenes.
-  // Locks creator face, wardrobe, room, and lighting regardless of chain length.
   const scene1 = scenesByNumber.get(1) ?? null;
-  const scene1AnchorUrl =
-    scene1?.lastFrameImageUrl || scene1?.firstFrameImageUrl || null;
+  const scene1AnchorUrlRaw = scene1?.lastFrameImageUrl || scene1?.firstFrameImageUrl || null;
+  const scene1AnchorUrl = isS3Url(scene1AnchorUrlRaw) ? scene1AnchorUrlRaw : null;
 
   const prompts = targetScenes.map((scene) => {
     const previousScene = scenesByNumber.get(scene.sceneNumber - 1) ?? null;
-    const previousSceneLastFrameImageUrl =
+    const previousSceneLastFrameImageUrlRaw =
       previousScene?.lastFrameImageUrl || previousScene?.firstFrameImageUrl || null;
-
-    // Scene 1: no anchor exists yet, use creator avatar only
-    // Scene 2: anchor === previous (same image), dedupe to avoid passing it twice
-    // Scene 3+: anchor (Scene 1) + previous scene both passed — full robust continuity
-    const isScene1 = scene.sceneNumber === 1;
-    const anchorUrl = isScene1 ? null : scene1AnchorUrl;
+    const previousSceneLastFrameImageUrl =
+      isS3Url(previousSceneLastFrameImageUrlRaw) ? previousSceneLastFrameImageUrlRaw : null;
+    if (scene.sceneNumber > 1 && !scene1AnchorUrl) {
+      throw new Error(
+        "Scene 1 anchor image on S3 is required for continuity on scenes after scene 1.",
+      );
+    }
+    if (scene.sceneNumber > 1 && !previousSceneLastFrameImageUrl) {
+      throw new Error(
+        `Scene ${scene.sceneNumber} requires previous scene continuity image on S3 (scene ${scene.sceneNumber - 1}).`,
+      );
+    }
     const anchorIsSameAsPrevious =
-      !!anchorUrl &&
+      !!scene1AnchorUrl &&
       !!previousSceneLastFrameImageUrl &&
-      anchorUrl === previousSceneLastFrameImageUrl;
-
-    // Build referenceImageUrls: anchor first (identity lock), product second
-    // Anchor is omitted for Scene 1 (doesn't exist) and Scene 2 (same as previous, already in chain)
+      scene1AnchorUrl === previousSceneLastFrameImageUrl;
     const referenceImageUrls = [
-      anchorIsSameAsPrevious ? null : anchorUrl,
+      anchorIsSameAsPrevious ? null : scene1AnchorUrl,
       productReferenceImageUrl,
-    ].filter((url): url is string => typeof url === "string" && url.length > 0);
+    ]
+      .filter((url): url is string => typeof url === "string" && url.length > 0);
 
     return {
       frameIndex: scene.sceneNumber * 2,
@@ -413,7 +431,7 @@ export async function POST(req: NextRequest) {
         characterDescription: resolvedCharacterDescription,
         productReferenceImageUrl,
         previousSceneLastFrameImageUrl,
-        scene1AnchorUrl: anchorUrl,
+        scene1AnchorUrl,
       }),
       inputImageUrl: resolvedAvatarImageUrl,
       referenceImageUrls,

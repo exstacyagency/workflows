@@ -168,7 +168,7 @@ export async function getTask(taskId: string): Promise<PollTaskResponse | string
 export async function createCharacterAvatarImage(args: {
   prompt: string;
 }): Promise<{ taskId: string }> {
-  const model = cfg.raw("KIE_CHARACTER_IMAGE_MODEL") || "nano-banana-pro";
+  const model = cfg.raw("KIE_CHARACTER_IMAGE_MODEL") || "nano-banana-2";
   const payload: Record<string, unknown> = {
     model,
     input: {

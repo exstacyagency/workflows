@@ -9,7 +9,7 @@ import { saveCharacterAnchorPrompt } from "@/lib/productCharacterStore";
 
 const StartCharacterPipelineSchema = z.object({
   productId: z.string().trim().min(1, "productId is required"),
-  manualDescription: z.string().trim().max(1200).optional().nullable(),
+  manualDescription: z.string().trim().min(1, "manualDescription is required").max(1200),
   characterName: z.string().trim().min(1).max(120).optional().nullable(),
   runId: z.string().trim().min(1).max(200).optional().nullable(),
 });
@@ -38,27 +38,25 @@ export async function POST(req: NextRequest) {
     }
 
     const productId = parsed.data.productId;
-    const manualDescription = parsed.data.manualDescription?.trim() || null;
+    const manualDescription = parsed.data.manualDescription.trim();
     const characterName = parsed.data.characterName?.trim() || null;
-    if (manualDescription) {
-      const requiredFields = [
-        "Age:",
-        "Ethnicity:",
-        "Hair:",
-        "Eyes:",
-        "Skin tone:",
-        "Face:",
-        "Build:",
-        "Wardrobe:",
-        "Vocal tone:",
-      ];
-      const missing = requiredFields.filter((field) => !manualDescription.includes(field));
-      if (missing.length > 0) {
-        return NextResponse.json(
-          { error: `Description missing required fields: ${missing.join(", ")}` },
-          { status: 400 },
-        );
-      }
+    const requiredFields = [
+      "Age:",
+      "Ethnicity:",
+      "Hair:",
+      "Eyes:",
+      "Skin tone:",
+      "Face:",
+      "Build:",
+      "Wardrobe:",
+      "Vocal tone:",
+    ];
+    const missing = requiredFields.filter((field) => !manualDescription.includes(field));
+    if (missing.length > 0) {
+      return NextResponse.json(
+        { error: `Description missing required fields: ${missing.join(", ")}` },
+        { status: 400 },
+      );
     }
     const incomingRunId = parsed.data.runId?.trim() || null;
 
@@ -156,9 +154,7 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    if (manualDescription) {
-      await saveCharacterAnchorPrompt(productId, manualDescription);
-    }
+    await saveCharacterAnchorPrompt(productId, manualDescription);
 
     return NextResponse.json(
       {
