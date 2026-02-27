@@ -292,6 +292,7 @@ CONVERSION OBJECTIVE:
 STORYBOARD DIRECTION:
 SET DRESSING (render these props explicitly):
 ${environment || "real home/work setting, lived-in and natural"}
+Time of day: match environment exactly — if environment specifies night, window lighting must be completely dark outside, no daylight, no dusk, no golden hour visible.
 Camera: ${cameraDirection || "medium close-up, eye level, centered"}
 Character action: ${characterAction || "N/A"}
 Product placement: ${productPlacement || "none"}
