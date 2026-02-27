@@ -438,6 +438,14 @@ async function generateVideoForScene(
     throw new Error(`Scene ${(scene as any).id} missing videoPrompt`);
   }
 
+  // First-frame image is the primary visual anchor for this scene.
+  const firstFrameImageUrl = normalizeUrl(
+    asString((scene as any).firstFrameImageUrl) ||
+    asString(raw.firstFrameImageUrl) ||
+    asString(raw.firstFrameUrl) ||
+    null,
+  );
+
   const clipDurationFromScene = Number((scene as any).clipDurationSeconds);
   const fallbackDuration = Number((scene as any).durationSec ?? raw.durationSec ?? raw.duration ?? DEFAULT_DURATION_SEC) || DEFAULT_DURATION_SEC;
   const durationSec = normalizeSoraClipDuration(
@@ -450,7 +458,13 @@ async function generateVideoForScene(
     raw,
     productReferenceImages,
   });
-  const imageInputs = Array.from(new Set(referenceFrames.map((frame) => frame.url).filter(Boolean)));
+  const referenceUrls = referenceFrames.map((frame) => frame.url).filter(Boolean);
+  const imageInputs = Array.from(
+    new Set([
+      ...(firstFrameImageUrl ? [firstFrameImageUrl] : []),
+      ...referenceUrls,
+    ]),
+  );
 
   const taskId = await createKieVideoJob({
     prompt,
@@ -585,6 +599,14 @@ export async function runVideoGenerationJob(job: JobLike): Promise<RunResult> {
   const storyboardId = String(payload.storyboardId ?? '').trim();
   const scriptId = String(payload.scriptId ?? '').trim();
   const payloadProductId = asString(payload.productId) || null;
+  const rawSceneNumber = payload.sceneNumber;
+  const parsedSceneNumber = rawSceneNumber !== undefined && rawSceneNumber !== null
+    ? Number(rawSceneNumber)
+    : null;
+  const requestedSceneNumber =
+    parsedSceneNumber !== null && Number.isInteger(parsedSceneNumber) && parsedSceneNumber > 0
+      ? parsedSceneNumber
+      : null;
 
   const missing: string[] = [];
   if (!projectId) missing.push('projectId');
@@ -634,12 +656,22 @@ export async function runVideoGenerationJob(job: JobLike): Promise<RunResult> {
   });
 
   const scenes = storyboard.scenes.sort((a, b) => a.sceneNumber - b.sceneNumber);
+  const filteredScenes =
+    requestedSceneNumber !== null
+      ? scenes.filter((scene) => scene.sceneNumber === requestedSceneNumber)
+      : scenes;
+  if (requestedSceneNumber !== null && filteredScenes.length === 0) {
+    throw new Error(`Scene ${requestedSceneNumber} not found`);
+  }
   const existingUrls = scenes
     .map(scene => (scene as any).videoUrl ?? (scene.rawJson as any)?.videoUrl ?? (scene.rawJson as any)?.video_url)
     .filter((url): url is string => typeof url === 'string' && url.trim().length > 0);
-  const targetScenes = scenes.filter(scene => !((scene as any).videoUrl ?? (scene.rawJson as any)?.videoUrl ?? (scene.rawJson as any)?.video_url));
+  const targetScenes =
+    requestedSceneNumber !== null
+      ? filteredScenes
+      : filteredScenes.filter(scene => !((scene as any).videoUrl ?? (scene.rawJson as any)?.videoUrl ?? (scene.rawJson as any)?.video_url));
 
-  if (targetScenes.length === 0) {
+  if (targetScenes.length === 0 && requestedSceneNumber === null) {
     let mergedVideoUrl = script.mergedVideoUrl ?? null;
     if (!mergedVideoUrl && scenes.length === 1 && existingUrls[0]) {
       mergedVideoUrl = existingUrls[0];

@@ -539,7 +539,9 @@ export default function CreativeStudioPage() {
   const [imagePromptSaveError, setImagePromptSaveError] = useState<string | null>(null);
   const [imagePromptSaving, setImagePromptSaving] = useState(false);
   const [sceneReviewOpenByNumber, setSceneReviewOpenByNumber] = useState<Record<number, boolean>>({});
+  const [sceneVideoReviewOpenByNumber, setSceneVideoReviewOpenByNumber] = useState<Record<number, boolean>>({});
   const [sceneGeneratingNumber, setSceneGeneratingNumber] = useState<number | null>(null);
+  const [videoGeneratingNumber, setVideoGeneratingNumber] = useState<number | null>(null);
   const [sceneApprovingNumber, setSceneApprovingNumber] = useState<number | null>(null);
   const [sceneActionError, setSceneActionError] = useState<string | null>(null);
   const [resettingVideoImageJobId, setResettingVideoImageJobId] = useState<string | null>(null);
@@ -948,7 +950,9 @@ export default function CreativeStudioPage() {
     setImagePromptSaveError(null);
     setImagePromptSaving(false);
     setSceneReviewOpenByNumber({});
+    setSceneVideoReviewOpenByNumber({});
     setSceneGeneratingNumber(null);
+    setVideoGeneratingNumber(null);
     setSceneApprovingNumber(null);
     setSceneActionError(null);
   }, [selectedRunId]);
@@ -976,7 +980,9 @@ export default function CreativeStudioPage() {
       setImagePromptSaveError(null);
       setImagePromptSaving(false);
       setSceneReviewOpenByNumber({});
+      setSceneVideoReviewOpenByNumber({});
       setSceneGeneratingNumber(null);
+      setVideoGeneratingNumber(null);
       setSceneApprovingNumber(null);
       setSceneActionError(null);
       return;
@@ -997,7 +1003,9 @@ export default function CreativeStudioPage() {
     setImagePromptSaveError(null);
     setImagePromptSaving(false);
     setSceneReviewOpenByNumber({});
+    setSceneVideoReviewOpenByNumber({});
     setSceneGeneratingNumber(null);
+    setVideoGeneratingNumber(null);
     setSceneApprovingNumber(null);
     setSceneActionError(null);
 
@@ -1135,6 +1143,11 @@ export default function CreativeStudioPage() {
   function getSceneLastFrameImageUrl(panel: StoryboardPanel | null | undefined): string {
     if (!panel) return "";
     return String(panel.lastFrameImageUrl || panel.firstFrameImageUrl || "").trim();
+  }
+
+  function getSceneVideoUrl(panel: StoryboardPanel | null | undefined): string {
+    if (!panel) return "";
+    return String(panel.videoUrl || (panel.rawJson as any)?.videoUrl || (panel.rawJson as any)?.video_url || "").trim();
   }
 
   function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPanel {
@@ -3199,6 +3212,13 @@ export default function CreativeStudioPage() {
     }));
   }
 
+  function toggleSceneVideoReview(sceneNumber: number) {
+    setSceneVideoReviewOpenByNumber((prev) => ({
+      ...prev,
+      [sceneNumber]: !prev[sceneNumber],
+    }));
+  }
+
   async function handleGenerateScene(sceneNumber: number) {
     const videoImagesStep = steps.find((step) => step.key === "video_images");
     if (!videoImagesStep) return;
@@ -3253,6 +3273,36 @@ export default function CreativeStudioPage() {
       }
     }
     setSceneGeneratingNumber(null);
+  }
+
+  async function handleGenerateSceneVideo(sceneNumber: number) {
+    const videoStep = steps.find((step) => step.key === "video");
+    if (!videoStep) return;
+    if (videoStep.locked || !videoStep.canRun) {
+      setSceneActionError(videoStep.lockReason || "Video generation is currently locked.");
+      return;
+    }
+    if (videoGeneratingNumber !== null) return;
+
+    setSceneActionError(null);
+    setVideoGeneratingNumber(sceneNumber);
+    setSceneVideoReviewOpenByNumber((prev) => ({
+      ...prev,
+      [sceneNumber]: false,
+    }));
+
+    const ok = await runStep(videoStep, {
+      sceneNumber,
+      forceNew: true,
+      runNonce: `scene-video-${sceneNumber}-${Date.now()}`,
+    });
+    if (ok) {
+      const activeStoryboardId = String(storyboardPanelId || latestCompletedStoryboardId || "").trim();
+      if (activeStoryboardId) {
+        void refreshStoryboardForOutput(activeStoryboardId);
+      }
+    }
+    setVideoGeneratingNumber(null);
   }
 
   async function handleApproveScene(sceneNumber: number) {
@@ -3917,7 +3967,8 @@ export default function CreativeStudioPage() {
               step.key === "storyboard" ||
               step.key === "image_prompts" ||
               step.key === "video_prompts" ||
-              step.key === "video_images";
+              step.key === "video_images" ||
+              step.key === "video";
             const storyboardId = isStoryboardRelatedStep
               ? (step.key === "storyboard" && step.lastJob
                   ? getStoryboardIdFromJob(step.lastJob)
@@ -3951,7 +4002,7 @@ export default function CreativeStudioPage() {
                     }))
                 : [];
             const sceneFlowRows =
-              step.key === "video_images"
+              step.key === "video_images" || step.key === "video"
                 ? [...storyboardPanels]
                     .sort((a, b) => {
                       const aNum = Number(a.sceneNumber) || 0;
@@ -3967,6 +4018,8 @@ export default function CreativeStudioPage() {
                         panel?.lastFrameImageUrl || (panel as any)?.lastFrameUrl || "",
                       ).trim();
                       const hasImages = Boolean(firstFrameImageUrl || lastFrameImageUrl);
+                      const videoUrl = getSceneVideoUrl(panel);
+                      const hasVideo = Boolean(videoUrl);
                       return {
                         sceneNumber,
                         panel: panel ?? null,
@@ -3974,6 +4027,8 @@ export default function CreativeStudioPage() {
                         lastFrameImageUrl: (lastFrameImageUrl || firstFrameImageUrl) || null,
                         approved: Boolean(panel?.approved),
                         hasImages,
+                        hasVideo,
+                        videoUrl: videoUrl || null,
                         locked: step.locked || !panel,
                         lockReason: !panel
                           ? "Scene missing from storyboard."
@@ -3981,11 +4036,13 @@ export default function CreativeStudioPage() {
                             ? step.lockReason || "Blocked by pipeline prerequisites."
                             : undefined,
                         isReviewOpen: Boolean(sceneReviewOpenByNumber[sceneNumber]),
+                        isVideoReviewOpen: Boolean(sceneVideoReviewOpenByNumber[sceneNumber]),
                       };
                     })
                 : [];
             const isOutputViewMode = isViewableCompleted && !isOutputExpanded;
             const usesBottomOutputToggle = isViewableCompleted;
+            const isSceneControlStep = step.key === "video_images" || step.key === "video";
             const isVideoImagesStep = step.key === "video_images";
             const runningVideoImageJobId =
               isVideoImagesStep && step.lastJob?.status === JobStatus.RUNNING
@@ -3996,14 +4053,14 @@ export default function CreativeStudioPage() {
               resettingVideoImageJobId === runningVideoImageJobId;
             const isStuckImagePromptStep =
               step.key === "image_prompts" && isStaleRunningJob(step.lastJob);
-            const isPrimaryActionDisabled = isVideoImagesStep
+            const isPrimaryActionDisabled = isSceneControlStep
               ? true
               : usesBottomOutputToggle
               ? !step.canRun || step.locked || step.status === "running" || submitting === step.key
               : isOutputViewMode
                 ? submitting === step.key
                 : !step.canRun || step.locked || step.status === "running" || submitting === step.key;
-            const primaryActionLabel = isVideoImagesStep
+            const primaryActionLabel = isSceneControlStep
               ? "Scene Controls"
               : submitting === step.key
               ? "Starting..."
@@ -4073,7 +4130,7 @@ export default function CreativeStudioPage() {
                   {getStepBadge(step.status)}
                 </div>
                 <div style={{ minWidth: 130, display: "flex", justifyContent: "flex-end" }}>
-                  {!isVideoImagesStep ? (
+                  {!isSceneControlStep ? (
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       {isCancelableJob(step.lastJob) && step.lastJob ? (
                         <button
@@ -4374,6 +4431,146 @@ export default function CreativeStudioPage() {
                                     {firstFramePrompt || "No first-frame prompt."}
                                   </div>
                                 </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {step.key === "video" && (
+                <div
+                  style={{
+                    marginTop: 12,
+                    borderRadius: 10,
+                    border: "1px solid #334155",
+                    backgroundColor: "#020617",
+                    padding: 12,
+                  }}
+                >
+                  {!storyboardId ? (
+                    <p style={{ margin: 0, color: "#fca5a5", fontSize: 13 }}>
+                      No storyboard found for this run.
+                    </p>
+                  ) : storyboardPanelLoading && storyboardMatchesCurrentFetch ? (
+                    <p style={{ margin: 0, color: "#94a3b8", fontSize: 13 }}>
+                      Loading scene flow...
+                    </p>
+                  ) : storyboardPanelError && storyboardMatchesCurrentFetch ? (
+                    <p style={{ margin: 0, color: "#fca5a5", fontSize: 13 }}>{storyboardPanelError}</p>
+                  ) : (
+                    <>
+                      <p style={{ margin: "0 0 10px 0", color: "#94a3b8", fontSize: 12 }}>
+                        Generate or re-generate video per scene.
+                      </p>
+                      {sceneActionError && (
+                        <p style={{ margin: "0 0 10px 0", color: "#fca5a5", fontSize: 12 }}>
+                          {sceneActionError}
+                        </p>
+                      )}
+                      <div style={{ display: "grid", gap: 10 }}>
+                        {sceneFlowRows.map((row) => {
+                          const isGenerating = videoGeneratingNumber === row.sceneNumber;
+                          const hasVideo = row.hasVideo;
+                          const videoUrl = String(row.videoUrl || "").trim();
+                          const isReviewOpen = row.isVideoReviewOpen;
+                          return (
+                            <div
+                              key={`scene-video-${row.sceneNumber}`}
+                              style={{
+                                border: row.locked
+                                  ? "1px solid #334155"
+                                  : hasVideo
+                                    ? "1px solid rgba(16, 185, 129, 0.55)"
+                                    : "1px solid rgba(14, 165, 233, 0.45)",
+                                borderRadius: 8,
+                                backgroundColor: "#0b1220",
+                                padding: 10,
+                                display: "grid",
+                                gap: 8,
+                              }}
+                            >
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                <div style={{ color: "#e2e8f0", fontSize: 13, fontWeight: 600 }}>
+                                  Scene {row.sceneNumber}
+                                </div>
+                                <div
+                                  style={{
+                                    fontSize: 11,
+                                    color: row.locked
+                                      ? "#94a3b8"
+                                      : isGenerating
+                                        ? "#7dd3fc"
+                                        : hasVideo
+                                          ? "#6ee7b7"
+                                          : "#94a3b8",
+                                  }}
+                                >
+                                  {isGenerating ? "Generating..." : hasVideo ? "Ready" : "Awaiting Generation"}
+                                </div>
+                              </div>
+
+                              {row.lockReason && (
+                                <div style={{ color: "#94a3b8", fontSize: 11 }}>🔒 {row.lockReason}</div>
+                              )}
+
+                              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                                <button
+                                  type="button"
+                                  onClick={() => void handleGenerateSceneVideo(row.sceneNumber)}
+                                  disabled={row.locked || isGenerating || videoGeneratingNumber !== null || submitting === step.key}
+                                  style={{
+                                    border: "none",
+                                    backgroundColor: row.locked || isGenerating ? "#1e293b" : "#0ea5e9",
+                                    color: row.locked || isGenerating ? "#64748b" : "#ffffff",
+                                    borderRadius: 7,
+                                    padding: "6px 10px",
+                                    fontSize: 12,
+                                    fontWeight: 600,
+                                    cursor: row.locked || isGenerating ? "not-allowed" : "pointer",
+                                  }}
+                                >
+                                  {isGenerating
+                                    ? "Generating..."
+                                    : hasVideo
+                                      ? "Re-generate"
+                                      : "Generate"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleSceneVideoReview(row.sceneNumber)}
+                                  disabled={!hasVideo}
+                                  style={{
+                                    border: "1px solid #334155",
+                                    backgroundColor: "#0b1220",
+                                    color: hasVideo ? "#cbd5e1" : "#64748b",
+                                    borderRadius: 7,
+                                    padding: "6px 10px",
+                                    fontSize: 12,
+                                    fontWeight: 600,
+                                    cursor: hasVideo ? "pointer" : "not-allowed",
+                                  }}
+                                >
+                                  {isReviewOpen ? "Hide Review" : "Review"}
+                                </button>
+                              </div>
+
+                              {isReviewOpen && hasVideo && (
+                                <video
+                                  src={videoUrl}
+                                  controls
+                                  style={{
+                                    width: "100%",
+                                    maxWidth: 360,
+                                    aspectRatio: "9 / 16",
+                                    borderRadius: 8,
+                                    border: "1px solid #334155",
+                                    display: "block",
+                                  }}
+                                />
                               )}
                             </div>
                           );

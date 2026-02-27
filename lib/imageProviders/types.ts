@@ -1,4 +1,5 @@
 export type ImageProviderId =
+  | "kie:nano-banana-2"
   | "kie:nano-banana-pro"
   | "kie:seedream-4.5-edit";
 
