@@ -1091,6 +1091,7 @@ async function runJob(
                 productId,
                 runId: job.runId ?? null,
                 creatorVisualPrompt: avatarResult.videoPrompt,
+                characterName: String(payload?.characterName ?? "").trim() || null,
                 upstreamJobId: jobId,
               },
             },
@@ -1143,11 +1144,12 @@ async function runJob(
           if (normalized === "SUCCEEDED") {
             const imageUrl =
               typeof raw === "string" ? null : extractImageUrl(raw as Record<string, unknown>);
+            const requestedCharacterName = String(payload?.characterName ?? "").trim();
             await saveCharacterAvatarImage(productId, { taskId: seedTaskId, imageUrl });
             await saveCharacterToTable({
               productId,
               runId: job.runId ?? null,
-              name: generateRandomCharacterName(),
+              name: requestedCharacterName || generateRandomCharacterName(),
               seedVideoUrl: imageUrl ?? undefined,
               seedVideoTaskId: seedTaskId,
               soraCharacterId: seedTaskId,

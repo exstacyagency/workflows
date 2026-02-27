@@ -10,6 +10,7 @@ import { saveCharacterAnchorPrompt } from "@/lib/productCharacterStore";
 const StartCharacterPipelineSchema = z.object({
   productId: z.string().trim().min(1, "productId is required"),
   manualDescription: z.string().trim().max(1200).optional().nullable(),
+  characterName: z.string().trim().min(1).max(120).optional().nullable(),
   runId: z.string().trim().min(1).max(200).optional().nullable(),
 });
 const CREATOR_AVATAR_JOB_TYPE = "CREATOR_AVATAR_GENERATION" as JobType;
@@ -38,6 +39,7 @@ export async function POST(req: NextRequest) {
 
     const productId = parsed.data.productId;
     const manualDescription = parsed.data.manualDescription?.trim() || null;
+    const characterName = parsed.data.characterName?.trim() || null;
     if (manualDescription) {
       const requiredFields = [
         "Age:",
@@ -143,6 +145,7 @@ export async function POST(req: NextRequest) {
           projectId: product.projectId,
           productId,
           manualDescription,
+          characterName,
           pipeline: "character_generation_v2",
         },
       },
