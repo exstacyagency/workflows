@@ -18,6 +18,7 @@ const BodySchema = z.object({
   storyboardId: z.string().min(1),
   productId: z.string().trim().min(1).max(200).optional(),
   runId: z.string().trim().min(1).max(200).optional(),
+  sceneNumber: z.number().int().positive().optional(),
   forceNew: z.boolean().optional().default(false),
 });
 
@@ -69,6 +70,7 @@ export async function POST(req: NextRequest) {
     const { projectId, scriptId, storyboardId, forceNew } = parsed.data;
     const requestedProductId = parsed.data.productId ? String(parsed.data.productId).trim() : "";
     const requestedRunId = parsed.data.runId ? String(parsed.data.runId).trim() : "";
+    const requestedSceneNumber = parsed.data.sceneNumber ?? null;
     let effectiveRunId: string | null = null;
     let effectiveProductId: string | null = null;
 
@@ -180,6 +182,7 @@ export async function POST(req: NextRequest) {
         scriptId,
         effectiveProductId ?? "no_product",
         effectiveRunId ?? "no_run",
+        requestedSceneNumber !== null ? `scene:${requestedSceneNumber}` : "all",
         ...(forceNonce ? [`force:${forceNonce}`] : []),
       ]);
 
@@ -237,6 +240,7 @@ export async function POST(req: NextRequest) {
             projectId,
             storyboardId,
             scriptId,
+            ...(requestedSceneNumber !== null ? { sceneNumber: requestedSceneNumber } : {}),
             ...(effectiveProductId ? { productId: effectiveProductId } : {}),
             idempotencyKey,
             ...(effectiveRunId ? { runId: effectiveRunId } : {}),
@@ -287,6 +291,7 @@ export async function POST(req: NextRequest) {
       scriptId,
       effectiveProductId ?? "no_product",
       effectiveRunId ?? "no_run",
+      requestedSceneNumber !== null ? `scene:${requestedSceneNumber}` : "all",
       ...(forceNonce ? [`force:${forceNonce}`] : []),
     ]);
 
@@ -324,6 +329,7 @@ export async function POST(req: NextRequest) {
             projectId,
             storyboardId,
             scriptId,
+            ...(requestedSceneNumber !== null ? { sceneNumber: requestedSceneNumber } : {}),
             ...(effectiveProductId ? { productId: effectiveProductId } : {}),
             ...(forceNew ? { forceNew: true } : {}),
             idempotencyKey,

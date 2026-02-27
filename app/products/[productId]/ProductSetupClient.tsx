@@ -1,5 +1,6 @@
 "use client";
 
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -193,10 +194,13 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
   const [selectedRunId, setSelectedRunId] = useState<string | null>(product.selectedRunId ?? null);
   const [selectedCharacterIds, setSelectedCharacterIds] = useState<string[]>([]);
   const [selectedPresetId, setSelectedPresetId] = useState<string>("ambitious-professional");
+  const [newCharacterName, setNewCharacterName] = useState<string>("");
   const [customFields, setCustomFields] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [pipelineStatus, setPipelineStatus] = useState<CharacterPipelineStatusResponse | null>(null);
   const [anchorPreviewOpen, setAnchorPreviewOpen] = useState(false);
+  const [avatarPreview, setAvatarPreview] = useState<{ url: string; name: string } | null>(null);
+  const [isMounted, setIsMounted] = useState(false);
 
   const selectedPreset = CHARACTER_PRESETS.find((p) => p.id === selectedPresetId) ?? CHARACTER_PRESETS[0];
   const isCustom = selectedPresetId === "custom";
@@ -243,7 +247,8 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
     !isGenerating &&
     !hasInFlightStage &&
     resolvedAnchor.trim().length > 0 &&
-    missingFields.length === 0;
+    missingFields.length === 0 &&
+    newCharacterName.trim().length <= 120;
   const hasFailedStage = useMemo(() => stages.some((s) => s.status === "FAILED"), [stages]);
 
   const effectiveCharacterId =
@@ -257,6 +262,26 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
     product.characters.length > 0 && selectedCharacterIds.length === product.characters.length;
 
   useEffect(() => { setSelectedCharacterIds([]); }, [selectedRunId, product.characters.length]);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!avatarPreview) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setAvatarPreview(null);
+      }
+    };
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [avatarPreview]);
 
   const handleRunChange = useCallback(
     (value: string | null) => {
@@ -280,12 +305,14 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
         body: JSON.stringify({
           productId: product.id,
           manualDescription: resolvedAnchor,
+          characterName: newCharacterName.trim() || null,
           runId: selectedRunId,
         }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(extractError(data, "Failed to start character generation"));
       await refreshStatus();
+      setNewCharacterName("");
       setAddingCharacter(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
@@ -391,6 +418,17 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
       <div className="space-y-4">
         {/* Preset grid */}
         <div>
+          <div className="space-y-1 mb-3">
+            <label className="text-xs text-slate-400">Character Name (optional)</label>
+            <input
+              type="text"
+              value={newCharacterName}
+              onChange={(e) => setNewCharacterName(e.target.value)}
+              placeholder="e.g. Maya"
+              maxLength={120}
+              className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-sky-500 focus:outline-none"
+            />
+          </div>
           <p className="text-xs text-slate-400 mb-2">Character archetype</p>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             {CHARACTER_PRESETS.map((preset) => (
@@ -564,6 +602,29 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
           </>
         ) : (
           <div className="space-y-4">
+            {resolvedAvatarImageUrl && (
+              <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+                <p className="mb-2 text-xs text-slate-400">Current avatar</p>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setAvatarPreview({
+                      url: resolvedAvatarImageUrl,
+                      name: product.characters[0]?.name ?? product.name,
+                    })
+                  }
+                  className="inline-flex rounded border border-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                >
+                  <img
+                    src={resolvedAvatarImageUrl}
+                    alt="Current character avatar"
+                    style={{ height: "120px", width: "80px", objectFit: "cover", objectPosition: "top", display: "block" }}
+                    className="rounded cursor-zoom-in"
+                  />
+                </button>
+              </div>
+            )}
+
             <div className="flex items-center justify-between">
               <p className="text-sm font-medium text-emerald-300">
                 {product.characters.length} Character{product.characters.length !== 1 ? "s" : ""} Ready
@@ -683,12 +744,19 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
                     )}
                   </div>
                   {char.seedVideoUrl && (
-                    <img
-                      src={char.seedVideoUrl}
-                      alt="Character avatar"
-                      style={{ height: "96px", width: "64px", objectFit: "cover", objectPosition: "top", display: "block" }}
-                      className="rounded border border-slate-700"
-                    />
+                    <button
+                      type="button"
+                      onClick={() => setAvatarPreview({ url: char.seedVideoUrl!, name: char.name })}
+                      className="inline-flex rounded border border-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                    >
+                      <img
+                        src={char.seedVideoUrl}
+                        alt={`${char.name} avatar`}
+                        onClick={() => setAvatarPreview({ url: char.seedVideoUrl!, name: char.name })}
+                        style={{ height: "96px", width: "64px", objectFit: "cover", objectPosition: "top", display: "block" }}
+                        className="rounded cursor-zoom-in"
+                      />
+                    </button>
                   )}
                   <div className="space-y-1 pt-1">
                     {CHARACTER_PROFILE_KEYS.map((key) => (
@@ -734,6 +802,70 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
           </div>
         )}
       </section>
+
+      {isMounted &&
+        avatarPreview &&
+        createPortal(
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 2147483647,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: "rgba(0, 0, 0, 0.8)",
+              padding: 16,
+            }}
+            onClick={() => setAvatarPreview(null)}
+          >
+            <div
+              style={{
+                width: "100%",
+                maxWidth: 360,
+                borderRadius: 12,
+                border: "1px solid #334155",
+                backgroundColor: "#020617",
+                padding: 12,
+                boxSizing: "border-box",
+              }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div style={{ marginBottom: 8, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <p style={{ margin: 0, fontSize: 14, fontWeight: 500, color: "#e2e8f0" }}>{avatarPreview.name}</p>
+                <button
+                  type="button"
+                  onClick={() => setAvatarPreview(null)}
+                  style={{
+                    borderRadius: 6,
+                    border: "1px solid #334155",
+                    backgroundColor: "#0f172a",
+                    padding: "4px 8px",
+                    fontSize: 12,
+                    color: "#e2e8f0",
+                    cursor: "pointer",
+                  }}
+                >
+                  Close
+                </button>
+              </div>
+              <img
+                src={avatarPreview.url}
+                alt={`${avatarPreview.name} avatar preview`}
+                style={{
+                  display: "block",
+                  margin: "0 auto",
+                  maxHeight: "60vh",
+                  width: "auto",
+                  maxWidth: "100%",
+                  borderRadius: 8,
+                  border: "1px solid #334155",
+                }}
+              />
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
