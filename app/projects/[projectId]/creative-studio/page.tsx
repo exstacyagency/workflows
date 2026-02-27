@@ -4098,7 +4098,16 @@ export default function CreativeStudioPage() {
                       const lastFrameImageUrl = String(
                         panel?.lastFrameImageUrl || (panel as any)?.lastFrameUrl || "",
                       ).trim();
-                      const hasImages = Boolean(firstFrameImageUrl || lastFrameImageUrl);
+                      // Review should only unlock when this run has a completed
+                      // first-frame job for this specific scene and URLs exist.
+                      const imageJobForScene = jobsInActiveRun.find((job) => {
+                        if (job.type !== "VIDEO_IMAGE_GENERATION") return false;
+                        if (job.status !== "COMPLETED") return false;
+                        const payload = (job.payload as any) ?? {};
+                        const tasks = Array.isArray(payload.tasks) ? payload.tasks : [];
+                        return tasks.some((t: any) => Number(t.sceneNumber) === sceneNumber);
+                      });
+                      const hasImages = Boolean(imageJobForScene && (firstFrameImageUrl || lastFrameImageUrl));
                       const videoUrl = getSceneVideoUrl(panel);
                       const hasVideo = Boolean(videoUrl);
                       return {

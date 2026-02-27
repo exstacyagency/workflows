@@ -115,9 +115,7 @@ function buildFirstFramePrompt(args: {
   bRollSuggestions: string[];
   characterName: string;
   characterDescription: string;
-  productReferenceImageUrl: string;
   previousSceneLastFrameImageUrl: string | null;
-  scene1AnchorUrl: string | null;
 }): string {
   const {
     sceneNumber,
@@ -131,9 +129,7 @@ function buildFirstFramePrompt(args: {
     bRollSuggestions,
     characterName,
     characterDescription,
-    productReferenceImageUrl,
     previousSceneLastFrameImageUrl,
-    scene1AnchorUrl,
   } = args;
   const broll = bRollSuggestions.filter(Boolean).join(" | ");
   const creatorPresent =
@@ -141,19 +137,9 @@ function buildFirstFramePrompt(args: {
       ? "Creator is visible and speaking to camera."
       : "B-roll scene: creator voiceover is present but creator is NOT shown.";
 
-  const hasBothAnchors =
-    !!previousSceneLastFrameImageUrl &&
-    !!scene1AnchorUrl &&
-    previousSceneLastFrameImageUrl !== scene1AnchorUrl;
-  const hasThreeAnchors = hasBothAnchors && !!productReferenceImageUrl;
-
-  const continuityLine = hasThreeAnchors
-    ? "CONTINUITY: Three anchor reference images are provided. The FIRST is the Scene 1 establishing frame — match this exactly for creator face, wardrobe, room, and lighting for the entire video. The SECOND is the immediately preceding scene — match this for moment-to-moment visual flow. The THIRD is the product image — match packaging, label text, colors, and container shape exactly. All three must be honored."
-    : hasBothAnchors
-      ? "CONTINUITY: Two anchor reference images are provided. The FIRST is the Scene 1 establishing frame — match this exactly for creator face, wardrobe, room, and lighting for the entire video. The SECOND is the immediately preceding scene — match this for moment-to-moment visual flow. Both must be honored."
-    : previousSceneLastFrameImageUrl
-      ? "CONTINUITY: The first reference image is the previous scene. Match exactly: same creator face, same room, same lighting, same product. This is a direct continuation."
-      : "";
+  const continuityLine = previousSceneLastFrameImageUrl
+    ? "CONTINUITY: Three reference images are provided. The FIRST is the previous scene — match exactly: same creator face, same room, same build, same eyes, same lighting, same time of day, same window light, same product. This is a direct continuation. The SECOND is the creator avatar — match face, wardrobe, and hair exactly throughout. The THIRD is the product reference — match packaging, label text, colors, and container shape exactly."
+    : "CONTINUITY: Two reference images are provided. The FIRST is the creator avatar — match face, build, eyes, and hair exactly. The SECOND is the product reference — match packaging, label text, colors, and container shape exactly.";
 
   return [
     "STYLE: Authentic smartphone UGC. Raw image content only — NO UI chrome, NO app interface, NO status bar, NO Instagram/TikTok frame, NO social media overlay, NO profile header, NO message bar, NO screen recording frame. Just the image itself. NOT cinematic. NOT a production still. NOT commercial photography.",
@@ -168,7 +154,6 @@ function buildFirstFramePrompt(args: {
     environment ? `Environment: ${environment}` : "",
     productPlacement ? `Product placement: ${productPlacement}` : "",
     broll ? `Text overlays / b-roll intent: ${broll}` : "",
-    `Use this product reference image exactly for packaging/label details: ${productReferenceImageUrl}`,
     "Realism: ultra-realistic.",
     "Detail level: high skin and fabric texture detail.",
     "Natural skin imperfections: pores, subtle texture visible.",
@@ -382,35 +367,24 @@ export async function POST(req: NextRequest) {
   for (const scene of scenesWithContext) {
     scenesByNumber.set(scene.sceneNumber, scene);
   }
-  const scene1 = scenesByNumber.get(1) ?? null;
-  const scene1AnchorUrlRaw = scene1?.lastFrameImageUrl || scene1?.firstFrameImageUrl || null;
-  const scene1AnchorUrl = isS3Url(scene1AnchorUrlRaw) ? scene1AnchorUrlRaw : null;
-
   const prompts = targetScenes.map((scene) => {
+    const isScene1 = scene.sceneNumber === 1;
     const previousScene = scenesByNumber.get(scene.sceneNumber - 1) ?? null;
-    const previousSceneLastFrameImageUrlRaw =
-      previousScene?.lastFrameImageUrl || previousScene?.firstFrameImageUrl || null;
-    const previousSceneLastFrameImageUrl =
-      isS3Url(previousSceneLastFrameImageUrlRaw) ? previousSceneLastFrameImageUrlRaw : null;
-    if (scene.sceneNumber > 1 && !scene1AnchorUrl) {
+    const previousSceneFirstFrameImageUrlRaw =
+      previousScene?.firstFrameImageUrl || previousScene?.lastFrameImageUrl || null;
+    const previousSceneLastFrameImageUrl = isScene1
+      ? null
+      : isS3Url(previousSceneFirstFrameImageUrlRaw)
+        ? previousSceneFirstFrameImageUrlRaw
+        : null;
+    if (!isScene1 && !previousSceneLastFrameImageUrl) {
       throw new Error(
-        "Scene 1 anchor image on S3 is required for continuity on scenes after scene 1.",
+        `Scene ${scene.sceneNumber} requires previous scene first-frame image on S3 (scene ${scene.sceneNumber - 1}).`,
       );
     }
-    if (scene.sceneNumber > 1 && !previousSceneLastFrameImageUrl) {
-      throw new Error(
-        `Scene ${scene.sceneNumber} requires previous scene continuity image on S3 (scene ${scene.sceneNumber - 1}).`,
-      );
-    }
-    const anchorIsSameAsPrevious =
-      !!scene1AnchorUrl &&
-      !!previousSceneLastFrameImageUrl &&
-      scene1AnchorUrl === previousSceneLastFrameImageUrl;
-    const referenceImageUrls = [
-      anchorIsSameAsPrevious ? null : scene1AnchorUrl,
-      productReferenceImageUrl,
-    ]
-      .filter((url): url is string => typeof url === "string" && url.length > 0);
+    const referenceImageUrls = [productReferenceImageUrl].filter(
+      (url): url is string => typeof url === "string" && url.length > 0,
+    );
 
     return {
       frameIndex: scene.sceneNumber * 2,
@@ -429,9 +403,7 @@ export async function POST(req: NextRequest) {
         bRollSuggestions: scene.bRollSuggestions,
         characterName: resolvedCharacterName,
         characterDescription: resolvedCharacterDescription,
-        productReferenceImageUrl,
         previousSceneLastFrameImageUrl,
-        scene1AnchorUrl,
       }),
       inputImageUrl: resolvedAvatarImageUrl,
       referenceImageUrls,

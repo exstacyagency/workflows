@@ -599,7 +599,7 @@ panelType rules:
 characterName: REQUIRED. copy exactly from CHARACTER NAME context.
 characterDescription: REQUIRED. copy exactly from CHARACTER DESCRIPTION context.
 characterAnchor: REQUIRED. copy exactly from CHARACTER ANCHOR context.
-environment consistency: Scene 1 environment is canonical. Use the exact same environment description string for every panel.
+environment consistency: Scene 1 environment is canonical. Use the exact same environment description string for every panel. Environment must always specify time of day explicitly (e.g. "night — window completely dark outside" or "midday — bright natural window light"). Never use ambiguous terms like "evening light".
 UGC conversion style: creator-native, handheld-smartphone realism, direct-response pacing, fast early hook, clear product value, no cinematic polish.
 
 TIER 3 - CREATIVE CONTEXT (inform visuals, don't force)
