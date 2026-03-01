@@ -112,6 +112,9 @@ const WORKER_JOB_MAX_RUNTIME_MS = Number(cfg.raw("WORKER_JOB_MAX_RUNTIME_MS") ??
 const SCRIPT_JOB_MAX_RUNTIME_MS = Number(
   cfg.raw("SCRIPT_JOB_MAX_RUNTIME_MS") ?? 45 * 60_000,
 );
+const VIDEO_GENERATION_JOB_MAX_RUNTIME_MS = Number(
+  cfg.raw("VIDEO_GENERATION_JOB_MAX_RUNTIME_MS") ?? 25 * 60_000,
+);
 const JOB_TIMEOUT_RECOVERY_INTERVAL_MS = Number(
   cfg.raw("JOB_TIMEOUT_RECOVERY_INTERVAL_MS") ?? 5 * 60_000,
 );
@@ -119,6 +122,10 @@ const JOB_RUNNING_STALE_MS = Number(cfg.raw("JOB_RUNNING_STALE_MS") ?? 10 * 60_0
 const SCRIPT_JOB_RUNNING_STALE_MS = Number(
   cfg.raw("SCRIPT_JOB_RUNNING_STALE_MS") ??
     Math.max(60 * 60_000, SCRIPT_JOB_MAX_RUNTIME_MS + 15 * 60_000),
+);
+const VIDEO_GENERATION_JOB_RUNNING_STALE_MS = Number(
+  cfg.raw("VIDEO_GENERATION_JOB_RUNNING_STALE_MS") ??
+    Math.max(35 * 60_000, VIDEO_GENERATION_JOB_MAX_RUNTIME_MS + 10 * 60_000),
 );
 const AD_QUALITY_GATE_JOB_TYPE = "AD_QUALITY_GATE" as JobType;
 const CREATOR_AVATAR_JOB_TYPE = "CREATOR_AVATAR_GENERATION" as JobType;
@@ -211,6 +218,8 @@ async function runWithJobTypeMaxRuntime<T>(
   const timeoutMs =
     jobType === JobType.SCRIPT_GENERATION
       ? Math.max(5 * 60_000, SCRIPT_JOB_MAX_RUNTIME_MS)
+      : jobType === JobType.VIDEO_GENERATION
+        ? Math.max(5 * 60_000, VIDEO_GENERATION_JOB_MAX_RUNTIME_MS)
       : Math.max(60_000, WORKER_JOB_MAX_RUNTIME_MS);
   let timeout: ReturnType<typeof setTimeout> | null = null;
   try {
@@ -826,6 +835,7 @@ async function runJob(
         const productId = String(payload?.productId ?? "").trim() || null;
         const characterName = String(payload?.characterName ?? "").trim() || null;
         const characterDescription = String(payload?.characterDescription ?? "").trim() || null;
+        const characterGender = String(payload?.characterGender ?? "").trim() || null;
         const storyboardMode = String(payload?.storyboardMode ?? "").trim() === "manual" ? "manual" : "ai";
         const manualPanels = Array.isArray(payload?.manualPanels) ? payload.manualPanels : undefined;
         if (!scriptId) {
@@ -839,6 +849,7 @@ async function runJob(
             productId,
             characterName,
             characterDescription,
+            characterGender,
             storyboardMode,
             manualPanels,
           });
@@ -884,6 +895,7 @@ async function runJob(
         const productId = String(payload?.productId ?? "").trim() || null;
         const characterName = String(payload?.characterName ?? "").trim() || null;
         const characterDescription = String(payload?.characterDescription ?? "").trim() || null;
+        const characterGender = String(payload?.characterGender ?? "").trim() || null;
         if (!storyboardId) {
           await markFailed({ jobId, error: "Invalid payload: missing storyboardId" });
           return;
@@ -911,6 +923,7 @@ async function runJob(
             productId,
             characterName,
             characterDescription,
+            characterGender,
           });
           console.log("[Worker][VIDEO_PROMPT_GENERATION] Video prompt generation completed", {
             jobId,
@@ -1326,6 +1339,9 @@ async function recoverTimedOutRunningJobs(trigger: "startup" | "interval") {
   const now = Date.now();
   const staleBeforeIso = new Date(now - JOB_RUNNING_STALE_MS).toISOString();
   const scriptStaleBeforeIso = new Date(now - SCRIPT_JOB_RUNNING_STALE_MS).toISOString();
+  const videoGenerationStaleBeforeIso = new Date(
+    now - VIDEO_GENERATION_JOB_RUNNING_STALE_MS,
+  ).toISOString();
   const recoveredCount = await prisma.$executeRaw`
     UPDATE job
     SET "status" = CAST('FAILED' AS "JobStatus"),
@@ -1338,7 +1354,12 @@ async function recoverTimedOutRunningJobs(trigger: "startup" | "interval") {
           AND "updatedAt" < ${scriptStaleBeforeIso}::timestamptz
         )
         OR (
+          "type" = CAST('VIDEO_GENERATION' AS "JobType")
+          AND "updatedAt" < ${videoGenerationStaleBeforeIso}::timestamptz
+        )
+        OR (
           "type" <> CAST('SCRIPT_GENERATION' AS "JobType")
+          AND "type" <> CAST('VIDEO_GENERATION' AS "JobType")
           AND "updatedAt" < ${staleBeforeIso}::timestamptz
         )
       )

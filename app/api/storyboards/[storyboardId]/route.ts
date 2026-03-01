@@ -9,6 +9,7 @@ type StoryboardPanelResponse = {
   sceneNumber: number;
   approved: boolean;
   panelType: "ON_CAMERA" | "B_ROLL_ONLY";
+  voiceoverOnly: boolean;
   beatLabel: string;
   startTime: string;
   endTime: string;
@@ -26,7 +27,6 @@ type StoryboardPanelResponse = {
   cameraDirection: string;
   productPlacement: string;
   bRollSuggestions: string[];
-  transitionType: string;
 };
 
 type StoryboardResponseBody = {
@@ -119,6 +119,7 @@ function normalizePanelFromRaw(args: {
   sceneId: string;
   sceneNumber: number;
   approved: boolean;
+  voiceoverOnlyFromDb?: boolean | null;
   firstFrameImageUrlFromDb?: string | null;
   lastFrameImageUrlFromDb?: string | null;
 }): StoryboardPanelResponse {
@@ -138,6 +139,7 @@ function normalizePanelFromRaw(args: {
     sceneNumber: args.sceneNumber,
     approved: args.approved,
     panelType,
+    voiceoverOnly: Boolean(args.voiceoverOnlyFromDb ?? raw.voiceoverOnly ?? raw.voiceover_only),
     beatLabel: asString(raw.beatLabel) || `Beat ${args.sceneNumber}`,
     startTime: asString(raw.startTime),
     endTime: asString(raw.endTime),
@@ -155,7 +157,6 @@ function normalizePanelFromRaw(args: {
     cameraDirection: asString(raw.cameraDirection),
     productPlacement: asString(raw.productPlacement),
     bRollSuggestions: asStringArray(raw.bRollSuggestions),
-    transitionType: asString(raw.transitionType),
   };
 }
 
@@ -167,6 +168,7 @@ function normalizePanelFromInput(value: unknown, index: number): StoryboardPanel
     sceneNumber: index + 1,
     approved: false,
     panelType,
+    voiceoverOnly: Boolean(raw.voiceoverOnly ?? raw.voiceover_only),
     beatLabel: asString(raw.beatLabel) || `Beat ${index + 1}`,
     startTime: asString(raw.startTime),
     endTime: asString(raw.endTime),
@@ -184,7 +186,6 @@ function normalizePanelFromInput(value: unknown, index: number): StoryboardPanel
     cameraDirection: asString(raw.cameraDirection),
     productPlacement: asString(raw.productPlacement),
     bRollSuggestions: asStringArray(raw.bRollSuggestions),
-    transitionType: asString(raw.transitionType),
   };
 }
 
@@ -237,6 +238,7 @@ export async function GET(
           select: {
             id: true,
             sceneNumber: true,
+            voiceoverOnly: true,
             firstFrameImageUrl: true,
             lastFrameImageUrl: true,
             // TODO: Restore after panelType migration runs.
@@ -273,6 +275,7 @@ export async function GET(
         sceneId: scene.id,
         sceneNumber: scene.sceneNumber,
         approved: approvalBySceneId.get(scene.id) ?? false,
+        voiceoverOnlyFromDb: scene.voiceoverOnly,
         firstFrameImageUrlFromDb: scene.firstFrameImageUrl ?? null,
         lastFrameImageUrlFromDb: scene.lastFrameImageUrl ?? null,
       }),
@@ -366,6 +369,7 @@ export async function PATCH(
           data: {
             storyboardId: storyboard.id,
             sceneNumber: index + 1,
+            voiceoverOnly: Boolean(panels[index].voiceoverOnly),
             // TODO: Restore after panelType migration runs.
             // panelType: panels[index].panelType,
             status: "ready",
@@ -398,6 +402,7 @@ export async function PATCH(
           select: {
             id: true,
             sceneNumber: true,
+            voiceoverOnly: true,
             firstFrameImageUrl: true,
             lastFrameImageUrl: true,
             // TODO: Restore after panelType migration runs.
@@ -418,6 +423,7 @@ export async function PATCH(
         sceneId: scene.id,
         sceneNumber: scene.sceneNumber,
         approved: false,
+        voiceoverOnlyFromDb: scene.voiceoverOnly,
         firstFrameImageUrlFromDb: scene.firstFrameImageUrl ?? null,
         lastFrameImageUrlFromDb: scene.lastFrameImageUrl ?? null,
       }),
