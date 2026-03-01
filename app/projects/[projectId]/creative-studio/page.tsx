@@ -191,6 +191,7 @@ type StoryboardPanel = {
   id?: string;
   sceneNumber?: number;
   panelType?: "ON_CAMERA" | "PRODUCT_ONLY" | "B_ROLL_ONLY";
+  voiceoverOnly: boolean;
   beatLabel?: string | null;
   startTime?: string | null;
   endTime?: string | null;
@@ -203,10 +204,9 @@ type StoryboardPanel = {
   cameraDirection?: string | null;
   productPlacement?: string | null;
   bRollSuggestions?: string[] | null;
-  transitionType?: string | null;
   environment?: string | null;
   videoPrompt?: string | null;
-  videoUrl?: string | null;
+  videoUrl: string | null;
   approved?: boolean | null;
   status?: string | null;
   rawJson?: Record<string, unknown> | null;
@@ -541,6 +541,8 @@ export default function CreativeStudioPage() {
   const [imagePromptSaving, setImagePromptSaving] = useState(false);
   const [sceneReviewOpenByNumber, setSceneReviewOpenByNumber] = useState<Record<number, boolean>>({});
   const [sceneVideoReviewOpenByNumber, setSceneVideoReviewOpenByNumber] = useState<Record<number, boolean>>({});
+  const [sceneAdditionalInstructionsByNumber, setSceneAdditionalInstructionsByNumber] = useState<Record<number, string>>({});
+  const [regenerateModalScene, setRegenerateModalScene] = useState<number | null>(null);
   const [sceneGeneratingNumber, setSceneGeneratingNumber] = useState<number | null>(null);
   const [videoGeneratingNumber, setVideoGeneratingNumber] = useState<number | null>(null);
   const [sceneApprovingNumber, setSceneApprovingNumber] = useState<number | null>(null);
@@ -1013,6 +1015,8 @@ export default function CreativeStudioPage() {
     setImagePromptSaving(false);
     setSceneReviewOpenByNumber({});
     setSceneVideoReviewOpenByNumber({});
+    setSceneAdditionalInstructionsByNumber({});
+    setRegenerateModalScene(null);
     setSceneGeneratingNumber(null);
     setVideoGeneratingNumber(null);
     setSceneApprovingNumber(null);
@@ -1212,7 +1216,7 @@ export default function CreativeStudioPage() {
     return String(panel.videoUrl || (panel.rawJson as any)?.videoUrl || (panel.rawJson as any)?.video_url || "").trim();
   }
 
-  function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPanel {
+function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPanel {
     const raw = panel && typeof panel === "object" ? (panel as Record<string, unknown>) : {};
     const asValue = (value: unknown) => (typeof value === "string" ? value.trim() : "");
     const panelTypeRaw = asValue(raw.panelType);
@@ -1237,6 +1241,7 @@ export default function CreativeStudioPage() {
       sceneNumber,
       approved: Boolean(raw.approved),
       panelType,
+      voiceoverOnly: Boolean((raw as any).voiceoverOnly ?? (raw as any).voiceover_only),
       beatLabel: `Beat ${index + 1}`,
       startTime: asValue(raw.startTime),
       endTime: asValue(raw.endTime),
@@ -1254,6 +1259,10 @@ export default function CreativeStudioPage() {
         asValue(raw.last_frame_url) ||
         null,
       videoPrompt: asValue(raw.videoPrompt) || null,
+      videoUrl:
+        asValue(raw.videoUrl) ||
+        asValue(raw.video_url) ||
+        null,
       characterAction: characterAction || null,
       characterName: characterName || null,
       characterDescription: characterDescription || null,
@@ -1266,7 +1275,6 @@ export default function CreativeStudioPage() {
             .filter((entry) => !/^character\s*handle\s*:/i.test(entry))
             .filter(Boolean)
         : [],
-      transitionType: asValue(raw.transitionType),
     };
   }
 
@@ -1276,6 +1284,7 @@ export default function CreativeStudioPage() {
       sceneNumber: index + 1,
       approved: false,
       panelType: "ON_CAMERA",
+      voiceoverOnly: false,
       beatLabel: `Beat ${index + 1}`,
       startTime: anchorTime,
       endTime: anchorTime,
@@ -1285,6 +1294,7 @@ export default function CreativeStudioPage() {
       firstFrameImageUrl: null,
       lastFrameImageUrl: null,
       videoPrompt: null,
+      videoUrl: null,
       characterAction: null,
       characterName: previousPanel?.characterName ?? null,
       characterDescription: previousPanel?.characterDescription ?? null,
@@ -1292,7 +1302,6 @@ export default function CreativeStudioPage() {
       cameraDirection: "",
       productPlacement: "",
       bRollSuggestions: [],
-      transitionType: "",
     };
   }
 
@@ -1308,7 +1317,6 @@ export default function CreativeStudioPage() {
       `Camera Direction: ${panel.cameraDirection ?? ""}`,
       `Product Placement: ${panel.productPlacement ?? ""}`,
       `B-roll Suggestions:\n${bRollLines}`,
-      `Transition Type: ${panel.transitionType ?? ""}`,
     ].join("\n\n");
   }
 
@@ -1337,7 +1345,6 @@ export default function CreativeStudioPage() {
     cameraDirection: string;
     productPlacement: string;
     bRollSuggestions: string[];
-    transitionType: string;
   } {
     const labelMap: Array<{ label: string; key: string }> = [
       { label: "Character Name", key: "characterName" },
@@ -1347,7 +1354,6 @@ export default function CreativeStudioPage() {
       { label: "Camera Direction", key: "cameraDirection" },
       { label: "Product Placement", key: "productPlacement" },
       { label: "B-roll Suggestions", key: "bRollSuggestions" },
-      { label: "Transition Type", key: "transitionType" },
     ];
     const sections: Record<string, string> = {};
     let activeKey: string | null = null;
@@ -1408,7 +1414,6 @@ export default function CreativeStudioPage() {
       cameraDirection: parseText("cameraDirection", fallbackPanel.cameraDirection ?? ""),
       productPlacement: parseText("productPlacement", fallbackPanel.productPlacement ?? ""),
       bRollSuggestions: parseBroll(),
-      transitionType: parseText("transitionType", fallbackPanel.transitionType ?? ""),
     };
   }
 
@@ -2227,7 +2232,6 @@ export default function CreativeStudioPage() {
       bRollSuggestions: [...bRollA, ...bRollB],
       characterAction: combinedAction,
       productPlacement: combinedPlacement,
-      transitionType: panelB.transitionType ?? panelA.transitionType,
       beatLabel: `${panelA.beatLabel} + ${panelB.beatLabel}`,
     };
   }
@@ -2319,7 +2323,7 @@ export default function CreativeStudioPage() {
             : null,
           cameraDirection: enforceBlankLineBetweenTextLines(normalized.cameraDirection ?? ""),
           productPlacement: enforceBlankLineBetweenTextLines(normalized.productPlacement ?? ""),
-          transitionType: enforceBlankLineBetweenTextLines(normalized.transitionType ?? ""),
+          voiceoverOnly: Boolean(normalized.voiceoverOnly),
           bRollSuggestions: (normalized.bRollSuggestions ?? [])
             .map((entry) => enforceBlankLineBetweenTextLines(entry))
             .filter(Boolean),
@@ -3296,7 +3300,7 @@ export default function CreativeStudioPage() {
     }));
   }
 
-  async function handleGenerateScene(sceneNumber: number) {
+  async function handleGenerateScene(sceneNumber: number, additionalInstructions?: string) {
     const videoImagesStep = steps.find((step) => step.key === "video_images");
     if (!videoImagesStep) return;
     setSceneActionError(null);
@@ -3342,8 +3346,13 @@ export default function CreativeStudioPage() {
         panels: nextPanels,
       };
     });
+    const resolvedAdditionalInstructions =
+      String(additionalInstructions ?? sceneAdditionalInstructionsByNumber[sceneNumber] ?? "").trim();
     const ok = await runStep(videoImagesStep, {
       sceneNumber,
+      ...(resolvedAdditionalInstructions
+        ? { additionalInstructions: resolvedAdditionalInstructions }
+        : {}),
       runNonce: `scene-${sceneNumber}-${Date.now()}`,
     });
     if (ok) {
@@ -4452,7 +4461,11 @@ export default function CreativeStudioPage() {
                               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                                 <button
                                   type="button"
-                                  onClick={() => void handleGenerateScene(row.sceneNumber)}
+                                  onClick={() =>
+                                    showRegenerateLabel
+                                      ? setRegenerateModalScene(row.sceneNumber)
+                                      : void handleGenerateScene(row.sceneNumber)
+                                  }
                                   disabled={row.locked || isGenerating || sceneGeneratingNumber !== null || submitting === step.key}
                                   style={{
                                     border: "none",
@@ -4530,6 +4543,80 @@ export default function CreativeStudioPage() {
                           );
                         })}
                       </div>
+                      {regenerateModalScene !== null && (
+                        <div
+                          style={{
+                            position: "fixed", inset: 0, zIndex: 1000,
+                            background: "rgba(0,0,0,0.7)",
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                          }}
+                          onClick={() => setRegenerateModalScene(null)}
+                        >
+                          <div
+                            style={{
+                              background: "#1e293b", border: "1px solid #334155",
+                              borderRadius: 12, padding: 24, width: 480, maxWidth: "90vw",
+                              display: "grid", gap: 16,
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <div style={{ color: "#f1f5f9", fontWeight: 600, fontSize: 15 }}>
+                              Re-generate Scene {regenerateModalScene}
+                            </div>
+                            <div>
+                              <div style={{ color: "#94a3b8", fontSize: 12, marginBottom: 6 }}>
+                                Additional instructions (optional)
+                              </div>
+                              <textarea
+                                autoFocus
+                                placeholder="e.g. only one laptop on the desk"
+                                value={sceneAdditionalInstructionsByNumber[regenerateModalScene] ?? ""}
+                                onChange={(e) =>
+                                  setSceneAdditionalInstructionsByNumber((prev) => ({
+                                    ...prev,
+                                    [regenerateModalScene]: e.target.value,
+                                  }))
+                                }
+                                rows={3}
+                                style={{
+                                  width: "100%", background: "#0f172a",
+                                  border: "1px solid #334155", borderRadius: 6,
+                                  color: "#e2e8f0", fontSize: 13,
+                                  padding: "8px 10px", resize: "vertical", boxSizing: "border-box",
+                                }}
+                              />
+                            </div>
+                            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                              <button
+                                type="button"
+                                onClick={() => setRegenerateModalScene(null)}
+                                style={{
+                                  background: "transparent", border: "1px solid #334155",
+                                  color: "#94a3b8", borderRadius: 6, padding: "8px 16px", cursor: "pointer",
+                                }}
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const sceneNumber = regenerateModalScene;
+                                  if (sceneNumber === null) return;
+                                  setRegenerateModalScene(null);
+                                  void handleGenerateScene(sceneNumber);
+                                }}
+                                style={{
+                                  background: "#0ea5e9", border: "none",
+                                  color: "#fff", borderRadius: 6, padding: "8px 16px",
+                                  cursor: "pointer", fontWeight: 600,
+                                }}
+                              >
+                                Re-generate
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </>
                   )}
                 </div>
@@ -5206,6 +5293,24 @@ export default function CreativeStudioPage() {
                                   </select>
                                 </div>
                                 <div>
+                                  <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>Voice Mode</div>
+                                  <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                                    <input
+                                      type="checkbox"
+                                      checked={Boolean(panel.voiceoverOnly)}
+                                      onChange={(e) =>
+                                        updateStoryboardDraftPanel(panelIndex, (prev) => ({
+                                          ...prev,
+                                          voiceoverOnly: e.target.checked,
+                                        }))
+                                      }
+                                    />
+                                    <span style={{ color: "#e2e8f0", fontSize: 12 }}>
+                                      Voiceover only (creator present, no lip sync)
+                                    </span>
+                                  </label>
+                                </div>
+                                <div>
                                   <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>Beat</div>
                                   <textarea
                                     value={`Beat ${panelIndex + 1}`}
@@ -5273,7 +5378,6 @@ export default function CreativeStudioPage() {
                                       cameraDirection: parsed.cameraDirection,
                                       productPlacement: parsed.productPlacement,
                                       bRollSuggestions: parsed.bRollSuggestions,
-                                      transitionType: parsed.transitionType,
                                     }));
                                   }}
                                   rows={panel.panelType === "B_ROLL_ONLY" ? 14 : 16}
@@ -5333,7 +5437,6 @@ export default function CreativeStudioPage() {
                                     </div>
                                     <div><strong style={{ color: "#f1f5f9" }}>Camera Direction:</strong> {panel.cameraDirection || "Not provided"}</div>
                                     <div><strong style={{ color: "#f1f5f9" }}>Product Placement:</strong> {panel.productPlacement || "Not provided"}</div>
-                                    <div><strong style={{ color: "#f1f5f9" }}>Transition Type:</strong> {panel.transitionType || "Not provided"}</div>
                                   </>
                                 ) : (
                                   <>
@@ -5349,7 +5452,6 @@ export default function CreativeStudioPage() {
                                         ? (panel.bRollSuggestions ?? []).join(", ")
                                         : "Not provided"}
                                     </div>
-                                    <div><strong style={{ color: "#f1f5f9" }}>Transition Type:</strong> {panel.transitionType || "Not provided"}</div>
                                   </>
                                 )}
                               </div>

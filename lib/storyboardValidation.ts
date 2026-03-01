@@ -9,7 +9,6 @@ type StoryboardPanelForValidation = {
   cameraDirection: string;
   productPlacement: string;
   bRollSuggestions: string[];
-  transitionType: string;
 };
 
 export type StoryboardValidationReport = {

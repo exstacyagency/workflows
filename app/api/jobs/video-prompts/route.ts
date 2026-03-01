@@ -98,6 +98,7 @@ export async function POST(req: NextRequest) {
     let effectiveCharacterId: string | null = null;
     let effectiveCharacterName: string | null = null;
     let effectiveCharacterDescription: string | null = null;
+    let effectiveCharacterGender: string | null = null;
     // Keep idempotency scoped to a single generation attempt.
     // If client does not supply attemptKey, generate a unique nonce per request.
     const attemptKey = parsed.data.attemptKey || `${Date.now()}-${randomUUID()}`;
@@ -266,6 +267,7 @@ export async function POST(req: NextRequest) {
       const firstSceneRaw = asObject(storyboard.scenes[0]?.rawJson) ?? {};
       effectiveCharacterName = effectiveCharacterName || asString(firstSceneRaw.characterName) || null;
       effectiveCharacterDescription = asString(firstSceneRaw.characterDescription) || null;
+      effectiveCharacterGender = asString(firstSceneRaw.characterGender) || null;
     }
 
     if (!effectiveCharacterDescription) {
@@ -298,6 +300,18 @@ export async function POST(req: NextRequest) {
         },
         { status: 400 },
       );
+    }
+
+    if (resolvedProductId) {
+      const productGenderRows = await prisma.$queryRaw<Array<{ characterGender: string | null }>>`
+        SELECT "character_gender" AS "characterGender"
+        FROM "product"
+        WHERE "id" = ${resolvedProductId}
+          AND "project_id" = ${projectId}
+        LIMIT 1
+      `;
+      effectiveCharacterGender =
+        effectiveCharacterGender || asString(productGenderRows[0]?.characterGender) || null;
     }
 
     // Plan check AFTER ownership to avoid leaking project existence via 402.
@@ -396,6 +410,7 @@ export async function POST(req: NextRequest) {
             ...(effectiveCharacterId ? { characterId: effectiveCharacterId } : {}),
             ...(effectiveCharacterName ? { characterName: effectiveCharacterName } : {}),
             ...(effectiveCharacterDescription ? { characterDescription: effectiveCharacterDescription } : {}),
+            ...(effectiveCharacterGender ? { characterGender: effectiveCharacterGender } : {}),
             ...(requestedCharacterHandle ? { characterHandle: requestedCharacterHandle } : {}),
             idempotencyKey,
             ...(effectiveRunId ? { runId: effectiveRunId } : {}),
@@ -443,6 +458,7 @@ export async function POST(req: NextRequest) {
           ...(effectiveCharacterId ? { characterId: effectiveCharacterId } : {}),
           ...(effectiveCharacterName ? { characterName: effectiveCharacterName } : {}),
           ...(effectiveCharacterDescription ? { characterDescription: effectiveCharacterDescription } : {}),
+          ...(effectiveCharacterGender ? { characterGender: effectiveCharacterGender } : {}),
           ...(requestedCharacterHandle ? { characterHandle: requestedCharacterHandle } : {}),
           idempotencyKey,
           ...(effectiveRunId ? { runId: effectiveRunId } : {}),

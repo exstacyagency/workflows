@@ -9,6 +9,7 @@ import { requireProjectOwner } from '../../../../lib/requireProjectOwner';
 import { assertMinPlan, UpgradeRequiredError } from '../../../../lib/billing/requirePlan';
 import { checkRateLimit } from '../../../../lib/rateLimiter';
 import { reserveQuota, rollbackQuota, QuotaExceededError } from '../../../../lib/billing/usage';
+import { sanitizeCharacterDescription } from "@/lib/sanitizeCharacterDescription";
 
 const BodySchema = z.object({
   projectId: z.string().min(1),
@@ -125,6 +126,7 @@ export async function POST(req: NextRequest) {
     let effectiveCharacterId: string | null = null;
     let effectiveCharacterName: string | null = null;
     let effectiveCharacterDescription: string | null = null;
+    let effectiveCharacterGender: string | null = null;
     if (requestedRunId) {
       const run = await prisma.researchRun.findUnique({
         where: { id: requestedRunId },
@@ -140,8 +142,9 @@ export async function POST(req: NextRequest) {
     }
 
     if (requestedProductId) {
-      const productRows = await prisma.$queryRaw<Array<{ id: string }>>`
+      const productRows = await prisma.$queryRaw<Array<{ id: string; characterGender: string | null }>>`
         SELECT "id"
+             , "character_gender" AS "characterGender"
         FROM "product"
         WHERE "id" = ${requestedProductId}
           AND "project_id" = ${projectId}
@@ -154,6 +157,7 @@ export async function POST(req: NextRequest) {
         );
       }
       effectiveProductId = requestedProductId;
+      effectiveCharacterGender = String(productRows[0]?.characterGender ?? "").trim() || null;
     }
 
     if (requestedCharacterId) {
@@ -189,8 +193,24 @@ export async function POST(req: NextRequest) {
         );
       }
       effectiveCharacterId = character.id;
+      if (!effectiveProductId && character.productId) {
+        effectiveProductId = character.productId;
+      }
       effectiveCharacterName = String(character.name ?? "").trim() || null;
-      effectiveCharacterDescription = String(character.creatorVisualPrompt ?? "").trim() || null;
+      effectiveCharacterDescription = sanitizeCharacterDescription(
+        String(character.creatorVisualPrompt ?? "").trim() || null
+      );
+    }
+
+    if (!effectiveCharacterGender && effectiveProductId) {
+      const productGenderRows = await prisma.$queryRaw<Array<{ characterGender: string | null }>>`
+        SELECT "character_gender" AS "characterGender"
+        FROM "product"
+        WHERE "id" = ${effectiveProductId}
+          AND "project_id" = ${projectId}
+        LIMIT 1
+      `;
+      effectiveCharacterGender = String(productGenderRows[0]?.characterGender ?? "").trim() || null;
     }
     if (!effectiveCharacterName || !effectiveCharacterDescription) {
       return NextResponse.json(
@@ -302,6 +322,7 @@ export async function POST(req: NextRequest) {
       ...(effectiveCharacterId ? { characterId: effectiveCharacterId } : {}),
       ...(effectiveCharacterName ? { characterName: effectiveCharacterName } : {}),
       ...(effectiveCharacterDescription ? { characterDescription: effectiveCharacterDescription } : {}),
+      ...(effectiveCharacterGender ? { characterGender: effectiveCharacterGender } : {}),
       storyboardMode,
       ...(manualPanels ? { manualPanels } : {}),
       idempotencyKey,

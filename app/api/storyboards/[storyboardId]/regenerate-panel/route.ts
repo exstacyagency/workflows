@@ -27,7 +27,6 @@ type StoryboardPanel = {
   cameraDirection: string;
   productPlacement: string;
   bRollSuggestions: string[];
-  transitionType: string;
 };
 
 const DEFAULT_ENVIRONMENT_DESCRIPTION =
@@ -172,7 +171,6 @@ function normalizePanel(
     cameraDirection: asString(raw.cameraDirection),
     productPlacement: asString(raw.productPlacement),
     bRollSuggestions: asStringArray(raw.bRollSuggestions),
-    transitionType: asString(raw.transitionType),
   };
 }
 
@@ -226,8 +224,7 @@ Output JSON schema:
   "environment": "string | null",
   "cameraDirection": "string",
   "productPlacement": "string",
-  "bRollSuggestions": ["string"],
-  "transitionType": "string"
+  "bRollSuggestions": ["string"]
 }
 
 Keep the same voice and continuity with surrounding panels. Return ONLY valid JSON.`;
@@ -506,7 +503,6 @@ export async function POST(
       cameraDirection: asString(parsedObject.cameraDirection) || targetPanel.cameraDirection,
       productPlacement: asString(parsedObject.productPlacement) || targetPanel.productPlacement,
       bRollSuggestions: asStringArray(parsedObject.bRollSuggestions),
-      transitionType: asString(parsedObject.transitionType) || targetPanel.transitionType,
     };
 
     return NextResponse.json(
