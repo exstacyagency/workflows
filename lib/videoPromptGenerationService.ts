@@ -5,6 +5,7 @@ import {
   assertProductSetupReferenceReachable,
   assertProductSetupReferenceUrl,
 } from "@/lib/productSetupReferencePolicy";
+import { sanitizeCharacterDescription } from "@/lib/sanitizeCharacterDescription";
 import prisma from '@/lib/prisma';
 import { JobStatus, PanelType } from '@prisma/client';
 import { updateJobStatus } from '@/lib/jobs/updateJobStatus';
@@ -28,7 +29,8 @@ VISUAL IDENTITY (apply to every scene):
 CHARACTER CONSISTENCY:
 - CHARACTER ANCHOR overrides all other character instructions when present
 - Match the anchor description exactly - face, hair, skin, clothing, age
-- If no anchor provided, maintain consistent identity across scenes`;
+- If no anchor provided, maintain consistent identity across scenes
+- Audio delivery: natural human pacing, authentic cadence, real pauses and breath — not polished, not rushed, not performative`;
 
 const UGC_CONVERSION_REQUIRED_LINE =
   "Style target: UGC direct-response conversion ad (not polished commercial).";
@@ -248,6 +250,8 @@ function buildVideoPromptUserPrompt(args: {
   bRollSuggestions: string[];
   characterAnchor: string | null;
   characterDescription: string;
+  genderPresentation: string | null;
+  voiceoverOnly: boolean;
   characterName: string | null;
   hasCreatorRef: boolean;
   hasProductRef: boolean;
@@ -268,6 +272,8 @@ function buildVideoPromptUserPrompt(args: {
     bRollSuggestions,
     characterAnchor,
     characterDescription,
+    genderPresentation,
+    voiceoverOnly,
     characterName,
     hasCreatorRef,
     hasProductRef,
@@ -304,6 +310,7 @@ ${hasProductRef ? "Product: match product reference image exactly." : ""}
 ${characterName ? `Character name: ${characterName}` : ""}
 CHARACTER ANCHOR (non-negotiable, apply exactly):
 ${characterAnchor || characterDescription}
+${genderPresentation ? `Gender presentation: ${genderPresentation}` : ""}
 
 OUTPUT STRUCTURE - use these exact labels:
 
@@ -322,10 +329,13 @@ Cinematography:
 Performance:
 - 0s: [opening action]
 - ${Math.round(durationSec * 0.3)}s: [mid action]
-- ${Math.round(durationSec * 0.7)}s: [product/key moment]
+- ${Math.round(durationSec * 0.7)}s: [${voiceoverOnly ? "creator visible, listening/reacting, mouth closed and neutral — NOT speaking" : "product/key moment"}]
 - ${formatDurationLabel(durationSec)}s: [closing action]
 
-VO: "${vo || "N/A"}"
+${voiceoverOnly
+  ? `VO (voiceover only — do NOT animate lip sync): "${vo || "N/A"}"
+Creator is present but silent. Mouth closed or neutral expression. No speaking motion. Voiceover is audio-only overlay.`
+  : `VO: "${vo || "N/A"}"`}
 
 Audio:
 - [ambient sound description]
@@ -358,6 +368,8 @@ async function generateKlingPromptWithClaude(args: {
   bRollSuggestions: string[];
   characterAnchor: string | null;
   characterDescription: string;
+  genderPresentation: string | null;
+  voiceoverOnly: boolean;
   characterName: string | null;
   hasCreatorRef: boolean;
   hasProductRef: boolean;
@@ -388,6 +400,8 @@ async function generateKlingPromptWithClaude(args: {
     bRollSuggestions: args.bRollSuggestions,
     characterAnchor: args.characterAnchor,
     characterDescription: args.characterDescription,
+    genderPresentation: args.genderPresentation,
+    voiceoverOnly: args.voiceoverOnly,
     characterName: args.characterName,
     hasCreatorRef: args.hasCreatorRef,
     hasProductRef: args.hasProductRef,
@@ -473,6 +487,7 @@ export async function runVideoPromptGeneration(args: {
   characterHandle?: string | null;
   characterName?: string | null;
   characterDescription?: string | null;
+  characterGender?: string | null;
   creatorReferenceImageUrl?: string | null;
   productReferenceImageUrl?: string | null;
 }) {
@@ -516,7 +531,9 @@ export async function runVideoPromptGeneration(args: {
     args.characterHandle ?? null,
   );
   const globalCharacterName = asString(args.characterName ?? null) || null;
-  const globalCharacterDescription = asString(args.characterDescription ?? null) || null;
+  const globalCharacterDescription =
+    sanitizeCharacterDescription(asString(args.characterDescription ?? null)) || null;
+  const globalGenderPresentation = asString(args.characterGender ?? null) || null;
   const effectiveProductId =
     normalizeUrl(args.productId) ||
     normalizeUrl(scriptJobPayload.productId) ||
@@ -576,6 +593,8 @@ export async function runVideoPromptGeneration(args: {
       characterDescription:
         globalCharacterDescription ||
         "Same creator identity as the ad context. Maintain face, hair, clothing, and age consistency.",
+      genderPresentation: globalGenderPresentation,
+      voiceoverOnly: false,
       characterName: globalCharacterName,
       hasCreatorRef: Boolean(sceneReferenceFrames.find((frame) => frame.kind === 'creator')?.url),
       hasProductRef: Boolean(sceneReferenceFrames.find((frame) => frame.kind === 'product')?.url),
@@ -658,10 +677,16 @@ export async function runVideoPromptGeneration(args: {
     const cameraDirection = asString(raw.cameraDirection);
     const productPlacement = asString(raw.productPlacement);
     const bRollSuggestions = asStringArray(raw.bRollSuggestions);
+    const voiceoverOnly = Boolean((scene as any).voiceoverOnly ?? raw.voiceoverOnly);
+    const genderPresentation =
+      asString((raw as any).genderPresentation) ||
+      asString((raw as any).characterGender) ||
+      globalGenderPresentation ||
+      null;
     const characterDescription =
-      asString((raw as any).characterDescription) ||
-      asString((raw as any).characterAnchor) ||
-      globalCharacterDescription ||
+      sanitizeCharacterDescription(asString((raw as any).characterDescription)) ||
+      sanitizeCharacterDescription(asString((raw as any).characterAnchor)) ||
+      sanitizeCharacterDescription(globalCharacterDescription) ||
       (characterHandle
         ? `Creator handle ${normalizeCharacterHandleForPrompt(characterHandle)}. Keep identity and styling consistent across scenes.`
         : "Same creator identity across scenes. Keep face, hair, clothing, and age consistent.");
@@ -685,6 +710,8 @@ export async function runVideoPromptGeneration(args: {
       bRollSuggestions,
       characterAnchor,
       characterDescription,
+      genderPresentation,
+      voiceoverOnly,
       characterName,
       hasCreatorRef: Boolean(sceneCreatorReferenceImageUrl),
       hasProductRef: Boolean(sceneProductReferenceImageUrl),
@@ -764,6 +791,7 @@ export async function startVideoPromptGenerationJob(params: {
   characterHandle?: string | null;
   characterName?: string | null;
   characterDescription?: string | null;
+  characterGender?: string | null;
   creatorReferenceImageUrl?: string | null;
   productReferenceImageUrl?: string | null;
 }) {
@@ -774,6 +802,7 @@ export async function startVideoPromptGenerationJob(params: {
     characterHandle,
     characterName,
     characterDescription,
+    characterGender,
     creatorReferenceImageUrl,
     productReferenceImageUrl,
   } = params;
@@ -801,6 +830,7 @@ export async function startVideoPromptGenerationJob(params: {
       characterHandle,
       characterName,
       characterDescription,
+      characterGender,
       creatorReferenceImageUrl,
       productReferenceImageUrl,
     });

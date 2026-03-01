@@ -1,12 +1,13 @@
 // lib/videoGenerationService.ts
 import prisma from '@/lib/prisma';
 import { env, requireEnv } from './configGuard.ts';
+import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import {
   assertProductSetupReferenceReachable,
   assertProductSetupReferenceUrl,
 } from "@/lib/productSetupReferencePolicy";
 
-const KIE_BASE = env('KIE_API_BASE') ?? 'https://api.kie.ai/api/v1';
 function normalizeKieVideoModel(value: string | null | undefined, fallback: 'veo3' | 'veo3_fast'): 'veo3' | 'veo3_fast' {
   const normalized = String(value ?? "").trim().toLowerCase();
   if (normalized === 'veo3' || normalized === 'veo3_fast') {
@@ -44,17 +45,6 @@ function getKieHeaders() {
   }
   return headers;
 }
-
-type KieJobResponse = {
-  data?: {
-    state?: string;
-    resultJson?: string;
-    resultUrls?: string[] | string;
-    result?: Record<string, any>;
-    [key: string]: any;
-  };
-  [key: string]: any;
-};
 
 type SceneVideoResult = {
   sceneId: string;
@@ -184,46 +174,6 @@ function buildSceneReferenceFrames(args: {
   return frames;
 }
 
-function wait(ms: number) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-function collectResultUrls(data: KieJobResponse): string[] {
-  const urls: string[] = [];
-  const pushUrl = (value: unknown) => {
-    if (typeof value === 'string' && value.trim()) urls.push(value.trim());
-  };
-  const pushUrls = (value: unknown) => {
-    if (Array.isArray(value)) {
-      for (const item of value) pushUrl(item);
-    } else if (typeof value === 'string') {
-      pushUrl(value);
-    }
-  };
-
-  pushUrls(data?.data?.resultUrls);
-  pushUrls((data?.data as any)?.result?.resultUrls);
-  pushUrl((data?.data as any)?.result?.video_url);
-  pushUrl((data?.data as any)?.result?.videoUrl);
-  pushUrl((data?.data as any)?.result?.url);
-
-  const resultJson = data?.data?.resultJson;
-  if (resultJson) {
-    try {
-      const parsed = JSON.parse(resultJson) as Record<string, any>;
-      pushUrls(parsed?.resultUrls);
-      pushUrl(parsed?.resultUrl);
-      pushUrl(parsed?.video_url);
-      pushUrl(parsed?.videoUrl);
-      pushUrl(parsed?.url);
-      pushUrls(parsed?.data?.resultUrls);
-    } catch {
-      // ignore JSON parse errors; fall back to other fields
-    }
-  }
-
-  return urls;
-}
 
 function extractKieErrorDetail(payload: any): string | null {
   if (!payload || typeof payload !== 'object') return null;
@@ -273,6 +223,27 @@ async function createKieVideoJob(params: {
         .slice(0, 2),
     ),
   );
+  const s3 = new S3Client({
+    region: process.env.AWS_REGION ?? "us-east-2",
+    requestChecksumCalculation: "WHEN_REQUIRED",
+    responseChecksumValidation: "WHEN_REQUIRED",
+  });
+  const presignedImageUrls = await Promise.all(
+    normalizedImageInputs.map(async (url) => {
+      try {
+        const parsed = new URL(url);
+        const bucket = parsed.hostname.split(".")[0];
+        const key = parsed.pathname.slice(1);
+        return await getSignedUrl(
+          s3,
+          new GetObjectCommand({ Bucket: bucket, Key: key }),
+          { expiresIn: 3600 }
+        );
+      } catch {
+        return url;
+      }
+    })
+  );
 
   const parseTaskId = (data: any): string => {
     const taskId =
@@ -305,7 +276,7 @@ async function createKieVideoJob(params: {
 
   const postCreateTask = async (body: Record<string, any>): Promise<string> => {
     console.log('[KIE POST]', JSON.stringify(body, null, 2));
-    const res = await fetch(`${KIE_BASE}/jobs/createTask`, {
+    const res = await fetch(`https://api.kie.ai/api/v1/veo/generate`, {
       method: 'POST',
       headers: getKieHeaders(),
       body: JSON.stringify(body),
@@ -330,7 +301,7 @@ async function createKieVideoJob(params: {
   const imageToVideoBody: Record<string, any> = {
     model: KIE_IMAGE_TO_VIDEO_MODEL,
     prompt,
-    imageUrls: normalizedImageInputs,
+    imageUrls: presignedImageUrls,
     aspect_ratio: '9:16',
     generationType: 'FIRST_AND_LAST_FRAMES_2_VIDEO',
   };
@@ -344,11 +315,11 @@ async function createKieVideoJob(params: {
 
   console.log(
     '[KIE DEBUG] payload:',
-    JSON.stringify(normalizedImageInputs.length > 0 ? imageToVideoBody : textToVideoBody, null, 2),
+    JSON.stringify(presignedImageUrls.length > 0 ? imageToVideoBody : textToVideoBody, null, 2),
   );
 
   // If no images are available, use text-to-video.
-  if (normalizedImageInputs.length === 0) {
+  if (presignedImageUrls.length === 0) {
     try {
       return await postCreateTask(textToVideoBody);
     } catch (error: any) {
@@ -397,56 +368,44 @@ async function createKieVideoJob(params: {
 
 async function pollKieVideoJob(
   taskId: string,
-  maxTries = 24,
-  delayMs = 30000,
+  maxWaitMs = 20 * 60_000,
+  intervalMs = 15_000,
 ): Promise<string[]> {
-  const inProgressStates = new Set([
-    'ing',
-    'running',
-    'waiting',
-    'queued',
-    'pending',
-    'processing',
-  ]);
+  const deadline = Date.now() + maxWaitMs;
 
-  for (let attempt = 0; attempt < maxTries; attempt++) {
+  while (Date.now() < deadline) {
     const res = await fetch(
-      `${KIE_BASE}/jobs/recordInfo?taskId=${encodeURIComponent(taskId)}`,
-      {
-        method: 'GET',
-        headers: getKieHeaders(),
-      },
+      `https://api.kie.ai/api/v1/veo/record-info?taskId=${encodeURIComponent(taskId)}`,
+      { headers: getKieHeaders() },
     );
 
     if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`KIE recordInfo failed: ${res.status} ${text}`);
+      throw new Error(`KIE recordInfo failed: ${res.status} ${await res.text()}`);
     }
 
-    const data = (await res.json()) as KieJobResponse;
-    const state = String(data?.data?.state ?? '').toLowerCase();
+    const data = await res.json();
+    const successFlag = data?.data?.successFlag;
 
-    if (state === 'success' || state === 'succeeded' || state === 'completed') {
-      const urls = collectResultUrls(data);
-      if (!urls.length) {
-        throw new Error('KIE success result has no resultUrls');
-      }
+    // 1 = success
+    if (successFlag === 1) {
+      const urls: string[] = (data?.data?.response?.resultUrls ?? [])
+        .map((u: unknown) => (typeof u === "string" ? u.trim() : ""))
+        .filter(Boolean);
+      if (urls.length === 0) throw new Error(`KIE successFlag=1 but no resultUrls`);
       return urls;
     }
 
-    if (state && !inProgressStates.has(state)) {
-      const detail = extractKieErrorDetail(data as any);
-      throw new Error(
-        detail
-          ? `KIE job ended with state=${state}: ${detail}`
-          : `KIE job ended with state=${state}`,
-      );
+    // 2 = failed, 3 = generation failed
+    if (successFlag === 2 || successFlag === 3) {
+      const errMsg = data?.data?.errorMessage || data?.msg || `successFlag=${successFlag}`;
+      throw new Error(`KIE video failed: ${errMsg}`);
     }
 
-    await wait(delayMs);
+    // 0 = still generating — keep polling
+    await new Promise((r) => setTimeout(r, intervalMs));
   }
 
-  throw new Error('KIE job did not complete in time');
+  throw new Error(`KIE video poll timed out after ${maxWaitMs}ms`);
 }
 
 async function generateVideoForScene(
@@ -494,7 +453,7 @@ async function generateVideoForScene(
     aspectRatio,
     uploadMethod,
   });
-  const urls = await pollKieVideoJob(taskId);
+  const urls = await pollKieVideoJob(taskId, 18 * 60_000);
   const videoUrl = urls[0];
 
   return {

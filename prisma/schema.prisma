@@ -273,8 +273,9 @@ model StoryboardScene {
   id           String     @id @default(uuid())
   storyboardId String
   sceneNumber  Int
-  clipDurationSeconds Int? @default(10)
+  clipDurationSeconds Int? @default(8)
   panelType    PanelType? @default(ON_CAMERA)
+  voiceoverOnly Boolean    @default(false) @map("voiceover_only")
   firstFrameImageUrl String?
   lastFrameImageUrl  String?
   rawJson      Json?
@@ -472,6 +473,7 @@ model product {
   characterSeedVideoTaskId   String?   @map("character_seed_video_task_id")
   characterSeedVideoUrl      String?   @map("character_seed_video_url")
   characterUserName          String?   @map("character_user_name")
+  character_gender           String?   @map("character_gender")
   character_anchor_prompt    String?
   character_avatar_image_url String?
   created_at                 DateTime  @default(now()) @db.Timestamptz(6)

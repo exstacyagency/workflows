@@ -100,7 +100,6 @@ type StoryboardPanel = {
   cameraDirection: string;
   productPlacement: string;
   bRollSuggestions: string[];
-  transitionType: string;
   visualSpec: {
     lightingType: "soft diffused natural" | "harsh direct" | "golden hour";
     colorPalette: string;
@@ -110,7 +109,7 @@ type StoryboardPanel = {
 };
 
 const DEFAULT_ENVIRONMENT_DESCRIPTION =
-  "Same environment as Scene 1, with consistent room layout, props, and lighting.";
+  "Same environment as Scene 1: match desk color, desk surface material, wall color, room props, lamp style, and lighting setup exactly. Do not introduce new furniture or change desk color.";
 
 type StoryboardPromptContext = {
   textOverlayPattern: string;
@@ -150,7 +149,6 @@ Canonical field names - use these exactly:
 - cameraDirection
 - productPlacement
 - bRollSuggestions (array of strings)
-- transitionType
 - environment
 - characterAnchor
 
@@ -404,10 +402,6 @@ function normalizePanel(raw: unknown): Record<string, unknown> {
       "none",
       ) ?? "none",
     bRollSuggestions: bRollSuggestions.filter((entry) => !/^character\s*handle\s*:/i.test(entry)),
-    transitionType:
-      stripLegacyCharacterHandleLine(
-        asString(panel.transitionType) ?? asString(panel["Transition Type"]),
-      ) ?? "Cut",
     environment: stripLegacyCharacterHandleLine(
       asString(panel.environment) ?? asString(panel["Environment"]),
     ),
@@ -433,7 +427,6 @@ function validatePanel(rawPanel: unknown, beat: BeatSpec, index: number): Storyb
     stripLegacyCharacterHandleLine(asString(panel.cameraDirection)) ||
     "Natural handheld UGC framing.";
   const productPlacement = stripLegacyCharacterHandleLine(asString(panel.productPlacement)) || "none";
-  const transitionType = stripLegacyCharacterHandleLine(asString(panel.transitionType)) || "Cut";
   if (panelType !== "B_ROLL_ONLY" && !characterAction) {
     throw new Error(`Panel ${index + 1} is ${panelType} but missing characterAction.`);
   }
@@ -456,7 +449,6 @@ function validatePanel(rawPanel: unknown, beat: BeatSpec, index: number): Storyb
     cameraDirection,
     productPlacement,
     bRollSuggestions: bRollSuggestionsBase,
-    transitionType,
     visualSpec: {
       lightingType: "soft diffused natural",
       colorPalette: "neutral warm tones",
@@ -599,7 +591,13 @@ panelType rules:
 characterName: REQUIRED. copy exactly from CHARACTER NAME context.
 characterDescription: REQUIRED. copy exactly from CHARACTER DESCRIPTION context.
 characterAnchor: REQUIRED. copy exactly from CHARACTER ANCHOR context.
-environment consistency: Scene 1 environment is canonical. Use the exact same environment description string for every panel. Environment must always specify time of day explicitly (e.g. "night — window completely dark outside" or "midday — bright natural window light"). Never use ambiguous terms like "evening light".
+environment consistency: Scene 1 environment is CANONICAL for ALL panels including B_ROLL_ONLY.
+  - Copy the Scene 1 environment string VERBATIM into every subsequent panel.
+  - Environment MUST explicitly name: desk color + material (e.g. "white desk"), wall color, lamp presence/absence, and time of day (e.g. "night — window completely dark outside").
+  - NEVER change desk color, desk surface, lamp style, or wall color between scenes.
+  - B_ROLL_ONLY panels MUST use the identical environment string as ON_CAMERA panels — do not invent a new desk, table, or room for product/hands shots.
+  - Example correct: "Night — home office, white desk, dark walls, no lamp, window completely dark"
+  - Example WRONG: using "dark wood desk" in scene 3 when scene 1 had "white desk"
 UGC conversion style: creator-native, handheld-smartphone realism, direct-response pacing, fast early hook, clear product value, no cinematic polish.
 
 TIER 3 - CREATIVE CONTEXT (inform visuals, don't force)
@@ -622,7 +620,7 @@ OUTPUT SCHEMA — use these exact field names, no others:
       "panelType": "ON_CAMERA",
       "beatLabel": "Hook",
       "startTime": "0s",
-      "endTime": "10s",
+      "endTime": "8s",
       "vo": "exact vo text here",
       "characterAction": "specific physical action — null if B_ROLL_ONLY",
       "characterName": "copy CHARACTER NAME verbatim",
@@ -630,7 +628,6 @@ OUTPUT SCHEMA — use these exact field names, no others:
       "cameraDirection": "single sentence — what Sora renders",
       "productPlacement": "when and how product appears, or none",
       "bRollSuggestions": ["TEXT OVERLAY COPY HERE (0s-3s)"],
-      "transitionType": "Cut",
       "environment": "real location description (required)",
       "characterAnchor": "copy the provided CHARACTER ANCHOR verbatim when present"
     }
@@ -646,14 +643,13 @@ FIELD RULES:
 - cameraDirection: one sentence describing what Sora should render.
 - bRollSuggestions: array. Include text overlays as "TEXT OVERLAY COPY (Xs-Xs)".
 - vo: copy exact VO from beat spec above, verbatim.
-- transitionType: Cut or Fade.
 - environment: required for every panel, including B_ROLL_ONLY.
 - style: UGC conversion-first, not commercial. Keep it raw, intimate, and social-native.
 
 BANNED FIELD NAMES — these will break the pipeline:
 clipType, creatorAction, textOverlay, visualDescription,
 Character Action, Camera Direction, B-roll Suggestions,
-Character Handle, Environment, Transition Type, Clip Type, panelType values other than ON_CAMERA/PRODUCT_ONLY/B_ROLL_ONLY`;
+Character Handle, Environment, Clip Type, panelType values other than ON_CAMERA/PRODUCT_ONLY/B_ROLL_ONLY`;
 }
 
 function extractPatternTextOverlays(rawJson: unknown): string | null {
@@ -875,6 +871,7 @@ export async function generateStoryboard(
     productId?: string | null;
     characterName?: string | null;
     characterDescription?: string | null;
+    characterGender?: string | null;
     storyboardMode?: "ai" | "manual";
     manualPanels?: Array<{
       beatLabel?: string | null;
@@ -922,6 +919,15 @@ export async function generateStoryboard(
     throw new Error("Script scenes are empty; cannot generate storyboard.");
   }
   const storyboardMode = opts?.storyboardMode === "manual" ? "manual" : "ai";
+  const resolvedCharacterName = asString(opts?.characterName);
+  const resolvedCharacterDescription = asString(opts?.characterDescription);
+  const resolvedCharacterGender = asString(opts?.characterGender);
+  const requiredCharacterDescription = [
+    resolvedCharacterDescription,
+    resolvedCharacterGender ? `Gender presentation: ${resolvedCharacterGender}` : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
 
   const scriptRunId = script.job?.runId ?? null;
   const scriptJobPayload = asObject(script.job?.payload) ?? {};
@@ -974,7 +980,6 @@ export async function generateStoryboard(
         productPlacement:
           asString(manual?.productPlacement) || "Add exact timing for product placement in this beat.",
         bRollSuggestions: textOverlay ? [`TEXT OVERLAY ${textOverlay}`] : [],
-        transitionType: "Cut",
         visualSpec: {
           lightingType: "soft diffused natural",
           colorPalette: "neutral warm tones",
@@ -992,8 +997,7 @@ export async function generateStoryboard(
       apiKey: anthropicApiKey,
       timeout: 90_000,
     });
-    const requiredCharacterName = asString(opts?.characterName);
-    const requiredCharacterDescription = asString(opts?.characterDescription);
+    const requiredCharacterName = resolvedCharacterName;
     if (!requiredCharacterName || !requiredCharacterDescription) {
       throw new Error("Storyboard generation requires characterName and characterDescription.");
     }
@@ -1085,14 +1089,14 @@ export async function generateStoryboard(
         ...(productReferenceImages.characterAvatarImageUrl
           ? { characterAvatarImageUrl: productReferenceImages.characterAvatarImageUrl }
           : {}),
-        ...(opts?.characterName ? { characterName: opts.characterName } : {}),
-        ...(opts?.characterDescription ? { characterDescription: opts.characterDescription } : {}),
+        ...(resolvedCharacterName ? { characterName: resolvedCharacterName } : {}),
+        ...(requiredCharacterDescription ? { characterDescription: requiredCharacterDescription } : {}),
       };
       await tx.storyboardScene.create({
         data: {
           storyboardId: storyboard.id,
           sceneNumber: index + 1,
-          clipDurationSeconds: beats[index]?.clipDurationSeconds ?? 10,
+          clipDurationSeconds: beats[index]?.clipDurationSeconds ?? 8,
           // TODO: Restore after panelType migration runs.
           // panelType: panel.panelType,
           status: "ready",
