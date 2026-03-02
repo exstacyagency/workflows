@@ -25,7 +25,7 @@ const CREATIVE_JOB_LABELS: Record<string, string> = {
   VIDEO_PROMPT_GENERATION: "Generate Video Prompts",
   VIDEO_GENERATION: "Generate Video",
   VIDEO_REVIEW: "Review Video",
-  VIDEO_UPSCALER: "Upscale & Export",
+  VIDEO_UPSCALER: "Swap Audio",
 };
 
 function getSceneLabel(job: CreativeJob): string | null {

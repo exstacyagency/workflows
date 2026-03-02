@@ -1,5 +1,6 @@
 // lib/videoGenerationService.ts
 import prisma from '@/lib/prisma';
+import { cfg } from "@/lib/config";
 import { env, requireEnv } from './configGuard.ts';
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
@@ -224,7 +225,7 @@ async function createKieVideoJob(params: {
     ),
   );
   const s3 = new S3Client({
-    region: process.env.AWS_REGION ?? "us-east-2",
+    region: cfg.raw("AWS_REGION") || "us-east-2",
     requestChecksumCalculation: "WHEN_REQUIRED",
     responseChecksumValidation: "WHEN_REQUIRED",
   });

@@ -293,15 +293,44 @@ export function VideoEditorStep({ storyboardId, projectId, scenes, onComplete }:
   const [error, setError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const persistenceHydratedRef = useRef(false);
+  const hydratedStorageKeyRef = useRef<string | null>(null);
 
   const activeClip = clips.find((c) => c.sceneId === activeSceneId) ?? null;
   const includedClips = clips.filter((c) => c.included);
   const totalTrimmedDuration = includedClips.reduce((sum, c) => sum + (c.trimEnd - c.trimStart), 0);
 
-  // Restore persisted edit state whenever storyboard/scene set changes.
+  // Restore persisted edit state once per storyboard key.
+  // Subsequent scene refreshes preserve current in-memory edits and only reconcile new/removed clips.
   useEffect(() => {
     if (defaultClips.length === 0) {
       persistenceHydratedRef.current = false;
+      hydratedStorageKeyRef.current = null;
+      return;
+    }
+
+    const alreadyHydratedForKey = hydratedStorageKeyRef.current === storageKey;
+    if (alreadyHydratedForKey) {
+      setClips((prev) => {
+        const bySceneId = new Map(prev.map((clip) => [clip.sceneId, clip] as const));
+        const bySceneNumber = new Map(prev.map((clip) => [clip.sceneNumber, clip] as const));
+        return defaultClips.map((clip) => {
+          const existing = bySceneId.get(clip.sceneId) ?? bySceneNumber.get(clip.sceneNumber);
+          if (!existing) return clip;
+          const maxStart = Math.max(0, clip.durationSec - 0.1);
+          const trimStart = clamp(existing.trimStart, 0, maxStart);
+          const trimEnd = clamp(existing.trimEnd, Math.min(clip.durationSec, trimStart + 0.1), clip.durationSec);
+          return {
+            ...clip,
+            included: existing.included,
+            trimStart,
+            trimEnd,
+          };
+        });
+      });
+      setActiveSceneId((prev) => {
+        if (prev && defaultClips.some((clip) => clip.sceneId === prev)) return prev;
+        return defaultClips[0]?.sceneId ?? null;
+      });
       return;
     }
 
@@ -373,7 +402,8 @@ export function VideoEditorStep({ storyboardId, projectId, scenes, onComplete }:
     const initialActiveClip = nextClips.find((clip) => clip.sceneId === nextActiveSceneId) ?? null;
     setCurrentTime(initialActiveClip?.trimStart ?? 0);
     persistenceHydratedRef.current = true;
-  }, [defaultClips, storageKey, sceneSignature]);
+    hydratedStorageKeyRef.current = storageKey;
+  }, [defaultClips, storageKey]);
 
   // Persist edit state across reloads.
   useEffect(() => {
@@ -479,6 +509,21 @@ export function VideoEditorStep({ storyboardId, projectId, scenes, onComplete }:
       setMerging(false);
     }
   }, [includedClips, storyboardId, projectId, onComplete]);
+
+  const handleResetEdits = useCallback(() => {
+    try {
+      window.localStorage.removeItem(storageKey);
+    } catch {
+      // Ignore storage failures.
+    }
+    const resetClips = defaultClips;
+    setClips(resetClips);
+    const resetActiveSceneId = resetClips[0]?.sceneId ?? null;
+    setActiveSceneId(resetActiveSceneId);
+    setCurrentTime(resetClips[0]?.trimStart ?? 0);
+    persistenceHydratedRef.current = true;
+    hydratedStorageKeyRef.current = storageKey;
+  }, [defaultClips, storageKey]);
 
   return (
     <div style={{
@@ -635,7 +680,7 @@ export function VideoEditorStep({ storyboardId, projectId, scenes, onComplete }:
                 border: "1px solid #1a2030", borderRadius: 7,
                 fontSize: 11, color: "#4b5563", lineHeight: 1.5, fontStyle: "italic",
               }}>
-                "{activeClip.vo}"
+                &quot;{activeClip.vo}&quot;
               </div>
             )}
           </>
@@ -743,6 +788,23 @@ export function VideoEditorStep({ storyboardId, projectId, scenes, onComplete }:
           }}
         >
           {merging ? "Merging…" : mergedUrl ? "Re-merge" : "Merge Video"}
+        </button>
+
+        <button
+          type="button"
+          onClick={handleResetEdits}
+          style={{
+            padding: "10px 0",
+            borderRadius: 8,
+            background: "transparent",
+            border: "1px solid #334155",
+            color: "#94a3b8",
+            fontSize: 12,
+            fontWeight: 600,
+            cursor: "pointer",
+          }}
+        >
+          Reset edits
         </button>
 
         {includedClips.length === 0 && (

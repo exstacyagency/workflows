@@ -808,7 +808,7 @@ export default function CreativeStudioPage() {
       VIDEO_IMAGE_GENERATION: "Generate First Frames",
       VIDEO_GENERATION: "Generate Video",
       VIDEO_REVIEW: "Edit Video",
-      VIDEO_UPSCALER: "Upscale & Export",
+      VIDEO_UPSCALER: "Swap Audio",
       CUSTOMER_RESEARCH: "Customer Research",
       CUSTOMER_ANALYSIS: "Customer Analysis",
       AD_PERFORMANCE: "Ad Collection",
@@ -2847,7 +2847,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
     },
     {
       key: "upscale",
-      label: "Upscale & Export",
+      label: "Swap Audio",
       jobType: JobType.VIDEO_UPSCALER,
       status: getStepStatus(JobType.VIDEO_UPSCALER),
       canRun: hasCompletedJob(JobType.VIDEO_GENERATION),
@@ -2899,7 +2899,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
         video_images: "/api/jobs/video-images",
         video: "/api/jobs/video-generation",
         review: "/api/jobs/video-reviewer",
-        upscale: "/api/jobs/video-upscaler",
+        upscale: "/api/jobs/audio-swap",
       };
 
       endpoint = endpointMap[step.key];
@@ -2966,6 +2966,37 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
           );
         }
 
+        payload = {
+          ...payload,
+          storyboardId,
+          scriptId,
+          forceNew: true,
+        };
+      }
+
+      if (step.key === "upscale") {
+        const storyboardId = String(latestCompletedStoryboardId ?? "").trim();
+        if (!storyboardId) {
+          throw new Error(
+            "No completed storyboard found for the selected run. Run Create Storyboard first.",
+          );
+        }
+        const sortByNewest = (a: Job, b: Job) =>
+          new Date(b.updatedAt ?? b.createdAt).getTime() - new Date(a.updatedAt ?? a.createdAt).getTime();
+        const latestScriptJob =
+          jobsInActiveRun
+            .filter((job) => job.type === JobType.SCRIPT_GENERATION && job.status === JobStatus.COMPLETED)
+            .sort(sortByNewest)[0] ??
+          jobs
+            .filter((job) => job.type === JobType.SCRIPT_GENERATION && job.status === JobStatus.COMPLETED)
+            .sort(sortByNewest)[0] ??
+          null;
+        const scriptId = getScriptIdFromJob(latestScriptJob);
+        if (!scriptId) {
+          throw new Error(
+            "No completed script found for the selected run. Run Generate Script first.",
+          );
+        }
         payload = {
           ...payload,
           storyboardId,

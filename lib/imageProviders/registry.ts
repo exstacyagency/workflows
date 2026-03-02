@@ -11,6 +11,14 @@ const providers = {
     id: "kie:nano-banana-pro",
     model: "nano-banana-pro",
   }),
+  "kie:veo3-fast": new KieImageProvider({
+    id: "kie:veo3-fast",
+    model: "veo3-fast",
+  }),
+  "kie:veo3-quality": new KieImageProvider({
+    id: "kie:veo3-quality",
+    model: "veo3-quality",
+  }),
 } satisfies Record<ImageProviderId, VideoImageProvider>;
 
 export function getProvider(id?: string | null): VideoImageProvider {

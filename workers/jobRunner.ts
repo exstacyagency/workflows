@@ -54,6 +54,8 @@ import {
 } from "../lib/productCharacterStore.ts";
 // ARCHIVED: IMAGE_PROMPT_GENERATION handler removed.
 import { runVideoGenerationJob } from "../lib/videoGenerationService.ts";
+import { runAudioSwapForScript } from "../lib/audioSwapService.ts";
+import { createCharacterVoiceProfile } from "../lib/characterVoiceService.ts";
 import { collectProductIntelWithWebFetch } from "../lib/productDataCollectionService.ts";
 import { analyzeProductData } from "../lib/productAnalysisService.ts";
 import prisma from "../lib/prisma.ts";
@@ -131,6 +133,7 @@ const AD_QUALITY_GATE_JOB_TYPE = "AD_QUALITY_GATE" as JobType;
 const CREATOR_AVATAR_JOB_TYPE = "CREATOR_AVATAR_GENERATION" as JobType;
 const CHARACTER_SEED_VIDEO_JOB_TYPE = "CHARACTER_SEED_VIDEO" as JobType;
 const CHARACTER_REFERENCE_VIDEO_JOB_TYPE = "CHARACTER_REFERENCE_VIDEO" as JobType;
+const CHARACTER_VOICE_SETUP_JOB_TYPE = JobType.CHARACTER_VOICE_SETUP;
 
 type JsonObject = Record<string, any>;
 type ClaimExclusions = {
@@ -1030,6 +1033,62 @@ async function runJob(
         return;
       }
 
+      case JobType.VIDEO_UPSCALER: {
+        const providerCfg = await handleProviderConfig(jobId, "ElevenLabs", ["ELEVENLABS_API_KEY"]);
+        if (!providerCfg.ok) {
+          if (!providerCfg.skipped) {
+            await appendResultSummary(jobId, "Audio swap failed: ElevenLabs not configured");
+          }
+          return;
+        }
+
+        const storyboardId = String(payload?.storyboardId ?? "").trim();
+        const scriptId = String(payload?.scriptId ?? "").trim();
+        const mergedVideoUrl = String(payload?.mergedVideoUrl ?? "").trim();
+        const elevenLabsVoiceId = String(payload?.elevenLabsVoiceId ?? "").trim() || null;
+        const runId = String(payload?.runId ?? (job as any)?.runId ?? "").trim() || null;
+
+        if (!storyboardId) {
+          const msg = "Invalid payload: missing storyboardId";
+          await markFailed({ jobId, error: msg });
+          await appendResultSummary(jobId, `Audio swap failed: ${msg}`);
+          return;
+        }
+        if (!scriptId) {
+          const msg = "Invalid payload: missing scriptId";
+          await markFailed({ jobId, error: msg });
+          await appendResultSummary(jobId, `Audio swap failed: ${msg}`);
+          return;
+        }
+
+        try {
+          const result = await runAudioSwapForScript({
+            projectId: job.projectId,
+            storyboardId,
+            scriptId,
+            mergedVideoUrl,
+            elevenLabsVoiceId,
+            runId,
+          });
+          await markCompleted({
+            jobId,
+            result: {
+              ok: true,
+              ...result,
+              storyboardId,
+              scriptId,
+            },
+            summary: `Audio swapped: ${result.outputAudioUrl}`,
+          });
+        } catch (e: any) {
+          const msg = String(e?.message ?? e ?? "Unknown error");
+          await rollbackJobQuotaIfNeeded({ jobId, projectId: job.projectId, payload });
+          await markFailed({ jobId, error: e });
+          await appendResultSummary(jobId, `Audio swap failed: ${msg}`);
+        }
+        return;
+      }
+
       case 'PRODUCT_DATA_COLLECTION' as any: {
         const { projectId, productUrl, returnsUrl, shippingUrl, aboutUrl } = payload as {
           projectId?: string;
@@ -1317,6 +1376,36 @@ async function runJob(
           result: { ok: true, skipped: true, reason: "Legacy CHARACTER_REFERENCE_VIDEO stage retired" },
           summary: "Skipped retired character reference stage",
         });
+        return;
+      }
+
+      case CHARACTER_VOICE_SETUP_JOB_TYPE: {
+        const characterId = String(payload?.characterId ?? "").trim();
+        const characterName = String(payload?.characterName ?? "avatar").trim();
+        const creatorVisualPrompt = String(payload?.creatorVisualPrompt ?? "").trim();
+        const seedVideoUrl = String(payload?.seedVideoUrl ?? "").trim();
+
+        if (!characterId) {
+          await markFailed({ jobId, error: "Missing characterId" });
+          return;
+        }
+
+        try {
+          const { voiceId } = await createCharacterVoiceProfile({
+            characterId,
+            characterName,
+            creatorVisualPrompt,
+            seedVideoUrl,
+          });
+
+          await markCompleted({
+            jobId,
+            result: { ok: true, characterId, voiceId },
+            summary: `ElevenLabs voice profile created: ${voiceId}`,
+          });
+        } catch (e: any) {
+          await markFailed({ jobId, error: e });
+        }
         return;
       }
 
