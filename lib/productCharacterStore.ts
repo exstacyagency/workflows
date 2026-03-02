@@ -156,7 +156,7 @@ export async function saveCharacterToTable({
   seedVideoTaskId?: string;
   seedVideoUrl?: string;
   creatorVisualPrompt?: string;
-}) {
+}): Promise<{ id: string }> {
   const productRow = await prisma.$queryRaw<Array<{ projectId: string }>>`
     SELECT "project_id" AS "projectId"
     FROM "product"
@@ -165,7 +165,7 @@ export async function saveCharacterToTable({
   `;
   const projectId = productRow[0]?.projectId ?? null;
 
-  await prisma.character.create({
+  const created = await prisma.character.create({
     data: {
       productId,
       projectId,
@@ -177,7 +177,9 @@ export async function saveCharacterToTable({
       seedVideoUrl: seedVideoUrl ?? null,
       creatorVisualPrompt: creatorVisualPrompt ?? null,
     },
+    select: { id: true },
   });
+  return created;
 }
 
 export async function getCharactersForProject(projectId: string) {

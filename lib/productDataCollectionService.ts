@@ -190,7 +190,7 @@ function getMissingFields(intel: ProductIntel): ProductIntelField[] {
 function normalizeCitationArray(value: unknown): Citation[] {
   if (!Array.isArray(value)) return [];
   return value
-    .map((entry) => {
+    .map((entry): Citation | null => {
       if (!entry || typeof entry !== "object") return null;
       const sourceUrl = String((entry as { source_url?: unknown }).source_url ?? "").trim();
       if (!sourceUrl) return null;
@@ -221,7 +221,7 @@ function normalizeCitationArray(value: unknown): Citation[] {
 function countCitations(value: unknown): number {
   if (!value || typeof value !== "object") return 0;
   const record = value as Record<string, unknown>;
-  return Object.values(record).reduce((total, fieldCitations) => {
+  return Object.values(record).reduce<number>((total, fieldCitations) => {
     return total + normalizeCitationArray(fieldCitations).length;
   }, 0);
 }

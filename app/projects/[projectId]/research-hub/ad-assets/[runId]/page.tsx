@@ -95,7 +95,7 @@ function formatConfidence(value: number | null): string {
 function parseOcrFrames(raw: Record<string, any>): OcrFrame[] {
   const source = Array.isArray(raw.ocrFrames) ? raw.ocrFrames : [];
   return source
-    .map((item) => {
+    .map((item): OcrFrame | null => {
       const entry = asObj(item);
       const second = asNum(entry.second);
       const text = typeof entry.text === "string" ? entry.text.trim() : "";

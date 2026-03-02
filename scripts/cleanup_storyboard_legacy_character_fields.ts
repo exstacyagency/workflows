@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
@@ -187,7 +187,7 @@ async function main() {
     await prisma.storyboardScene.update({
       where: { id: scene.id },
       data: {
-        rawJson: next,
+        rawJson: next as Prisma.InputJsonValue,
       },
     });
     updated += 1;

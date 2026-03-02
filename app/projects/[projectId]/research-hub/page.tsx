@@ -228,7 +228,7 @@ export default function ResearchHubPage() {
       VIDEO_IMAGE_GENERATION: "Generate Images",
       VIDEO_GENERATION: "Generate Video",
       VIDEO_REVIEW: "Review Video",
-      VIDEO_UPSCALER: "Upscale & Export",
+      VIDEO_UPSCALER: "Swap Audio",
     };
     return names[job.type] || job.type;
   };

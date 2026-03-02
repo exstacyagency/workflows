@@ -40,10 +40,10 @@ model Project {
   userId                   String
   name                     String
   description              String?
-  creatorReferenceImageUrl String?
-  productReferenceImageUrl String?
   createdAt                DateTime              @default(now())
   updatedAt                DateTime              @updatedAt
+  creatorReferenceImageUrl String?
+  productReferenceImageUrl String?
   adAssets                 AdAsset[]
   adPatternReferences      AdPatternReference[]
   adPatternResults         AdPatternResult[]
@@ -106,14 +106,14 @@ model SpendEvent {
 }
 
 model ResearchRun {
-  id        String    @id @default(uuid())
-  projectId String
-  name      String?
-  status    RunStatus @default(IN_PROGRESS)
-  createdAt DateTime  @default(now())
-  jobs      Job[]
+  id         String      @id @default(uuid())
+  projectId  String
+  status     RunStatus   @default(IN_PROGRESS)
+  createdAt  DateTime    @default(now())
+  name       String?
   characters Character[]
-  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  jobs       Job[]
+  project    Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
   @@map("research_run")
@@ -259,31 +259,31 @@ model Storyboard {
   scriptId     String?
   createdAt    DateTime          @default(now())
   updatedAt    DateTime          @updatedAt
+  imagePrompts ImagePrompt[]
   job          Job?              @relation(fields: [jobId], references: [id])
   project      Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
   script       Script?           @relation(fields: [scriptId], references: [id])
   scenes       StoryboardScene[]
-  imagePrompts ImagePrompt[]
 
   @@index([projectId])
   @@map("storyboard")
 }
 
 model StoryboardScene {
-  id           String     @id @default(uuid())
-  storyboardId String
-  sceneNumber  Int
-  clipDurationSeconds Int? @default(8)
-  panelType    PanelType? @default(ON_CAMERA)
-  voiceoverOnly Boolean    @default(false) @map("voiceover_only")
-  firstFrameImageUrl String?
-  lastFrameImageUrl  String?
-  rawJson      Json?
-  approved     Boolean    @default(false)
-  status       String     @default("pending")
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-  storyboard   Storyboard @relation(fields: [storyboardId], references: [id], onDelete: Cascade)
+  id                  String     @id @default(uuid())
+  storyboardId        String
+  sceneNumber         Int
+  rawJson             Json?
+  status              String     @default("pending")
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+  panelType           PanelType? @default(ON_CAMERA)
+  approved            Boolean    @default(false)
+  clipDurationSeconds Int?       @default(10)
+  firstFrameImageUrl  String?
+  lastFrameImageUrl   String?
+  voiceoverOnly       Boolean    @default(false) @map("voiceover_only")
+  storyboard          Storyboard @relation(fields: [storyboardId], references: [id], onDelete: Cascade)
 
   @@index([storyboardId])
   @@map("storyboard_scene")
@@ -304,24 +304,26 @@ model ImagePrompt {
 }
 
 model Character {
-  id                  String   @id @default(uuid())
+  id                  String       @id @default(uuid())
   projectId           String?
-  productId           String?
   jobId               String?
-  runId               String?
   name                String
   metadata            Json?
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+  productId           String?
   soraCharacterId     String?
   characterUserName   String?
   seedVideoTaskId     String?
   seedVideoUrl        String?
   creatorVisualPrompt String?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
-  job                 Job?     @relation(fields: [jobId], references: [id])
+  elevenLabsVoiceId   String?
+  elevenLabsVoiceName String?
+  runId               String?
+  job                 Job?         @relation(fields: [jobId], references: [id])
+  product             product?     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  project             Project?     @relation(fields: [projectId], references: [id], onDelete: Cascade)
   run                 ResearchRun? @relation(fields: [runId], references: [id])
-  project             Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  product             product? @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
   @@index([productId])
@@ -335,9 +337,6 @@ model AdAsset {
   jobId             String?
   platform          AdPlatform
   rawJson           Json
-  isSwipeFile       Boolean    @default(false)
-  swipeCandidate    Boolean    @default(false)
-  swipeMetadata     Json?
   createdAt         DateTime   @default(now())
   updatedAt         DateTime   @updatedAt
   contentViable     Boolean?
@@ -353,6 +352,9 @@ model AdAsset {
   duration          Int?
   source_type       String?
   engagement_score  Float?
+  isSwipeFile       Boolean    @default(false)
+  swipeMetadata     Json?
+  swipeCandidate    Boolean    @default(false)
   job               Job?       @relation(fields: [jobId], references: [id])
   project           Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
@@ -459,27 +461,27 @@ model Usage {
 }
 
 model product {
-  id                         String    @id
+  id                         String      @id
   project_id                 String
   name                       String
   product_problem_solved     String?
   amazon_asin                String?
-  creatorReferenceImageUrl   String?   @map("creator_reference_image_url")
-  productReferenceImageUrl   String?   @map("product_reference_image_url")
-  characterReferenceVideoUrl String?   @map("character_reference_video_url")
-  soraCharacterId            String?   @map("sora_character_id")
-  characterCameoCreatedAt    DateTime? @map("character_cameo_created_at") @db.Timestamptz(6)
-  creatorVisualPrompt        String?   @map("creator_visual_prompt")
-  characterSeedVideoTaskId   String?   @map("character_seed_video_task_id")
-  characterSeedVideoUrl      String?   @map("character_seed_video_url")
-  characterUserName          String?   @map("character_user_name")
-  character_gender           String?   @map("character_gender")
+  created_at                 DateTime    @default(now()) @db.Timestamptz(6)
+  updated_at                 DateTime    @default(now()) @db.Timestamptz(6)
+  creatorReferenceImageUrl   String?     @map("creator_reference_image_url")
+  productReferenceImageUrl   String?     @map("product_reference_image_url")
+  characterReferenceVideoUrl String?     @map("character_reference_video_url")
+  soraCharacterId            String?     @map("sora_character_id")
+  characterCameoCreatedAt    DateTime?   @map("character_cameo_created_at") @db.Timestamptz(6)
+  creatorVisualPrompt        String?     @map("creator_visual_prompt")
+  characterSeedVideoTaskId   String?     @map("character_seed_video_task_id")
+  characterSeedVideoUrl      String?     @map("character_seed_video_url")
+  characterUserName          String?     @map("character_user_name")
   character_anchor_prompt    String?
   character_avatar_image_url String?
-  created_at                 DateTime  @default(now()) @db.Timestamptz(6)
-  updated_at                 DateTime  @default(now()) @db.Timestamptz(6)
+  character_gender           String?     @map("character_gender")
   characters                 Character[]
-  project                    Project   @relation(fields: [project_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  project                    Project     @relation(fields: [project_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([project_id, name], map: "product_project_name_unique")
   @@index([project_id])
@@ -491,12 +493,8 @@ enum JobType {
   PATTERN_ANALYSIS
   SCRIPT_GENERATION
   STORYBOARD_GENERATION
-  IMAGE_PROMPT_GENERATION
   VIDEO_PROMPT_GENERATION
   VIDEO_IMAGE_GENERATION
-  CREATOR_AVATAR_GENERATION
-  CHARACTER_SEED_VIDEO
-  CHARACTER_REFERENCE_VIDEO
   VIDEO_GENERATION
   VIDEO_REVIEW
   VIDEO_UPSCALER
@@ -504,6 +502,11 @@ enum JobType {
   PRODUCT_DATA_COLLECTION
   PRODUCT_ANALYSIS
   AD_QUALITY_GATE
+  IMAGE_PROMPT_GENERATION
+  CREATOR_AVATAR_GENERATION
+  CHARACTER_SEED_VIDEO
+  CHARACTER_REFERENCE_VIDEO
+  CHARACTER_VOICE_SETUP
 }
 
 enum ProductType {
@@ -573,6 +576,6 @@ enum RunStatus {
 
 enum PanelType {
   ON_CAMERA
-  PRODUCT_ONLY
   B_ROLL_ONLY
+  PRODUCT_ONLY
 }
