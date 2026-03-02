@@ -178,6 +178,8 @@ type PatternSelection = {
 };
 
 type SwipeTemplate = {
+  adMechanism?: string;
+  mechanismDescription?: string;
   hookPattern: string;
   problemPattern: string;
   solutionPattern: string;
