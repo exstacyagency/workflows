@@ -35,12 +35,20 @@ const avatarCharacterGenerationEndpoint =
   defaultEndpoint;
 const avatarCharacterGenerationPublicBaseUrl =
   cfg.raw("S3_AVATAR_CHARACTER_GENERATION_PUBLIC_BASE_URL");
+const trimmedClipsBucket =
+  cfg.raw("AWS_S3_BUCKET_TRIMMED_CLIPS") || cfg.raw("S3_BUCKET_TRIMMED_CLIPS");
+const trimmedClipsRegion =
+  cfg.raw("AWS_S3_REGION_TRIMMED_CLIPS") || cfg.raw("S3_TRIMMED_CLIPS_REGION") || defaultRegion;
+const trimmedClipsEndpoint =
+  cfg.raw("AWS_S3_ENDPOINT_TRIMMED_CLIPS") || cfg.raw("S3_TRIMMED_CLIPS_ENDPOINT") || defaultEndpoint;
+const trimmedClipsPublicBaseUrl = cfg.raw("S3_TRIMMED_CLIPS_PUBLIC_BASE_URL");
 
 type BucketTarget =
   | "default"
   | "product_setup"
   | "video_frames"
-  | "avatar_character_generation";
+  | "avatar_character_generation"
+  | "trimmed_clips";
 
 type BucketConfig = {
   bucket: string | null;
@@ -73,6 +81,12 @@ const BUCKETS: Record<BucketTarget, BucketConfig> = {
     region: avatarCharacterGenerationRegion,
     endpoint: avatarCharacterGenerationEndpoint,
     publicBaseUrl: avatarCharacterGenerationPublicBaseUrl,
+  },
+  trimmed_clips: {
+    bucket: trimmedClipsBucket,
+    region: trimmedClipsRegion,
+    endpoint: trimmedClipsEndpoint,
+    publicBaseUrl: trimmedClipsPublicBaseUrl,
   },
 };
 
@@ -208,5 +222,20 @@ export async function uploadFrame(
     key,
     body,
     contentType: "image/png",
+  });
+}
+
+export async function uploadTrimmedClipObject(args: {
+  key: string;
+  body: Uint8Array;
+  contentType?: string;
+  cacheControl?: string;
+}): Promise<string | null> {
+  return uploadPublicObject({
+    key: args.key,
+    body: args.body,
+    contentType: args.contentType ?? "video/mp4",
+    cacheControl: args.cacheControl,
+    bucketTarget: "trimmed_clips",
   });
 }

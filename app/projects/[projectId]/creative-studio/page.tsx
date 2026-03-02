@@ -8,6 +8,7 @@ import toast, { Toaster } from "react-hot-toast";
 import Link from "next/link";
 import RunManagementModal from "@/components/RunManagementModal";
 import { analyzeSwipeTranscript, type SwipeAnalysis } from "@/lib/analyzeSwipeTranscript";
+import { VideoEditorStep } from "./VideoEditorStep";
 
 type Job = {
   id: string;
@@ -543,6 +544,7 @@ export default function CreativeStudioPage() {
   const [sceneVideoReviewOpenByNumber, setSceneVideoReviewOpenByNumber] = useState<Record<number, boolean>>({});
   const [sceneAdditionalInstructionsByNumber, setSceneAdditionalInstructionsByNumber] = useState<Record<number, string>>({});
   const [regenerateModalScene, setRegenerateModalScene] = useState<number | null>(null);
+  const [, setMergedVideoUrl] = useState<string | null>(null);
   const [sceneGeneratingNumber, setSceneGeneratingNumber] = useState<number | null>(null);
   const [videoGeneratingNumber, setVideoGeneratingNumber] = useState<number | null>(null);
   const [sceneApprovingNumber, setSceneApprovingNumber] = useState<number | null>(null);
@@ -805,7 +807,7 @@ export default function CreativeStudioPage() {
       VIDEO_PROMPT_GENERATION: "Generate Video Prompts",
       VIDEO_IMAGE_GENERATION: "Generate First Frames",
       VIDEO_GENERATION: "Generate Video",
-      VIDEO_REVIEW: "Review Video",
+      VIDEO_REVIEW: "Edit Video",
       VIDEO_UPSCALER: "Upscale & Export",
       CUSTOMER_RESEARCH: "Customer Research",
       CUSTOMER_ANALYSIS: "Customer Analysis",
@@ -2835,7 +2837,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
     },
     {
       key: "review",
-      label: "Review Video",
+      label: "Edit Video",
       jobType: JobType.VIDEO_REVIEW,
       status: getStepStatus(JobType.VIDEO_REVIEW),
       canRun: hasCompletedJob(JobType.VIDEO_GENERATION),
@@ -4783,77 +4785,23 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                   ) : storyboardPanelError && storyboardMatchesCurrentFetch ? (
                     <p style={{ margin: 0, color: "#fca5a5", fontSize: 13 }}>{storyboardPanelError}</p>
                   ) : (
-                    <>
-                      <p style={{ margin: "0 0 10px 0", color: "#94a3b8", fontSize: 12 }}>
-                        Review generated scene videos.
-                      </p>
-                      <div style={{ display: "grid", gap: 10 }}>
-                        {sceneFlowRows.map((row) => {
-                          const hasVideo = row.hasVideo;
-                          const videoUrl = String(row.videoUrl || "").trim();
-                          const isReviewOpen = row.isVideoReviewOpen;
-                          return (
-                            <div
-                              key={`scene-review-${row.sceneNumber}`}
-                              style={{
-                                border: hasVideo
-                                  ? "1px solid rgba(16, 185, 129, 0.55)"
-                                  : "1px solid #334155",
-                                borderRadius: 8,
-                                backgroundColor: "#0b1220",
-                                padding: 10,
-                                display: "grid",
-                                gap: 8,
-                              }}
-                            >
-                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                <div style={{ color: "#e2e8f0", fontSize: 13, fontWeight: 600 }}>
-                                  Scene {row.sceneNumber}
-                                </div>
-                                <div style={{ fontSize: 11, color: hasVideo ? "#6ee7b7" : "#94a3b8" }}>
-                                  {hasVideo ? "Ready" : "No video yet"}
-                                </div>
-                              </div>
-
-                              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                                <button
-                                  type="button"
-                                  onClick={() => toggleSceneVideoReview(row.sceneNumber)}
-                                  disabled={!hasVideo}
-                                  style={{
-                                    border: "1px solid #334155",
-                                    backgroundColor: "#0b1220",
-                                    color: hasVideo ? "#cbd5e1" : "#64748b",
-                                    borderRadius: 7,
-                                    padding: "6px 10px",
-                                    fontSize: 12,
-                                    fontWeight: 600,
-                                    cursor: hasVideo ? "pointer" : "not-allowed",
-                                  }}
-                                >
-                                  {isReviewOpen ? "Hide Review" : "Review"}
-                                </button>
-                              </div>
-
-                              {isReviewOpen && hasVideo && (
-                                <video
-                                  src={videoUrl}
-                                  controls
-                                  style={{
-                                    width: "100%",
-                                    maxWidth: 360,
-                                    aspectRatio: "9 / 16",
-                                    borderRadius: 8,
-                                    border: "1px solid #334155",
-                                    display: "block",
-                                  }}
-                                />
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </>
+                    <VideoEditorStep
+                      storyboardId={storyboardId}
+                      projectId={projectId}
+                      scenes={storyboardPanels
+                        .filter((p) => Boolean(p.videoUrl))
+                        .map((p) => ({
+                          sceneId: String((p as any).sceneId ?? p.id ?? p.sceneNumber ?? ""),
+                          sceneNumber: Number(p.sceneNumber) || 0,
+                          videoUrl: p.videoUrl,
+                          beatLabel: String(p.beatLabel ?? ""),
+                          vo: String(p.vo ?? ""),
+                          durationSec: typeof p.clipDurationSeconds === "number" ? p.clipDurationSeconds : undefined,
+                        }))}
+                      onComplete={(nextMergedVideoUrl) => {
+                        setMergedVideoUrl(nextMergedVideoUrl);
+                      }}
+                    />
                   )}
                 </div>
               )}
