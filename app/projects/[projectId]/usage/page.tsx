@@ -5,14 +5,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { getJobTypeLabel } from "@/lib/jobLabels";
 
-type JobType =
-  | "CUSTOMER_RESEARCH"
-  | "CUSTOMER_ANALYSIS"
-  | "AD_PERFORMANCE"
-  | "AD_QUALITY_GATE"
-  | "PATTERN_ANALYSIS"
-  | "PRODUCT_DATA_COLLECTION"
-  | "PRODUCT_ANALYSIS";
+type JobType = string;
 
 type JobStatus = "PENDING" | "RUNNING" | "COMPLETED" | "FAILED";
 
@@ -45,12 +38,7 @@ export default function UsagePage() {
       const data = await response.json();
 
       if (data.success) {
-        // Add mock costs for jobs that don't have them
-        const jobsWithCosts = data.jobs.map((job: Job) => ({
-          ...job,
-          actualCost: job.actualCost || getMockCost(job.type, job.status),
-        }));
-        setJobs(jobsWithCosts);
+        setJobs(data.jobs);
       }
     } catch (error) {
       console.error("Failed to load jobs:", error);
@@ -64,31 +52,6 @@ export default function UsagePage() {
       loadJobs();
     }
   }, [loadJobs, projectId]);
-
-  // Mock cost calculation (replace with real API costs later)
-  const getMockCost = (type: JobType, status: JobStatus): number => {
-    if (status !== "COMPLETED") return 0;
-
-    const costs: Record<string, number> = {
-      CUSTOMER_RESEARCH: 0.65,
-      CUSTOMER_ANALYSIS: 0.15,
-      AD_PERFORMANCE: 0.45,
-      AD_QUALITY_GATE: 0.15,
-      PATTERN_ANALYSIS: 0.25,
-      PRODUCT_DATA_COLLECTION: 0.35,
-      PRODUCT_ANALYSIS: 0.20,
-      SCRIPT_GENERATION: 0.12,
-      STORYBOARD_GENERATION: 0.10,
-      IMAGE_PROMPT_GENERATION: 0.08,
-      VIDEO_PROMPT_GENERATION: 0.10,
-      VIDEO_IMAGE_GENERATION: 0.45,
-      VIDEO_GENERATION: 1.2,
-      VIDEO_REVIEW: 0.05,
-      VIDEO_UPSCALER: 0.4,
-    };
-
-    return costs[type] || 0;
-  };
 
   // Filter jobs by date
   const getFilteredJobs = () => {
@@ -124,8 +87,9 @@ export default function UsagePage() {
     return acc;
   }, {} as JobTypeBreakdown);
 
-  const formatCost = (cost: number): string => {
-    return `$${cost.toFixed(2)}`;
+  const formatCost = (costCents: number): string => {
+    const dollars = Number(costCents ?? 0) / 100;
+    return `$${dollars.toFixed(2)}`;
   };
 
   const formatDate = (dateString: string) => {

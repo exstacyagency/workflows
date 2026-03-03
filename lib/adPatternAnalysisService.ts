@@ -81,7 +81,7 @@ export async function runPatternAnalysis(args: { projectId: string; jobId: strin
       label: 'Anthropic messages.create',
       fn: async () => {
         return anthropic.messages.create({
-          model: 'claude-opus-4-20250514',
+          model: 'claude-opus-4-6',
           max_tokens: 8000,
           messages: [{ role: 'user', content: prompt }],
         });
@@ -91,6 +91,25 @@ export async function runPatternAnalysis(args: { projectId: string; jobId: strin
 
     const rawText = message.content[0].type === 'text' ? message.content[0].text : '';
     const parsed = JSON.parse(rawText);
+    const inputTokens = Number((message as any)?.usage?.input_tokens ?? 0);
+    const outputTokens = Number((message as any)?.usage?.output_tokens ?? 0);
+    const totalTokens = Math.max(0, Math.trunc(inputTokens + outputTokens));
+    const usageEntries =
+      totalTokens > 0
+        ? [
+            {
+              metric: "tokens",
+              provider: "anthropic",
+              model: "claude-opus-4-6",
+              units: totalTokens,
+              costCents: 0,
+              metadata: {
+                inputTokens: Math.max(0, Math.trunc(inputTokens)),
+                outputTokens: Math.max(0, Math.trunc(outputTokens)),
+              },
+            },
+          ]
+        : [];
 
     await prisma.$transaction(async (tx) => {
       const result = await tx.adPatternResult.create({
@@ -121,7 +140,10 @@ export async function runPatternAnalysis(args: { projectId: string; jobId: strin
       },
     });
 
-    return parsed;
+    return {
+      ...parsed,
+      usageEntries,
+    };
   } catch (err: any) {
     await updateJobStatus(job.id, JobStatus.FAILED);
     await prisma.job.update({

@@ -4,6 +4,7 @@ import { JobStatus, JobType } from "@prisma/client";
 import { cfg } from "@/lib/config";
 import { prisma } from "@/lib/prisma";
 import { getSessionUserId } from "@/lib/getSessionUserId";
+import { computeAnthropicCostCents } from "@/lib/billing/pricing";
 
 export const runtime = "nodejs";
 
@@ -482,6 +483,21 @@ Write VO that sounds like the same person who wrote the surrounding beats. Retur
       max_tokens: 150,
       messages: [{ role: "user", content: prompt }],
     });
+
+    const providerRequestId = (response as any)?.id ?? null;
+    const inputTokens = Math.max(0, Math.trunc(Number(response?.usage?.input_tokens ?? 0)));
+    const outputTokens = Math.max(0, Math.trunc(Number(response?.usage?.output_tokens ?? 0)));
+    const costCents = computeAnthropicCostCents("claude-haiku-4-5-20251001", inputTokens, outputTokens);
+
+    console.log("[generate-beat] cost", {
+      scriptId,
+      model: "claude-haiku-4-5-20251001",
+      inputTokens,
+      outputTokens,
+      costCents,
+      providerRequestId,
+    });
+
     voText = extractTextFromAnthropicResponse(response);
   } catch (error: any) {
     return NextResponse.json(

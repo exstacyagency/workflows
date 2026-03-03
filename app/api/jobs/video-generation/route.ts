@@ -11,6 +11,7 @@ import { JobStatus, JobType, Prisma } from "@prisma/client";
 import { getRequestId } from "../../../../lib/observability";
 import { checkRateLimit } from "../../../../lib/rateLimiter";
 import { assertRuntimeMode } from "@/src/runtime/assertMode";
+import { computeKieVideoCostCents } from "@/lib/billing/pricing";
 
 const BodySchema = z.object({
   projectId: z.string().min(1),
@@ -168,6 +169,10 @@ export async function POST(req: NextRequest) {
       await rollbackReservation();
       return NextResponse.json({ error: "Storyboard or project not found" }, { status: 404 });
     }
+    const scenesToGenerate = requestedSceneNumber !== null
+      ? 1
+      : storyboard.scenes.length;
+    const estimatedCostCents = computeKieVideoCostCents("veo3_fast", Math.max(1, scenesToGenerate));
 
     // SECURITY_SWEEP: do NOT require frames to exist. Return deterministic success.
     // Still respects plan + ownership + quota.
@@ -235,6 +240,7 @@ export async function POST(req: NextRequest) {
           type: JobType.VIDEO_GENERATION,
           status: JobStatus.PENDING,
           idempotencyKey,
+          estimatedCost: estimatedCostCents,
           ...(effectiveRunId ? { runId: effectiveRunId } : {}),
           payload: {
             projectId,

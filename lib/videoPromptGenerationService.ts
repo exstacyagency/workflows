@@ -35,7 +35,7 @@ CHARACTER CONSISTENCY:
 const UGC_CONVERSION_REQUIRED_LINE =
   "Style target: UGC direct-response conversion ad (not polished commercial).";
 
-const VIDEO_PROMPT_MODEL = cfg.raw("ANTHROPIC_MODEL") || "claude-sonnet-4-5-20250929";
+const VIDEO_PROMPT_MODEL = cfg.raw("ANTHROPIC_MODEL") || "claude-sonnet-4-6";
 
 function asString(value: unknown): string {
   if (typeof value !== "string") return "";
@@ -373,7 +373,17 @@ async function generateKlingPromptWithClaude(args: {
   characterName: string | null;
   hasCreatorRef: boolean;
   hasProductRef: boolean;
-}): Promise<string> {
+}): Promise<{
+  prompt: string;
+  usageEntry: {
+    metric: string;
+    provider: string;
+    model: string;
+    units: number;
+    costCents: number;
+    metadata: Record<string, unknown>;
+  } | null;
+}> {
   const apiKey = cfg.raw("ANTHROPIC_API_KEY");
   if (!apiKey) {
     throw new Error("Missing ANTHROPIC_API_KEY");
@@ -436,10 +446,27 @@ async function generateKlingPromptWithClaude(args: {
       args.characterName,
       args.characterDescription,
     );
+    const inputTokens = Number((response as any)?.usage?.input_tokens ?? 0);
+    const outputTokens = Number((response as any)?.usage?.output_tokens ?? 0);
+    const totalTokens = Math.max(0, Math.trunc(inputTokens + outputTokens));
+    const usageEntry =
+      totalTokens > 0
+        ? {
+            metric: "tokens",
+            provider: "anthropic",
+            model: VIDEO_PROMPT_MODEL,
+            units: totalTokens,
+            costCents: 0,
+            metadata: {
+              inputTokens: Math.max(0, Math.trunc(inputTokens)),
+              outputTokens: Math.max(0, Math.trunc(outputTokens)),
+            },
+          }
+        : null;
     console.log(`[videoPromptGeneration] Generated prompt for scene ${args.sceneNumber}`, {
       prompt: promptWithCharacterProfile,
     });
-    return promptWithCharacterProfile;
+    return { prompt: promptWithCharacterProfile, usageEntry };
   } catch (error: any) {
     console.error("[videoPromptGeneration] Claude prompt generation failed.", {
       sceneNumber: args.sceneNumber,
@@ -552,6 +579,14 @@ export async function runVideoPromptGeneration(args: {
 
   let scenes = storyboard.scenes;
   let processed = 0;
+  const usageEntries: Array<{
+    metric: string;
+    provider: string;
+    model: string;
+    units: number;
+    costCents: number;
+    metadata: Record<string, unknown>;
+  }> = [];
 
   if (scenes.length === 0) {
     const panelType: PanelType = 'ON_CAMERA';
@@ -574,7 +609,7 @@ export async function runVideoPromptGeneration(args: {
       productReferenceImageUrl,
     });
 
-    const prompt = await generateKlingPromptWithClaude({
+    const generation = await generateKlingPromptWithClaude({
       sceneNumber: 1,
       totalScenes: 1,
       durationSec: 8,
@@ -599,6 +634,8 @@ export async function runVideoPromptGeneration(args: {
       hasCreatorRef: Boolean(sceneReferenceFrames.find((frame) => frame.kind === 'creator')?.url),
       hasProductRef: Boolean(sceneReferenceFrames.find((frame) => frame.kind === 'product')?.url),
     });
+    if (generation.usageEntry) usageEntries.push(generation.usageEntry);
+    const prompt = generation.prompt;
 
     const created = await prisma.storyboardScene.create({
       data: {
@@ -636,6 +673,7 @@ export async function runVideoPromptGeneration(args: {
       storyboardId,
       sceneCount: scenes.length,
       processed,
+      usageEntries,
     };
   }
 
@@ -693,7 +731,7 @@ export async function runVideoPromptGeneration(args: {
     const characterName = asString((raw as any).characterName) || globalCharacterName || null;
     const characterAnchor = asString((raw as any).characterAnchor) || null;
 
-    const prompt = await generateKlingPromptWithClaude({
+    const generation = await generateKlingPromptWithClaude({
       sceneNumber,
       totalScenes,
       durationSec,
@@ -716,6 +754,8 @@ export async function runVideoPromptGeneration(args: {
       hasCreatorRef: Boolean(sceneCreatorReferenceImageUrl),
       hasProductRef: Boolean(sceneProductReferenceImageUrl),
     });
+    if (generation.usageEntry) usageEntries.push(generation.usageEntry);
+    const prompt = generation.prompt;
     const persistedPrompt = ensurePromptContainsCharacterProfile(
       prompt,
       characterName,
@@ -778,6 +818,7 @@ export async function runVideoPromptGeneration(args: {
     storyboardId,
     sceneCount: scenes.length,
     processed,
+    usageEntries,
   };
 }
 

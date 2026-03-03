@@ -10,48 +10,56 @@ export async function createCharacterVoiceProfile(args: {
   const apiKey = String(cfg.raw("ELEVENLABS_API_KEY") ?? "").trim();
   if (!apiKey) throw new Error("ELEVENLABS_API_KEY is not configured");
 
-  const baseVoiceId = String(cfg.raw("ELEVENLABS_BASE_VOICE_ID") ?? "JBFqnCBsd6RMkjVDRZzb").trim();
-  const sampleText = `Hi, I'm ${args.characterName}. Let me tell you about something that changed my life.`;
+  const voiceDescription =
+    args.creatorVisualPrompt.slice(0, 1000) ||
+    `A clear, natural voice for ${args.characterName}`;
 
-  // Currently unused in this flow; reserved for future sample extraction from seed media.
-  void args.seedVideoUrl;
-
-  const ttsRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${baseVoiceId}`, {
+  const designRes = await fetch("https://api.elevenlabs.io/v1/text-to-voice/design", {
     method: "POST",
     headers: {
       "xi-api-key": apiKey,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      text: sampleText,
-      model_id: "eleven_multilingual_v2",
+      voice_description: voiceDescription,
+      model_id: "eleven_multilingual_ttv_v2",
+      auto_generate_text: true,
     }),
   });
-  if (!ttsRes.ok) throw new Error(`ElevenLabs TTS failed: ${await ttsRes.text()}`);
-  const sampleAudioBuffer = await ttsRes.arrayBuffer();
-
-  const formData = new FormData();
-  formData.append("name", args.characterName);
-  formData.append("description", args.creatorVisualPrompt.slice(0, 500));
-  formData.append(
-    "files",
-    new Blob([sampleAudioBuffer], { type: "audio/mpeg" }),
-    "sample.mp3",
-  );
-
-  const profileRes = await fetch("https://api.elevenlabs.io/v1/voices/add", {
-    method: "POST",
-    headers: { "xi-api-key": apiKey },
-    body: formData,
-  });
-  if (!profileRes.ok) {
-    throw new Error(`ElevenLabs voice profile creation failed: ${await profileRes.text()}`);
+  if (!designRes.ok) {
+    const errText = await designRes.text().catch(() => "(unreadable)");
+    throw new Error(`ElevenLabs voice design failed (${designRes.status}): ${errText}`);
   }
 
-  const json = (await profileRes.json()) as { voice_id?: string };
-  const voiceId = String(json.voice_id ?? "").trim();
+  const designJson = (await designRes.json()) as {
+    previews?: { generated_voice_id: string }[];
+  };
+  const generatedVoiceId = designJson.previews?.[0]?.generated_voice_id;
+  if (!generatedVoiceId) {
+    throw new Error("ElevenLabs voice design returned no previews");
+  }
+
+  const saveRes = await fetch("https://api.elevenlabs.io/v1/text-to-voice", {
+    method: "POST",
+    headers: {
+      "xi-api-key": apiKey,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      voice_name: args.characterName,
+      voice_description: voiceDescription,
+      generated_voice_id: generatedVoiceId,
+    }),
+  });
+  if (!saveRes.ok) {
+    const errText = await saveRes.text().catch(() => "(unreadable)");
+    throw new Error(`ElevenLabs voice save failed (${saveRes.status}): ${errText}`);
+  }
+
+  const saveJson = (await saveRes.json()) as { voice_id?: string };
+  const voiceId = String(saveJson.voice_id ?? "").trim();
   if (!voiceId) {
-    throw new Error("ElevenLabs voice profile creation succeeded but returned no voice_id");
+    throw new Error("ElevenLabs voice save succeeded but returned no voice_id");
   }
 
   await prisma.character.update({
@@ -61,4 +69,3 @@ export async function createCharacterVoiceProfile(args: {
 
   return { voiceId };
 }
-

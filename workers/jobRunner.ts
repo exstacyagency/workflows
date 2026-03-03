@@ -60,6 +60,8 @@ import { collectProductIntelWithWebFetch } from "../lib/productDataCollectionSer
 import { analyzeProductData } from "../lib/productAnalysisService.ts";
 import prisma from "../lib/prisma.ts";
 import { rollbackQuota } from "../lib/billing/usage.ts";
+import { buildUsageEntriesForJob, settleJobCost } from "@/lib/billing/settleJobCost";
+import { assertUnderSpendCap, SpendCapExceededError } from "@/lib/billing/assertSpendCap";
 import { updateJobStatus } from "@/lib/jobs/updateJobStatus";
 import { generateRandomCharacterName } from "../lib/characterNameService.ts";
 import { uploadAvatarCharacterObject } from "@/lib/s3Service";
@@ -260,6 +262,51 @@ function envMissing(keys: string[]) {
   });
 }
 
+class JobCancelledError extends Error {
+  constructor(message = "Job cancelled by user") {
+    super(message);
+    this.name = "JobCancelledError";
+  }
+}
+
+function isCancelLikeErrorValue(value: unknown): boolean {
+  const text = String(value ?? "").toLowerCase();
+  return text.includes("cancelled by user") || text.includes("canceled by user");
+}
+
+function payloadHasCancelFlag(payload: unknown): boolean {
+  const obj = asObject(payload);
+  return obj.cancelRequested === true || isCancelLikeErrorValue(obj.cancelReason);
+}
+
+function isJobCancelledRow(row: { status: JobStatus; error: unknown; payload: unknown } | null): boolean {
+  if (!row) return false;
+  if (payloadHasCancelFlag(row.payload)) return true;
+  if (row.status === JobStatus.FAILED && isCancelLikeErrorValue(row.error)) return true;
+  return false;
+}
+
+async function isJobCancellationRequested(jobId: string): Promise<boolean> {
+  const row = await prisma.job.findUnique({
+    where: { id: jobId },
+    select: { status: true, error: true, payload: true },
+  });
+  return isJobCancelledRow(row);
+}
+
+async function assertJobNotCancelled(jobId: string): Promise<void> {
+  if (await isJobCancellationRequested(jobId)) {
+    throw new JobCancelledError();
+  }
+}
+
+async function runCancelable<T>(jobId: string, fn: () => Promise<T>): Promise<T> {
+  await assertJobNotCancelled(jobId);
+  const result = await fn();
+  await assertJobNotCancelled(jobId);
+  return result;
+}
+
 async function rollbackJobQuotaIfNeeded({
   jobId,
   projectId,
@@ -275,6 +322,7 @@ async function rollbackJobQuotaIfNeeded({
   const periodKey = String((reservation as any).periodKey ?? "");
   const metric = String((reservation as any).metric ?? "");
   const amount = Number((reservation as any).amount ?? 0);
+  const reservationId = String((reservation as any).reservationId ?? "").trim() || null;
 
   if (!periodKey || !metric || !Number.isFinite(amount) || amount <= 0) return;
 
@@ -286,7 +334,7 @@ async function rollbackJobQuotaIfNeeded({
   if (!userId) return;
 
   try {
-    await rollbackQuota(userId, periodKey, metric as any, amount);
+    await rollbackQuota(userId, periodKey, metric as any, amount, reservationId);
   } catch (e) {
     console.error("[jobRunner] quota rollback failed", { jobId, e });
   }
@@ -303,7 +351,15 @@ async function markCompleted({
 }) {
   const existing = await prisma.job.findUnique({
     where: { id: jobId },
-    select: { payload: true, resultSummary: true, status: true, runId: true, projectId: true },
+    select: {
+      payload: true,
+      resultSummary: true,
+      status: true,
+      runId: true,
+      projectId: true,
+      userId: true,
+      type: true,
+    },
   });
   if (!existing) return;
 
@@ -316,6 +372,24 @@ async function markCompleted({
 
   await updateJobStatus(jobId, JobStatus.COMPLETED);
   await prisma.job.update({ where: { id: jobId }, data });
+  try {
+    const usageEntries = buildUsageEntriesForJob({
+      jobType: existing.type,
+      payload,
+      result,
+    });
+    await settleJobCost({
+      jobId,
+      userId: existing.userId,
+      projectId: existing.projectId,
+      usageEntries,
+    });
+  } catch (error) {
+    console.error("[jobRunner] Failed to settle job cost", {
+      jobId,
+      error: String((error as any)?.message ?? error),
+    });
+  }
   await updateRunStatus(existing.runId, existing.projectId);
 }
 
@@ -487,7 +561,7 @@ async function claimNextJob(exclusions?: ClaimExclusions) {
       FOR UPDATE SKIP LOCKED
       LIMIT 1
     )
-    RETURNING "id", "type", "projectId", "userId", "runId", "payload", "idempotencyKey", "status";
+    RETURNING "id", "type", "projectId", "userId", "runId", "payload", "idempotencyKey", "status", "estimatedCost";
   `;
 
   console.log('[Worker] Raw query result:', claimed);
@@ -504,6 +578,7 @@ async function claimNextJob(exclusions?: ClaimExclusions) {
     payload: unknown;
     idempotencyKey: string | null;
     status: JobStatus;
+    estimatedCost: number | null;
   };
 }
 
@@ -517,6 +592,7 @@ async function runJob(
     payload: unknown;
     idempotencyKey: string | null;
     status: JobStatus;
+    estimatedCost: number | null;
   },
   context: PipelineContext,
 ) {
@@ -533,8 +609,25 @@ async function runJob(
     throw new Error(`Invalid job state: ${job.status}`);
   }
 
+  await assertJobNotCancelled(jobId);
+
   if (context.mode === "alpha" && cfg.raw("NODE_ENV") === "production") {
     throw new Error("INVALID CONFIG: MODE=alpha cannot run with NODE_ENV=production");
+  }
+
+  try {
+    await assertUnderSpendCap(
+      job.userId,
+      job.projectId,
+      Math.max(0, Math.trunc(Number(job.estimatedCost ?? 0))),
+    );
+  } catch (error) {
+    if (error instanceof SpendCapExceededError) {
+      await rollbackJobQuotaIfNeeded({ jobId, projectId: job.projectId, payload });
+      await markFailed({ jobId, error: error.message });
+      return;
+    }
+    throw error;
   }
 
   console.log("[BEFORE SWITCH] About to enter switch statement");
@@ -621,7 +714,7 @@ async function runJob(
           return;
         }
 
-        const result = await runCustomerResearch({
+        const result = await runCancelable(jobId, () => runCustomerResearch({
           projectId: job.projectId,
           jobId,
           productProblemSolved,
@@ -638,11 +731,23 @@ async function runJob(
           timeRange,
           scrapeComments,
           additionalProblems,
-        });
+        }));
 
         await markCompleted({
           jobId,
-          result: { ok: true, rows: Array.isArray(result) ? result.length : null },
+          result: {
+            ok: true,
+            rowsCollected: (result as any)?.rowsCollected ?? 0,
+            mainProductReviews: (result as any)?.mainProductReviews ?? 0,
+            competitor1Reviews: (result as any)?.competitor1Reviews ?? 0,
+            competitor2Reviews: (result as any)?.competitor2Reviews ?? 0,
+            competitor3Reviews: (result as any)?.competitor3Reviews ?? 0,
+            totalAmazonReviews:
+              ((result as any)?.mainProductReviews ?? 0) +
+              ((result as any)?.competitor1Reviews ?? 0) +
+              ((result as any)?.competitor2Reviews ?? 0) +
+              ((result as any)?.competitor3Reviews ?? 0),
+          },
         });
         return;
       }
@@ -653,10 +758,10 @@ async function runJob(
 
         try {
           console.log("Calling runCustomerAnalysis...");
-          const analysisResult = await runCustomerAnalysis({
+          const analysisResult = await runCancelable(jobId, () => runCustomerAnalysis({
             projectId: job.projectId,
             ...(payload as any),
-          });
+          }));
           console.log("Analysis result:", JSON.stringify(analysisResult, null, 2));
           await markCompleted({
             jobId,
@@ -689,12 +794,12 @@ async function runJob(
             return;
           }
 
-          const result = await runAdTranscriptCollection({
+          const result = await runCancelable(jobId, () => runAdTranscriptCollection({
             projectId: job.projectId,
             jobId,
             runId,
             forceReprocess,
-          });
+          }));
 
           await markCompleted({
             jobId,
@@ -713,12 +818,12 @@ async function runJob(
           const runId = String(payload?.runId ?? (job as any)?.runId ?? "").trim();
           const forceReprocess = payload?.forceReprocess === true;
 
-          const result = await runAdOcrCollection({
+          const result = await runCancelable(jobId, () => runAdOcrCollection({
             projectId: job.projectId,
             jobId,
             runId,
             forceReprocess,
-          });
+          }));
 
           await markCompleted({
             jobId,
@@ -755,12 +860,12 @@ async function runJob(
             : null;
         const adCollectionConfig = configured ?? buildAdCollectionConfig(String(industryCode));
 
-        const result = await collectAds(
+        const result = await runCancelable(jobId, () => collectAds(
           job.projectId,
           runId,
           jobId,
           adCollectionConfig,
-        );
+        ));
 
         await markCompleted({
           jobId,
@@ -781,12 +886,12 @@ async function runJob(
         }
 
         const forceReprocess = payload?.forceReprocess === true;
-        const result = await runAdQualityGate({
+        const result = await runCancelable(jobId, () => runAdQualityGate({
           projectId: job.projectId,
           jobId,
           runId,
           forceReprocess,
-        });
+        }));
 
         await markCompleted({
           jobId,
@@ -804,11 +909,11 @@ async function runJob(
         // The claim query already transitions PENDING -> RUNNING.
         // Avoid a duplicate RUNNING -> RUNNING transition here.
 
-        const result = await runPatternAnalysis({
+        const result = await runCancelable(jobId, () => runPatternAnalysis({
           projectId: job.projectId,
           runId: effectiveRunId,
           jobId,
-        });
+        }));
 
         await markCompleted({
           jobId,
@@ -828,7 +933,7 @@ async function runJob(
           return;
         }
 
-        const result = await startScriptGenerationJob(job.projectId, fresh);
+        const result = await runCancelable(jobId, () => startScriptGenerationJob(job.projectId, fresh));
         await markCompleted({ jobId, result: { ok: true, ...result } });
         return;
       }
@@ -848,14 +953,14 @@ async function runJob(
         }
 
         try {
-          const result = await generateStoryboard(scriptId, {
+          const result = await runCancelable(jobId, () => generateStoryboard(scriptId, {
             productId,
             characterName,
             characterDescription,
             characterGender,
             storyboardMode,
             manualPanels,
-          });
+          }));
           const validationReport = (result as any)?.validationReport;
           const warningCount = Array.isArray(validationReport?.warnings)
             ? validationReport.warnings.length
@@ -920,14 +1025,14 @@ async function runJob(
 
         let result: Awaited<ReturnType<typeof startVideoPromptGenerationJob>>;
         try {
-          result = await startVideoPromptGenerationJob({
+          result = await runCancelable(jobId, () => startVideoPromptGenerationJob({
             storyboardId,
             jobId,
             productId,
             characterName,
             characterDescription,
             characterGender,
-          });
+          }));
           console.log("[Worker][VIDEO_PROMPT_GENERATION] Video prompt generation completed", {
             jobId,
             storyboardId,
@@ -989,7 +1094,7 @@ async function runJob(
         const providerCfg = await handleProviderConfig(jobId, "KIE", ["KIE_API_KEY"]);
         if (!providerCfg.ok) return;
         try {
-          await runVideoImageGenerationJob({ jobId });
+          await runCancelable(jobId, () => runVideoImageGenerationJob({ jobId }));
         } catch (e: any) {
           const msg = String(e?.message ?? e ?? "Unknown error");
           await markFailed({ jobId, error: e });
@@ -1016,7 +1121,10 @@ async function runJob(
         }
 
         try {
-          const result = await runVideoGenerationJob(job);
+          const result = await runVideoGenerationJob(job, {
+            shouldCancel: () => isJobCancellationRequested(jobId),
+          });
+          await assertJobNotCancelled(jobId);
           const firstUrl = result.videoUrls[0] ?? "";
           const summary = result.skipped
             ? `Video generation skipped: ${result.reason ?? "already_generated"}`
@@ -1062,14 +1170,14 @@ async function runJob(
         }
 
         try {
-          const result = await runAudioSwapForScript({
+          const result = await runCancelable(jobId, () => runAudioSwapForScript({
             projectId: job.projectId,
             storyboardId,
             scriptId,
             mergedVideoUrl,
             elevenLabsVoiceId,
             runId,
-          });
+          }));
           await markCompleted({
             jobId,
             result: {
@@ -1137,7 +1245,13 @@ async function runJob(
 
           await markCompleted({
             jobId,
-            result: { success: true, intel },
+            result: {
+              success: true,
+              intel,
+              usageEntries: Array.isArray((intel as any)?.usageEntries)
+                ? (intel as any).usageEntries
+                : [],
+            },
             summary: {
               success: true,
               productName: intelLabel,
@@ -1391,12 +1505,12 @@ async function runJob(
         }
 
         try {
-          const { voiceId } = await createCharacterVoiceProfile({
+          const { voiceId } = await runCancelable(jobId, () => createCharacterVoiceProfile({
             characterId,
             characterName,
             creatorVisualPrompt,
             seedVideoUrl,
-          });
+          }));
 
           await markCompleted({
             jobId,
@@ -1415,6 +1529,9 @@ async function runJob(
       }
     }
   } catch (e: any) {
+    if (e instanceof JobCancelledError || isCancelLikeErrorValue(e?.message ?? e)) {
+      return;
+    }
     try {
       await rollbackJobQuotaIfNeeded({ jobId, projectId: job.projectId, payload });
       await markFailed({ jobId, error: e });

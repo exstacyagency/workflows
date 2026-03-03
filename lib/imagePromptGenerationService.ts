@@ -5,6 +5,7 @@ import {
   assertProductSetupReferenceUrl,
 } from "@/lib/productSetupReferencePolicy";
 import prisma from "@/lib/prisma";
+import { computeAnthropicCostCents } from "@/lib/billing/pricing";
 
 const IMAGE_PROMPT_MODEL = cfg.raw("ANTHROPIC_HAIKU_MODEL") || "claude-haiku-4-5-20251001";
 const IMAGE_PROMPT_SYSTEM_PROMPT =
@@ -170,7 +171,17 @@ async function generatePromptPairForScene(args: {
   cameraDirection: string;
   creatorReferenceImageUrl: string | null;
   productReferenceImageUrl: string | null;
-}): Promise<PromptPair> {
+}): Promise<{
+  promptPair: PromptPair;
+  usageEntry: {
+    metric: string;
+    provider: string;
+    model: string;
+    units: number;
+    costCents: number;
+    metadata: Record<string, unknown>;
+  } | null;
+}> {
   const fallback = buildFallbackPromptPair(args);
 
   try {
@@ -189,6 +200,26 @@ async function generatePromptPairForScene(args: {
       sceneNumber: args.sceneNumber,
       rawResponse: response,
     });
+    const providerRequestId = (response as any)?.id ?? null;
+    const inputTokens = Math.max(0, Math.trunc(Number(response?.usage?.input_tokens ?? 0)));
+    const outputTokens = Math.max(0, Math.trunc(Number(response?.usage?.output_tokens ?? 0)));
+    const totalTokens = inputTokens + outputTokens;
+    const costCents =
+      totalTokens > 0
+        ? computeAnthropicCostCents(IMAGE_PROMPT_MODEL, inputTokens, outputTokens)
+        : 0;
+
+    const usageEntry =
+      totalTokens > 0
+        ? {
+            metric: "tokens",
+            provider: "anthropic",
+            model: IMAGE_PROMPT_MODEL,
+            units: totalTokens,
+            costCents,
+            metadata: { inputTokens, outputTokens, providerRequestId },
+          }
+        : null;
     const text = extractTextContent(response);
     const parsed = parsePromptPair(text);
     if (!parsed) {
@@ -197,14 +228,14 @@ async function generatePromptPairForScene(args: {
         responseText: text,
       });
     }
-    return parsed ?? fallback;
+    return { promptPair: parsed ?? fallback, usageEntry };
   } catch (error: any) {
-    console.error("[imagePromptGeneration] Claude Haiku call failed", {
+    console.error("[imagePromptGeneration] Claude call failed", {
       sceneNumber: args.sceneNumber,
       error: String(error?.message ?? error),
       stack: error?.stack ?? null,
     });
-    return fallback;
+    return { promptPair: fallback, usageEntry: null };
   }
 }
 
@@ -278,6 +309,14 @@ export async function generateImagePromptsFromStoryboard(args: {
     });
 
     const prompts: Array<{ sceneNumber: number; firstFramePrompt: string; lastFramePrompt: string }> = [];
+    const usageEntries: Array<{
+      metric: string;
+      provider: string;
+      model: string;
+      units: number;
+      costCents: number;
+      metadata: Record<string, unknown>;
+    }> = [];
 
     for (const scene of storyboard.scenes) {
       const raw = asObject(scene.rawJson) ?? {};
@@ -298,7 +337,7 @@ export async function generateImagePromptsFromStoryboard(args: {
         },
       });
 
-      const pair = await generatePromptPairForScene({
+      const generated = await generatePromptPairForScene({
         anthropic,
         sceneNumber: scene.sceneNumber,
         characterAction,
@@ -307,6 +346,10 @@ export async function generateImagePromptsFromStoryboard(args: {
         creatorReferenceImageUrl: productReferenceImages.creatorReferenceImageUrl,
         productReferenceImageUrl: productReferenceImages.productReferenceImageUrl,
       });
+      const pair = generated.promptPair;
+      if (generated.usageEntry) {
+        usageEntries.push(generated.usageEntry);
+      }
 
       console.log("[imagePromptGeneration] before scene write", {
         storyboardId: storyboard.id,
@@ -350,6 +393,7 @@ export async function generateImagePromptsFromStoryboard(args: {
       storyboardId: storyboard.id,
       count: prompts.length,
       prompts,
+      usageEntries,
     };
   } catch (error: any) {
     console.error("[imagePromptGeneration] generateImagePromptsFromStoryboard failed", {
