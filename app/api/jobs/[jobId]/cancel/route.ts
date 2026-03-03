@@ -38,6 +38,13 @@ export async function POST(
     where: { id: params.jobId },
     data: {
       status: JobStatus.FAILED,
+      payload: {
+        ...(job.payload && typeof job.payload === "object" && !Array.isArray(job.payload) ? job.payload : {}),
+        cancelRequested: true,
+        cancelRequestedAt: new Date().toISOString(),
+        cancelRequestedBy: session.user.id,
+        cancelReason: "Job cancelled by user",
+      } as any,
       error: "Job cancelled by user",
       updatedAt: new Date(),
     },

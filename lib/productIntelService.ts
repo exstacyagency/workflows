@@ -13,7 +13,7 @@ export type ExtractedProductIntel = {
   raw_html?: string;
 };
 
-const PRODUCT_INTEL_MODEL = cfg.raw('ANTHROPIC_MODEL') || 'claude-sonnet-4-5-20250929';
+const PRODUCT_INTEL_MODEL = cfg.raw('ANTHROPIC_MODEL') || 'claude-sonnet-4-6';
 const PRODUCT_INTEL_MAX_TOKENS = Number(cfg.raw("PRODUCT_INTEL_MAX_TOKENS") ?? 4000);
 
 function cleanText(value: unknown): string {

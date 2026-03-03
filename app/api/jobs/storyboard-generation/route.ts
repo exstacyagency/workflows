@@ -248,6 +248,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const STORYBOARD_COST_PER_SCENE_CENTS = 5;
+    const STORYBOARD_MIN_ESTIMATED_CENTS = 25;
+    const estimatedSceneCount =
+      storyboardMode === "manual" && Array.isArray(manualPanels)
+        ? manualPanels.length
+        : 6;
+    const estimatedCostCents = Math.max(
+      STORYBOARD_MIN_ESTIMATED_CENTS,
+      estimatedSceneCount * STORYBOARD_COST_PER_SCENE_CENTS,
+    );
+
     // Idempotency: one storyboard generation job per (projectId, scriptIdUsed)
     const scriptIdUsed = script.id;
     const idempotencyKey = JSON.stringify([
@@ -338,6 +349,7 @@ export async function POST(req: NextRequest) {
         type: JobType.STORYBOARD_GENERATION,
         status: securitySweep ? JobStatus.COMPLETED : JobStatus.PENDING,
         idempotencyKey,
+        estimatedCost: securitySweep ? 0 : estimatedCostCents,
         payload,
         ...(effectiveRunId ? { runId: effectiveRunId } : {}),
         ...(securitySweep

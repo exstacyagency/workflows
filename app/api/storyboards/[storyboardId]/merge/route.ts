@@ -4,6 +4,7 @@ import { getSessionUserId } from "@/lib/getSessionUserId";
 import { prisma } from "@/lib/prisma";
 import { env, requireEnv } from "@/lib/configGuard";
 import { trimVideoClipToS3 } from "@/lib/videoTrimService";
+import { computeFalMergeVideoCostCents } from "@/lib/billing/pricing";
 
 const FAL_MERGE_URL = "https://fal.run/fal-ai/ffmpeg-api/merge-videos";
 
@@ -187,11 +188,12 @@ export async function POST(
     );
   }
 
+  const mergeStart = Date.now();
+
   const mergeRes = await fetch(FAL_MERGE_URL, {
     method: "POST",
     headers: falHeaders(),
     body: JSON.stringify({
-      // Official ffmpeg-api/merge-videos contract expects an array of URL strings.
       video_urls: clipsForMerge,
     }),
   });
@@ -207,7 +209,6 @@ export async function POST(
   const mergeJson = await mergeRes.json();
   let mergedVideoUrl = getMergedVideoUrlFromFalResponse(mergeJson);
 
-  // Backward compatibility: handle queue-style responses that return response_url.
   if (!mergedVideoUrl) {
     const responseUrl = String(mergeJson?.response_url ?? "").trim();
     if (responseUrl) {
@@ -224,12 +225,23 @@ export async function POST(
     }
   }
 
+  const mergeElapsedSeconds = (Date.now() - mergeStart) / 1000;
+
   if (!mergedVideoUrl) {
     return NextResponse.json(
       { error: "Fal merge completed but returned no output URL" },
       { status: 502 },
     );
   }
+
+  const mergeCostCents = computeFalMergeVideoCostCents(mergeElapsedSeconds);
+
+  console.log("[fal/merge] cost tracking", {
+    storyboardId,
+    computeSeconds: mergeElapsedSeconds,
+    costCents: mergeCostCents,
+    clipsUsed: videoUrls.length,
+  });
 
   if (storyboard.script?.id) {
     await prisma.script.update({
@@ -242,5 +254,7 @@ export async function POST(
     ok: true,
     mergedVideoUrl,
     clipsUsed: videoUrls.length,
+    costCents: mergeCostCents,
+    computeSeconds: Math.round(mergeElapsedSeconds * 100) / 100,
   });
 }

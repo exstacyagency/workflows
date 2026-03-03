@@ -11,6 +11,7 @@ import { flag, devNumber } from './flags.ts';
 import type { BeatRatio } from "@/lib/analyzeSwipeTranscript";
 import { extractSwipePatterns } from "@/lib/swipePatternExtractor";
 import { WORDS_PER_CLIP, beatsForClipDuration } from "./soraConstants";
+import { computeAnthropicCostCents } from "@/lib/billing/pricing";
 
 function parsePositiveIntConfig(raw: string | undefined, fallback: number): number {
   const parsed = Number(raw);
@@ -1114,8 +1115,18 @@ async function loadProductIntelFromCollectionJob(
   return null;
 }
 
-async function callAnthropic(system: string, prompt: string): Promise<string> {
-  const model = cfg.raw('ANTHROPIC_MODEL') || 'claude-sonnet-4-5-20250929';
+async function callAnthropic(system: string, prompt: string): Promise<{
+  text: string;
+  usageEntry: {
+    metric: string;
+    provider: string;
+    model: string;
+    units: number;
+    costCents: number;
+    metadata: Record<string, unknown>;
+  } | null;
+}> {
+  const model = cfg.raw('ANTHROPIC_MODEL') || 'claude-sonnet-4-6';
   requireEnv(['ANTHROPIC_API_KEY'], 'ANTHROPIC');
   const apiKey = env('ANTHROPIC_API_KEY')!;
   const anthropic = new Anthropic({
@@ -1169,7 +1180,25 @@ async function callAnthropic(system: string, prompt: string): Promise<string> {
             .join("\n")
             .trim()
         : "";
-      return textContent || String((data as any)?.content ?? "");
+      const text = textContent || String((data as any)?.content ?? "");
+      const providerRequestId = (data as any)?.id ?? null;
+      const inputTokens = Math.max(0, Math.trunc(Number((data as any)?.usage?.input_tokens ?? 0)));
+      const outputTokens = Math.max(0, Math.trunc(Number((data as any)?.usage?.output_tokens ?? 0)));
+      const totalTokens = inputTokens + outputTokens;
+      const costCents =
+        totalTokens > 0 ? computeAnthropicCostCents(model, inputTokens, outputTokens) : 0;
+      const usageEntry =
+        totalTokens > 0
+          ? {
+              metric: "tokens",
+              provider: "anthropic",
+              model,
+              units: totalTokens,
+              costCents,
+              metadata: { inputTokens, outputTokens, providerRequestId },
+            }
+          : null;
+      return { text, usageEntry };
     },
   });
 }
@@ -2432,7 +2461,8 @@ export async function runScriptGeneration(args: {
     "[ScriptGeneration] Anthropic prompt injections",
     markMissingPromptFields(promptInjections)
   );
-  const responseText = await callAnthropic(system, prompt);
+  const llmResult = await callAnthropic(system, prompt);
+  const responseText = llmResult.text;
   const scriptJson = parseJsonFromLLM(responseText);
   const voFull = buildVoFullFromScriptJson(scriptJson);
   const derivedWordCount = countWords(voFull);
@@ -2462,6 +2492,7 @@ export async function runScriptGeneration(args: {
   return {
     script: updatedScript,
     researchSources,
+    usageEntries: llmResult.usageEntry ? [llmResult.usageEntry] : [],
   };
 }
 
@@ -2501,6 +2532,7 @@ export async function startScriptGenerationJob(projectId: string, job: Job) {
       jobId: job.id,
       scriptId: script.id,
       script,
+      usageEntries: generation.usageEntries ?? [],
     };
   } catch (err: any) {
     await updateJobStatus(job.id, JobStatus.FAILED);

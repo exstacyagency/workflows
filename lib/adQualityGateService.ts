@@ -18,7 +18,19 @@ type QualityAssessment = {
   reason: string;
 };
 
-const DEFAULT_QUALITY_MODEL = "claude-sonnet-4-5-20250929";
+type BillingUsageEntry = {
+  metric: string;
+  provider: string;
+  model: string;
+  units: number;
+  costCents: number;
+  metadata: {
+    inputTokens: number;
+    outputTokens: number;
+  };
+};
+
+const DEFAULT_QUALITY_MODEL = "claude-sonnet-4-6";
 const QUALITY_MODEL = (() => {
   const configured = cfg.raw("ANTHROPIC_QUALITY_MODEL");
   if (typeof configured === "string" && configured.trim().length > 0) {
@@ -130,7 +142,10 @@ function normalizeAssessment(payload: Record<string, any>): QualityAssessment {
   };
 }
 
-async function assessAdQuality(ocrText: string | null, transcript: string | null): Promise<QualityAssessment> {
+async function assessAdQuality(
+  ocrText: string | null,
+  transcript: string | null
+): Promise<{ assessment: QualityAssessment; usageEntry: BillingUsageEntry | null }> {
   const ocrBlock = (ocrText ?? "none").slice(0, 4000);
   const transcriptBlock = (transcript ?? "none").slice(0, 4000);
 
@@ -170,7 +185,25 @@ JSON only:
 
   const text = response.content.find((entry) => entry.type === "text");
   const parsed = extractJsonObject(text?.type === "text" ? text.text : "{}");
-  return normalizeAssessment(parsed);
+  const assessment = normalizeAssessment(parsed);
+  const inputTokens = Number((response as any)?.usage?.input_tokens ?? 0);
+  const outputTokens = Number((response as any)?.usage?.output_tokens ?? 0);
+  const totalTokens = Math.max(0, Math.trunc(inputTokens + outputTokens));
+  const usageEntry =
+    totalTokens > 0
+      ? {
+          metric: "tokens",
+          provider: "anthropic",
+          model: QUALITY_MODEL,
+          units: totalTokens,
+          costCents: 0,
+          metadata: {
+            inputTokens: Math.max(0, Math.trunc(inputTokens)),
+            outputTokens: Math.max(0, Math.trunc(outputTokens)),
+          },
+        }
+      : null;
+  return { assessment, usageEntry };
 }
 
 export async function runAdQualityGate(args: {
@@ -237,6 +270,7 @@ export async function runAdQualityGate(args: {
   let assessed = 0;
   let viable = 0;
   const rejectionReasons: Record<string, number> = {};
+  const usageEntries: BillingUsageEntry[] = [];
 
   for (const asset of candidates) {
     const raw = asObject(asset.rawJson);
@@ -273,7 +307,11 @@ export async function runAdQualityGate(args: {
       continue;
     }
 
-    const assessment = await assessAdQuality(ocrText, transcript);
+    const qualityResult = await assessAdQuality(ocrText, transcript);
+    const assessment = qualityResult.assessment;
+    if (qualityResult.usageEntry) {
+      usageEntries.push(qualityResult.usageEntry);
+    }
     const accepted = assessment.viable && assessment.confidence >= QUALITY_CONFIDENCE_THRESHOLD;
     const viabilityScore = assessment.viable ? assessment.confidence / 100 : 0;
     const viewCount = extractViewCount(raw);
@@ -337,5 +375,6 @@ export async function runAdQualityGate(args: {
     rejected,
     summary,
     confidenceThreshold: QUALITY_CONFIDENCE_THRESHOLD,
+    usageEntries,
   };
 }

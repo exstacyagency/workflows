@@ -7,6 +7,7 @@ import {
 import prisma from "./prisma.ts";
 import { JobStatus, JobType, type Prisma } from "@prisma/client";
 import { SORA_CLIP_LENGTHS, type SoraClipLength } from "./soraConstants";
+import { computeAnthropicCostCents } from "@/lib/billing/pricing";
 
 type PanelTypeValue = "ON_CAMERA" | "PRODUCT_ONLY" | "B_ROLL_ONLY";
 
@@ -888,6 +889,14 @@ export async function generateStoryboard(
   storyboardId: string;
   panelCount: number;
   targetDuration: number;
+  usageEntries: Array<{
+    metric: string;
+    provider: string;
+    model: string;
+    units: number;
+    costCents: number;
+    metadata: Record<string, unknown>;
+  }>;
 }> {
   const normalizedScriptId = String(scriptId ?? "").trim();
   if (!normalizedScriptId) {
@@ -911,6 +920,14 @@ export async function generateStoryboard(
   if (!script) {
     throw new Error(`Script not found for id=${normalizedScriptId}.`);
   }
+  const usageEntries: Array<{
+    metric: string;
+    provider: string;
+    model: string;
+    units: number;
+    costCents: number;
+    metadata: Record<string, unknown>;
+  }> = [];
 
   const { beatCount, targetDuration, beats } = buildBeatSpecsFromScript(
     script.rawJson,
@@ -1016,12 +1033,51 @@ export async function generateStoryboard(
       characterName: requiredCharacterName,
       characterDescription: requiredCharacterDescription,
     });
+    const model = "claude-sonnet-4-6";
     const response = await anthropic.messages.create({
-      model: "claude-sonnet-4-5-20250929",
+      model,
       max_tokens: 4000,
       system: STORYBOARD_SYSTEM_PROMPT,
       messages: [{ role: "user", content: userPrompt }],
     });
+    const providerRequestId = (response as any)?.id ?? null;
+    const inputTokens = Math.max(0, Math.trunc(Number(response?.usage?.input_tokens ?? 0)));
+    const outputTokens = Math.max(0, Math.trunc(Number(response?.usage?.output_tokens ?? 0)));
+    const cacheReadTokens = Math.max(
+      0,
+      Math.trunc(Number((response as any)?.usage?.cache_read_input_tokens ?? 0)),
+    );
+    const cacheWriteTokens = Math.max(
+      0,
+      Math.trunc(Number((response as any)?.usage?.cache_creation_input_tokens ?? 0)),
+    );
+    const totalTokens = inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens;
+    const costCents =
+      totalTokens > 0
+        ? computeAnthropicCostCents(
+            model,
+            inputTokens,
+            outputTokens,
+            cacheReadTokens,
+            cacheWriteTokens,
+          )
+        : 0;
+    if (totalTokens > 0) {
+      usageEntries.push({
+        metric: "tokens",
+        provider: "anthropic",
+        model,
+        units: totalTokens,
+        costCents,
+        metadata: {
+          inputTokens,
+          outputTokens,
+          cacheReadTokens,
+          cacheWriteTokens,
+          providerRequestId,
+        },
+      });
+    }
     console.log("[storyboardGeneration] Anthropic raw response:", response);
     const responseText = extractTextContent(response);
     const parsed = parseJsonFromModelText(responseText);
@@ -1121,5 +1177,6 @@ export async function generateStoryboard(
     storyboardId: result.id,
     panelCount: panels.length,
     targetDuration,
+    usageEntries,
   };
 }

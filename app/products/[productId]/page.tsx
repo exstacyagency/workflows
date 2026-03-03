@@ -80,7 +80,7 @@ export default async function ProductSetupPage({
   });
   console.log("DEBUG runs:", JSON.stringify(runs));
   console.log("DEBUG product.projectId:", product.projectId);
-  const selectedRunId = searchParams?.runId?.trim() || null;
+  const selectedRunId = searchParams?.runId?.trim() || runs[0]?.id || null;
 
   const characters = selectedRunId
     ? ((await prisma.character.findMany({
