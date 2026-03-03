@@ -65,6 +65,7 @@ import { assertUnderSpendCap, SpendCapExceededError } from "@/lib/billing/assert
 import { updateJobStatus } from "@/lib/jobs/updateJobStatus";
 import { generateRandomCharacterName } from "../lib/characterNameService.ts";
 import { uploadAvatarCharacterObject } from "@/lib/s3Service";
+import { notifyAll } from "@/lib/notifications/notifyAll";
 
 console.log("=== WORKER ENVIRONMENT CHECK ===");
 console.log("ANTHROPIC_API_KEY present:", !!cfg.raw("ANTHROPIC_API_KEY"));
@@ -255,6 +256,40 @@ function serializeResult(value: any) {
   }
 }
 
+function humanizeJobType(type: string): string {
+  return String(type)
+    .toLowerCase()
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function summarizeForMessage(summary: Prisma.InputJsonValue | undefined): string {
+  if (typeof summary === "string") return summary.trim();
+  if (!summary || typeof summary !== "object") return "";
+  const record = summary as Record<string, unknown>;
+  if (typeof record.summary === "string" && record.summary.trim()) {
+    return record.summary.trim();
+  }
+  return "";
+}
+
+function buildCompletionMessage(args: {
+  jobType: JobType;
+  summary?: Prisma.InputJsonValue;
+  costCents?: number | null;
+}) {
+  const summaryText = summarizeForMessage(args.summary);
+  const prefix = `✅ ${humanizeJobType(String(args.jobType))} complete.`;
+  const costText =
+    Number.isFinite(Number(args.costCents)) && Number(args.costCents) > 0
+      ? ` Cost: $${(Number(args.costCents) / 100).toFixed(2)}.`
+      : "";
+  if (summaryText) {
+    return `${prefix} ${summaryText}${costText}`;
+  }
+  return `${prefix}${costText}`;
+}
+
 function envMissing(keys: string[]) {
   return keys.filter((k) => {
     const v = cfg.raw(k);
@@ -390,13 +425,31 @@ async function markCompleted({
       error: String((error as any)?.message ?? error),
     });
   }
+  const refreshed = await prisma.job.findUnique({
+    where: { id: jobId },
+    select: { actualCost: true, resultSummary: true },
+  });
+  await notifyAll({
+    jobId,
+    jobType: String(existing.type),
+    projectId: existing.projectId,
+    runId: existing.runId ?? null,
+    status: "COMPLETED",
+    message: buildCompletionMessage({
+      jobType: existing.type,
+      summary: refreshed?.resultSummary as Prisma.InputJsonValue | undefined,
+      costCents: Number(refreshed?.actualCost ?? 0),
+    }),
+    costCents: Number(refreshed?.actualCost ?? 0),
+    resultSummary: refreshed?.resultSummary ?? undefined,
+  });
   await updateRunStatus(existing.runId, existing.projectId);
 }
 
 async function markFailed({ jobId, error }: { jobId: string; error: unknown }) {
   const existing = await prisma.job.findUnique({
     where: { id: jobId },
-    select: { payload: true, resultSummary: true, status: true, runId: true, projectId: true },
+    select: { payload: true, resultSummary: true, status: true, runId: true, projectId: true, type: true, actualCost: true },
   });
   if (!existing) return;
 
@@ -451,6 +504,16 @@ async function markFailed({ jobId, error }: { jobId: string; error: unknown }) {
           : `Job failed${provider ? ` (${provider})` : ""}`),
       payload: nextPayload,
     },
+  });
+  await notifyAll({
+    jobId,
+    jobType: String(existing.type),
+    projectId: existing.projectId,
+    runId: existing.runId ?? null,
+    status: "FAILED",
+    message: `❌ ${humanizeJobType(String(existing.type))} failed: ${errMsg}`,
+    costCents: Number(existing.actualCost ?? 0) || undefined,
+    error: errMsg,
   });
   await updateRunStatus(existing.runId, existing.projectId);
 }

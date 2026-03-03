@@ -9,6 +9,7 @@ import Link from "next/link";
 import RunManagementModal from "@/components/RunManagementModal";
 import { analyzeSwipeTranscript, type SwipeAnalysis } from "@/lib/analyzeSwipeTranscript";
 import { VideoEditorStep } from "./VideoEditorStep";
+import { WebChatPanel } from "@/components/chat/WebChatPanel";
 
 type Job = {
   id: string;
@@ -7409,6 +7410,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
       </div>
 
       <Toaster position="top-right" />
+      <WebChatPanel projectId={projectId} />
     </div>
   );
 }
