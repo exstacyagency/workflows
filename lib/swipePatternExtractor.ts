@@ -18,7 +18,7 @@ export type SwipePatterns = {
   beatStructure: SwipeBeat[];
 };
 
-const DEFAULT_SWIPE_MODEL = "claude-sonnet-4-20250514";
+const DEFAULT_SWIPE_MODEL = "claude-sonnet-4-6";
 
 function asObject(value: unknown): Record<string, unknown> {
   if (value && typeof value === "object" && !Array.isArray(value)) {

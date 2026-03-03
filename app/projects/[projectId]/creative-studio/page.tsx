@@ -500,8 +500,13 @@ export default function CreativeStudioPage() {
   const [scriptResearchRuns, setScriptResearchRuns] = useState<ResearchRunOption[]>([]);
   const [scriptRunsLoading, setScriptRunsLoading] = useState(false);
   const [selectedScriptResearchJobId, setSelectedScriptResearchJobId] = useState("");
-  const [scriptGenerationStrategy, setScriptGenerationStrategy] = useState<"swipe_template" | "research_formula">("swipe_template");
+  const [scriptGenerationStrategy, setScriptGenerationStrategy] = useState<
+    "swipe_template" | "research_formula" | "upload_template"
+  >("swipe_template");
   const [selectedSwipeTemplateAdId, setSelectedSwipeTemplateAdId] = useState<string>("");
+  const [manualSwipeTemplateTitle, setManualSwipeTemplateTitle] = useState("");
+  const [manualSwipeTemplateTranscript, setManualSwipeTemplateTranscript] = useState("");
+  const [manualSwipeTemplateUploading, setManualSwipeTemplateUploading] = useState(false);
   const [swipeAnalysis, setSwipeAnalysis] = useState<SwipeAnalysis | null>(null);
   const [scriptNoResearchAcknowledged, setScriptNoResearchAcknowledged] = useState(false);
   const [scriptModalSubmitting, setScriptModalSubmitting] = useState(false);
@@ -786,14 +791,23 @@ export default function CreativeStudioPage() {
     [scriptResearchRuns, selectedScriptResearchJobId],
   );
   const scriptSwipeCandidates = scriptRunSummary?.swipeRecommendation?.candidates ?? [];
+  const scriptSwipeFileCandidates = useMemo(
+    () => scriptSwipeCandidates.filter((candidate) => candidate.selectionSource === "swipe_file"),
+    [scriptSwipeCandidates],
+  );
   const selectedSwipeCandidate =
     scriptSwipeCandidates.find((candidate) => candidate.assetId === selectedSwipeTemplateAdId) ?? null;
+  const selectedSwipeFileCandidate =
+    scriptSwipeFileCandidates.find((candidate) => candidate.assetId === selectedSwipeTemplateAdId) ?? null;
   const scriptGenerateDisabled =
     scriptModalSubmitting ||
     scriptRunsLoading ||
     (scriptResearchRuns.length > 0 ? !selectedScriptResearchJobId : !scriptNoResearchAcknowledged) ||
     (scriptGenerationStrategy === "swipe_template" &&
       scriptSwipeCandidates.length > 0 &&
+      !selectedSwipeTemplateAdId) ||
+    (scriptGenerationStrategy === "upload_template" &&
+      scriptSwipeFileCandidates.length > 0 &&
       !selectedSwipeTemplateAdId);
 
   function getRunJobName(job: Job) {
@@ -2845,16 +2859,6 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
       lockReason: "Generate video first",
       lastJob: getJobsForType(JobType.VIDEO_REVIEW)[0],
     },
-    {
-      key: "upscale",
-      label: "Swap Audio",
-      jobType: JobType.VIDEO_UPSCALER,
-      status: getStepStatus(JobType.VIDEO_UPSCALER),
-      canRun: hasCompletedJob(JobType.VIDEO_GENERATION),
-      locked: !hasCompletedJob(JobType.VIDEO_GENERATION),
-      lockReason: "Generate video first",
-      lastJob: getJobsForType(JobType.VIDEO_UPSCALER)[0],
-    },
   ];
   // ARCHIVED: Image generation replaced by Sora 2 Character Cameos.
   const visibleSteps = steps.filter((step) => step.key !== "image_prompts");
@@ -2880,12 +2884,14 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
 
     try {
       const activeRunId = String(selectedRunId ?? "").trim();
+      const explicitRunIdFromPayload = String(extraPayload?.runId ?? "").trim();
+      const resolvedRunId = explicitRunIdFromPayload || activeRunId;
       const activeStoryboardCharacterId = String(selectedStoryboardCharacterId ?? "").trim();
       let endpoint = "";
       let payload: any = {
         ...(extraPayload || {}),
-        // If a run is selected, pin jobs to it. If "No active run", omit runId so run-aware APIs create one.
-        ...(activeRunId ? { runId: activeRunId } : {}),
+        // If payload includes runId, respect it. Otherwise fall back to selected active run.
+        ...(resolvedRunId ? { runId: resolvedRunId } : {}),
         projectId,
         productId: selectedProductId,
       };
@@ -2899,7 +2905,6 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
         video_images: "/api/jobs/video-images",
         video: "/api/jobs/video-generation",
         review: "/api/jobs/video-reviewer",
-        upscale: "/api/jobs/audio-swap",
       };
 
       endpoint = endpointMap[step.key];
@@ -2974,42 +2979,13 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
         };
       }
 
-      if (step.key === "upscale") {
-        const storyboardId = String(latestCompletedStoryboardId ?? "").trim();
-        if (!storyboardId) {
-          throw new Error(
-            "No completed storyboard found for the selected run. Run Create Storyboard first.",
-          );
-        }
-        const sortByNewest = (a: Job, b: Job) =>
-          new Date(b.updatedAt ?? b.createdAt).getTime() - new Date(a.updatedAt ?? a.createdAt).getTime();
-        const latestScriptJob =
-          jobsInActiveRun
-            .filter((job) => job.type === JobType.SCRIPT_GENERATION && job.status === JobStatus.COMPLETED)
-            .sort(sortByNewest)[0] ??
-          jobs
-            .filter((job) => job.type === JobType.SCRIPT_GENERATION && job.status === JobStatus.COMPLETED)
-            .sort(sortByNewest)[0] ??
-          null;
-        const scriptId = getScriptIdFromJob(latestScriptJob);
-        if (!scriptId) {
-          throw new Error(
-            "No completed script found for the selected run. Run Generate Script first.",
-          );
-        }
-        payload = {
-          ...payload,
-          storyboardId,
-          scriptId,
-          forceNew: true,
-        };
-      }
-
       console.log("[Creative] runStep request payload", {
         step: step.key,
         endpoint,
         selectedRunId,
         activeRunId: activeRunId || null,
+        explicitRunIdFromPayload: explicitRunIdFromPayload || null,
+        resolvedRunId: resolvedRunId || null,
         activeStoryboardCharacterId: activeStoryboardCharacterId || null,
         payloadRunId:
           typeof payload?.runId === "string" && payload.runId.trim()
@@ -3038,12 +3014,12 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
         throw new Error(apiError);
       }
       console.log("[Creative] Job created:", data.jobId);
-      const resolvedRunId =
+      const finalizedRunId =
         typeof data?.runId === "string" && data.runId.trim().length > 0
           ? String(data.runId)
-          : activeRunId || null;
-      if (resolvedRunId) {
-        setSelectedRunId(resolvedRunId);
+          : resolvedRunId || null;
+      if (finalizedRunId) {
+        setSelectedRunId(finalizedRunId);
       }
       if (typeof data?.jobId === "string" && data.jobId.trim().length > 0) {
         const nowIso = new Date().toISOString();
@@ -3053,10 +3029,10 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
           status: JobStatus.PENDING,
           createdAt: nowIso,
           updatedAt: nowIso,
-          runId: resolvedRunId,
+          runId: finalizedRunId,
           payload: {
             ...(payload || {}),
-            ...(resolvedRunId ? { runId: resolvedRunId } : {}),
+            ...(finalizedRunId ? { runId: finalizedRunId } : {}),
           } as Record<string, unknown>,
         };
         setJobs((prev) => {
@@ -3089,6 +3065,9 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
     setSelectedScriptResearchJobId("");
     setScriptGenerationStrategy("swipe_template");
     setSelectedSwipeTemplateAdId("");
+    setManualSwipeTemplateTitle("");
+    setManualSwipeTemplateTranscript("");
+    setManualSwipeTemplateUploading(false);
     setSwipeAnalysis(null);
     setScriptNoResearchAcknowledged(false);
     setScriptModalError(null);
@@ -3510,7 +3489,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
   }, [projectId]);
 
   async function handleChooseGenerateWithAi(
-    preferredStrategy: "swipe_template" | "research_formula" = "swipe_template"
+    preferredStrategy: "swipe_template" | "research_formula" | "upload_template" = "swipe_template"
   ) {
     setScriptGenerationStrategy(preferredStrategy);
     setScriptModalMode("ai");
@@ -3520,7 +3499,12 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
     try {
       const runs = await loadScriptResearchRuns();
       setScriptResearchRuns(runs);
-      setSelectedScriptResearchJobId(runs[0]?.jobId || "");
+      const activeRunId = String(selectedRunId ?? "").trim();
+      const matchingRunJobId = activeRunId
+        ? (runs.find((run) => String(run.runId ?? "").trim() === activeRunId)?.jobId ?? "")
+        : "";
+      // Important: when there's no active run, do not auto-bind script generation to any historical run.
+      setSelectedScriptResearchJobId(matchingRunJobId);
       setSelectedSwipeTemplateAdId("");
       setScriptNoResearchAcknowledged(false);
     } catch (err: any) {
@@ -3581,7 +3565,10 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
 
   useEffect(() => {
     if (scriptModalMode !== "ai") return;
-    const candidates = scriptRunSummary?.swipeRecommendation?.candidates ?? [];
+    const candidates =
+      scriptGenerationStrategy === "upload_template"
+        ? scriptSwipeFileCandidates
+        : scriptRunSummary?.swipeRecommendation?.candidates ?? [];
     if (candidates.length === 0) {
       setSelectedSwipeTemplateAdId("");
       return;
@@ -3589,13 +3576,22 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
     const recommended = scriptRunSummary?.swipeRecommendation?.recommendedAdId ?? "";
     setSelectedSwipeTemplateAdId((prev) => {
       if (prev && candidates.some((candidate) => candidate.assetId === prev)) return prev;
-      if (recommended && candidates.some((candidate) => candidate.assetId === recommended)) return recommended;
+      if (
+        scriptGenerationStrategy === "swipe_template" &&
+        recommended &&
+        candidates.some((candidate) => candidate.assetId === recommended)
+      ) {
+        return recommended;
+      }
       return candidates[0]?.assetId ?? "";
     });
-  }, [scriptModalMode, scriptRunSummary]);
+  }, [scriptModalMode, scriptRunSummary, scriptGenerationStrategy, scriptSwipeFileCandidates]);
 
   useEffect(() => {
-    if (scriptModalMode !== "ai" || scriptGenerationStrategy !== "swipe_template") {
+    if (
+      scriptModalMode !== "ai" ||
+      (scriptGenerationStrategy !== "swipe_template" && scriptGenerationStrategy !== "upload_template")
+    ) {
       setSwipeAnalysis(null);
       return;
     }
@@ -3633,23 +3629,36 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
       setScriptModalError("Please acknowledge the generic script warning before generating.");
       return;
     }
-    if (scriptGenerationStrategy === "swipe_template") {
-      const hasCandidates = (scriptRunSummary?.swipeRecommendation?.candidates?.length ?? 0) > 0;
+    if (scriptGenerationStrategy === "swipe_template" || scriptGenerationStrategy === "upload_template") {
+      const hasCandidates =
+        scriptGenerationStrategy === "upload_template"
+          ? scriptSwipeFileCandidates.length > 0
+          : (scriptRunSummary?.swipeRecommendation?.candidates?.length ?? 0) > 0;
       if (hasCandidates && !selectedSwipeTemplateAdId) {
-        setScriptModalError("Select a swipe template ad before generating.");
+        setScriptModalError(
+          scriptGenerationStrategy === "upload_template"
+            ? "Upload/select a transcript template before generating."
+            : "Select a swipe template ad before generating.",
+        );
         return;
       }
     }
 
     setScriptModalSubmitting(true);
     setScriptModalError(null);
+    const normalizedScriptStrategy =
+      scriptGenerationStrategy === "upload_template" ? "swipe_template" : scriptGenerationStrategy;
     const scriptGenerationPayload: Record<string, unknown> = {
       forceNew: true,
-      scriptStrategy: scriptGenerationStrategy,
+      scriptStrategy: normalizedScriptStrategy,
+      ...(selectedScriptResearchRun?.runId
+        ? { runId: String(selectedScriptResearchRun.runId).trim() }
+        : {}),
       ...(swipeAnalysis?.beatRatios
         ? { beatRatios: swipeAnalysis.beatRatios }
         : {}),
-      ...(scriptGenerationStrategy === "swipe_template" && selectedSwipeTemplateAdId
+      ...((scriptGenerationStrategy === "swipe_template" || scriptGenerationStrategy === "upload_template") &&
+      selectedSwipeTemplateAdId
         ? { swipeTemplateAdId: selectedSwipeTemplateAdId }
         : {}),
       ...(selectedScriptResearchJobId
@@ -3663,6 +3672,52 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
 
     if (ok) {
       resetScriptModal();
+    }
+  }
+
+  async function handleUploadManualSwipeTemplateTranscript() {
+    const activeRunId = String(selectedScriptResearchRun?.runId ?? "").trim();
+    if (!activeRunId) {
+      setScriptModalError("Select a completed research run before uploading a template transcript.");
+      return;
+    }
+
+    const transcript = String(manualSwipeTemplateTranscript ?? "").trim();
+    if (!transcript || transcript.length < 100) {
+      setScriptModalError("Transcript must be at least 100 characters.");
+      return;
+    }
+
+    setManualSwipeTemplateUploading(true);
+    setScriptModalError(null);
+    try {
+      const res = await fetch("/api/jobs/script-template-upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          runId: activeRunId,
+          title: String(manualSwipeTemplateTitle ?? "").trim() || "Manual swipe template",
+          transcript,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.error || `Server returned ${res.status}`);
+      }
+
+      const refreshed = await loadScriptRunSummary(activeRunId);
+      setScriptRunSummary(refreshed);
+      if (typeof data?.adAssetId === "string" && data.adAssetId.trim().length > 0) {
+        setSelectedSwipeTemplateAdId(data.adAssetId);
+      }
+      setManualSwipeTemplateTitle("");
+      setManualSwipeTemplateTranscript("");
+      toast.success("Transcript template uploaded.");
+    } catch (err: any) {
+      setScriptModalError(err?.message || "Failed to upload transcript template");
+    } finally {
+      setManualSwipeTemplateUploading(false);
     }
   }
 
@@ -3888,6 +3943,14 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                 </Link>
               </div>
             )}
+          </div>
+          <div className="ml-4">
+            <Link
+              href={`/projects/${projectId}/usage`}
+              className="inline-flex items-center gap-2 rounded bg-slate-800 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-700"
+            >
+              Usage & Costs
+            </Link>
           </div>
         </div>
       </section>
@@ -6080,6 +6143,25 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                   </button>
                   <button
                     type="button"
+                    onClick={() => void handleChooseGenerateWithAi("upload_template")}
+                    disabled={scriptModalSubmitting}
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "12px 14px",
+                      borderRadius: 10,
+                      border: "1px solid #334155",
+                      backgroundColor: "#1e293b",
+                      color: "#f8fafc",
+                      fontSize: 14,
+                      fontWeight: 600,
+                      cursor: scriptModalSubmitting ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    Upload transcript as template
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => {
                       setScriptModalMode("upload");
                       setScriptModalError(null);
@@ -6309,6 +6391,19 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                             <input
                               type="radio"
                               name="script-strategy"
+                              value="upload_template"
+                              checked={scriptGenerationStrategy === "upload_template"}
+                              onChange={() => setScriptGenerationStrategy("upload_template")}
+                              disabled={scriptModalSubmitting}
+                            />
+                            Upload transcript as template
+                          </label>
+                          <label
+                            style={{ display: "flex", alignItems: "center", gap: 8, color: "#e2e8f0", fontSize: 13, marginTop: 6 }}
+                          >
+                            <input
+                              type="radio"
+                              name="script-strategy"
                               value="manual_create"
                               checked={false}
                               onChange={() => {
@@ -6321,28 +6416,42 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                             Manually create script
                           </label>
 
-                          {scriptGenerationStrategy === "swipe_template" && (
+                          {(scriptGenerationStrategy === "swipe_template" ||
+                            scriptGenerationStrategy === "upload_template") && (
                             <div style={{ marginTop: 10 }}>
                               {(() => {
                                 const recommendation = scriptRunSummary?.swipeRecommendation;
-                                const candidates = recommendation?.candidates ?? [];
+                                const candidates =
+                                  scriptGenerationStrategy === "upload_template"
+                                    ? scriptSwipeFileCandidates
+                                    : recommendation?.candidates ?? [];
                                 if (candidates.length === 0) {
                                   return (
                                     <p style={{ margin: 0, color: "#fde68a", fontSize: 12 }}>
-                                      No swipe-eligible ads found. Ads need a transcript to use as a script template.
+                                      {scriptGenerationStrategy === "upload_template"
+                                        ? "No uploaded transcript templates in this run yet. Upload one below."
+                                        : "No swipe-eligible ads found. Ads need a transcript to use as a script template."}
                                     </p>
                                   );
                                 }
                                 return (
                                   <>
-                                    <p style={{ margin: "0 0 6px 0", color: "#94a3b8", fontSize: 12 }}>
-                                      Recommended by engagement metrics. Only ads that passed quality assessment are shown.
-                                    </p>
-                                    {recommendation?.sourceMode === "run_ad" ? (
-                                      <p style={{ margin: "0 0 8px 0", color: "#fde68a", fontSize: 12 }}>
-                                        No explicit swipe-file templates were found in this run. Showing top quality-passed ads from this run as template candidates.
+                                    {scriptGenerationStrategy === "swipe_template" ? (
+                                      <>
+                                        <p style={{ margin: "0 0 6px 0", color: "#94a3b8", fontSize: 12 }}>
+                                          Recommended by engagement metrics. Only ads that passed quality assessment are shown.
+                                        </p>
+                                        {recommendation?.sourceMode === "run_ad" ? (
+                                          <p style={{ margin: "0 0 8px 0", color: "#fde68a", fontSize: 12 }}>
+                                            No explicit swipe-file templates were found in this run. Showing top quality-passed ads from this run as template candidates.
+                                          </p>
+                                        ) : null}
+                                      </>
+                                    ) : (
+                                      <p style={{ margin: "0 0 6px 0", color: "#94a3b8", fontSize: 12 }}>
+                                        Uploaded transcript templates for this run.
                                       </p>
-                                    ) : null}
+                                    )}
                                     <select
                                       value={selectedSwipeTemplateAdId}
                                       onChange={(e) => setSelectedSwipeTemplateAdId(e.target.value)}
@@ -6359,18 +6468,23 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                                       }}
                                     >
                                       {candidates.map((candidate) => {
-                                        const recommended = recommendation?.recommendedAdId === candidate.assetId;
                                         const labelTitle = (candidate.title || "Untitled ad").slice(0, 80);
                                         return (
                                           <option key={candidate.assetId} value={candidate.assetId}>
-                                            {recommended ? "★ " : ""}
+                                            {scriptGenerationStrategy === "swipe_template" &&
+                                            recommendation?.recommendedAdId === candidate.assetId
+                                              ? "★ "
+                                              : ""}
                                             {labelTitle} · score {candidate.score.toFixed(3)}
                                           </option>
                                         );
                                       })}
                                     </select>
                                     {(() => {
-                                      const active = selectedSwipeCandidate;
+                                      const active =
+                                        scriptGenerationStrategy === "upload_template"
+                                          ? selectedSwipeFileCandidate
+                                          : selectedSwipeCandidate;
                                       if (!active) return null;
                                       return (
                                         <div
@@ -6461,6 +6575,103 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                                   </>
                                 );
                               })()}
+                              <div
+                                style={{
+                                  marginTop: 10,
+                                  border: "1px solid #334155",
+                                  borderRadius: 10,
+                                  backgroundColor: "#020617",
+                                  padding: "10px 12px",
+                                }}
+                              >
+                                <p style={{ margin: 0, color: "#cbd5e1", fontSize: 12, fontWeight: 700 }}>
+                                  Upload Transcript as Template
+                                </p>
+                                <p style={{ margin: "6px 0 8px 0", color: "#94a3b8", fontSize: 12 }}>
+                                  Add your own transcript and use it as a swipe template candidate for this run.
+                                </p>
+                                <input
+                                  type="text"
+                                  value={manualSwipeTemplateTitle}
+                                  onChange={(e) => setManualSwipeTemplateTitle(e.target.value)}
+                                  placeholder="Template title (optional)"
+                                  disabled={scriptModalSubmitting || manualSwipeTemplateUploading}
+                                  style={{
+                                    width: "100%",
+                                    borderRadius: 8,
+                                    border: "1px solid #334155",
+                                    backgroundColor: "#0b1220",
+                                    color: "#e2e8f0",
+                                    padding: "8px 10px",
+                                    fontSize: 12,
+                                    boxSizing: "border-box",
+                                  }}
+                                />
+                                <textarea
+                                  value={manualSwipeTemplateTranscript}
+                                  onChange={(e) => setManualSwipeTemplateTranscript(e.target.value)}
+                                  placeholder="Paste transcript (minimum 100 characters)"
+                                  rows={4}
+                                  disabled={scriptModalSubmitting || manualSwipeTemplateUploading}
+                                  style={{
+                                    marginTop: 8,
+                                    width: "100%",
+                                    borderRadius: 8,
+                                    border: "1px solid #334155",
+                                    backgroundColor: "#0b1220",
+                                    color: "#e2e8f0",
+                                    padding: "8px 10px",
+                                    fontSize: 12,
+                                    boxSizing: "border-box",
+                                    resize: "vertical",
+                                  }}
+                                />
+                                <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", gap: 8 }}>
+                                  <span style={{ color: "#64748b", fontSize: 11 }}>
+                                    {manualSwipeTemplateTranscript.trim().length} chars
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleUploadManualSwipeTemplateTranscript()}
+                                    disabled={
+                                      scriptModalSubmitting ||
+                                      manualSwipeTemplateUploading ||
+                                      manualSwipeTemplateTranscript.trim().length < 100 ||
+                                      !selectedScriptResearchRun?.runId
+                                    }
+                                    style={{
+                                      border: "none",
+                                      backgroundColor:
+                                        scriptModalSubmitting ||
+                                        manualSwipeTemplateUploading ||
+                                        manualSwipeTemplateTranscript.trim().length < 100 ||
+                                        !selectedScriptResearchRun?.runId
+                                          ? "#1e293b"
+                                          : "#0ea5e9",
+                                      color:
+                                        scriptModalSubmitting ||
+                                        manualSwipeTemplateUploading ||
+                                        manualSwipeTemplateTranscript.trim().length < 100 ||
+                                        !selectedScriptResearchRun?.runId
+                                          ? "#64748b"
+                                          : "#ffffff",
+                                      padding: "6px 10px",
+                                      borderRadius: 8,
+                                      fontSize: 12,
+                                      fontWeight: 600,
+                                      cursor:
+                                        scriptModalSubmitting ||
+                                        manualSwipeTemplateUploading ||
+                                        manualSwipeTemplateTranscript.trim().length < 100 ||
+                                        !selectedScriptResearchRun?.runId
+                                          ? "not-allowed"
+                                          : "pointer",
+                                    }}
+                                  >
+                                    {manualSwipeTemplateUploading ? "Uploading..." : "Add Template"}
+                                  </button>
+                                </div>
+                              </div>
                             </div>
                           )}
 
@@ -6596,7 +6807,9 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                   >
                     {scriptModalSubmitting
                       ? "Starting AI generation..."
-                      : scriptGenerationStrategy === "swipe_template"
+                      : scriptGenerationStrategy === "upload_template"
+                        ? "Generate from Uploaded Template"
+                        : scriptGenerationStrategy === "swipe_template"
                         ? "Generate from Swipe Template"
                         : "Generate from Research Formula"}
                   </button>
@@ -6604,6 +6817,85 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
               </div>
             ) : (
               <div>
+                <div
+                  style={{
+                    marginBottom: 12,
+                    border: "1px solid #334155",
+                    borderRadius: 10,
+                    backgroundColor: "#0b1220",
+                    padding: "10px 12px",
+                  }}
+                >
+                  <p style={{ margin: "0 0 8px 0", color: "#cbd5e1", fontSize: 12, fontWeight: 600 }}>
+                    Script Strategy
+                  </p>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, color: "#e2e8f0", fontSize: 13 }}>
+                    <input
+                      type="radio"
+                      name="script-strategy-upload-mode"
+                      checked={false}
+                      onChange={() => void handleChooseGenerateWithAi("swipe_template")}
+                      disabled={scriptModalSubmitting}
+                    />
+                    Select ad template from swipe
+                  </label>
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      color: "#e2e8f0",
+                      fontSize: 13,
+                      marginTop: 6,
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="script-strategy-upload-mode"
+                      checked={false}
+                      onChange={() => void handleChooseGenerateWithAi("research_formula")}
+                      disabled={scriptModalSubmitting}
+                    />
+                    Use formula from research
+                  </label>
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      color: "#e2e8f0",
+                      fontSize: 13,
+                      marginTop: 6,
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="script-strategy-upload-mode"
+                      checked={false}
+                      onChange={() => void handleChooseGenerateWithAi("upload_template")}
+                      disabled={scriptModalSubmitting}
+                    />
+                    Upload transcript as template
+                  </label>
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      color: "#e2e8f0",
+                      fontSize: 13,
+                      marginTop: 6,
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="script-strategy-upload-mode"
+                      checked
+                      readOnly
+                    />
+                    Manually create script
+                  </label>
+                </div>
                 <p style={{ margin: "0 0 12px 0", color: "#cbd5e1", fontSize: 14 }}>
                   Paste your script below. This bypasses AI generation and saves your text directly.
                 </p>

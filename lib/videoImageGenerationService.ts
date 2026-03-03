@@ -5,6 +5,7 @@ import type { ImageProviderId } from "./imageProviders/types";
 import { JobStatus } from "@prisma/client";
 import { updateJobStatus } from "@/lib/jobs/updateJobStatus";
 import { uploadVideoFrameObject } from "@/lib/s3Service";
+import { settleJobCost } from "@/lib/billing/settleJobCost";
 
 const KIE_HTTP_TIMEOUT_MS = Number(cfg.raw("KIE_HTTP_TIMEOUT_MS") ?? 20_000);
 const KIE_POLL_INTERVAL_MS = Number(cfg.raw("KIE_POLL_INTERVAL_MS") ?? 2_000);
@@ -282,6 +283,30 @@ export async function runVideoImageGenerationJob(args: RunArgs): Promise<void> {
         resultSummary: `Video frames saved: ${resolvedImages.length}`,
       } as any,
     });
+    try {
+      await settleJobCost({
+        jobId: job.id,
+        userId: job.userId,
+        projectId: job.projectId,
+        usageEntries: [
+          {
+            metric: "imageJobs",
+            provider: "kie",
+            model: String(polled.providerId ?? payload?.providerId ?? "nano-banana-2"),
+            units: Math.max(1, resolvedImages.length),
+            costCents: 0,
+            metadata: {
+              taskCount: Array.isArray(polled.tasks) ? polled.tasks.length : 0,
+            },
+          },
+        ],
+      });
+    } catch (error) {
+      console.error("[VIG-SERVICE] Failed to settle video image job usage", {
+        jobId: job.id,
+        error: String((error as any)?.message ?? error),
+      });
+    }
     console.log("[VIG-SERVICE] DB update complete: completed-branch", {
       jobId: completedUpdateResult.id,
       status: completedUpdateResult.status,

@@ -8,6 +8,7 @@ import {
   assertProductSetupReferenceReachable,
   assertProductSetupReferenceUrl,
 } from "@/lib/productSetupReferencePolicy";
+import { computeKieVideoCostCents } from "@/lib/billing/pricing";
 
 function normalizeKieVideoModel(value: string | null | undefined, fallback: 'veo3' | 'veo3_fast'): 'veo3' | 'veo3_fast' {
   const normalized = String(value ?? "").trim().toLowerCase();
@@ -99,6 +100,14 @@ type RunResult = {
   mergedVideoUrl?: string | null;
   skipped?: boolean;
   reason?: string;
+  usageEntries?: Array<{
+    metric: string;
+    provider: string;
+    model: string;
+    units: number;
+    costCents: number;
+    metadata: Record<string, unknown>;
+  }>;
 };
 
 function asObject(value: unknown) {
@@ -371,10 +380,20 @@ async function pollKieVideoJob(
   taskId: string,
   maxWaitMs = 20 * 60_000,
   intervalMs = 15_000,
+  opts?: {
+    shouldCancel?: () => Promise<boolean> | boolean;
+  },
 ): Promise<string[]> {
   const deadline = Date.now() + maxWaitMs;
 
   while (Date.now() < deadline) {
+    if (opts?.shouldCancel) {
+      const cancelled = await Promise.resolve(opts.shouldCancel());
+      if (cancelled) {
+        throw new Error("Job cancelled by user");
+      }
+    }
+
     const res = await fetch(
       `https://api.kie.ai/api/v1/veo/record-info?taskId=${encodeURIComponent(taskId)}`,
       { headers: getKieHeaders() },
@@ -412,6 +431,9 @@ async function pollKieVideoJob(
 async function generateVideoForScene(
   scene: SceneLike,
   productReferenceImages: ProductReferenceImages,
+  opts?: {
+    shouldCancel?: () => Promise<boolean> | boolean;
+  },
 ): Promise<SceneVideoResult> {
   const raw = asObject((scene as any).rawJson);
   const prompt = String((scene as any).videoPrompt ?? raw.videoPrompt ?? '').trim();
@@ -454,7 +476,9 @@ async function generateVideoForScene(
     aspectRatio,
     uploadMethod,
   });
-  const urls = await pollKieVideoJob(taskId, 18 * 60_000);
+  const urls = await pollKieVideoJob(taskId, 18 * 60_000, 15_000, {
+    shouldCancel: opts?.shouldCancel,
+  });
   const videoUrl = urls[0];
 
   return {
@@ -467,6 +491,7 @@ async function generateVideoForScene(
       taskId,
       model: imageInputs.length > 0 ? KIE_IMAGE_TO_VIDEO_MODEL : KIE_TEXT_TO_VIDEO_MODEL,
       prompt,
+      durationSec,
       imageInputs,
       referenceFrames,
       nFrames,
@@ -573,7 +598,12 @@ async function persistSceneVideos(storyboardId: string, results: SceneVideoResul
   return { scenesUpdated, updatedSceneIds };
 }
 
-export async function runVideoGenerationJob(job: JobLike): Promise<RunResult> {
+export async function runVideoGenerationJob(
+  job: JobLike,
+  opts?: {
+    shouldCancel?: () => Promise<boolean> | boolean;
+  },
+): Promise<RunResult> {
   const payload = asObject(job.payload);
   const projectId = String(payload.projectId ?? '').trim();
   const storyboardId = String(payload.storyboardId ?? '').trim();
@@ -692,6 +722,16 @@ export async function runVideoGenerationJob(job: JobLike): Promise<RunResult> {
       mergedVideoUrl,
       skipped: true,
       reason: 'already_generated',
+      usageEntries: [
+        {
+          metric: "videoJobs",
+          provider: "kie",
+          model: KIE_IMAGE_TO_VIDEO_MODEL,
+          units: 1,
+          costCents: 0,
+          metadata: { skipped: true, reason: "already_generated" },
+        },
+      ],
     };
   }
 
@@ -699,10 +739,17 @@ export async function runVideoGenerationJob(job: JobLike): Promise<RunResult> {
   let scenesUpdated = 0;
   const updatedSceneIds: string[] = [];
   for (const scene of targetScenes) {
+    if (opts?.shouldCancel) {
+      const cancelled = await Promise.resolve(opts.shouldCancel());
+      if (cancelled) {
+        throw new Error("Job cancelled by user");
+      }
+    }
     try {
       const result = await generateVideoForScene(
         scene as unknown as SceneLike,
         productReferenceImages,
+        { shouldCancel: opts?.shouldCancel },
       );
       results.push(result);
 
@@ -741,5 +788,26 @@ export async function runVideoGenerationJob(job: JobLike): Promise<RunResult> {
     videoUrls: [...existingUrls, ...results.map(result => result.videoUrl)],
     taskIds: results.map(result => result.providerTaskId),
     mergedVideoUrl,
+    usageEntries: results.map((result) => {
+      const model = String(result.providerPayload?.model ?? KIE_IMAGE_TO_VIDEO_MODEL);
+      const kieModel = model.includes("quality") ? "veo3_quality" : "veo3_fast";
+      const costCents = computeKieVideoCostCents(kieModel, 1);
+      return {
+        metric: "videoJobs",
+        provider: "kie",
+        model,
+        units: 1,
+        costCents,
+        metadata: {
+          taskId: result.providerTaskId,
+          sceneId: result.sceneId,
+          sceneNumber: result.sceneNumber,
+          durationSec: Number(result.providerPayload?.durationSec ?? 8),
+          nFrames: Number(result.providerPayload?.nFrames ?? 10),
+          kieModel,
+          creditsPerVideo: kieModel === "veo3_quality" ? 300 : 60,
+        },
+      };
+    }),
   };
 }

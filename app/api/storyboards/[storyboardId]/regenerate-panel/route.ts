@@ -3,6 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { cfg } from "@/lib/config";
 import { getSessionUserId } from "@/lib/getSessionUserId";
 import { prisma } from "@/lib/prisma";
+import { computeAnthropicCostCents } from "@/lib/billing/pricing";
 
 type PanelTypeValue = "ON_CAMERA" | "B_ROLL_ONLY";
 type RegenerateTarget = "panel_direction" | "video_prompt";
@@ -12,7 +13,7 @@ Return only the final prompt text.
 Write clear cinematic direction with concrete subject action, camera language, lighting, and environment details.
 Keep temporal continuity and character consistency across the shot.
 Must be UGC conversion-focused (creator-native, handheld, social-feed direct response), not a polished commercial.`;
-const VIDEO_PROMPT_MODEL = cfg.raw("ANTHROPIC_MODEL") || "claude-sonnet-4-5-20250929";
+const VIDEO_PROMPT_MODEL = cfg.raw("ANTHROPIC_MODEL") || "claude-sonnet-4-6";
 
 type StoryboardPanel = {
   panelType: PanelTypeValue;
@@ -441,6 +442,21 @@ export async function POST(
         ],
       });
 
+      const providerRequestId = (response as any)?.id ?? null;
+      const inputTokens = Math.max(0, Math.trunc(Number(response?.usage?.input_tokens ?? 0)));
+      const outputTokens = Math.max(0, Math.trunc(Number(response?.usage?.output_tokens ?? 0)));
+      const costCents = computeAnthropicCostCents(VIDEO_PROMPT_MODEL, inputTokens, outputTokens);
+
+      console.log("[regenerate-panel/video_prompt] cost", {
+        storyboardId,
+        panelIndex,
+        model: VIDEO_PROMPT_MODEL,
+        inputTokens,
+        outputTokens,
+        costCents,
+        providerRequestId,
+      });
+
       const promptText = extractTextContent(response);
       if (!promptText) {
         throw new Error("Claude returned an empty video prompt.");
@@ -478,6 +494,21 @@ export async function POST(
           }),
         },
       ],
+    });
+
+    const providerRequestId = (response as any)?.id ?? null;
+    const inputTokens = Math.max(0, Math.trunc(Number(response?.usage?.input_tokens ?? 0)));
+    const outputTokens = Math.max(0, Math.trunc(Number(response?.usage?.output_tokens ?? 0)));
+    const costCents = computeAnthropicCostCents("claude-haiku-4-5-20251001", inputTokens, outputTokens);
+
+    console.log("[regenerate-panel/panel_direction] cost", {
+      storyboardId,
+      panelIndex,
+      model: "claude-haiku-4-5-20251001",
+      inputTokens,
+      outputTokens,
+      costCents,
+      providerRequestId,
     });
 
     const responseText = extractTextContent(response);

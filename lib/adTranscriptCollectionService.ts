@@ -190,17 +190,28 @@ async function transcribeWithAssemblyAiCandidates(mediaUrls: string[]): Promise<
   confidence: number | null;
   audioDuration: number | null;
   mediaUrl: string;
+  attempts: number;
 }> {
   let lastError: string = "AssemblyAI failed";
+  let attempts = 0;
   for (const mediaUrl of mediaUrls) {
     try {
+      attempts += 1;
       const result = await transcribeWithAssemblyAi(mediaUrl);
-      return { ...result, mediaUrl };
+      return { ...result, mediaUrl, attempts };
     } catch (error: any) {
       lastError = String(error?.message ?? error);
     }
   }
   throw new Error(lastError);
+}
+
+function normalizeAudioDurationSeconds(value: unknown): number {
+  const n = firstNumber(value);
+  if (n === null || !Number.isFinite(n) || n <= 0) return 0;
+  // Some providers return ms; treat very large values as ms.
+  if (n > 10_000) return Math.max(0, n / 1000);
+  return Math.max(0, n);
 }
 
 function isMusicLyrics(text: string): boolean {
@@ -245,12 +256,14 @@ async function enrichAssetWithTranscript(assetId: string) {
     select: { id: true, rawJson: true },
   });
 
-  if (!asset) return "skipped" as const;
+  if (!asset) return { status: "skipped" as const, billedAudioSeconds: 0, apiCalls: 0 };
   const existingTranscript = (asset.rawJson as any)?.transcript;
-  if (existingTranscript && String(existingTranscript).trim().length > 0) return "skipped" as const;
+  if (existingTranscript && String(existingTranscript).trim().length > 0) {
+    return { status: "skipped" as const, billedAudioSeconds: 0, apiCalls: 0 };
+  }
 
   const mediaUrls = extractMediaUrls(asset.rawJson);
-  if (mediaUrls.length === 0) return "skipped" as const;
+  if (mediaUrls.length === 0) return { status: "skipped" as const, billedAudioSeconds: 0, apiCalls: 0 };
 
   const transcript = await transcribeWithAssemblyAiCandidates(mediaUrls);
   const text = transcript.text.trim();
@@ -282,9 +295,19 @@ async function enrichAssetWithTranscript(assetId: string) {
       data: { rawJson: noSpeechRawJson as any },
     });
 
-    return "no_speech" as const;
+    return {
+      status: "no_speech" as const,
+      billedAudioSeconds: normalizeAudioDurationSeconds(transcript.audioDuration),
+      apiCalls: Math.max(1, Number(transcript.attempts) || 1),
+    };
   }
-  if (isMusicLyrics(text)) return "skipped" as const;
+  if (isMusicLyrics(text)) {
+    return {
+      status: "skipped" as const,
+      billedAudioSeconds: normalizeAudioDurationSeconds(transcript.audioDuration),
+      apiCalls: Math.max(1, Number(transcript.attempts) || 1),
+    };
+  }
 
   const duration = firstNumber(
     (asset.rawJson as any)?.metrics?.duration,
@@ -321,7 +344,11 @@ async function enrichAssetWithTranscript(assetId: string) {
     data: { rawJson: newRawJson as any },
   });
 
-  return "transcribed" as const;
+  return {
+    status: "transcribed" as const,
+    billedAudioSeconds: normalizeAudioDurationSeconds(transcript.audioDuration),
+    apiCalls: Math.max(1, Number(transcript.attempts) || 1),
+  };
 }
 
 export async function runAdTranscriptCollection(args: {
@@ -366,6 +393,8 @@ export async function runAdTranscriptCollection(args: {
   let noSpeech = 0;
   let skipped = 0;
   let completed = 0;
+  let billedAudioSeconds = 0;
+  let apiCalls = 0;
   const total = assetsToProcess.length;
   const errors: Array<{ assetId: string; error: any }> = [];
 
@@ -373,9 +402,11 @@ export async function runAdTranscriptCollection(args: {
     limit(async () => {
       try {
         const result = await enrichAssetWithTranscript(asset.id);
-        if (result === "transcribed") processed++;
-        if (result === "no_speech") noSpeech++;
-        if (result === "skipped") skipped++;
+        if (result.status === "transcribed") processed++;
+        if (result.status === "no_speech") noSpeech++;
+        if (result.status === "skipped") skipped++;
+        billedAudioSeconds += Math.max(0, Number(result.billedAudioSeconds) || 0);
+        apiCalls += Math.max(0, Number(result.apiCalls) || 0);
         completed++;
         if (onProgress) {
           onProgress(Math.floor((completed / total) * 100));
@@ -397,7 +428,7 @@ export async function runAdTranscriptCollection(args: {
     );
   }
 
-  return { totalAssets: total, processed, noSpeech, skipped };
+  return { totalAssets: total, processed, noSpeech, skipped, billedAudioSeconds, apiCalls };
 }
 
 export async function startAdTranscriptJob(params: {
@@ -440,7 +471,7 @@ export async function startAdTranscriptJob(params: {
     await prisma.job.update({
       where: { id: jobId },
       data: {
-        resultSummary: `Transcripts: ${result.processed}/${result.totalAssets} (no_speech: ${result.noSpeech ?? 0}, skipped: ${result.skipped ?? 0})`,
+        resultSummary: `Transcripts: ${result.processed}/${result.totalAssets} (no_speech: ${result.noSpeech ?? 0}, skipped: ${result.skipped ?? 0}, audio_s: ${Math.round(result.billedAudioSeconds ?? 0)}, api_calls: ${result.apiCalls ?? 0})`,
       },
     });
 

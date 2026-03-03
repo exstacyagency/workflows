@@ -61,11 +61,6 @@ type CharacterPipelineStatusResponse = {
   };
 };
 
-type CharacterVoiceStatusResponse = {
-  characterId: string;
-  stage: StageStatus;
-};
-
 type CharacterPreset = {
   id: string;
   label: string;
@@ -190,7 +185,6 @@ function stageStatusText(stage: StageStatus): string {
 export function ProductSetupClient({ product }: { product: ProductSetupData }) {
   const router = useRouter();
   const [isGenerating, setIsGenerating] = useState(false);
-  const [isGeneratingVoice, setIsGeneratingVoice] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const [isDeletingCharacters, setIsDeletingCharacters] = useState(false);
   const [renamingCharacterId, setRenamingCharacterId] = useState<string | null>(null);
@@ -205,7 +199,6 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
   const [customFields, setCustomFields] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [pipelineStatus, setPipelineStatus] = useState<CharacterPipelineStatusResponse | null>(null);
-  const [voiceStatus, setVoiceStatus] = useState<StageStatus | null>(null);
   const [anchorPreviewOpen, setAnchorPreviewOpen] = useState(false);
   const [avatarPreview, setAvatarPreview] = useState<{ url: string; name: string } | null>(null);
   const [isMounted, setIsMounted] = useState(false);
@@ -228,23 +221,6 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
     return data as CharacterPipelineStatusResponse;
   }, [product.id, selectedRunId]);
 
-  const refreshVoiceStatus = useCallback(async () => {
-    const characterId = selectedRunCharacter?.id;
-    if (!characterId) {
-      setVoiceStatus(null);
-      return null;
-    }
-    const res = await fetch(
-      `/api/jobs/character-voice/status?characterId=${encodeURIComponent(characterId)}`,
-      { cache: "no-store" },
-    );
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(extractError(data, "Failed to fetch character voice status"));
-    const typed = data as CharacterVoiceStatusResponse;
-    setVoiceStatus(typed.stage);
-    return typed.stage;
-  }, [selectedRunCharacter?.id]);
-
   useEffect(() => {
     let mounted = true;
     const tick = async () => {
@@ -255,33 +231,6 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
     const interval = window.setInterval(() => void tick(), 4000);
     return () => { mounted = false; window.clearInterval(interval); };
   }, [refreshStatus]);
-
-  useEffect(() => {
-    let mounted = true;
-    let intervalId: number | null = null;
-    const tick = async () => {
-      try {
-        const stage = await refreshVoiceStatus();
-        if (!mounted || !stage) return;
-        if (stage.status === "COMPLETED" || stage.status === "FAILED") {
-          if (intervalId !== null) {
-            window.clearInterval(intervalId);
-            intervalId = null;
-          }
-        }
-      } catch (err) {
-        if (mounted) {
-          setError(err instanceof Error ? err.message : "Failed to load voice status");
-        }
-      }
-    };
-    void tick();
-    intervalId = window.setInterval(() => void tick(), 4000);
-    return () => {
-      mounted = false;
-      if (intervalId !== null) window.clearInterval(intervalId);
-    };
-  }, [refreshVoiceStatus]);
 
   useEffect(() => {
     if (pipelineStatus?.isComplete && !selectedRunCharacter?.soraCharacterId) {
@@ -301,7 +250,6 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
     missingFields.length === 0 &&
     newCharacterName.trim().length <= 120;
   const hasFailedStage = useMemo(() => stages.some((s) => s.status === "FAILED"), [stages]);
-  const voiceStatusInFlight = voiceStatus?.status === "PENDING" || voiceStatus?.status === "RUNNING";
 
   const effectiveCharacterId =
     pipelineStatus?.character?.soraCharacterId ?? selectedRunCharacter?.soraCharacterId ?? null;
@@ -370,32 +318,6 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
       setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
       setIsGenerating(false);
-    }
-  }
-
-  async function handleGenerateVoice(forceNew = false) {
-    if (!selectedRunCharacter?.id) return;
-    setIsGeneratingVoice(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/jobs/character-voice", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          projectId: product.project.id,
-          productId: product.id,
-          characterId: selectedRunCharacter.id,
-          runId: selectedRunId,
-          forceNew,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(extractError(data, "Failed to start voice generation"));
-      await refreshVoiceStatus();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
-    } finally {
-      setIsGeneratingVoice(false);
     }
   }
 
@@ -575,22 +497,10 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
   }
 
   function StageList() {
-    const displayStages = [
-      ...stages,
-      voiceStatus ?? {
-        type: "CHARACTER_VOICE_SETUP",
-        label: "Character Voice Setup",
-        jobId: null,
-        status: "PENDING" as const,
-        error: null,
-        createdAt: null,
-        updatedAt: null,
-      },
-    ];
-    if (displayStages.length === 0) return <p className="text-xs text-slate-500">No pipeline jobs yet.</p>;
+    if (stages.length === 0) return <p className="text-xs text-slate-500">No pipeline jobs yet.</p>;
     return (
       <div className="space-y-2">
-        {displayStages.map((stage) => (
+        {stages.map((stage) => (
           <div key={stage.type} className="rounded-md border border-slate-800 bg-slate-950/50 p-3">
             <div className="flex items-center justify-between gap-3">
               <p className="text-sm text-slate-200">{stage.label}</p>
@@ -603,8 +513,7 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
                 }`}>
                   {stageStatusText(stage)}
                 </p>
-                {stage.type !== "CHARACTER_VOICE_SETUP" &&
-                  (stage.status === "RUNNING" || stage.status === "PENDING") &&
+                {(stage.status === "RUNNING" || stage.status === "PENDING") &&
                   stage.jobId && (
                   <button
                     type="button"
@@ -724,20 +633,6 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
               <div className="flex gap-2">
                 <button
                   type="button"
-                  onClick={() => void handleGenerateVoice(Boolean(selectedRunCharacter?.elevenLabsVoiceId))}
-                  disabled={!selectedRunCharacter?.id || isGeneratingVoice || voiceStatusInFlight}
-                  className="inline-flex items-center rounded-md border border-indigo-700 bg-indigo-900 px-3 py-2 text-xs font-medium text-indigo-200 hover:bg-indigo-800 disabled:opacity-60"
-                >
-                  {isGeneratingVoice
-                    ? "Starting..."
-                    : voiceStatusInFlight
-                      ? "Voice Setup Running..."
-                    : selectedRunCharacter?.elevenLabsVoiceId
-                      ? "Regenerate Voice"
-                      : "Generate Voice"}
-                </button>
-                <button
-                  type="button"
                   onClick={() => setAddingCharacter((v) => !v)}
                   className="inline-flex items-center rounded-md bg-sky-500 hover:bg-sky-400 px-3 py-2 text-xs font-medium text-white"
                 >
@@ -752,20 +647,6 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
                   {isResetting ? "Resetting..." : "Reset All"}
                 </button>
               </div>
-            </div>
-
-            <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
-              <p className="text-xs text-slate-400">
-                Voice Profile:{" "}
-                <span className="text-slate-200">
-                  {selectedRunCharacter?.elevenLabsVoiceId ?? "Not generated"}
-                </span>
-              </p>
-              {!selectedRunCharacter?.id && (
-                <p className="mt-1 text-xs text-amber-300">
-                  Generate a character first, then generate voice.
-                </p>
-              )}
             </div>
 
             {/* Run selector */}
@@ -879,10 +760,6 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
                     </button>
                   )}
                   <div className="space-y-1 pt-1">
-                    <p className="text-xs text-slate-400">
-                      <span className="text-slate-500">Voice ID:</span>{" "}
-                      {char.elevenLabsVoiceId || "Not generated"}
-                    </p>
                     {CHARACTER_PROFILE_KEYS.map((key) => (
                       <p key={key} className="text-xs text-slate-400">
                         <span className="text-slate-500">{key}</span>{" "}
@@ -922,7 +799,7 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
               </div>
             )}
 
-            {(hasInFlightStage || Boolean(voiceStatus?.jobId)) && <StageList />}
+            {hasInFlightStage && <StageList />}
           </div>
         )}
       </section>

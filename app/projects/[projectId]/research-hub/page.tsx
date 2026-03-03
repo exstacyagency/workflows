@@ -1148,6 +1148,14 @@ export default function ResearchHubPage() {
               )}
             </div>
           </div>
+          <div className="ml-4">
+            <Link
+              href={`/projects/${projectId}/usage`}
+              className="inline-flex items-center gap-2 rounded bg-slate-800 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-700"
+            >
+              Usage & Costs
+            </Link>
+          </div>
         </div>
       </div>
 

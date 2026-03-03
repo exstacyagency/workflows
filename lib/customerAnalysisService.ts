@@ -320,6 +320,17 @@ async function callAnthropic(
   content: string;
   requestPath: string;
   responsePath: string;
+  usageEntry: {
+    metric: string;
+    provider: string;
+    model: string;
+    units: number;
+    costCents: number;
+    metadata: {
+      inputTokens: number;
+      outputTokens: number;
+    };
+  } | null;
 }> {
   try {
     console.log('[Customer Analysis] Checking for ANTHROPIC_API_KEY...');
@@ -334,7 +345,7 @@ async function callAnthropic(
   console.log('CUSTOMER_ANALYSIS_LLM_RETRIES:', CUSTOMER_ANALYSIS_LLM_RETRIES);
   console.log('API Key present:', !!apiKey);
   console.log('API Key length:', apiKey?.length);
-  const model = "claude-sonnet-4-20250514";
+  const model = "claude-sonnet-4-6";
   const maxTokens = 16000;
   const temperature = 1;
 
@@ -400,11 +411,29 @@ async function callAnthropic(
       if (!content) {
         throw new Error('Anthropic response missing content');
       }
+      const inputTokens = Number((response as any)?.usage?.input_tokens ?? 0);
+      const outputTokens = Number((response as any)?.usage?.output_tokens ?? 0);
+      const totalTokens = Math.max(0, Math.trunc(inputTokens + outputTokens));
+      const usageEntry =
+        totalTokens > 0
+          ? {
+              metric: "tokens",
+              provider: "anthropic",
+              model,
+              units: totalTokens,
+              costCents: 0,
+              metadata: {
+                inputTokens: Math.max(0, Math.trunc(inputTokens)),
+                outputTokens: Math.max(0, Math.trunc(outputTokens)),
+              },
+            }
+          : null;
       console.log('[Customer Analysis] API call succeeded');
       return {
         content: content as string,
         requestPath,
         responsePath,
+        usageEntry,
       };
     } catch (error) {
       console.error('[Customer Analysis] Anthropic API Error:', error);
@@ -751,6 +780,7 @@ export async function runCustomerAnalysis(args: {
       anthropicRequestLogPath: anthropicResult.requestPath,
       anthropicResponseLogPath: anthropicResult.responsePath,
     },
+    usageEntries: anthropicResult.usageEntry ? [anthropicResult.usageEntry] : [],
   };
 }
 
