@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth/requireSession";
 import { prisma } from "@/lib/db";
 import { JobStatus } from "@prisma/client";
+import { notifyAll } from "@/lib/notifications/notifyAll";
 
 export async function POST(
   req: NextRequest,
@@ -48,6 +49,16 @@ export async function POST(
       error: "Job cancelled by user",
       updatedAt: new Date(),
     },
+  });
+
+  await notifyAll({
+    jobId: params.jobId,
+    jobType: String(job.type),
+    projectId: job.projectId,
+    runId: job.runId ?? null,
+    status: "CANCELLED",
+    message: `🛑 ${String(job.type).toLowerCase().replace(/_/g, " ")} cancelled by user`,
+    error: "Job cancelled by user",
   });
 
   return NextResponse.json({ success: true });

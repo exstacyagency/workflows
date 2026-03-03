@@ -5,6 +5,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { getJobTypeLabel } from "@/lib/jobLabels";
 import RunManagementModal from "@/components/RunManagementModal";
+import { WebChatPanel } from "@/components/chat/WebChatPanel";
 
 // Types
 type JobStatus = "NOT_STARTED" | "PENDING" | "RUNNING" | "COMPLETED" | "FAILED";
@@ -2116,6 +2117,7 @@ function CustomerResearchModal({
           )}
         </div>
       </div>
+      <WebChatPanel projectId={projectId} />
     </div>
   );
 }
