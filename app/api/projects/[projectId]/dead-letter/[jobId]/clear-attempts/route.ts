@@ -8,7 +8,7 @@ export async function POST(
   req: NextRequest,
   { params }: { params: { projectId: string; jobId: string } }
 ) {
-  const userId = await getSessionUserId();
+  const userId = await getSessionUserId(request);
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { projectId, jobId } = params;

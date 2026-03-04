@@ -13,7 +13,7 @@ type Params = {
 };
 
 export async function PATCH(req: NextRequest, { params }: Params) {
-  const userId = await getSessionUserId();
+  const userId = await getSessionUserId(req);
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -65,8 +65,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   return NextResponse.json({ success: true });
 }
 
-export async function DELETE(_req: NextRequest, { params }: Params) {
-  const userId = await getSessionUserId();
+export async function DELETE(req: NextRequest, { params }: Params) {
+  const userId = await getSessionUserId(req);
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }

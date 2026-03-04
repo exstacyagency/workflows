@@ -10,7 +10,7 @@ export const revalidate = 0;
 
 export async function POST(req: Request) {
   try {
-    const userId = await getSessionUserId();
+    const userId = await getSessionUserId(req);
     if (!userId) {
       return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }

@@ -49,7 +49,7 @@ async function getProjectUsers(projectId: string): Promise<ProjectUser[]> {
   return [project.user];
 }
 
-async function notifyOpenClaw(payload: JobCompletionPayload) {
+async function notifyOpenClaw(payload: JobCompletionPayload, sessionKey: string) {
   warnOpenClawConfig();
 
   const baseUrl = String(cfg.raw("OPENCLAW_BASE_URL") ?? "").trim();
@@ -62,6 +62,7 @@ async function notifyOpenClaw(payload: JobCompletionPayload) {
 
   const body = {
     message: payload.message,
+    sessionKey,
     name: "AdPlatform",
     agentId: "main",
     wakeMode: "now",
@@ -106,13 +107,18 @@ export async function notifyAll(payload: JobCompletionPayload) {
       getProjectUsers(payload.projectId),
     ]);
 
+    const openClawUser = users.find((user) => Boolean(user.openClawSessionKey));
+    if (openClawUser?.openClawSessionKey) {
+      console.log("[notifyAll] notifying OpenClaw session:", openClawUser.openClawSessionKey);
+    }
+
     const results = await Promise.allSettled([
       notifySSE(payload),
       binding?.spaceBotWebhookUrl && binding.spaceBotEnabled
         ? notifySpacebot(binding.spaceBotWebhookUrl, payload)
         : Promise.resolve(),
-      users.some((user) => Boolean(user.openClawSessionKey))
-        ? notifyOpenClaw(payload)
+      openClawUser?.openClawSessionKey
+        ? notifyOpenClaw(payload, openClawUser.openClawSessionKey)
         : Promise.resolve(),
     ]);
 

@@ -10,7 +10,7 @@ type Params = {
 };
 
 export async function GET(req: NextRequest, { params }: Params) {
-  const userId = await getSessionUserId();
+  const userId = await getSessionUserId(req);
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

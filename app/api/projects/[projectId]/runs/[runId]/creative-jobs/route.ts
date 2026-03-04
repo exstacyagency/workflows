@@ -42,8 +42,8 @@ async function validateAccess(projectId: string, runId: string, userId: string) 
   return null;
 }
 
-export async function GET(_req: NextRequest, { params }: Params) {
-  const userId = await getSessionUserId();
+export async function GET(req: NextRequest, { params }: Params) {
+  const userId = await getSessionUserId(req);
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -86,7 +86,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 }
 
 export async function DELETE(req: NextRequest, { params }: Params) {
-  const userId = await getSessionUserId();
+  const userId = await getSessionUserId(req);
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
