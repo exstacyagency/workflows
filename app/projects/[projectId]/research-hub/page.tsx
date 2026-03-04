@@ -1704,6 +1704,7 @@ export default function ResearchHubPage() {
         </div>
       </div>
     </div>
+    <WebChatPanel projectId={projectId} agentId="research" bottomOffset={88} />
     </>
   );
 }
@@ -2117,7 +2118,6 @@ function CustomerResearchModal({
           )}
         </div>
       </div>
-      <WebChatPanel projectId={projectId} agentId="research" />
     </div>
   );
 }
