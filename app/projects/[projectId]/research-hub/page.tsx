@@ -2117,7 +2117,7 @@ function CustomerResearchModal({
           )}
         </div>
       </div>
-      <WebChatPanel projectId={projectId} />
+      <WebChatPanel projectId={projectId} agentId="research" />
     </div>
   );
 }

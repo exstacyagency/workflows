@@ -7410,7 +7410,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
       </div>
 
       <Toaster position="top-right" />
-      <WebChatPanel projectId={projectId} />
+      <WebChatPanel projectId={projectId} agentId="creative" />
     </div>
   );
 }
