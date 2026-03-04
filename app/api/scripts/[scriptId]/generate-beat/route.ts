@@ -366,7 +366,7 @@ export async function POST(
       const payloadResult = asObject(payload?.result);
       const summary = asObject(latestProductCollectionJob.resultSummary);
       const intel = asObject(payloadResult?.intel) ?? payloadResult;
-      const productIntelRecord = await prisma.productIntel.findFirst({
+      const productIntelRecord = await prisma.product_intel.findFirst({
         where: {
           projectId: script.projectId,
           jobId: latestProductCollectionJob.id,

@@ -128,7 +128,7 @@ export async function POST(req: NextRequest) {
     let effectiveCharacterDescription: string | null = null;
     let effectiveCharacterGender: string | null = null;
     if (requestedRunId) {
-      const run = await prisma.researchRun.findUnique({
+      const run = await prisma.research_run.findUnique({
         where: { id: requestedRunId },
         select: { id: true, projectId: true },
       });

@@ -119,7 +119,7 @@ export async function POST(req: NextRequest) {
     if (deny) return deny;
 
     if (requestedRunId) {
-      const run = await prisma.researchRun.findUnique({
+      const run = await prisma.research_run.findUnique({
         where: { id: requestedRunId },
         select: { id: true, projectId: true },
       });

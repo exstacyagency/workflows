@@ -238,7 +238,7 @@ export async function GET(
           select: {
             id: true,
             sceneNumber: true,
-            voiceoverOnly: true,
+            voiceover_only: true,
             firstFrameImageUrl: true,
             lastFrameImageUrl: true,
             // TODO: Restore after panelType migration runs.
@@ -275,7 +275,7 @@ export async function GET(
         sceneId: scene.id,
         sceneNumber: scene.sceneNumber,
         approved: approvalBySceneId.get(scene.id) ?? false,
-        voiceoverOnlyFromDb: scene.voiceoverOnly,
+        voiceoverOnlyFromDb: scene.voiceover_only,
         firstFrameImageUrlFromDb: scene.firstFrameImageUrl ?? null,
         lastFrameImageUrlFromDb: scene.lastFrameImageUrl ?? null,
       }),
@@ -369,7 +369,7 @@ export async function PATCH(
           data: {
             storyboardId: storyboard.id,
             sceneNumber: index + 1,
-            voiceoverOnly: Boolean(panels[index].voiceoverOnly),
+            voiceover_only: Boolean(panels[index].voiceoverOnly),
             // TODO: Restore after panelType migration runs.
             // panelType: panels[index].panelType,
             status: "ready",
@@ -402,7 +402,7 @@ export async function PATCH(
           select: {
             id: true,
             sceneNumber: true,
-            voiceoverOnly: true,
+            voiceover_only: true,
             firstFrameImageUrl: true,
             lastFrameImageUrl: true,
             // TODO: Restore after panelType migration runs.
@@ -423,7 +423,7 @@ export async function PATCH(
         sceneId: scene.id,
         sceneNumber: scene.sceneNumber,
         approved: false,
-        voiceoverOnlyFromDb: scene.voiceoverOnly,
+        voiceoverOnlyFromDb: scene.voiceover_only,
         firstFrameImageUrlFromDb: scene.firstFrameImageUrl ?? null,
         lastFrameImageUrlFromDb: scene.lastFrameImageUrl ?? null,
       }),

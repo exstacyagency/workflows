@@ -32,13 +32,8 @@ export async function POST(req: NextRequest) {
 
   await prisma.projectAgentBinding.upsert({
     where: { projectId },
-    create: {
-      projectId,
-      openClawEnabled: true,
-    },
-    update: {
-      openClawEnabled: true,
-    },
+    create: { projectId },
+    update: {},
   });
 
   return NextResponse.json({ ok: true, sessionKey });
