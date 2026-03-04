@@ -38,6 +38,10 @@ export async function middleware(req: NextRequest) {
     if (testSession) return NextResponse.next();
   }
 
+  // Allow API key auth — let the route handler validate
+  const apiKey = req.headers.get("x-api-key");
+  if (apiKey) return NextResponse.next();
+
   // Get token
   const token = await getToken({
     req,

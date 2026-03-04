@@ -8,8 +8,8 @@ type Params = {
   params: { projectId: string };
 };
 
-export async function GET(_req: NextRequest, { params }: Params) {
-  const userId = await getSessionUserId();
+export async function GET(req: NextRequest, { params }: Params) {
+  const userId = await getSessionUserId(req);
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }

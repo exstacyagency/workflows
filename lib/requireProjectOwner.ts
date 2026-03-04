@@ -1,8 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { getSessionUserId } from "@/lib/getSessionUserId";
 
-export async function requireProjectOwner(projectId: string) {
-  const userId = await getSessionUserId();
+export async function requireProjectOwner(projectId: string, request?: Request) {
+  const userId = await getSessionUserId(request);
   if (!userId) return { error: "Unauthorized", status: 401 };
 
   const project = await prisma.project.findFirst({

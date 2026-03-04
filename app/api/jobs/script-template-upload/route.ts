@@ -12,7 +12,7 @@ function asString(value: unknown): string {
 
 export async function POST(req: NextRequest) {
   try {
-    const userId = await getSessionUserId();
+    const userId = await getSessionUserId(req);
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

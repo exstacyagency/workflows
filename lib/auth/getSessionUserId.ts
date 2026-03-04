@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import { cfg } from "@/lib/config";
 import { requireSession } from "@/lib/auth/requireSession";
+import { validateApiKey } from "@/lib/auth/validateApiKey";
 
 function getHeaderFromRequestLike(request: Request | undefined, key: string): string {
   if (!request) return "";
@@ -9,13 +10,11 @@ function getHeaderFromRequestLike(request: Request | undefined, key: string): st
 
 function getInternalUserIdFromHeaders(request?: Request): string | null {
   const configuredSecret = String(cfg.raw("INTERNAL_WEBHOOK_SECRET") ?? "").trim();
-
   const reqSecret = getHeaderFromRequestLike(request, "x-internal-secret");
   const reqUserId = getHeaderFromRequestLike(request, "x-internal-user-id");
   if (reqUserId && (!configuredSecret || reqSecret === configuredSecret)) {
     return reqUserId;
   }
-
   try {
     const hdrs = headers();
     const secret = String(hdrs.get("x-internal-secret") ?? "").trim();
@@ -31,9 +30,17 @@ function getInternalUserIdFromHeaders(request?: Request): string | null {
 }
 
 export async function getSessionUserId(request?: Request): Promise<string | null> {
+  // 1. Internal webhook secret (highest trust)
   const internalUserId = getInternalUserIdFromHeaders(request);
   if (internalUserId) return internalUserId;
 
+  // 2. API key header (OpenClaw + external callers)
+  if (request) {
+    const apiKeyUserId = await validateApiKey(request);
+    if (apiKeyUserId) return apiKeyUserId;
+  }
+
+  // 3. Session cookie (browser)
   const session = await requireSession(request);
   const userId = (session?.user as { id?: string })?.id;
   return userId ?? null;

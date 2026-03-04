@@ -15,7 +15,7 @@ export async function POST(
   logInfo("api.request", { requestId, path: req.nextUrl?.pathname });
 
   try {
-    const userId = await getSessionUserId();
+    const userId = await getSessionUserId(request);
     if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     // Dead-letter bulk actions are operational/admin surface area.

@@ -11,8 +11,8 @@ type Params = {
   };
 };
 
-export async function GET(_request: Request, { params }: Params) {
-  const userId = await getSessionUserId();
+export async function GET(request: Request, { params }: Params) {
+  const userId = await getSessionUserId(request);
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -135,7 +135,7 @@ export async function GET(_request: Request, { params }: Params) {
 }
 
 export async function DELETE(request: Request, { params }: Params) {
-  const userId = await getSessionUserId();
+  const userId = await getSessionUserId(request);
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -216,7 +216,7 @@ export async function DELETE(request: Request, { params }: Params) {
 }
 
 export async function PATCH(request: Request, { params }: Params) {
-  const userId = await getSessionUserId();
+  const userId = await getSessionUserId(request);
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

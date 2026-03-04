@@ -4,11 +4,11 @@ import { prisma } from "@/lib/prisma";
 import { ensureProductTableColumns, findOwnedProductById } from "@/lib/productStore";
 
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: { productId: string } },
 ) {
   try {
-    const userId = await getSessionUserId();
+    const userId = await getSessionUserId(request);
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

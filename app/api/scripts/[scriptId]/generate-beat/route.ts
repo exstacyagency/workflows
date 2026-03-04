@@ -170,7 +170,7 @@ export async function POST(
   req: NextRequest,
   { params }: { params: { scriptId: string } },
 ) {
-  const userId = await getSessionUserId(req);
+  const userId = await getSessionUserId(request);
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

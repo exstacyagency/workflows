@@ -23,7 +23,7 @@ const AdOcrSchema = ProjectJobSchema.extend({
 });
 
 export async function POST(req: NextRequest) {
-  const userId = await getSessionUserId();
+  const userId = await getSessionUserId(req);
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

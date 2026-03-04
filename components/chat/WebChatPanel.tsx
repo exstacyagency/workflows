@@ -12,15 +12,17 @@ type Message = {
 
 type WebChatPanelProps = {
   projectId: string;
+  apiKey?: string | null;
   variant?: "fixed" | "sidebar";
 };
 
-export function WebChatPanel({ projectId, variant = "fixed" }: WebChatPanelProps) {
+export function WebChatPanel({ projectId, apiKey: apiKeyProp = null, variant = "fixed" }: WebChatPanelProps) {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [wsConnected, setWsConnected] = useState(false);
   const [sessionKey, setSessionKey] = useState<string | null>(null);
+  const [apiKey, setApiKey] = useState<string | null>(apiKeyProp);
   const [sending, setSending] = useState(false);
   const [openClawWsUrl, setOpenClawWsUrl] = useState<string>("ws://localhost:18789/webchat");
   const [gatewayToken, setGatewayToken] = useState<string | null>(null);
@@ -43,6 +45,10 @@ export function WebChatPanel({ projectId, variant = "fixed" }: WebChatPanelProps
   }, []);
 
   useEffect(() => {
+    setApiKey(apiKeyProp);
+  }, [apiKeyProp]);
+
+  useEffect(() => {
     if (!projectId) return;
 
     fetch("/api/config/public", { cache: "no-store" })
@@ -55,16 +61,35 @@ export function WebChatPanel({ projectId, variant = "fixed" }: WebChatPanelProps
       })
       .catch(() => undefined);
 
-    fetch("/api/user/openclaw-session", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ projectId }),
-    })
+    fetch("/api/user/openclaw-session", { method: "GET" })
       .then((res) => res.json())
       .then((data) => {
-        if (typeof data?.sessionKey === "string") {
+        if (typeof data?.sessionKey === "string" && data.sessionKey.trim()) {
           setSessionKey(data.sessionKey);
         }
+        if (typeof data?.apiKey === "string" && data.apiKey.trim()) {
+          setApiKey(data.apiKey.trim());
+        }
+        // Fall back to POST if either sessionKey or apiKey is missing
+        if (
+          typeof data?.sessionKey === "string" && data.sessionKey.trim() &&
+          typeof data?.apiKey === "string" && data.apiKey.trim()
+        ) return;
+
+        return fetch("/api/user/openclaw-session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ projectId }),
+        })
+          .then((res) => res.json())
+          .then((created) => {
+            if (typeof created?.sessionKey === "string" && created.sessionKey.trim()) {
+              setSessionKey(created.sessionKey);
+            }
+            if (typeof created?.apiKey === "string" && created.apiKey.trim()) {
+              setApiKey(created.apiKey.trim());
+            }
+          });
       })
       .catch(() => undefined);
 
@@ -107,7 +132,6 @@ export function WebChatPanel({ projectId, variant = "fixed" }: WebChatPanelProps
     };
 
     ws.onmessage = (event) => {
-      console.log("[WebChat] received:", event.data);
       try {
         const parsed = JSON.parse(event.data);
         // Connect acknowledgement
@@ -217,23 +241,28 @@ export function WebChatPanel({ projectId, variant = "fixed" }: WebChatPanelProps
     const text = input.trim();
     if (!text || !sessionKey || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
 
-    console.log("[WebChat] sessionKey:", sessionKey);
     addMessage({ role: "user", content: text });
     setSending(true);
     setInput("");
+    const messageWithContext = projectId && apiKey
+      ? `[context: projectId=${projectId} apiKey=${apiKey}]\n\n${text}`
+      : text;
+    console.log("[WebChat] context:", { projectId, apiKey: apiKey ? "present" : "null" });
+    console.log("[WebChat] sending message:", messageWithContext.substring(0, 100));
+
     wsRef.current.send(JSON.stringify({
       type: "req",
       method: "chat.send",
       id: crypto.randomUUID(),
       params: {
-        sessionKey: "agent:main:main",
-        message: text,
+        sessionKey,
+        message: messageWithContext,
         idempotencyKey: crypto.randomUUID(),
       },
     }));
     setSending(false);
     inputRef.current?.focus();
-  }, [input, sessionKey, addMessage]);
+  }, [input, sessionKey, projectId, apiKey, addMessage]);
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === "Enter" && !event.shiftKey) {
