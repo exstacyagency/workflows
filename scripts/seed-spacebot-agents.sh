@@ -1,65 +1,45 @@
 #!/bin/bash
-# Usage: ./seed-spacebot-agents.sh
-# Run once on deploy, re-run per agent to update behavior
-
-AGENTS=("creative" "research")
+# Usage:
+#   ./seed-spacebot-agents.sh                # seeds all agents
+#   ./seed-spacebot-agents.sh creative ...   # seeds only listed agents
+set -euo pipefail
+DEFAULT_AGENTS=("creative" "research" "billing" "support")
+if [[ "$#" -gt 0 ]]; then
+  AGENTS=("$@")
+else
+  AGENTS=("${DEFAULT_AGENTS[@]}")
+fi
 BASE="$HOME/.spacebot/agents"
 
 seed_agent() {
   local AGENT="$1"
+  local AGENT_CAP
+  AGENT_CAP="$(echo "${AGENT}" | awk '{print toupper(substr($0,1,1)) substr($0,2)}')"
   local DIR="$BASE/$AGENT/workspace"
   mkdir -p "$DIR"
 
-  cat > "$DIR/IDENTITY.md" << EOF
-# AdPlatform ${AGENT^} Agent
+  cat > "$DIR/IDENTITY.md" <<EOF2
+# AdPlatform ${AGENT_CAP} Agent
 You are an AI assistant embedded in an ad creative automation platform.
-EOF
+EOF2
 
-  # Copy the existing SKILL.md content into each agent
-  cat > "$DIR/SKILL.md" << 'EOF'
+  cat > "$DIR/SOUL.md" <<'EOF2'
+# Soul
+- Be direct, concise, and practical.
+- Prefer concrete next actions over generic advice.
+- Never fabricate endpoint responses or job status.
+EOF2
+
+  cat > "$DIR/USER.md" <<'EOF2'
+# User Context
+Assume the active user is authenticated through the app session.
+Use project scope when provided; otherwise operate in user scope.
+EOF2
+
+  cat > "$DIR/SKILL.md" <<'EOF2'
 # AdPlatform Assistant
-
-You are an AI assistant embedded in an ad creative automation platform.
-Your job is to help users understand the status of their projects, jobs,
-and creative runs, and to help them start new jobs via the platform API.
-
-## Platform API
-
-Base URL: http://localhost:3000/api
-Auth: pass the user's API key as header `x-api-key: {apiKey}`
-
-## Key Endpoints
-
-### Project status
-GET /api/projects/{projectId}/pipeline-status
-
-### List jobs
-GET /api/projects/{projectId}/jobs
-
-### Run summary
-GET /api/projects/{projectId}/runs
-
-### Job detail
-GET /api/jobs/{jobId}
-
-### Start script generation
-POST /api/jobs/script-generation
-Body: { projectId, strategy, runId }
-
-### Start video generation
-POST /api/jobs/video-generation
-Body: { projectId, storyboardId, runId }
-
-### Cancel job
-POST /api/jobs/{jobId}/cancel
-
-## Behavior
-- When asked about job status, call pipeline-status first
-- Confirm action and estimated cost before starting any job
-- Always include cost information when available
-- Format responses concisely
-- If no projectId or apiKey in context, ask the user for it
-EOF
+This is a seed stub. Replace with the packaged agent-specific SKILL.md.
+EOF2
 
   echo "Seeded: $AGENT"
 }
