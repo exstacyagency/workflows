@@ -23,6 +23,7 @@ export function WebChatPanel({ projectId, variant = "fixed" }: WebChatPanelProps
   const [sessionKey, setSessionKey] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [openClawWsUrl, setOpenClawWsUrl] = useState<string>("ws://localhost:18789/webchat");
+  const [gatewayToken, setGatewayToken] = useState<string | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
@@ -49,6 +50,8 @@ export function WebChatPanel({ projectId, variant = "fixed" }: WebChatPanelProps
       .then((data) => {
         const resolved = String(data?.openClawWsUrl ?? "").trim();
         if (resolved) setOpenClawWsUrl(resolved);
+        const token = String(data?.openClawGatewayToken ?? "").trim();
+        if (token) setGatewayToken(token);
       })
       .catch(() => undefined);
 
@@ -79,13 +82,103 @@ export function WebChatPanel({ projectId, variant = "fixed" }: WebChatPanelProps
     wsRef.current = ws;
 
     ws.onopen = () => {
-      setWsConnected(true);
-      addMessage({ role: "system", content: "Connected. Ask me anything about this project." });
+      // Send OpenClaw handshake frame first
+      ws.send(JSON.stringify({
+        type: "req",
+        method: "connect",
+        id: crypto.randomUUID(),
+        params: {
+          minProtocol: 3,
+          maxProtocol: 3,
+          client: {
+            id: "webchat",
+            platform: "web",
+            mode: "webchat",
+            version: "1.0.0",
+          },
+          role: "operator",
+          scopes: ["operator.read", "operator.write"],
+          caps: [],
+          auth: { token: gatewayToken },
+          locale: "en-US",
+          userAgent: navigator.userAgent,
+        },
+      }));
     };
 
     ws.onmessage = (event) => {
+      console.log("[WebChat] received:", event.data);
       try {
         const parsed = JSON.parse(event.data);
+        // Connect acknowledgement
+        if (parsed?.type === "res" && parsed?.ok === true && parsed?.payload?.type === "hello-ok") {
+          setWsConnected(true);
+          addMessage({ role: "system", content: "Connected. Ask me anything about this project." });
+          return;
+        }
+        // Ignore challenge and system events
+        if (parsed?.type === "event" && parsed?.event === "connect.challenge") return;
+        if (parsed?.type === "res") return; // ack for chat.send etc.
+
+        // Assistant message event
+        if (parsed?.type === "event" && parsed?.event === "chat.message") {
+          const msg = parsed?.data?.message ?? parsed?.data;
+          if (msg?.role === "assistant") {
+            addMessage({ role: "assistant", content: String(msg?.content ?? "") });
+          }
+          return;
+        }
+
+        if (parsed?.type === "event" && parsed?.event === "chat") {
+          const msg = parsed?.payload?.message;
+          const state = parsed?.payload?.state;
+          const text = msg?.content?.[0]?.text ?? "";
+
+          if (!text) return;
+
+          if (state === "delta" || state === "final") {
+            setMessages((prev) => {
+              const last = prev[prev.length - 1];
+              if (last?.role === "assistant") {
+                return [...prev.slice(0, -1), { ...last, content: text }];
+              }
+              return [
+                ...prev,
+                { id: crypto.randomUUID(), role: "assistant", content: text, createdAt: new Date() },
+              ];
+            });
+          }
+          return;
+        }
+
+        // Handle streaming agent response
+        if (parsed?.type === "event" && parsed?.event === "agent") {
+          const data = parsed?.payload?.data;
+          const stream = parsed?.payload?.stream;
+
+          if (stream === "text" && data?.text) {
+            // Streaming text chunk — append to last assistant message or add new one
+            setMessages((prev) => {
+              const last = prev[prev.length - 1];
+              if (last?.role === "assistant") {
+                return [...prev.slice(0, -1), { ...last, content: last.content + data.text }];
+              }
+              return [
+                ...prev,
+                { id: crypto.randomUUID(), role: "assistant", content: data.text, createdAt: new Date() },
+              ];
+            });
+            return;
+          }
+
+          if (stream === "lifecycle" && data?.phase === "done") {
+            // Run complete
+            return;
+          }
+          return;
+        }
+
+        // Fallback
         addMessage({
           role: "assistant",
           content: String(parsed?.content ?? parsed?.message ?? event.data),
@@ -109,7 +202,7 @@ export function WebChatPanel({ projectId, variant = "fixed" }: WebChatPanelProps
       wsRef.current = null;
       setWsConnected(false);
     };
-  }, [open, sessionKey, openClawWsUrl, addMessage]);
+  }, [open, sessionKey, openClawWsUrl, gatewayToken, addMessage]);
 
   useEffect(() => {
     if (!lastEvent) return;
@@ -122,15 +215,25 @@ export function WebChatPanel({ projectId, variant = "fixed" }: WebChatPanelProps
 
   const sendMessage = useCallback(() => {
     const text = input.trim();
-    if (!text || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    if (!text || !sessionKey || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
 
+    console.log("[WebChat] sessionKey:", sessionKey);
     addMessage({ role: "user", content: text });
     setSending(true);
     setInput("");
-    wsRef.current.send(JSON.stringify({ type: "message", content: text }));
+    wsRef.current.send(JSON.stringify({
+      type: "req",
+      method: "chat.send",
+      id: crypto.randomUUID(),
+      params: {
+        sessionKey: "agent:main:main",
+        message: text,
+        idempotencyKey: crypto.randomUUID(),
+      },
+    }));
     setSending(false);
     inputRef.current?.focus();
-  }, [input, addMessage]);
+  }, [input, sessionKey, addMessage]);
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === "Enter" && !event.shiftKey) {
