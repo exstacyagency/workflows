@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
 
     let effectiveRunId = runId;
     if (!effectiveRunId) {
-      const run = await prisma.researchRun.create({
+      const run = await prisma.research_run.create({
         data: {
           projectId,
           status: "IN_PROGRESS",

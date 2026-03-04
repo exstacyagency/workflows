@@ -429,20 +429,24 @@ async function markCompleted({
     where: { id: jobId },
     select: { actualCost: true, resultSummary: true },
   });
-  await notifyAll({
-    jobId,
-    jobType: String(existing.type),
-    projectId: existing.projectId,
-    runId: existing.runId ?? null,
-    status: "COMPLETED",
-    message: buildCompletionMessage({
-      jobType: existing.type,
-      summary: refreshed?.resultSummary as Prisma.InputJsonValue | undefined,
+  try {
+    await notifyAll({
+      jobId,
+      jobType: String(existing.type),
+      projectId: existing.projectId,
+      runId: existing.runId ?? null,
+      status: "COMPLETED",
+      message: buildCompletionMessage({
+        jobType: existing.type,
+        summary: refreshed?.resultSummary as Prisma.InputJsonValue | undefined,
+        costCents: Number(refreshed?.actualCost ?? 0),
+      }),
       costCents: Number(refreshed?.actualCost ?? 0),
-    }),
-    costCents: Number(refreshed?.actualCost ?? 0),
-    resultSummary: refreshed?.resultSummary ?? undefined,
-  });
+      resultSummary: refreshed?.resultSummary ?? undefined,
+    });
+  } catch (err) {
+    console.error("[markCompleted] notifyAll threw:", err);
+  }
   await updateRunStatus(existing.runId, existing.projectId);
 }
 
@@ -543,7 +547,7 @@ async function updateRunStatus(runId: string | null | undefined, projectId: stri
           : RunStatus.IN_PROGRESS;
 
   try {
-    await prisma.researchRun.update({
+    await prisma.research_run.update({
       where: { id: runId },
       data: { status },
     });
@@ -1761,11 +1765,23 @@ process.on("uncaughtException", (err) => {
   console.error("[jobRunner] uncaughtException", err);
 });
 
-startWorker()
-  .catch((e) => {
-    console.error("[jobRunner] fatal", e);
-    process.exitCode = 1;
-  })
-  .finally(async () => {
-    await prisma.$disconnect().catch(() => {});
+// Only auto-start when run directly (not when imported by instrumentation)
+if (
+  typeof require !== "undefined" &&
+  typeof module !== "undefined" &&
+  require.main === module
+) {
+  startWorker()
+    .catch((e) => {
+      console.error("[jobRunner] fatal", e);
+      process.exitCode = 1;
+    })
+    .finally(async () => {
+      await prisma.$disconnect().catch(() => {});
+    });
+} else {
+  // Started via instrumentation — kick off without process.exit on finish
+  startWorker().catch((e) => {
+    console.error("[jobRunner] fatal (in-process)", e);
   });
+}

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { JobStatus, JobType, ScriptStatus } from "@prisma/client";
-import { prisma } from "@/lib/prisma";
+import prisma from "@/lib/prisma";
 import { getSessionUserId } from "@/lib/getSessionUserId";
 import { requireProjectOwner } from "@/lib/requireProjectOwner";
 import { logAudit } from "@/lib/logger";
@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
     if (requestedRunId) {
-      const existingRun = await prisma.researchRun.findUnique({
+      const existingRun = await prisma.research_run.findUnique({
         where: { id: requestedRunId },
         select: { id: true, projectId: true },
       });

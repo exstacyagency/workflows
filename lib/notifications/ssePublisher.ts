@@ -2,7 +2,13 @@ import type { JobCompletionPayload } from "@/lib/notifications/notifyAll";
 
 type Controller = ReadableStreamDefaultController<Uint8Array>;
 
-const subscribers = new Map<string, Set<Controller>>();
+declare global {
+  // eslint-disable-next-line no-var
+  var __sseSubscribers: Map<string, Set<Controller>> | undefined;
+}
+const subscribers: Map<string, Set<Controller>> =
+  global.__sseSubscribers ??
+  (global.__sseSubscribers = new Map<string, Set<Controller>>());
 
 export function sseSubscribe(projectId: string, controller: Controller) {
   if (!subscribers.has(projectId)) {
@@ -22,6 +28,7 @@ export function sseUnsubscribe(projectId: string, controller: Controller) {
 
 export async function ssePublish(projectId: string, payload: JobCompletionPayload) {
   const controllers = subscribers.get(projectId);
+  console.log(`[ssePublish] projectId=${projectId} subscribers=${controllers?.size ?? 0}`);
   if (!controllers || controllers.size === 0) return;
 
   const data = `data: ${JSON.stringify(payload)}\n\n`;

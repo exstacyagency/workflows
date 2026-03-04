@@ -39,7 +39,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
           name: true,
         },
       },
-      run: {
+      research_run: {
         select: {
           id: true,
           name: true,

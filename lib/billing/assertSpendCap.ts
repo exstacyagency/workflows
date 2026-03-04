@@ -51,7 +51,7 @@ export async function assertUnderSpendCap(
     return { spentCents: 0, capCents: 0, remainingCents: Infinity };
   }
 
-  const aggregate = await prisma.usageEvent.aggregate({
+  const aggregate = await prisma.usage_event.aggregate({
     where: { userId, period },
     _sum: { costCents: true },
   });

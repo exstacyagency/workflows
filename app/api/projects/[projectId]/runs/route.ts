@@ -131,7 +131,7 @@ export async function POST(
 
     let run;
     if (requestedRunId) {
-      const existing = await prisma.researchRun.findUnique({
+      const existing = await prisma.research_run.findUnique({
         where: { id: requestedRunId },
       });
       if (existing && existing.projectId !== pathProjectId) {
@@ -142,7 +142,7 @@ export async function POST(
       }
       run =
         existing ??
-        (await prisma.researchRun.create({
+        (await prisma.research_run.create({
           data: {
             id: requestedRunId,
             projectId: pathProjectId,
@@ -150,7 +150,7 @@ export async function POST(
           },
         }));
     } else {
-      run = await prisma.researchRun.create({
+      run = await prisma.research_run.create({
         data: {
           id: randomUUID(),
           projectId: pathProjectId,

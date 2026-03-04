@@ -25,7 +25,7 @@ async function validateRunAccess(projectId: string, runId: string, userId: strin
     return { ok: false as const, response: NextResponse.json({ error: "Project not found" }, { status: 404 }) };
   }
 
-  const run = await prisma.researchRun.findUnique({
+  const run = await prisma.research_run.findUnique({
     where: { id: runId },
     select: { id: true, projectId: true },
   });
@@ -140,19 +140,19 @@ export async function DELETE(
 
         await tx.script.deleteMany({ where: { jobId: { in: jobIds } } });
         await tx.researchRow.deleteMany({ where: { jobId: { in: jobIds } } });
-        await tx.amazonReview.deleteMany({ where: { jobId: { in: jobIds } } });
+        await tx.amazon_review.deleteMany({ where: { jobId: { in: jobIds } } });
         await tx.adAsset.deleteMany({ where: { jobId: { in: jobIds } } });
         await tx.adPatternResult.deleteMany({ where: { jobId: { in: jobIds } } });
         await tx.auditLog.deleteMany({ where: { jobId: { in: jobIds } } });
         await tx.character.deleteMany({ where: { jobId: { in: jobIds } } });
-        await tx.productIntel.deleteMany({ where: { jobId: { in: jobIds } } });
+        await tx.product_intel.deleteMany({ where: { jobId: { in: jobIds } } });
       }
 
       const deletedJobs = await tx.job.deleteMany({
         where: { projectId, runId },
       });
 
-      await tx.researchRun.delete({
+      await tx.research_run.delete({
         where: { id: runId },
       });
 

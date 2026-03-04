@@ -28,7 +28,7 @@ async function validateAccess(projectId: string, runId: string, userId: string) 
     );
   }
 
-  const run = await prisma.researchRun.findFirst({
+  const run = await prisma.research_run.findFirst({
     where: { id: runId, projectId },
     select: { id: true },
   });
