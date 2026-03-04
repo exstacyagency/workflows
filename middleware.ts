@@ -12,7 +12,8 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith("/api/auth/") ||
     pathname === "/api/config/public" ||
     pathname === "/api/internal/sse-publish" ||
-    pathname.startsWith("/api/internal/");
+    pathname.startsWith("/api/internal/") ||
+    pathname.startsWith("/api/spacebot/");
 
   if (isPublicAuthRoute) {
     return NextResponse.next();

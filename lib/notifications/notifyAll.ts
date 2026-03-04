@@ -1,3 +1,5 @@
+// lib/notifications/notifyAll.ts
+
 import prisma from "@/lib/prisma";
 import { cfg } from "@/lib/config";
 import { ssePublish } from "@/lib/notifications/ssePublisher";
@@ -14,123 +16,96 @@ export interface JobCompletionPayload {
   error?: string;
 }
 
-type ProjectUser = {
-  id: string;
-  openClawSessionKey: string | null;
+const JOB_TYPE_TO_AGENT: Record<string, string> = {
+  SCRIPT_GENERATION:          "creative",
+  STORYBOARD_GENERATION:      "creative",
+  VIDEO_PROMPT_GENERATION:    "creative",
+  VIDEO_IMAGE_GENERATION:     "creative",
+  VIDEO_GENERATION:           "creative",
+  VIDEO_UPSCALER:             "creative",
+  AD_QUALITY_GATE:            "creative",
+  CREATOR_AVATAR_GENERATION:  "creative",
+  CHARACTER_SEED_VIDEO:       "creative",
+  CUSTOMER_RESEARCH:          "research",
+  CUSTOMER_ANALYSIS:          "research",
+  PATTERN_ANALYSIS:           "research",
+  AD_PERFORMANCE:             "research",
+  PRODUCT_DATA_COLLECTION:    "research",
+  PRODUCT_ANALYSIS:           "research",
+  VIDEO_REVIEW:               "research",
+  CHARACTER_VOICE_SETUP:      "research",
 };
 
-let openClawConfigWarned = false;
-function warnOpenClawConfig() {
-  if (openClawConfigWarned) return;
-  openClawConfigWarned = true;
-
-  if (!String(cfg.raw("OPENCLAW_BASE_URL") ?? "").trim()) {
-    console.warn("[notifyAll] OPENCLAW_BASE_URL is not set — OpenClaw notifications disabled");
-  }
-  if (!String(cfg.raw("OPENCLAW_WEBHOOK_SECRET") ?? "").trim()) {
-    console.warn("[notifyAll] OPENCLAW_WEBHOOK_SECRET is not set — hook calls will be unauthenticated");
-  }
+function formatMessage(payload: JobCompletionPayload): string {
+  const cost = payload.costCents
+    ? ` Cost: $${(payload.costCents / 100).toFixed(2)}.`
+    : "";
+  return payload.message || `${payload.status}: ${payload.jobType}.${cost}`;
 }
 
-async function getProjectUsers(projectId: string): Promise<ProjectUser[]> {
+async function getProjectUserIds(projectId: string): Promise<string[]> {
   const project = await prisma.project.findUnique({
     where: { id: projectId },
-    select: {
-      user: {
-        select: {
-          id: true,
-          openClawSessionKey: true,
-        },
-      },
-    },
+    select: { user: { select: { id: true } } },
   });
-
   if (!project?.user) return [];
-  return [project.user];
+  return [project.user.id];
 }
 
-async function notifyOpenClaw(payload: JobCompletionPayload, sessionKey: string) {
-  warnOpenClawConfig();
-
-  const baseUrl = String(cfg.raw("OPENCLAW_BASE_URL") ?? "").trim();
-  const secret = String(cfg.raw("OPENCLAW_WEBHOOK_SECRET") ?? "").trim();
-
+async function notifySpacebot(
+  agentId: string,
+  sessionKey: string,
+  message: string,
+) {
+  const baseUrl = String(cfg.raw("SPACEBOT_BASE_URL") ?? "").trim();
   if (!baseUrl) {
-    console.warn("[notifyAll] OPENCLAW_BASE_URL not set; skipping OpenClaw notification");
+    console.warn("[notifyAll] SPACEBOT_BASE_URL not set — skipping");
     return;
   }
 
-  const body = {
-    message: payload.message,
-    sessionKey,
-    name: "AdPlatform",
-    agentId: "main",
-    wakeMode: "now",
-    deliver: true,
-    channel: "last",
-  };
-
   const res = await fetch(`${baseUrl}/hooks/agent`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(secret ? { Authorization: `Bearer ${secret}` } : {}),
-    },
-    body: JSON.stringify(body),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      agent_id:    agentId,
+      session_key: sessionKey,
+      message,
+      deliver:     true,
+      wake_mode:   "now",
+      channel:     "last",
+    }),
     signal: AbortSignal.timeout(5000),
   });
 
   if (!res.ok) {
-    console.warn(`[notifyAll] OpenClaw hook returned ${res.status}`);
+    console.warn(`[notifyAll] Spacebot hook returned ${res.status}`);
   } else {
-    console.log(
-      `[notifyAll] OpenClaw notified OK — job ${payload.jobId} (${payload.jobType})`,
-    );
+    console.log(`[notifyAll] Spacebot notified — session ${sessionKey}`);
   }
-}
-
-async function notifySpacebot(webhookUrl: string, payload: JobCompletionPayload) {
-  void webhookUrl;
-  void payload;
-}
-
-async function notifySSE(payload: JobCompletionPayload) {
-  await ssePublish(payload.projectId, payload);
 }
 
 export async function notifyAll(payload: JobCompletionPayload) {
   try {
-    const [binding, users] = await Promise.all([
-      prisma.projectAgentBinding.findUnique({
-        where: { projectId: payload.projectId },
-      }),
-      getProjectUsers(payload.projectId),
-    ]);
+    const agentId  = JOB_TYPE_TO_AGENT[payload.jobType] ?? "creative";
+    const message  = formatMessage(payload);
+    const userIds  = await getProjectUserIds(payload.projectId);
 
-    const openClawUser = users.find((user) => Boolean(user.openClawSessionKey));
-    if (openClawUser?.openClawSessionKey) {
-      console.log("[notifyAll] notifying OpenClaw session:", openClawUser.openClawSessionKey);
-    }
+    const notifications = userIds.map((userId) => {
+      const sessionKey = `${agentId}:webchat-${userId}:${payload.projectId}`;
+      return notifySpacebot(agentId, sessionKey, message);
+    });
 
     const results = await Promise.allSettled([
-      notifySSE(payload),
-      binding?.spaceBotWebhookUrl && binding.spaceBotEnabled
-        ? notifySpacebot(binding.spaceBotWebhookUrl, payload)
-        : Promise.resolve(),
-      openClawUser?.openClawSessionKey
-        ? notifyOpenClaw(payload, openClawUser.openClawSessionKey)
-        : Promise.resolve(),
+      ssePublish(payload.projectId, payload),
+      ...notifications,
     ]);
 
-    const labels = ["sse", "spacebot", "openclaw"] as const;
     results.forEach((r, i) => {
       if (r.status === "rejected") {
-        console.error(`[notifyAll] ${labels[i]} failed:`, r.reason);
-      } else {
-        console.log(`[notifyAll] ${labels[i]} ok`);
+        console.error(`[notifyAll] delivery ${i} failed:`, r.reason);
       }
     });
   } catch (err) {
-    console.error("[notifyAll] Unexpected non-fatal error", err);
+    console.error("[notifyAll] Unexpected error", err);
   }
 }
