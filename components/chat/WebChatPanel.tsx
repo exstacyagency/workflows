@@ -13,18 +13,26 @@ type Message = {
 };
 
 type WebChatPanelProps = {
-  projectId: string;
   agentId?: "creative" | "research" | "billing" | "support";
+  // projectId is required for project-scoped agents (creative, research).
+  // Omit for user-scoped agents (billing, support) — session key becomes
+  // {agentId}:webchat-{userId} with no project suffix.
+  projectId?: string;
   variant?: "fixed" | "sidebar";
+  // Offset from the bottom of the viewport (px). Use when multiple fixed
+  // panels would otherwise stack on top of each other.
+  // Defaults to 24 (matches bottom-6 = 1.5rem = 24px).
+  bottomOffset?: number;
 };
 
 // eslint-disable-next-line no-restricted-properties
 const SPACEBOT_SSE_URL = process.env.NEXT_PUBLIC_SPACEBOT_EVENTS_URL ?? "/api/spacebot/events";
 
 export function WebChatPanel({
-  projectId,
   agentId = "creative",
+  projectId,
   variant = "fixed",
+  bottomOffset = 24,
 }: WebChatPanelProps) {
   const [open, setOpen] = useState(variant === "sidebar");
   const [input, setInput] = useState("");
@@ -56,9 +64,16 @@ export function WebChatPanel({
   }, []);
 
   const resolvedUserId = userId;
-  const { sessionId, isSending, error, sendMessage } = useWebChat(agentId, resolvedUserId ?? "", projectId);
+  // projectId is passed through as optional — useWebChat/getSessionId handles
+  // both scoped formats correctly.
+  const { sessionId, isSending, error, sendMessage } = useWebChat(
+    agentId,
+    resolvedUserId ?? "",
+    projectId,
+  );
   const { timeline, isTyping } = useSpacebotSSE(resolvedUserId ? sessionId : "", SPACEBOT_SSE_URL);
-  const { lastEvent } = useJobSSE(open ? projectId : null);
+  // useJobSSE is only relevant for project-scoped agents; skip when no projectId.
+  const { lastEvent } = useJobSSE(open && projectId ? projectId : null);
 
   useEffect(() => {
     console.log("sessionId:", sessionId);
@@ -94,7 +109,10 @@ export function WebChatPanel({
     setInput("");
     setOptimistic((prev) => [...prev, { id: crypto.randomUUID(), content: text }]);
 
-    const contextMessage = `[context: projectId=${projectId}]\n\n${text}`;
+    // Append projectId context only for project-scoped agents.
+    const contextMessage = projectId
+      ? `[context: projectId=${projectId}]\n\n${text}`
+      : text;
     await sendMessage(contextMessage);
     inputRef.current?.focus();
   }, [input, wsConnected, isSending, isTyping, projectId, resolvedUserId, sendMessage]);
@@ -109,22 +127,22 @@ export function WebChatPanel({
   const combinedMessages: Message[] = [
     ...timeline.map((msg) => ({
       id: msg.id,
-      role: msg.role,
+      role: msg.role as const,
       content: msg.content,
       createdAt: new Date(),
-    } as Message)),
+    })),
     ...optimistic.map((msg) => ({
       id: msg.id,
-      role: "user",
+      role: "user" as const,
       content: msg.content,
       createdAt: new Date(),
-    } as Message)),
+    })),
     ...jobMessages.map((msg) => ({
       id: msg.id,
-      role: "system",
+      role: "system" as const,
       content: msg.content,
       createdAt: new Date(),
-    } as Message)),
+    })),
   ];
 
   if (variant === "sidebar") {
@@ -145,7 +163,7 @@ export function WebChatPanel({
   }
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-2">
+    <div className="fixed right-6 z-50 flex flex-col items-end gap-2" style={{ bottom: bottomOffset }}>
       {open ? (
         <div
           className="flex flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl dark:border-zinc-700 dark:bg-zinc-900"

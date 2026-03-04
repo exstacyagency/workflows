@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { getJobTypeLabel } from "@/lib/jobLabels";
+import { WebChatPanel } from "@/components/chat/WebChatPanel";
 
 type JobType = string;
 
@@ -279,6 +280,9 @@ export default function UsagePage() {
           production.
         </p>
       </div>
+
+      {/* Billing agent — user-scoped, no projectId */}
+      <WebChatPanel agentId="billing" />
     </div>
   );
 }
