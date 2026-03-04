@@ -9,7 +9,7 @@ export async function GET(
   { params }: { params: { projectId: string } }
 ) {
   try {
-    const userId = await getSessionUserId();
+    const userId = await getSessionUserId(request);
     if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     // Dead-letter is operational/admin surface area. Project owners should not have access by default.

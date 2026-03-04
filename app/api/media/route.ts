@@ -8,7 +8,7 @@ export async function GET(req: NextRequest) {
   const requestId = getRequestId(req);
   logInfo("api.request", { requestId, path: req.nextUrl?.pathname });
 
-  const userId = await getSessionUserId();
+  const userId = await getSessionUserId(req);
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }

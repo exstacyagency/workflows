@@ -20,7 +20,7 @@ const AdQualityGateSchema = ProjectJobSchema.extend({
 const JOB_TYPE_AD_QUALITY_GATE = "AD_QUALITY_GATE" as JobType;
 
 export async function POST(req: NextRequest) {
-  const userId = await getSessionUserId();
+  const userId = await getSessionUserId(req);
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

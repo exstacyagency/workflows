@@ -48,13 +48,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "action and sessionKey are required" }, { status: 400 });
   }
 
-  const match = sessionKey.match(/^webchat:user-([^:]+):project-([^:]+)$/);
-  if (!match) {
+  const legacyMatch = sessionKey.match(/^webchat:user-([^:]+):project-([^:]+)$/);
+  const currentMatch = sessionKey.match(/^agent:main:webchat-(.+)$/);
+  if (!legacyMatch && !currentMatch) {
     return NextResponse.json({ error: "Invalid sessionKey format" }, { status: 400 });
   }
 
-  const userId = match[1];
-  const projectId = match[2];
+  const userId = legacyMatch ? legacyMatch[1] : currentMatch![1];
+  const payloadProjectId = String((payload as Record<string, unknown>)?.projectId ?? "").trim();
+  const projectId = legacyMatch ? legacyMatch[2] : payloadProjectId;
+  if (!projectId) {
+    return NextResponse.json({ error: "projectId is required in payload for this sessionKey format" }, { status: 400 });
+  }
 
   const project = await prisma.project.findUnique({
     where: { id: projectId },

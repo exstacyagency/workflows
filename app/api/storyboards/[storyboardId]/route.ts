@@ -204,10 +204,10 @@ function lockEnvironmentToSceneOne(panels: StoryboardPanelResponse[]): Storyboar
 }
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: { storyboardId: string } },
 ) {
-  const userId = await getSessionUserId();
+  const userId = await getSessionUserId(request);
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -318,7 +318,7 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: { storyboardId: string } },
 ) {
-  const userId = await getSessionUserId();
+  const userId = await getSessionUserId(request);
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

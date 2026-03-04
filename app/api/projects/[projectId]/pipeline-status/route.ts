@@ -38,13 +38,13 @@ export async function GET(req: Request, { params }: { params: { projectId: strin
     const wantDebug = url.searchParams.get("debug") === "1";
     const allowDebug = cfg.raw("NODE_ENV") !== "production";
     const debugEnabled = wantDebug && allowDebug;
-    const userId = await getSessionUserId();
+    const userId = await getSessionUserId(req);
     if (!userId) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
     const projectId = String(params.projectId || "");
     if (!projectId) return NextResponse.json({ ok: false, error: "Missing projectId" }, { status: 400 });
 
-    const deny = await requireProjectOwner404(projectId);
+    const deny = await requireProjectOwner404(projectId, req);
     if (deny) return deny;
 
     const storyboards = await prisma.storyboard.findMany({

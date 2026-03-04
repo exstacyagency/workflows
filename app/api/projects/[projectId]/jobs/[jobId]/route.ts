@@ -7,7 +7,7 @@ export async function GET(
   { params }: { params: { projectId: string; jobId: string } }
 ) {
   try {
-    const userId = await getSessionUserId();
+    const userId = await getSessionUserId(request);
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
