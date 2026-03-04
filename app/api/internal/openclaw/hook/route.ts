@@ -96,7 +96,7 @@ export async function POST(req: NextRequest) {
 
     case "get-project-summary": {
       const [runs, jobs] = await Promise.all([
-        prisma.researchRun.findMany({
+        prisma.research_run.findMany({
           where: { projectId, status: "IN_PROGRESS" },
           select: { id: true, status: true, createdAt: true },
           orderBy: { createdAt: "desc" },

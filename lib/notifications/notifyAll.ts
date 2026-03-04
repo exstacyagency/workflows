@@ -93,6 +93,10 @@ async function notifySpacebot(webhookUrl: string, payload: JobCompletionPayload)
   void payload;
 }
 
+async function notifySSE(payload: JobCompletionPayload) {
+  await ssePublish(payload.projectId, payload);
+}
+
 export async function notifyAll(payload: JobCompletionPayload) {
   try {
     const [binding, users] = await Promise.all([
@@ -102,8 +106,8 @@ export async function notifyAll(payload: JobCompletionPayload) {
       getProjectUsers(payload.projectId),
     ]);
 
-    await Promise.allSettled([
-      ssePublish(payload.projectId, payload),
+    const results = await Promise.allSettled([
+      notifySSE(payload),
       binding?.spaceBotWebhookUrl && binding.spaceBotEnabled
         ? notifySpacebot(binding.spaceBotWebhookUrl, payload)
         : Promise.resolve(),
@@ -111,6 +115,15 @@ export async function notifyAll(payload: JobCompletionPayload) {
         ? notifyOpenClaw(payload)
         : Promise.resolve(),
     ]);
+
+    const labels = ["sse", "spacebot", "openclaw"] as const;
+    results.forEach((r, i) => {
+      if (r.status === "rejected") {
+        console.error(`[notifyAll] ${labels[i]} failed:`, r.reason);
+      } else {
+        console.log(`[notifyAll] ${labels[i]} ok`);
+      }
+    });
   } catch (err) {
     console.error("[notifyAll] Unexpected non-fatal error", err);
   }

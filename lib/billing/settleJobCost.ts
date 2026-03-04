@@ -458,7 +458,7 @@ export async function settleJobCost(args: SettleJobCostArgs): Promise<{ totalCos
   await prisma.$transaction(async (tx) => {
     for (const entry of normalizedEntries) {
       const metadata = entry.metadata ? (entry.metadata as Prisma.InputJsonValue) : Prisma.JsonNull;
-      await tx.usageEvent.upsert({
+      await tx.usage_event.upsert({
         where: {
           jobId_segmentKey: {
             jobId: args.jobId,
@@ -482,7 +482,7 @@ export async function settleJobCost(args: SettleJobCostArgs): Promise<{ totalCos
       });
     }
 
-    const allEntries = await tx.usageEvent.findMany({
+    const allEntries = await tx.usage_event.findMany({
       where: { jobId: args.jobId },
       orderBy: { createdAt: "asc" },
       select: {

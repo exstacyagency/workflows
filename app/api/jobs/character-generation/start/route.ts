@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
 
     let runId = incomingRunId;
     if (runId) {
-      const existingRun = await prisma.researchRun.findFirst({
+      const existingRun = await prisma.research_run.findFirst({
         where: {
           id: runId,
           projectId: product.projectId,
@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Selected run is invalid for this project" }, { status: 400 });
       }
     } else {
-      const newRun = await prisma.researchRun.create({
+      const newRun = await prisma.research_run.create({
         data: {
           projectId: product.projectId,
           name: `Character Run ${new Date().toLocaleDateString()}`,

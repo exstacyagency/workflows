@@ -10,6 +10,8 @@ export async function middleware(req: NextRequest) {
     pathname === "/auth/signin" ||
     pathname === "/auth/signup" ||
     pathname.startsWith("/api/auth/") ||
+    pathname === "/api/config/public" ||
+    pathname === "/api/internal/sse-publish" ||
     pathname.startsWith("/api/internal/");
 
   if (isPublicAuthRoute) {

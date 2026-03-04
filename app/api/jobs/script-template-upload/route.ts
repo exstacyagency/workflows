@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
-    const run = await prisma.researchRun.findUnique({
+    const run = await prisma.research_run.findUnique({
       where: { id: runId },
       select: { id: true, projectId: true },
     });

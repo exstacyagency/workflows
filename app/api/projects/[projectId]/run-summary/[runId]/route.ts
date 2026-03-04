@@ -302,7 +302,7 @@ export async function GET(
       return NextResponse.json({ error: "Project not found" }, { status: 404 });
     }
 
-    const run = await prisma.researchRun.findUnique({
+    const run = await prisma.research_run.findUnique({
       where: { id: runId },
       select: { id: true, projectId: true },
     });

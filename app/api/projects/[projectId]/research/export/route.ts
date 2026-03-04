@@ -115,7 +115,7 @@ export async function GET(
         createdAt: true
       }
     }),
-    prisma.amazonReview.findMany({
+    prisma.amazon_review.findMany({
       where,
       select: {
         jobId: true,

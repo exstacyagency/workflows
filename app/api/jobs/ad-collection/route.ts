@@ -100,7 +100,7 @@ export async function POST(req: NextRequest) {
     let effectiveRunId = normalizedRequestedRunId;
     let existingRunFound = false;
     if (effectiveRunId) {
-      const existingRun = await prisma.researchRun.findUnique({
+      const existingRun = await prisma.research_run.findUnique({
         where: { id: effectiveRunId },
         select: { id: true, projectId: true },
       });
@@ -118,7 +118,7 @@ export async function POST(req: NextRequest) {
       }
       existingRunFound = true;
     } else {
-      const run = await prisma.researchRun.create({
+      const run = await prisma.research_run.create({
         data: {
           projectId,
           status: "IN_PROGRESS",

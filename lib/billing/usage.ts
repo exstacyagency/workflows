@@ -118,8 +118,9 @@ export async function reserveQuota(
       },
     });
 
-    const reservation = await tx.quotaReservation.create({
+    const reservation = await tx.quota_reservation.create({
       data: {
+        id: crypto.randomUUID(),
         userId,
         period,
         metric: normalizedMetric,
@@ -152,7 +153,7 @@ export async function rollbackQuota(
 
   return prisma.$transaction(async (tx) => {
     const reservation = reservationId
-      ? await tx.quotaReservation.findFirst({
+      ? await tx.quota_reservation.findFirst({
           where: {
             id: reservationId,
             userId,
@@ -162,7 +163,7 @@ export async function rollbackQuota(
           },
           select: { id: true, amount: true },
         })
-      : await tx.quotaReservation.findFirst({
+      : await tx.quota_reservation.findFirst({
           where: {
             userId,
             metric: normalizedMetric,
@@ -199,7 +200,7 @@ export async function rollbackQuota(
       });
     }
 
-    await tx.quotaReservation.update({
+    await tx.quota_reservation.update({
       where: { id: reservation.id },
       data: { releasedAt: new Date() },
     });
