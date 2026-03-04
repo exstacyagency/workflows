@@ -1,7 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useJobSSE } from "@/hooks/useJobSSE";
+import { useSpacebotSSE } from "@/hooks/useSpacebotSSE";
+import { useWebChat } from "@/hooks/useWebChat";
 
 type Message = {
   id: string;
@@ -12,303 +14,132 @@ type Message = {
 
 type WebChatPanelProps = {
   projectId: string;
-  apiKey?: string | null;
+  agentId?: "creative" | "research" | "billing" | "support";
   variant?: "fixed" | "sidebar";
 };
 
-export function WebChatPanel({ projectId, apiKey: apiKeyProp = null, variant = "fixed" }: WebChatPanelProps) {
-  const [open, setOpen] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([]);
+// eslint-disable-next-line no-restricted-properties
+const SPACEBOT_SSE_URL = process.env.NEXT_PUBLIC_SPACEBOT_EVENTS_URL ?? "/api/spacebot/events";
+
+export function WebChatPanel({
+  projectId,
+  agentId = "creative",
+  variant = "fixed",
+}: WebChatPanelProps) {
+  const [open, setOpen] = useState(variant === "sidebar");
   const [input, setInput] = useState("");
-  const [wsConnected, setWsConnected] = useState(false);
-  const [sessionKey, setSessionKey] = useState<string | null>(null);
-  const [apiKey, setApiKey] = useState<string | null>(apiKeyProp);
-  const [sending, setSending] = useState(false);
-  const [openClawWsUrl, setOpenClawWsUrl] = useState<string>("ws://localhost:18789/webchat");
-  const [gatewayToken, setGatewayToken] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [optimistic, setOptimistic] = useState<Array<{ id: string; content: string }>>([]);
+  const [jobMessages, setJobMessages] = useState<Array<{ id: string; content: string }>>([]);
+  const [bootError, setBootError] = useState<string | null>(null);
 
-  const wsRef = useRef<WebSocket | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
-  const { lastEvent } = useJobSSE(open ? projectId : null);
-
-  const addMessage = useCallback((msg: Omit<Message, "id" | "createdAt">) => {
-    setMessages((prev) => [
-      ...prev,
-      {
-        ...msg,
-        id: crypto.randomUUID(),
-        createdAt: new Date(),
-      },
-    ]);
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/auth/session")
+      .then((res) => res.json())
+      .then((data) => {
+        if (cancelled) return;
+        const uid = data?.user?.id;
+        if (!uid) throw new Error("No user session");
+        setUserId(uid);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setBootError(err instanceof Error ? err.message : "Failed to initialize chat");
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  useEffect(() => {
-    setApiKey(apiKeyProp);
-  }, [apiKeyProp]);
+  const resolvedUserId = userId;
+  const { sessionId, isSending, error, sendMessage } = useWebChat(agentId, resolvedUserId ?? "", projectId);
+  const { timeline, isTyping } = useSpacebotSSE(resolvedUserId ? sessionId : "", SPACEBOT_SSE_URL);
+  const { lastEvent } = useJobSSE(open ? projectId : null);
 
   useEffect(() => {
-    if (!projectId) return;
-
-    fetch("/api/config/public", { cache: "no-store" })
-      .then((res) => res.json())
-      .then((data) => {
-        const resolved = String(data?.openClawWsUrl ?? "").trim();
-        if (resolved) setOpenClawWsUrl(resolved);
-        const token = String(data?.openClawGatewayToken ?? "").trim();
-        if (token) setGatewayToken(token);
-      })
-      .catch(() => undefined);
-
-    fetch("/api/user/openclaw-session", { method: "GET" })
-      .then((res) => res.json())
-      .then((data) => {
-        if (typeof data?.sessionKey === "string" && data.sessionKey.trim()) {
-          setSessionKey(data.sessionKey);
-        }
-        if (typeof data?.apiKey === "string" && data.apiKey.trim()) {
-          setApiKey(data.apiKey.trim());
-        }
-        // Fall back to POST if either sessionKey or apiKey is missing
-        if (
-          typeof data?.sessionKey === "string" && data.sessionKey.trim() &&
-          typeof data?.apiKey === "string" && data.apiKey.trim()
-        ) return;
-
-        return fetch("/api/user/openclaw-session", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ projectId }),
-        })
-          .then((res) => res.json())
-          .then((created) => {
-            if (typeof created?.sessionKey === "string" && created.sessionKey.trim()) {
-              setSessionKey(created.sessionKey);
-            }
-            if (typeof created?.apiKey === "string" && created.apiKey.trim()) {
-              setApiKey(created.apiKey.trim());
-            }
-          });
-      })
-      .catch(() => undefined);
-
-    return () => {
-      fetch("/api/user/openclaw-session", { method: "DELETE" }).catch(() => undefined);
-    };
-  }, [projectId]);
-
-  useEffect(() => {
-    if (!open || !sessionKey) return;
-
-    const ws = new WebSocket(
-      `${openClawWsUrl}?sessionKey=${encodeURIComponent(sessionKey)}`,
-    );
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      // Send OpenClaw handshake frame first
-      ws.send(JSON.stringify({
-        type: "req",
-        method: "connect",
-        id: crypto.randomUUID(),
-        params: {
-          minProtocol: 3,
-          maxProtocol: 3,
-          client: {
-            id: "webchat",
-            platform: "web",
-            mode: "webchat",
-            version: "1.0.0",
-          },
-          role: "operator",
-          scopes: ["operator.read", "operator.write"],
-          caps: [],
-          auth: { token: gatewayToken },
-          locale: "en-US",
-          userAgent: navigator.userAgent,
-        },
-      }));
-    };
-
-    ws.onmessage = (event) => {
-      try {
-        const parsed = JSON.parse(event.data);
-        // Connect acknowledgement
-        if (parsed?.type === "res" && parsed?.ok === true && parsed?.payload?.type === "hello-ok") {
-          setWsConnected(true);
-          addMessage({ role: "system", content: "Connected. Ask me anything about this project." });
-          return;
-        }
-        // Ignore challenge and system events
-        if (parsed?.type === "event" && parsed?.event === "connect.challenge") return;
-        if (parsed?.type === "res") return; // ack for chat.send etc.
-
-        // Assistant message event
-        if (parsed?.type === "event" && parsed?.event === "chat.message") {
-          const msg = parsed?.data?.message ?? parsed?.data;
-          if (msg?.role === "assistant") {
-            addMessage({ role: "assistant", content: String(msg?.content ?? "") });
-          }
-          return;
-        }
-
-        if (parsed?.type === "event" && parsed?.event === "chat") {
-          const msg = parsed?.payload?.message;
-          const state = parsed?.payload?.state;
-          const text = msg?.content?.[0]?.text ?? "";
-
-          if (!text) return;
-
-          if (state === "delta" || state === "final") {
-            setMessages((prev) => {
-              const last = prev[prev.length - 1];
-              if (last?.role === "assistant") {
-                return [...prev.slice(0, -1), { ...last, content: text }];
-              }
-              return [
-                ...prev,
-                { id: crypto.randomUUID(), role: "assistant", content: text, createdAt: new Date() },
-              ];
-            });
-          }
-          return;
-        }
-
-        // Handle streaming agent response
-        if (parsed?.type === "event" && parsed?.event === "agent") {
-          const data = parsed?.payload?.data;
-          const stream = parsed?.payload?.stream;
-
-          if (stream === "text" && data?.text) {
-            // Streaming text chunk — append to last assistant message or add new one
-            setMessages((prev) => {
-              const last = prev[prev.length - 1];
-              if (last?.role === "assistant") {
-                return [...prev.slice(0, -1), { ...last, content: last.content + data.text }];
-              }
-              return [
-                ...prev,
-                { id: crypto.randomUUID(), role: "assistant", content: data.text, createdAt: new Date() },
-              ];
-            });
-            return;
-          }
-
-          if (stream === "lifecycle" && data?.phase === "done") {
-            // Run complete
-            return;
-          }
-          return;
-        }
-
-        // Fallback
-        addMessage({
-          role: "assistant",
-          content: String(parsed?.content ?? parsed?.message ?? event.data),
-        });
-      } catch {
-        addMessage({ role: "assistant", content: String(event.data) });
-      }
-    };
-
-    ws.onclose = () => {
-      setWsConnected(false);
-    };
-
-    ws.onerror = () => {
-      setWsConnected(false);
-      addMessage({ role: "system", content: "Connection lost. Reconnecting..." });
-    };
-
-    return () => {
-      ws.close();
-      wsRef.current = null;
-      setWsConnected(false);
-    };
-  }, [open, sessionKey, openClawWsUrl, gatewayToken, addMessage]);
+    console.log("sessionId:", sessionId);
+  }, [sessionId]);
 
   useEffect(() => {
     if (!lastEvent) return;
-    addMessage({ role: "assistant", content: lastEvent.message });
-  }, [lastEvent, addMessage]);
+    setJobMessages((prev) => [
+      ...prev,
+      {
+        id: crypto.randomUUID(),
+        content: String(lastEvent.message ?? `${lastEvent.jobType} ${lastEvent.status}`),
+      },
+    ]);
+  }, [lastEvent]);
+
+  useEffect(() => {
+    if (timeline.length > 0) {
+      setOptimistic([]);
+    }
+  }, [timeline.length]);
+
+  const wsConnected = useMemo(() => Boolean(userId), [userId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [timeline.length, optimistic.length, jobMessages.length, isTyping]);
 
-  const sendMessage = useCallback(() => {
+  const handleSend = useCallback(async () => {
     const text = input.trim();
-    if (!text || !sessionKey || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    if (!text || !wsConnected || isSending || isTyping || !resolvedUserId) return;
 
-    addMessage({ role: "user", content: text });
-    setSending(true);
     setInput("");
-    const messageWithContext = projectId && apiKey
-      ? `[context: projectId=${projectId} apiKey=${apiKey}]\n\n${text}`
-      : text;
-    console.log("[WebChat] context:", { projectId, apiKey: apiKey ? "present" : "null" });
-    console.log("[WebChat] sending message:", messageWithContext.substring(0, 100));
+    setOptimistic((prev) => [...prev, { id: crypto.randomUUID(), content: text }]);
 
-    wsRef.current.send(JSON.stringify({
-      type: "req",
-      method: "chat.send",
-      id: crypto.randomUUID(),
-      params: {
-        sessionKey,
-        message: messageWithContext,
-        idempotencyKey: crypto.randomUUID(),
-      },
-    }));
-    setSending(false);
+    const contextMessage = `[context: projectId=${projectId}]\n\n${text}`;
+    await sendMessage(contextMessage);
     inputRef.current?.focus();
-  }, [input, sessionKey, projectId, apiKey, addMessage]);
+  }, [input, wsConnected, isSending, isTyping, projectId, resolvedUserId, sendMessage]);
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
-      sendMessage();
+      void handleSend();
     }
   };
+
+  const combinedMessages: Message[] = [
+    ...timeline.map((msg) => ({
+      id: msg.id,
+      role: msg.role,
+      content: msg.content,
+      createdAt: new Date(),
+    } as Message)),
+    ...optimistic.map((msg) => ({
+      id: msg.id,
+      role: "user",
+      content: msg.content,
+      createdAt: new Date(),
+    } as Message)),
+    ...jobMessages.map((msg) => ({
+      id: msg.id,
+      role: "system",
+      content: msg.content,
+      createdAt: new Date(),
+    } as Message)),
+  ];
 
   if (variant === "sidebar") {
     return (
       <div className="flex h-full flex-col border-l border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-900">
-        <div className="flex items-center gap-2 border-b border-zinc-100 px-4 py-3 dark:border-zinc-800">
-          <span className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">Assistant</span>
-          <span className={`h-2 w-2 rounded-full ${wsConnected ? "bg-green-400" : "bg-zinc-400"}`} />
-        </div>
-
-        <div className="flex-1 space-y-3 overflow-y-auto px-4 py-3">
-          {messages.map((message) => (
-            <ChatMessage key={message.id} message={message} />
-          ))}
-          <div ref={messagesEndRef} />
-        </div>
-
-        <div className="border-t border-zinc-100 px-3 py-3 dark:border-zinc-800">
-          <div className="flex items-end gap-2">
-            <textarea
-              ref={inputRef}
-              value={input}
-              onChange={(event) => setInput(event.target.value)}
-              onKeyDown={onKeyDown}
-              placeholder="Ask or start a job..."
-              rows={1}
-              disabled={!wsConnected}
-              className="max-h-32 flex-1 resize-none rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800"
-            />
-            <button
-              onClick={sendMessage}
-              disabled={!wsConnected || !input.trim() || sending}
-              className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40"
-              type="button"
-              aria-label="Send"
-            >
-              <SendIcon />
-            </button>
-          </div>
-        </div>
+        <Header title={agentId} wsConnected={wsConnected} />
+        <MessageList messages={combinedMessages} isTyping={isTyping} error={bootError ?? error} messagesEndRef={messagesEndRef} />
+        <Composer
+          inputRef={inputRef}
+          input={input}
+          setInput={setInput}
+          onKeyDown={onKeyDown}
+          onSend={handleSend}
+          disabled={!wsConnected || isSending || isTyping}
+        />
       </div>
     );
   }
@@ -320,58 +151,21 @@ export function WebChatPanel({ projectId, apiKey: apiKeyProp = null, variant = "
           className="flex flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl dark:border-zinc-700 dark:bg-zinc-900"
           style={{ width: 380, height: 520 }}
         >
-          <div className="flex items-center justify-between border-b border-zinc-100 bg-zinc-50 px-4 py-3 dark:border-zinc-800 dark:bg-zinc-800">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">Assistant</span>
-              <span className={`h-2 w-2 rounded-full ${wsConnected ? "bg-green-400" : "bg-zinc-400"}`} />
-            </div>
-            <button
-              onClick={() => setOpen(false)}
-              type="button"
-              className="text-lg leading-none text-zinc-400 transition-colors hover:text-zinc-600 dark:hover:text-zinc-300"
-              aria-label="Close chat"
-            >
-              ×
-            </button>
-          </div>
-
-          <div className="flex-1 space-y-3 overflow-y-auto px-4 py-3">
-            {messages.map((message) => (
-              <ChatMessage key={message.id} message={message} />
-            ))}
-            <div ref={messagesEndRef} />
-          </div>
-
-          <div className="border-t border-zinc-100 px-3 py-3 dark:border-zinc-800">
-            <div className="flex items-end gap-2">
-              <textarea
-                ref={inputRef}
-                value={input}
-                onChange={(event) => setInput(event.target.value)}
-                onKeyDown={onKeyDown}
-                placeholder="Ask or start a job..."
-                rows={1}
-                disabled={!wsConnected}
-                className="max-h-32 flex-1 resize-none rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-800 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
-                style={{ minHeight: 38 }}
-              />
-              <button
-                onClick={sendMessage}
-                disabled={!wsConnected || !input.trim() || sending}
-                type="button"
-                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
-                aria-label="Send"
-              >
-                <SendIcon />
-              </button>
-            </div>
-          </div>
+          <Header title={agentId} wsConnected={wsConnected} onClose={() => setOpen(false)} />
+          <MessageList messages={combinedMessages} isTyping={isTyping} error={bootError ?? error} messagesEndRef={messagesEndRef} />
+          <Composer
+            inputRef={inputRef}
+            input={input}
+            setInput={setInput}
+            onKeyDown={onKeyDown}
+            onSend={handleSend}
+            disabled={!wsConnected || isSending || isTyping}
+          />
         </div>
       ) : null}
-
       <button
         type="button"
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => setOpen((v) => !v)}
         className="flex h-14 w-14 items-center justify-center rounded-full bg-blue-600 text-white shadow-lg transition-all hover:bg-blue-700"
         aria-label={open ? "Close assistant" : "Open assistant"}
       >
@@ -381,10 +175,120 @@ export function WebChatPanel({ projectId, apiKey: apiKeyProp = null, variant = "
   );
 }
 
+function Header({
+  title,
+  wsConnected,
+  onClose,
+}: {
+  title: string;
+  wsConnected: boolean;
+  onClose?: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-between border-b border-zinc-100 bg-zinc-50 px-4 py-3 dark:border-zinc-800 dark:bg-zinc-800">
+      <div className="flex items-center gap-2">
+        <span className="text-sm font-semibold capitalize text-zinc-800 dark:text-zinc-100">{title}</span>
+        <span className={`h-2 w-2 rounded-full ${wsConnected ? "bg-green-400" : "bg-zinc-400"}`} />
+      </div>
+      {onClose ? (
+        <button
+          onClick={onClose}
+          type="button"
+          className="text-lg leading-none text-zinc-400 transition-colors hover:text-zinc-600 dark:hover:text-zinc-300"
+          aria-label="Close chat"
+        >
+          ×
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function MessageList({
+  messages,
+  isTyping,
+  error,
+  messagesEndRef,
+}: {
+  messages: Message[];
+  isTyping: boolean;
+  error: string | null;
+  messagesEndRef: React.RefObject<HTMLDivElement | null>;
+}) {
+  return (
+    <div className="flex-1 space-y-3 overflow-y-auto px-4 py-3">
+      {messages.map((message) => (
+        <ChatMessage key={message.id} message={message} />
+      ))}
+
+      {isTyping ? (
+        <div className="flex items-center gap-1.5 py-1">
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-zinc-400" />
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-zinc-400 [animation-delay:0.2s]" />
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-zinc-400 [animation-delay:0.4s]" />
+        </div>
+      ) : null}
+
+      {error ? (
+        <div className="rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2 text-xs text-red-400">
+          {error}
+        </div>
+      ) : null}
+
+      <div ref={messagesEndRef} />
+    </div>
+  );
+}
+
+function Composer({
+  inputRef,
+  input,
+  setInput,
+  onKeyDown,
+  onSend,
+  disabled,
+}: {
+  inputRef: React.RefObject<HTMLTextAreaElement | null>;
+  input: string;
+  setInput: (value: string) => void;
+  onKeyDown: (event: React.KeyboardEvent<HTMLTextAreaElement>) => void;
+  onSend: () => void;
+  disabled: boolean;
+}) {
+  return (
+    <div className="border-t border-zinc-100 px-3 py-3 dark:border-zinc-800">
+      <div className="flex items-end gap-2">
+        <textarea
+          ref={inputRef}
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={onKeyDown}
+          placeholder="Ask or start a job..."
+          rows={1}
+          disabled={disabled}
+          className="max-h-32 flex-1 resize-none rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-800 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+          style={{ minHeight: 38 }}
+        />
+        <button
+          onClick={onSend}
+          disabled={disabled || !input.trim()}
+          type="button"
+          className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+          aria-label="Send"
+        >
+          <SendIcon />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ChatMessage({ message }: { message: Message }) {
   if (message.role === "system") {
     return (
-      <p className="py-1 text-center text-xs text-zinc-400 dark:text-zinc-500">{message.content}</p>
+      <p className="py-1 text-center text-xs text-zinc-400 dark:text-zinc-500">
+        {message.content}
+      </p>
     );
   }
 
@@ -406,16 +310,7 @@ function ChatMessage({ message }: { message: Message }) {
 
 function SendIcon() {
   return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
       <line x1="22" y1="2" x2="11" y2="13" />
       <polygon points="22 2 15 22 11 13 2 9 22 2" />
     </svg>
@@ -424,16 +319,7 @@ function SendIcon() {
 
 function ChatIcon() {
   return (
-    <svg
-      width="22"
-      height="22"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
     </svg>
   );
@@ -441,16 +327,7 @@ function ChatIcon() {
 
 function CloseIcon() {
   return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
       <line x1="18" y1="6" x2="6" y2="18" />
       <line x1="6" y1="6" x2="18" y2="18" />
     </svg>
