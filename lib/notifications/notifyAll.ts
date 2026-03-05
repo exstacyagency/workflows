@@ -4,6 +4,15 @@ import prisma from "@/lib/prisma";
 import { cfg } from "@/lib/config";
 import { ssePublish } from "@/lib/notifications/ssePublisher";
 
+const AGENT_TO_CHANNEL: Record<string, string> = {
+  creative: "discord:creative-campaigns",
+  research: "discord:research",
+  billing: "discord:billing",
+  support: "discord:support-tickets",
+};
+
+const SPACEBOT_WEBHOOK_URL = "http://localhost:18789/webhook";
+
 export interface JobCompletionPayload {
   jobId: string;
   jobType: string;
@@ -32,8 +41,8 @@ const JOB_TYPE_TO_AGENT: Record<string, string> = {
   AD_PERFORMANCE:             "research",
   PRODUCT_DATA_COLLECTION:    "research",
   PRODUCT_ANALYSIS:           "research",
-  VIDEO_REVIEW:               "research",
-  CHARACTER_VOICE_SETUP:      "research",
+  VIDEO_REVIEW:               "support",
+  CHARACTER_VOICE_SETUP:      "support",
 };
 
 function formatMessage(payload: JobCompletionPayload): string {
@@ -84,6 +93,35 @@ async function notifySpacebot(
   }
 }
 
+async function notifyTeamChannel(
+  agentId: string,
+  payload: JobCompletionPayload,
+  message: string,
+) {
+  const channelId = AGENT_TO_CHANNEL[agentId];
+  if (!channelId) return;
+
+  const res = await fetch(SPACEBOT_WEBHOOK_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      agent_id: agentId,
+      conversation_id: channelId,
+      message,
+      job_id: payload.jobId,
+      project_id: payload.projectId,
+      cost_cents: payload.costCents ?? 0,
+    }),
+    signal: AbortSignal.timeout(5000),
+  });
+
+  if (!res.ok) {
+    console.warn(`[notifyAll] Team channel hook returned ${res.status} for ${channelId}`);
+  } else {
+    console.log(`[notifyAll] Team channel notified — ${channelId}`);
+  }
+}
+
 export async function notifyAll(payload: JobCompletionPayload) {
   try {
     const agentId  = JOB_TYPE_TO_AGENT[payload.jobType] ?? "creative";
@@ -98,6 +136,7 @@ export async function notifyAll(payload: JobCompletionPayload) {
     const results = await Promise.allSettled([
       ssePublish(payload.projectId, payload),
       ...notifications,
+      notifyTeamChannel(agentId, payload, message),
     ]);
 
     results.forEach((r, i) => {
