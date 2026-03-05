@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSessionUserId } from "@/lib/getSessionUserId";
+import { seedProjectMemory } from "@/lib/spacebot/seedMemory";
 
 export async function GET(req: NextRequest) {
   try {
@@ -71,6 +72,10 @@ export async function POST(req: NextRequest) {
             userId: userId,
           },
         });
+
+        await seedProjectMemory(project.id, project.name, userId).catch((err) =>
+          console.warn("Memory auto-seed failed (non-fatal):", err)
+        );
         
         return NextResponse.json(project);
       } catch (error: any) {

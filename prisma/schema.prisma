@@ -538,6 +538,20 @@ model ProjectAgentBinding {
   updatedAt          DateTime @updatedAt
 }
 
+model SpacebotAuditLog {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  agent     String
+  file      String
+  action    String
+  userEmail String
+  userId    String
+  summary   String
+
+  @@index([agent])
+  @@index([createdAt])
+}
+
 enum JobType {
   CUSTOMER_RESEARCH
   CUSTOMER_ANALYSIS
