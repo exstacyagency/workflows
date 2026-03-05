@@ -11,7 +11,8 @@ const DEFAULT_MEMORIES: Record<string, Record<string, string>> = {
   creative: {
     brand_voice: "",
     approved_creative_decisions: "",
-    cost_confirmation_preferences: "Confirm any video generation job estimated over $10 before starting.",
+    cost_confirmation_preferences:
+      "Confirm any video generation job estimated over $10 before starting.",
     campaign_goals: "",
   },
   research: {
@@ -47,9 +48,9 @@ export async function seedProjectMemory(
         ...(overrides[agent] ?? {}),
       };
 
-      const hasContent = Object.values(memories).some((v) => v.trim());
-      if (!hasContent) return;
-
+      // Always write USER.md so the agent has a structured baseline from
+      // day one. Empty fields are written as placeholder sections so
+      // the agent knows what to fill in as the project develops.
       const content = buildMemoryDocument(projectName, agent, memories, timestamp);
       const tmpPath = path.join(os.tmpdir(), `spacebot-${agent}-init-${Date.now()}.md`);
       await fs.writeFile(tmpPath, content, "utf-8");
@@ -65,12 +66,13 @@ function buildMemoryDocument(
   memories: Record<string, string>,
   timestamp: string
 ): string {
+  // Include all keys — empty ones become "Not yet defined." so the agent
+  // knows the field exists and can populate it later.
   const sections = Object.entries(memories)
-    .filter(([, value]) => value.trim())
-    .map(([key, value]) => `## ${formatKey(key)}\n${value.trim()}`)
+    .map(([key, value]) =>
+      `## ${formatKey(key)}\n${value.trim() || "Not yet defined."}`
+    )
     .join("\n\n");
-
-  if (!sections) return "";
 
   return `# Project Memory — ${projectName}
 Agent: ${agent}

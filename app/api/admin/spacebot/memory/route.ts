@@ -2,13 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { promises as fs } from "fs";
 import { exec } from "child_process";
 import { promisify } from "util";
+import { promises as fs } from "fs";
 import os from "os";
 import path from "path";
-const execAsync = promisify(exec);
 
+const execAsync = promisify(exec);
 const ALLOWED_AGENTS = ["creative", "research", "billing", "support"];
 
 export async function POST(req: NextRequest) {
@@ -82,13 +82,33 @@ export async function GET(req: NextRequest) {
   if (!project) return NextResponse.json({ error: "Project not found" }, { status: 404 });
 
   try {
-    const tmpPath = path.join(os.tmpdir(), `spacebot-read-${agent}-${Date.now()}.md`);
-    await execAsync(`docker cp spacebot:/data/agents/${agent}/workspace/USER.md ${tmpPath}`);
-    const content = await fs.readFile(tmpPath, "utf-8");
-    await fs.unlink(tmpPath);
-    return NextResponse.json({ content });
-  } catch {
-    return NextResponse.json({ content: "" });
+    // Copy the SQLite db out of the container and query it directly.
+    // This reflects live memory state including everything saved by branches.
+    const tmpDb = path.join(os.tmpdir(), `spacebot-db-${agent}-${Date.now()}.db`);
+    await execAsync(`docker cp spacebot:/data/agents/${agent}/data/spacebot.db ${tmpDb}`);
+
+    const { stdout } = await execAsync(
+      `sqlite3 ${tmpDb} "SELECT memory_type, content, importance, source, created_at FROM memories WHERE forgotten = 0 ORDER BY importance DESC, created_at DESC LIMIT 50;"`
+    );
+    await fs.unlink(tmpDb).catch(() => {});
+
+    const rows = stdout
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => {
+        const [memory_type, ...rest] = line.split("|");
+        const created_at = rest.pop();
+        const source = rest.pop();
+        const importance = rest.pop();
+        const content = rest.join("|");
+        return { memory_type, content, importance: parseFloat(importance ?? "0"), source, created_at };
+      });
+
+    return NextResponse.json({ memories: rows, count: rows.length });
+  } catch (err) {
+    console.error("[admin/spacebot/memory] Failed to read memories:", err);
+    return NextResponse.json({ error: "Failed to read memories" }, { status: 500 });
   }
 }
 
