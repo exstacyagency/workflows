@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { JobStatus } from '@prisma/client';
 import { notFound } from 'next/navigation';
+import Link from 'next/link';
 import { getJobTypeLabel } from '@/lib/jobLabels';
 import { ProjectProductsPanel } from '@/components/ProjectProductsPanel';
 import { ProjectSettingsPanel } from '@/components/ProjectSettingsPanel';
@@ -127,6 +128,14 @@ export default async function ProjectDashboardPage({ params }: Params) {
           <div className="text-[11px] text-slate-500 mt-3">
             ID: <span className="font-mono">{project.id}</span> · Updated{' '}
             {dateFormatter.format(project.updatedAt)}
+          </div>
+          <div className="mt-3">
+            <Link
+              href={`/projects/${projectId}/settings/memory`}
+              className="inline-flex items-center gap-2 rounded bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-700"
+            >
+              Agent Memory
+            </Link>
           </div>
         </div>
       </section>
