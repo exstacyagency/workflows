@@ -14,9 +14,13 @@ export async function POST(req: Request) {
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const body = await req.clone().json().catch(() => ({}));
+  if ((body as { trigger?: string })?.trigger === "cron") {
+    return NextResponse.json({ queued: false, reason: "cron_not_activated" }, { status: 202 });
+  }
 
-  const body = await req.json();
-  const { projectId, industryCode } = body as {
+  const parsedBody = await req.json();
+  const { projectId, industryCode } = parsedBody as {
     projectId?: string;
     industryCode?: string;
   };

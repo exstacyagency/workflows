@@ -45,6 +45,10 @@ export async function POST(req: NextRequest) {
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+  const body = await req.clone().json().catch(() => ({}));
+  if ((body as { trigger?: string })?.trigger === "cron") {
+    return NextResponse.json({ queued: false, reason: "cron_not_activated" }, { status: 202 });
+  }
   const securitySweep = cfg.raw("SECURITY_SWEEP") === "1";
   let projectId: string | null = null;
   let jobId: string | null = null;
