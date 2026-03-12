@@ -3,6 +3,9 @@ import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 
 async function main() {
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("Refusing to run smoke_project in production.");
+  }
   const email = process.env.SMOKE_USER_EMAIL;
   if (!email) {
     throw new Error("SMOKE_USER_EMAIL env var is required");

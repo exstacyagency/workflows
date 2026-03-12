@@ -3,6 +3,9 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 async function main() {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('Refusing to run prisma/seed.js in production.');
+  }
   const user = await prisma.user.create({
     data: {
       email: 'test@example.com',
@@ -27,4 +30,3 @@ main()
   .finally(async () => {
     await prisma.$disconnect();
   });
-

@@ -10,7 +10,14 @@ function msAgo(ms) {
   return new Date(Date.now() - ms);
 }
 
+function assertSafeRuntime() {
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("Refusing to run cleanup_auth_throttle in production.");
+  }
+}
+
 async function main() {
+  assertSafeRuntime();
   // Delete rows that are not locked and whose reset window is long past.
   // Also delete rows whose lockout expired long ago.
   const cutoff = msAgo(GRACE_MS);
@@ -56,4 +63,3 @@ main()
   .finally(async () => {
     await prisma.$disconnect();
   });
-

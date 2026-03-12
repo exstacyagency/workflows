@@ -215,8 +215,12 @@ async function runApifyActor<T>(actorId: string, input: any) {
   if (!token) throw new Error("APIFY_API_TOKEN not set");
 
   const datasetRes = await fetchWithRetry(
-    `${APIFY_BASE}/datasets/${datasetId}/items?clean=true&token=${token}`,
-    undefined,
+    `${APIFY_BASE}/datasets/${datasetId}/items?clean=true`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    },
     `apify-dataset-${datasetId}`
   );
 

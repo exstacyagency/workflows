@@ -30,6 +30,9 @@ function periodKeyToUtcDate(periodKey) {
 }
 
 async function main() {
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("Refusing to run seed_ci in production.");
+  }
   // Upsert by name (name is unique in your schema)
   await prisma.$executeRaw`DELETE FROM "AuthThrottle"`;
 

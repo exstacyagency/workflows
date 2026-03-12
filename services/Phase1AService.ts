@@ -88,10 +88,13 @@ async function runApifyActor<T>(actorId: string, input: Record<string, unknown>)
   }
 
   const runResponse = await fetchWithRetry(
-    `${APIFY_BASE}/acts/${actorId}/runs?token=${token}&waitForFinish=120`,
+    `${APIFY_BASE}/acts/${actorId}/runs?waitForFinish=120`,
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
       body: JSON.stringify({ input })
     },
     `Apify actor ${actorId}`
@@ -104,8 +107,12 @@ async function runApifyActor<T>(actorId: string, input: Record<string, unknown>)
   }
 
   const datasetRes = await fetchWithRetry(
-    `${APIFY_BASE}/datasets/${datasetId}/items?clean=true&token=${token}`,
-    undefined,
+    `${APIFY_BASE}/datasets/${datasetId}/items?clean=true`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    },
     `Apify dataset ${datasetId}`
   );
 

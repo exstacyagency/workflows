@@ -4,6 +4,9 @@ import bcrypt from "bcryptjs";
 const prisma = new PrismaClient();
 
 async function main() {
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("Refusing to run prisma/seed.ts in production.");
+  }
 
   // 1. Ensure test user exists with email 'test@local.dev', prefer id 'user_test' if creating
   const testUserEmail = "test@local.dev";

@@ -3,6 +3,9 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 async function main() {
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("Refusing to run smoke_prisma in production.");
+  }
   const account = await prisma.account.create({
     data: { tier: 'FREE', spendCap: 0 },
   });
