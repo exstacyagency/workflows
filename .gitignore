@@ -23,6 +23,7 @@
 .env.test
 .env.production
 .env.*
+*.env
 !.env.example
 npm-debug.log*
 yarn-debug.log*
