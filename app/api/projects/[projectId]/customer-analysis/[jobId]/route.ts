@@ -51,6 +51,7 @@ export async function GET(
 
   let analysisInputs: Record<string, unknown> | null = null;
   if (includeInputs) {
+    // TODO(medium): gate includeInputs behind an additional operator/admin check if raw Anthropic request logs should not be exposed to all project owners.
     const analysisInputMeta = (summary.analysisInput ?? {}) as Record<string, unknown>;
     const anthropicRequestLogPath =
       typeof analysisInputMeta.anthropicRequestLogPath === "string"

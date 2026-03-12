@@ -14,6 +14,7 @@ export async function GET(
     }
 
     const { projectId, jobId } = awaitedParams;
+    // TODO(low): validate the optional type filter shape centrally if this route ever expands to support mutating job actions.
 
     // Verify project access
     const project = await prisma.project.findFirst({
