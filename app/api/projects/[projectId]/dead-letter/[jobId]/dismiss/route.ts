@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getSessionUserId } from "@/lib/getSessionUserId";
 import { requireProjectOwner404 } from "@/lib/auth/requireProjectOwner404";
 import { checkRateLimit } from "@/lib/rateLimiter";
+import { isAdminRequest } from "@/lib/admin/isAdminRequest";
 
 export async function POST(
   req: NextRequest,
@@ -19,6 +20,10 @@ export async function POST(
 
   const deny = await requireProjectOwner404(projectId);
   if (deny) return deny;
+
+  if (!isAdminRequest(req)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   const rate = await checkRateLimit(`deadletter:dismiss:${userId}`, {
     limit: 30,
