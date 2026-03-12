@@ -60,6 +60,7 @@ queue.process(async (job) => {
 
     return result;
   } catch (error: any) {
+    // TODO(low): gate verbose worker error logging behind a debug flag to avoid dumping large provider payloads into routine logs.
     console.error('[Customer Analysis Worker] ERROR:', error);
     console.error('[Customer Analysis Worker] Error stack:', error?.stack);
     console.error('[Customer Analysis Worker] Error details:', JSON.stringify(error, null, 2));

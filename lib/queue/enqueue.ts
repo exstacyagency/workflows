@@ -93,6 +93,7 @@ export async function enqueueJob(
           payload: input.payload,
         },
       });
+      // TODO(medium): avoid overwriting payload on idempotent reuse unless the caller explicitly opts into reconciliation.
       return { jobId: existing.id, reused: true };
     }
   }
