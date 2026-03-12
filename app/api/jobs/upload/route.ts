@@ -1,7 +1,7 @@
 // app/api/jobs/upload/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '../../../../lib/prisma';
-import { JobStatus, JobType } from '@prisma/client';
+import { AdPlatform, JobStatus, JobType, ResearchSource } from '@prisma/client';
 import { z } from 'zod';
 import { parseJson } from '../../../../lib/validation/jobs';
 import { logAudit } from '../../../../lib/logger';
@@ -43,6 +43,22 @@ export async function POST(req: NextRequest) {
     const deny = await requireProjectOwner404(projectId);
     if (deny) return deny;
 
+    const normalizedRunId = String(runId ?? '').trim();
+    let effectiveRunId: string | null = null;
+    if (normalizedRunId) {
+      const existingRun = await prisma.researchRun.findUnique({
+        where: { id: normalizedRunId },
+        select: { id: true, projectId: true },
+      });
+      if (!existingRun || existingRun.projectId !== projectId) {
+        return NextResponse.json(
+          { error: 'runId not found for this project' },
+          { status: 400 }
+        );
+      }
+      effectiveRunId = existingRun.id;
+    }
+
     // Validate data format based on job type
     const validation = validateUploadData(data, jobType);
     if (!validation.valid) {
@@ -62,7 +78,7 @@ export async function POST(req: NextRequest) {
         type: jobType as JobType,
         status: JobStatus.COMPLETED,
         idempotencyKey,
-        runId: runId || null,
+        runId: effectiveRunId,
         payload: data,
         resultSummary: 'Uploaded by user',
         actualCost: 0,
@@ -171,16 +187,20 @@ function validateUploadData(data: any, jobType: string): { valid: boolean; error
 async function storeUploadedData(projectId: string, jobId: string, jobType: string, data: any) {
   if (jobType === 'CUSTOMER_RESEARCH') {
     // Store in researchRow table
+    const now = new Date();
     const rows = data.map((row: any) => ({
       projectId,
       jobId,
-      source: row.source || 'UPLOADED',
+      source: ResearchSource.UPLOADED,
       content: row.text,
+      type: 'uploaded',
       metadata: {
+        originalSource: row.source ?? null,
         rating: row.rating,
         author: row.author,
         uploaded: true,
       },
+      updatedAt: now,
     }));
     
     await prisma.researchRow.createMany({
@@ -189,25 +209,26 @@ async function storeUploadedData(projectId: string, jobId: string, jobType: stri
   }
 
   if (jobType === 'AD_PERFORMANCE') {
-    // Store in appropriate ad table
-    const rows = data.map((row: any) => ({
-      projectId,
-      jobId,
-      adId: row.adId,
-      platform: row.platform,
-      transcript: row.transcript,
-      views: parseInt(row.views) || 0,
-      metadata: {
-        uploaded: true,
-      },
-    }));
-    
-    // Note: Adjust table name based on your schema
-    // This is a placeholder - you'll need to use the correct table
-    await prisma.$executeRaw`
-      INSERT INTO ad_data (project_id, job_id, ad_id, platform, transcript, views, metadata)
-      VALUES ${rows.map((r: any) => `(${r.projectId}, ${r.jobId}, ${r.adId}, ${r.platform}, ${r.transcript}, ${r.views}, ${JSON.stringify(r.metadata)})`).join(', ')}
-    `;
+    const rows = data.map((row: any) => {
+      const normalizedPlatform = String(row.platform ?? '').trim().toUpperCase();
+      const platform =
+        normalizedPlatform === 'META' ? AdPlatform.META : AdPlatform.TIKTOK;
+      const views = Number.parseInt(String(row.views ?? '0'), 10) || 0;
+      return {
+        projectId,
+        jobId,
+        platform,
+        rawJson: {
+          adId: String(row.adId ?? '').trim(),
+          platform: String(row.platform ?? '').trim() || platform,
+          transcript: String(row.transcript ?? '').trim(),
+          views,
+          uploaded: true,
+        },
+      };
+    });
+
+    await prisma.adAsset.createMany({ data: rows });
   }
 
   if (jobType === 'PRODUCT_DATA_COLLECTION') {

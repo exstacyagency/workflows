@@ -74,8 +74,20 @@ export async function POST(req: NextRequest) {
     }
 
     // Get runId from request or find most recent completed research job
-    let effectiveRunId = runId;
-    if (!effectiveRunId) {
+    const requestedRunId = String(runId ?? "").trim();
+    let effectiveRunId = requestedRunId || undefined;
+    if (effectiveRunId) {
+      const existingRun = await prisma.researchRun.findUnique({
+        where: { id: effectiveRunId },
+        select: { id: true, projectId: true },
+      });
+      if (!existingRun || existingRun.projectId !== projectId) {
+        return NextResponse.json(
+          { error: 'runId not found for this project' },
+          { status: 400 }
+        );
+      }
+    } else {
       const latestResearch = await prisma.job.findFirst({
         where: {
           projectId,
@@ -88,6 +100,7 @@ export async function POST(req: NextRequest) {
       });
       effectiveRunId = latestResearch?.runId ?? undefined;
     }
+    // TODO(low): if multiple research pipelines can feed customer analysis, make the fallback run selection explicit instead of "latest completed".
 
     if (!effectiveRunId) {
       return NextResponse.json(

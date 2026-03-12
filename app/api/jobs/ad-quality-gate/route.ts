@@ -77,8 +77,20 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    let effectiveRunId = runId;
-    if (!effectiveRunId) {
+    const requestedRunId = String(runId ?? "").trim();
+    let effectiveRunId = requestedRunId || undefined;
+    if (effectiveRunId) {
+      const existingRun = await prisma.researchRun.findUnique({
+        where: { id: effectiveRunId },
+        select: { id: true, projectId: true },
+      });
+      if (!existingRun || existingRun.projectId !== projectId) {
+        return NextResponse.json(
+          { error: "runId not found for this project" },
+          { status: 400 }
+        );
+      }
+    } else {
       const latestCollection = await prisma.job.findFirst({
         where: {
           projectId,
@@ -95,6 +107,7 @@ export async function POST(req: NextRequest) {
       });
       effectiveRunId = latestCollection?.runId ?? undefined;
     }
+    // TODO(low): remove the debug payload logging once this route is stable in production.
 
     if (!effectiveRunId) {
       return NextResponse.json({ error: "No ads to process" }, { status: 400 });

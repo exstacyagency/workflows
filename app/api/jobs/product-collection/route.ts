@@ -59,8 +59,20 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    let effectiveRunId = runId;
-    if (!effectiveRunId) {
+    const requestedRunId = String(runId ?? "").trim();
+    let effectiveRunId = requestedRunId || undefined;
+    if (effectiveRunId) {
+      const existingRun = await prisma.researchRun.findUnique({
+        where: { id: effectiveRunId },
+        select: { id: true, projectId: true },
+      });
+      if (!existingRun || existingRun.projectId !== projectId) {
+        return NextResponse.json(
+          { error: "runId not found for this project" },
+          { status: 400 }
+        );
+      }
+    } else {
       const run = await prisma.researchRun.create({
         data: {
           projectId,
@@ -69,6 +81,7 @@ export async function POST(req: NextRequest) {
       });
       effectiveRunId = run.id;
     }
+    // TODO(low): consider whether clients should be allowed to attach product collection to an arbitrary existing run at all.
 
     const idempotencyKey = randomUUID();
 
