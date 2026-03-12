@@ -316,6 +316,7 @@ export async function GET(
 
   const download = req.nextUrl.searchParams.get('download');
   if (download === '1') {
+    // TODO(low): sanitize the download filename if project IDs ever become user-controlled strings with special characters.
     const payload = avatar.persona ?? avatar;
     return new NextResponse(JSON.stringify(payload, null, 2), {
       status: 200,

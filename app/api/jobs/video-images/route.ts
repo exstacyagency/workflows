@@ -238,6 +238,16 @@ export async function POST(req: NextRequest) {
   if (deny) return deny;
   await ensureProductTableColumns();
 
+  if (runId) {
+    const run = await prisma.researchRun.findUnique({
+      where: { id: runId },
+      select: { id: true, projectId: true },
+    });
+    if (!run || run.projectId !== projectId) {
+      return NextResponse.json({ error: "runId not found for this project." }, { status: 400 });
+    }
+  }
+
   const ownedProduct = await findOwnedProductById(productId, userId);
   if (!ownedProduct || ownedProduct.projectId !== projectId) {
     return NextResponse.json({ error: "Product not found for this project." }, { status: 404 });
@@ -331,6 +341,7 @@ export async function POST(req: NextRequest) {
   if (requestedCharacter && String(requestedCharacter.productId ?? "") !== productId) {
     return NextResponse.json({ error: "characterId does not belong to selected product." }, { status: 400 });
   }
+  // TODO(low): also verify a requested sceneNumber, when provided, maps to an existing storyboard scene before launching generation.
 
   const firstSceneRaw = asObject(storyboard.scenes[0]?.rawJson) ?? {};
   const resolvedCharacterName = asString(requestedCharacter?.name) || asString(firstSceneRaw.characterName);

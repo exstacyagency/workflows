@@ -45,6 +45,7 @@ export async function PATCH(
     insights.archivedAt = new Date().toISOString();
     await prisma.productIntelligence.update({ where: { id: intelId }, data: { insights } as any });
   } else {
+    // TODO(low): perform the archive/restore fan-out in a transaction if multiple clients may update the active intel concurrently.
     const others = await prisma.productIntelligence.findMany({ where: { projectId } });
     const now = new Date().toISOString();
     await Promise.all(

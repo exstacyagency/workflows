@@ -91,6 +91,17 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Storyboard not found for this project" }, { status: 404 });
   }
 
+  if (runId) {
+    const run = await prisma.researchRun.findUnique({
+      where: { id: runId },
+      select: { id: true, projectId: true },
+    });
+    if (!run || run.projectId !== projectId) {
+      return NextResponse.json({ error: "runId not found for this project" }, { status: 400 });
+    }
+  }
+  // TODO(low): also validate that prompt sceneIds, when present, belong to the selected storyboard.
+
   let started: StartMultiFrameResult;
   try {
     started = await startMultiFrameVideoImages({
