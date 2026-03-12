@@ -205,8 +205,9 @@ function lockEnvironmentToSceneOne(panels: StoryboardPanelResponse[]): Storyboar
 
 export async function GET(
   _req: NextRequest,
-  { params }: { params: { storyboardId: string } },
+  { params }: { params: Promise<{ storyboardId: string }> },
 ) {
+  const awaitedParams = await params;
   const userId = await getSessionUserId();
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -215,7 +216,7 @@ export async function GET(
   try {
     await ensureStoryboardSceneApprovalColumn();
 
-    const storyboardId = String(params?.storyboardId ?? "").trim();
+    const storyboardId = String(awaitedParams?.storyboardId ?? "").trim();
     if (!storyboardId) {
       return NextResponse.json({ error: "storyboardId is required" }, { status: 400 });
     }
@@ -316,15 +317,16 @@ export async function GET(
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { storyboardId: string } },
+  { params }: { params: Promise<{ storyboardId: string }> },
 ) {
+  const awaitedParams = await params;
   const userId = await getSessionUserId();
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
-    const storyboardId = String(params?.storyboardId ?? "").trim();
+    const storyboardId = String(awaitedParams?.storyboardId ?? "").trim();
     if (!storyboardId) {
       return NextResponse.json({ error: "storyboardId is required" }, { status: 400 });
     }

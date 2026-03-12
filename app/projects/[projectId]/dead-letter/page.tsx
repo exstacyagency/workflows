@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { use, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
 type DeadJob = {
@@ -39,8 +39,12 @@ function getRecommendation(errorText: string | null | undefined) {
   return null;
 }
 
-export default function DeadLetterPage({ params }: { params: { projectId: string } }) {
-  const { projectId } = params;
+export default function DeadLetterPage({
+  params,
+}: {
+  params: Promise<{ projectId: string }>;
+}) {
+  const { projectId } = use(params);
   const [jobs, setJobs] = useState<DeadJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState<string | null>(null);

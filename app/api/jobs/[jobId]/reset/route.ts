@@ -6,8 +6,9 @@ import { JobStatus } from "@prisma/client";
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { jobId: string } },
+  { params }: { params: Promise<{ jobId: string }> },
 ) {
+  const awaitedParams = await params;
   const session = await requireSession(req);
 
   if (!session || !session.user) {
@@ -17,7 +18,7 @@ export async function POST(
   const job = await prisma.job.findUnique({
     where: {
       id_userId: {
-        id: params.jobId,
+        id: awaitedParams.jobId,
         userId: session.user.id,
       },
     },
@@ -28,7 +29,7 @@ export async function POST(
   }
 
   await prisma.job.update({
-    where: { id: params.jobId },
+    where: { id: awaitedParams.jobId },
     data: {
       status: JobStatus.FAILED,
       error: "Manual reset",

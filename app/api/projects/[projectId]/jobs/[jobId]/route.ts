@@ -4,15 +4,16 @@ import { prisma } from "@/lib/prisma";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { projectId: string; jobId: string } }
+  { params }: { params: Promise<{ projectId: string; jobId: string }> }
 ) {
+  const awaitedParams = await params;
   try {
     const userId = await getSessionUserId();
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { projectId, jobId } = params;
+    const { projectId, jobId } = awaitedParams;
 
     // Verify project access
     const project = await prisma.project.findFirst({

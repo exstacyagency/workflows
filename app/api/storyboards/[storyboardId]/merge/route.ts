@@ -55,14 +55,15 @@ function getMergedVideoUrlFromFalResponse(payload: any): string | null {
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { storyboardId: string } },
+  { params }: { params: Promise<{ storyboardId: string }> },
 ) {
+  const awaitedParams = await params;
   const userId = await getSessionUserId();
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const storyboardId = String(params?.storyboardId ?? "").trim();
+  const storyboardId = String(awaitedParams?.storyboardId ?? "").trim();
   if (!storyboardId) {
     return NextResponse.json({ error: "storyboardId is required" }, { status: 400 });
   }

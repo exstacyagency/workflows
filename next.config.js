@@ -21,9 +21,6 @@ console.log(`[BOOT] Runtime mode: ${runtimeMode}`);
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   env: { MODE },
-  experimental: {
-    instrumentationHook: true,
-  },
   generateBuildId: async () => BUILD_ID,
   webpack: (config, { dev, isServer }) => {
     if (dev || process.env.NODE_ENV === "test") {

@@ -6,8 +6,9 @@ import { prisma } from "@/lib/db";
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { jobId: string } }
+  { params }: { params: Promise<{ jobId: string }> }
 ) {
+  const awaitedParams = await params;
   const session = await requireSession(req);
   if (!session) {
     return NextResponse.json(
@@ -19,7 +20,7 @@ export async function GET(
   const job = await prisma.job.findUnique({
     where: {
       id_userId: {
-        id: params.jobId,
+        id: awaitedParams.jobId,
         userId: session.user.id,
       },
     },

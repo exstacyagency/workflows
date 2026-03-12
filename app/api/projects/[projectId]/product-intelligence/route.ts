@@ -4,22 +4,22 @@ import { prisma } from '@/lib/prisma';
 import { getSessionUserId } from '@/lib/getSessionUserId';
 import { requireProjectOwner404 } from '@/lib/auth/requireProjectOwner404';
 
-type Params = {
-  params: { projectId: string };
-};
-
 function serializeIntel(record: any) {
   const { insights, ...safe } = record;
   return { ...safe, hasInsights: Boolean(insights) };
 }
 
-export async function GET(req: NextRequest, { params }: Params) {
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ projectId: string }> }
+) {
+  const awaitedParams = await params;
   const userId = await getSessionUserId();
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { projectId } = params;
+  const { projectId } = awaitedParams;
   if (!projectId) {
     return NextResponse.json({ error: 'projectId is required' }, { status: 400 });
   }

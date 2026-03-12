@@ -14,8 +14,6 @@ const CREATIVE_JOB_TYPES: JobType[] = [
   JobType.VIDEO_UPSCALER,
 ];
 
-type Params = { params: { projectId: string; runId: string } };
-
 async function validateAccess(projectId: string, runId: string, userId: string) {
   const project = await prisma.project.findFirst({
     where: { id: projectId, userId },
@@ -42,14 +40,18 @@ async function validateAccess(projectId: string, runId: string, userId: string) 
   return null;
 }
 
-export async function GET(_req: NextRequest, { params }: Params) {
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: Promise<{ projectId: string; runId: string }> }
+) {
+  const awaitedParams = await params;
   const userId = await getSessionUserId();
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const projectId = String(params.projectId || "").trim();
-  const runId = String(params.runId || "").trim();
+  const projectId = String(awaitedParams.projectId || "").trim();
+  const runId = String(awaitedParams.runId || "").trim();
   if (!projectId || !runId) {
     return NextResponse.json({ error: "projectId and runId required" }, { status: 400 });
   }
@@ -85,14 +87,18 @@ export async function GET(_req: NextRequest, { params }: Params) {
   });
 }
 
-export async function DELETE(req: NextRequest, { params }: Params) {
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ projectId: string; runId: string }> }
+) {
+  const awaitedParams = await params;
   const userId = await getSessionUserId();
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const projectId = String(params.projectId || "").trim();
-  const runId = String(params.runId || "").trim();
+  const projectId = String(awaitedParams.projectId || "").trim();
+  const runId = String(awaitedParams.runId || "").trim();
   if (!projectId || !runId) {
     return NextResponse.json({ error: "projectId and runId required" }, { status: 400 });
   }

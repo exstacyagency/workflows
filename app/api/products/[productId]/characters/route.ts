@@ -5,15 +5,16 @@ import { findOwnedProductById } from "@/lib/productStore";
 
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { productId: string } },
+  { params }: { params: Promise<{ productId: string }> },
 ) {
+  const awaitedParams = await params;
   try {
     const userId = await getSessionUserId();
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const product = await findOwnedProductById(params.productId, userId);
+    const product = await findOwnedProductById(awaitedParams.productId, userId);
     if (!product) {
       return NextResponse.json({ error: "Product not found" }, { status: 404 });
     }
@@ -36,7 +37,7 @@ export async function DELETE(
     const result = await prisma.character.deleteMany({
       where: {
         id: { in: characterIds },
-        productId: params.productId,
+        productId: awaitedParams.productId,
       },
     });
 
@@ -52,15 +53,16 @@ export async function DELETE(
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { productId: string } },
+  { params }: { params: Promise<{ productId: string }> },
 ) {
+  const awaitedParams = await params;
   try {
     const userId = await getSessionUserId();
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const product = await findOwnedProductById(params.productId, userId);
+    const product = await findOwnedProductById(awaitedParams.productId, userId);
     if (!product) {
       return NextResponse.json({ error: "Product not found" }, { status: 404 });
     }
@@ -99,7 +101,7 @@ export async function PATCH(
     const character = await prisma.character.findFirst({
       where: {
         id: characterId,
-        productId: params.productId,
+        productId: awaitedParams.productId,
       },
       select: { id: true },
     });

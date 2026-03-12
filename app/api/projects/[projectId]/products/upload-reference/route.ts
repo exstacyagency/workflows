@@ -23,15 +23,16 @@ function stripKnownImageExtension(fileName: string): string {
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { projectId: string } },
+  { params }: { params: Promise<{ projectId: string }> },
 ) {
+  const awaitedParams = await params;
   try {
     const userId = await getSessionUserId();
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const projectId = params.projectId;
+    const projectId = awaitedParams.projectId;
     const project = await prisma.project.findFirst({
       where: { id: projectId, userId },
       select: { id: true },

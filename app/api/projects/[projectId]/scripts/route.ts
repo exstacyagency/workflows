@@ -5,12 +5,13 @@ import { requireSession } from '@/lib/auth/requireSession';
 import { requireProjectOwner404 } from '@/lib/auth/requireProjectOwner404';
 import { getSignedMediaUrl } from '@/lib/mediaStorage';
 
-export async function GET(req: NextRequest, { params }: { params: { projectId: string } }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
+  const awaitedParams = await params;
   const session = await requireSession(req);
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-  const { projectId } = params;
+  const { projectId } = awaitedParams;
   if (!projectId) {
     return NextResponse.json({ error: 'projectId is required' }, { status: 400 });
   }

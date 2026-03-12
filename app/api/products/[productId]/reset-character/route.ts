@@ -5,8 +5,9 @@ import { ensureProductTableColumns, findOwnedProductById } from "@/lib/productSt
 
 export async function POST(
   _req: NextRequest,
-  { params }: { params: { productId: string } },
+  { params }: { params: Promise<{ productId: string }> },
 ) {
+  const awaitedParams = await params;
   try {
     const userId = await getSessionUserId();
     if (!userId) {
@@ -15,7 +16,7 @@ export async function POST(
 
     await ensureProductTableColumns();
 
-    const product = await findOwnedProductById(params.productId, userId);
+    const product = await findOwnedProductById(awaitedParams.productId, userId);
     if (!product) {
       return NextResponse.json({ error: "Product not found" }, { status: 404 });
     }
@@ -31,7 +32,7 @@ export async function POST(
         "character_seed_video_url"       = NULL,
         "creator_visual_prompt"          = NULL,
         "updated_at"                     = NOW()
-      WHERE "id" = ${params.productId}
+      WHERE "id" = ${awaitedParams.productId}
     `;
 
     return NextResponse.json({ success: true });

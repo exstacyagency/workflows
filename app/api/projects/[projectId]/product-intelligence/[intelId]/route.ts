@@ -8,17 +8,17 @@ import {
   parseJson,
 } from '@/lib/validation/projects';
 
-type Params = {
-  params: { projectId: string; intelId: string };
-};
-
-export async function PATCH(req: NextRequest, { params }: Params) {
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ projectId: string; intelId: string }> }
+) {
+  const awaitedParams = await params;
   const userId = await getSessionUserId();
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { projectId, intelId } = params;
+  const { projectId, intelId } = awaitedParams;
   if (!projectId || !intelId) {
     return NextResponse.json({ error: 'projectId and intelId are required' }, { status: 400 });
   }
@@ -65,13 +65,17 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   return NextResponse.json({ success: true });
 }
 
-export async function DELETE(_req: NextRequest, { params }: Params) {
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ projectId: string; intelId: string }> }
+) {
+  const awaitedParams = await params;
   const userId = await getSessionUserId();
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { projectId, intelId } = params;
+  const { projectId, intelId } = awaitedParams;
   if (!projectId || !intelId) {
     return NextResponse.json({ error: 'projectId and intelId are required' }, { status: 400 });
   }

@@ -170,15 +170,16 @@ async function ensureProductsTable() {
 
 export async function GET(
   _req: NextRequest,
-  { params }: { params: { projectId: string } }
+  { params }: { params: Promise<{ projectId: string }> }
 ) {
+  const awaitedParams = await params;
   try {
     const userId = await getSessionUserId();
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const projectId = params.projectId;
+    const projectId = awaitedParams.projectId;
     const ownsProject = await assertProjectOwner(projectId, userId);
     if (!ownsProject) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -259,15 +260,16 @@ export async function GET(
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { projectId: string } }
+  { params }: { params: Promise<{ projectId: string }> }
 ) {
+  const awaitedParams = await params;
   try {
     const userId = await getSessionUserId();
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const projectId = params.projectId;
+    const projectId = awaitedParams.projectId;
     const ownsProject = await assertProjectOwner(projectId, userId);
     if (!ownsProject) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -341,15 +343,16 @@ export async function POST(
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { projectId: string } }
+  { params }: { params: Promise<{ projectId: string }> }
 ) {
+  const awaitedParams = await params;
   try {
     const userId = await getSessionUserId();
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const projectId = params.projectId;
+    const projectId = awaitedParams.projectId;
     const ownsProject = await assertProjectOwner(projectId, userId);
     if (!ownsProject) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -492,15 +495,16 @@ export async function PATCH(
 
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { projectId: string } }
+  { params }: { params: Promise<{ projectId: string }> }
 ) {
+  const awaitedParams = await params;
   try {
     const userId = await getSessionUserId();
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const projectId = params.projectId;
+    const projectId = awaitedParams.projectId;
     const ownsProject = await assertProjectOwner(projectId, userId);
     if (!ownsProject) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });

@@ -6,8 +6,9 @@ import { z } from "zod"
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { projectId: string } }
+  { params }: { params: Promise<{ projectId: string }> }
 ) {
+  const awaitedParams = await params;
   const session = await requireSession(req)
 
   if (!session) {
@@ -18,7 +19,7 @@ export async function GET(
   }
 
   const project = await getProjectForUser({
-    projectId: params.projectId,
+    projectId: awaitedParams.projectId,
     userId: session.user.id,
     includeJobs: true,
   })
@@ -54,8 +55,9 @@ function normalizeNullableString(value: string | null | undefined): string | nul
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { projectId: string } }
+  { params }: { params: Promise<{ projectId: string }> }
 ) {
+  const awaitedParams = await params;
   const session = await requireSession(req);
 
   if (!session) {
@@ -66,7 +68,7 @@ export async function PATCH(
   }
 
   const project = await getProjectForUser({
-    projectId: params.projectId,
+    projectId: awaitedParams.projectId,
     userId: session.user.id,
     includeJobs: false,
   });

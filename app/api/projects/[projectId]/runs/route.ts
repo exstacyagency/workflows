@@ -21,15 +21,16 @@ type RunRow = {
 
 export async function GET(
   _req: NextRequest,
-  { params }: { params: { projectId: string } }
+  { params }: { params: Promise<{ projectId: string }> }
 ) {
+  const awaitedParams = await params;
   const userId = await getSessionUserId();
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
-    const pathProjectId = String(params.projectId || "").trim();
+    const pathProjectId = String(awaitedParams.projectId || "").trim();
     if (!pathProjectId) {
       return NextResponse.json({ error: "projectId required" }, { status: 400 });
     }
@@ -94,15 +95,16 @@ export async function GET(
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { projectId: string } }
+  { params }: { params: Promise<{ projectId: string }> }
 ) {
+  const awaitedParams = await params;
   const userId = await getSessionUserId();
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
-    const pathProjectId = String(params.projectId || "").trim();
+    const pathProjectId = String(awaitedParams.projectId || "").trim();
     const body = await req.json().catch(() => ({}));
     const requestedRunId = String(body?.runId || "").trim();
     const bodyProjectId = String(body?.projectId || "").trim();

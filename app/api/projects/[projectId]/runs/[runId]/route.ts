@@ -38,16 +38,17 @@ async function validateRunAccess(projectId: string, runId: string, userId: strin
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { projectId: string; runId: string } },
+  { params }: { params: Promise<{ projectId: string; runId: string }> },
 ) {
+  const awaitedParams = await params;
   const userId = await getSessionUserId();
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
-    const projectId = String(params.projectId || "").trim();
-    const runId = String(params.runId || "").trim();
+    const projectId = String(awaitedParams.projectId || "").trim();
+    const runId = String(awaitedParams.runId || "").trim();
     if (!projectId || !runId) {
       return NextResponse.json({ error: "projectId and runId required" }, { status: 400 });
     }
@@ -98,16 +99,17 @@ export async function PATCH(
 
 export async function DELETE(
   _req: NextRequest,
-  { params }: { params: { projectId: string; runId: string } },
+  { params }: { params: Promise<{ projectId: string; runId: string }> },
 ) {
+  const awaitedParams = await params;
   const userId = await getSessionUserId();
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
-    const projectId = String(params.projectId || "").trim();
-    const runId = String(params.runId || "").trim();
+    const projectId = String(awaitedParams.projectId || "").trim();
+    const runId = String(awaitedParams.runId || "").trim();
     if (!projectId || !runId) {
       return NextResponse.json({ error: "projectId and runId required" }, { status: 400 });
     }

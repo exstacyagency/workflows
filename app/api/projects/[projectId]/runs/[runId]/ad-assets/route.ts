@@ -4,21 +4,18 @@ import { getSessionUserId } from "@/lib/getSessionUserId";
 import { requireProjectOwner404 } from "@/lib/auth/requireProjectOwner404";
 import { prisma } from "@/lib/prisma";
 
-type Params = {
-  params: {
-    projectId: string;
-    runId: string;
-  };
-};
-
-export async function GET(_request: Request, { params }: Params) {
+export async function GET(
+  _request: Request,
+  { params }: { params: Promise<{ projectId: string; runId: string }> }
+) {
+  const awaitedParams = await params;
   const userId = await getSessionUserId();
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const projectId = String(params.projectId || "").trim();
-  const runId = String(params.runId || "").trim();
+  const projectId = String(awaitedParams.projectId || "").trim();
+  const runId = String(awaitedParams.runId || "").trim();
 
   if (!projectId || !runId) {
     return NextResponse.json({ error: "projectId and runId are required" }, { status: 400 });
@@ -134,14 +131,18 @@ export async function GET(_request: Request, { params }: Params) {
   }
 }
 
-export async function DELETE(request: Request, { params }: Params) {
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ projectId: string; runId: string }> }
+) {
+  const awaitedParams = await params;
   const userId = await getSessionUserId();
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const projectId = String(params.projectId || "").trim();
-  const runId = String(params.runId || "").trim();
+  const projectId = String(awaitedParams.projectId || "").trim();
+  const runId = String(awaitedParams.runId || "").trim();
   if (!projectId || !runId) {
     return NextResponse.json({ error: "projectId and runId are required" }, { status: 400 });
   }
@@ -215,14 +216,18 @@ export async function DELETE(request: Request, { params }: Params) {
   }
 }
 
-export async function PATCH(request: Request, { params }: Params) {
+export async function PATCH(
+  request: Request,
+  { params }: { params: Promise<{ projectId: string; runId: string }> }
+) {
+  const awaitedParams = await params;
   const userId = await getSessionUserId();
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const projectId = String(params.projectId || "").trim();
-  const runId = String(params.runId || "").trim();
+  const projectId = String(awaitedParams.projectId || "").trim();
+  const runId = String(awaitedParams.runId || "").trim();
   if (!projectId || !runId) {
     return NextResponse.json({ error: "projectId and runId are required" }, { status: 400 });
   }

@@ -168,14 +168,15 @@ function computeDataQuality(flags: {
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { scriptId: string } },
+  { params }: { params: Promise<{ scriptId: string }> },
 ) {
+  const awaitedParams = await params;
   const userId = await getSessionUserId(req);
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const scriptId = String(params?.scriptId || "").trim();
+  const scriptId = String(awaitedParams?.scriptId || "").trim();
   if (!scriptId) {
     return NextResponse.json({ error: "scriptId is required" }, { status: 400 });
   }

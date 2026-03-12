@@ -8,12 +8,13 @@ import { updateJobStatus } from "@/lib/jobs/updateJobStatus";
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { projectId: string; jobId: string } }
+  { params }: { params: Promise<{ projectId: string; jobId: string }> }
 ) {
+  const awaitedParams = await params;
   const userId = await getSessionUserId();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { projectId, jobId } = params;
+  const { projectId, jobId } = awaitedParams;
   if (!projectId || !jobId) {
     return NextResponse.json({ error: "projectId and jobId are required" }, { status: 400 });
   }

@@ -36,9 +36,12 @@ export default async function ProductSetupPage({
   params,
   searchParams,
 }: {
-  params: { productId: string };
-  searchParams?: { runId?: string };
+  params: Promise<{ productId: string }>;
+  searchParams?: Promise<{ runId?: string }>;
 }) {
+  const { productId } = await params;
+  const resolvedSearchParams: { runId?: string } =
+    await (searchParams ?? Promise.resolve({}));
   const userId = await getSessionUserId();
   if (!userId) {
     redirect("/api/auth/signin");
@@ -64,7 +67,7 @@ export default async function ProductSetupPage({
       pr."name" AS "projectName"
     FROM "product" p
     INNER JOIN "project" pr ON pr."id" = p."project_id"
-    WHERE p."id" = ${params.productId}
+    WHERE p."id" = ${productId}
       AND pr."userId" = ${userId}
     LIMIT 1
   `;
@@ -80,7 +83,7 @@ export default async function ProductSetupPage({
   });
   console.log("DEBUG runs:", JSON.stringify(runs));
   console.log("DEBUG product.projectId:", product.projectId);
-  const selectedRunId = searchParams?.runId?.trim() || runs[0]?.id || null;
+  const selectedRunId = resolvedSearchParams.runId?.trim() || runs[0]?.id || null;
 
   const characters = selectedRunId
     ? ((await prisma.character.findMany({

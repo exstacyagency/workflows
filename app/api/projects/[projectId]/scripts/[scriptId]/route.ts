@@ -3,13 +3,6 @@ import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/requireSession";
 import { requireProjectOwner404 } from "@/lib/auth/requireProjectOwner404";
 
-type Params = {
-  params: {
-    projectId: string;
-    scriptId: string;
-  };
-};
-
 type ScriptSceneInput = {
   beat?: unknown;
   duration?: unknown;
@@ -54,13 +47,17 @@ async function findScript(projectId: string, scriptId: string) {
   });
 }
 
-export async function GET(req: NextRequest, { params }: Params) {
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ projectId: string; scriptId: string }> }
+) {
+  const awaitedParams = await params;
   const session = await requireSession(req);
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { projectId, scriptId } = params;
+  const { projectId, scriptId } = awaitedParams;
   if (!projectId || !scriptId) {
     return NextResponse.json({ error: "projectId and scriptId are required" }, { status: 400 });
   }
@@ -76,13 +73,17 @@ export async function GET(req: NextRequest, { params }: Params) {
   return NextResponse.json(script, { status: 200 });
 }
 
-export async function PATCH(req: NextRequest, { params }: Params) {
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ projectId: string; scriptId: string }> }
+) {
+  const awaitedParams = await params;
   const session = await requireSession(req);
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { projectId, scriptId } = params;
+  const { projectId, scriptId } = awaitedParams;
   if (!projectId || !scriptId) {
     return NextResponse.json({ error: "projectId and scriptId are required" }, { status: 400 });
   }

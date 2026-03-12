@@ -10,15 +10,16 @@ type ResultSummary = {
 
 export async function GET(
   _req: NextRequest,
-  { params }: { params: { projectId: string } }
+  { params }: { params: Promise<{ projectId: string }> }
 ) {
+  const awaitedParams = await params;
   try {
     const userId = await getSessionUserId();
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const projectId = String(params?.projectId || "").trim();
+    const projectId = String(awaitedParams?.projectId || "").trim();
     if (!projectId) {
       return NextResponse.json({ error: "projectId is required" }, { status: 400 });
     }

@@ -2,14 +2,11 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { assertEntitled } from "@/lib/entitlements";
 
-type Params = {
-  params: {
-    id: string;
-  };
-};
-
-export async function POST(_req: Request, { params }: Params) {
-  const campaignId = params.id;
+export async function POST(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id: campaignId } = await params;
 
   if (!campaignId) {
     return NextResponse.json(
