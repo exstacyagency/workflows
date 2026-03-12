@@ -103,7 +103,14 @@ export async function reserveQuota(
       create: { userId, period },
     });
 
-    const used = Number((usage as any)[usageField] ?? 0);
+    const lockedRows = await tx.$queryRaw<Array<Record<string, unknown>>>`
+      SELECT "id", "researchQueries", "videoJobs", "imageJobs"
+      FROM "usage"
+      WHERE "id" = ${usage.id}
+      FOR UPDATE
+    `;
+    const lockedUsage = lockedRows[0] ?? {};
+    const used = Number(lockedUsage[usageField] ?? 0);
 
     // If limit is <= 0, treat as uncapped to avoid blocking legacy plans while still tracking usage.
     if (metricLimit > 0 && used + incrementBy > metricLimit) {
@@ -151,6 +158,10 @@ export async function rollbackQuota(
   const period = periodKeyToUtcDate(periodKey);
 
   return prisma.$transaction(async (tx) => {
+    if (!reservationId) {
+      return null;
+    }
+
     const reservation = reservationId
       ? await tx.quotaReservation.findFirst({
           where: {
@@ -162,17 +173,7 @@ export async function rollbackQuota(
           },
           select: { id: true, amount: true },
         })
-      : await tx.quotaReservation.findFirst({
-          where: {
-            userId,
-            metric: normalizedMetric,
-            period,
-            amount: decrementBy,
-            releasedAt: null,
-          },
-          orderBy: { createdAt: "asc" },
-          select: { id: true, amount: true },
-        });
+      : null;
 
     if (!reservation) {
       return null;

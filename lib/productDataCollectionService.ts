@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { ResearchSource } from "@prisma/client";
 import { cfg } from "@/lib/config";
 import { prisma } from "@/lib/prisma";
+import { computeAnthropicCostCents } from "@/lib/billing/pricing";
 
 export interface ProductIntel {
   main_benefit?: string;
@@ -508,7 +509,11 @@ Fix the garbage. Don't validate it.`;
         provider: "anthropic",
         model: "claude-sonnet-4-6",
         units: totalTokens,
-        costCents: 0,
+        costCents: computeAnthropicCostCents(
+          "claude-sonnet-4-6",
+          Math.max(0, Math.trunc(inputTokens)),
+          Math.max(0, Math.trunc(outputTokens)),
+        ),
         metadata: {
           inputTokens: Math.max(0, Math.trunc(inputTokens)),
           outputTokens: Math.max(0, Math.trunc(outputTokens)),
@@ -678,7 +683,11 @@ If you see marketing fluff, dig for the spec underneath it. Numbers over words. 
       provider: "anthropic",
       model: "claude-sonnet-4-6",
       units: extractionTotalTokens,
-      costCents: 0,
+      costCents: computeAnthropicCostCents(
+        "claude-sonnet-4-6",
+        Math.max(0, Math.trunc(extractionInputTokens)),
+        Math.max(0, Math.trunc(extractionOutputTokens)),
+      ),
       metadata: {
         inputTokens: Math.max(0, Math.trunc(extractionInputTokens)),
         outputTokens: Math.max(0, Math.trunc(extractionOutputTokens)),

@@ -40,6 +40,21 @@ function asString(value: unknown): string {
   return value.trim();
 }
 
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((entry) => stableStringify(entry)).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) =>
+      a.localeCompare(b),
+    );
+    return `{${entries
+      .map(([key, entryValue]) => `${JSON.stringify(key)}:${stableStringify(entryValue)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
 function toSafeInt(value: unknown, fallback = 0): number {
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
@@ -227,6 +242,7 @@ function estimateCostCents(entry: PricingUsageEntry): number {
 }
 
 function normalizeUsageEntries(
+  jobId: string,
   entries: UsageEntryInput[],
 ): Array<
   UsageEntryInput & {
@@ -238,8 +254,8 @@ function normalizeUsageEntries(
     metadata: Record<string, unknown>;
   }
 > {
-  return entries
-    .map((entry, index) => {
+  const normalized = entries
+    .map((entry) => {
       const provider = asString(entry.provider) || "internal";
       const model = asString(entry.model) || null;
       const metric = asString(entry.metric) || "jobs";
@@ -254,7 +270,8 @@ function normalizeUsageEntries(
         costCents: explicitCostCents,
         metadata,
       });
-      const segmentKey = [provider, model || "na", metric, String(index)].join("|");
+      const metadataKey = stableStringify(metadata);
+      const segmentKey = `${jobId}|${provider}|${model ?? "none"}|${metric}|${metadataKey}`;
 
       return {
         ...entry,
@@ -268,6 +285,21 @@ function normalizeUsageEntries(
       };
     })
     .filter((entry) => entry.units > 0 || entry.costCents !== 0);
+
+  const merged = new Map<string, (typeof normalized)[number]>();
+  for (const entry of normalized) {
+    const existing = merged.get(entry.segmentKey);
+    if (!existing) {
+      merged.set(entry.segmentKey, entry);
+      continue;
+    }
+    merged.set(entry.segmentKey, {
+      ...existing,
+      units: existing.units + entry.units,
+      costCents: existing.costCents + entry.costCents,
+    });
+  }
+  return Array.from(merged.values());
 }
 
 function defaultMetricForJobType(jobType: JobType): string {
@@ -453,7 +485,7 @@ export function buildUsageEntriesForJob(args: {
 export async function settleJobCost(args: SettleJobCostArgs): Promise<{ totalCostCents: number }> {
   const periodKey = getCurrentPeriodKey();
   const period = new Date(Date.UTC(Number(periodKey.slice(0, 4)), Number(periodKey.slice(5, 7)) - 1, 1));
-  const normalizedEntries = normalizeUsageEntries(args.usageEntries);
+  const normalizedEntries = normalizeUsageEntries(args.jobId, args.usageEntries);
 
   await prisma.$transaction(async (tx) => {
     for (const entry of normalizedEntries) {
@@ -465,7 +497,12 @@ export async function settleJobCost(args: SettleJobCostArgs): Promise<{ totalCos
             segmentKey: entry.segmentKey,
           },
         },
-        update: {},
+        update: {
+          units: entry.units,
+          costCents: entry.costCents,
+          metadata,
+          updatedAt: new Date(),
+        },
         create: {
           userId: args.userId,
           projectId: args.projectId,

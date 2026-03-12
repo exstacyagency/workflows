@@ -312,14 +312,23 @@ async function createKieVideoJob(params: {
     model: KIE_IMAGE_TO_VIDEO_MODEL,
     prompt,
     imageUrls: presignedImageUrls,
-    aspect_ratio: '9:16',
+    referenceFrames,
+    imageCount: presignedImageUrls.length,
+    duration: nFrames,
+    nFrames,
+    uploadMethod,
+    aspect_ratio: aspectRatio === 'landscape' ? '16:9' : '9:16',
     generationType: 'FIRST_AND_LAST_FRAMES_2_VIDEO',
   };
 
   const textToVideoBody: Record<string, any> = {
     model: KIE_TEXT_TO_VIDEO_MODEL,
     prompt,
-    aspect_ratio: '9:16',
+    referenceFrames,
+    duration: nFrames,
+    nFrames,
+    uploadMethod,
+    aspect_ratio: aspectRatio === 'landscape' ? '16:9' : '9:16',
     generationType: 'TEXT_2_VIDEO',
   };
 

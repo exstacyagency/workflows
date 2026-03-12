@@ -169,7 +169,7 @@ export async function runVideoImageGenerationJob(args: RunArgs): Promise<void> {
   console.log("[VIG-SERVICE] About to poll KIE tasks");
   const result = await runWithTimeout(
     "VIDEO_IMAGE_GENERATION poll",
-    KIE_HTTP_TIMEOUT_MS,
+    Math.max(JOB_MAX_RUNTIME_MS, KIE_HTTP_TIMEOUT_MS),
     () => pollMultiFrameVideoImages({ providerId, tasks })
   );
   console.log("[VIG-SERVICE] KIE polling returned, result:", result);

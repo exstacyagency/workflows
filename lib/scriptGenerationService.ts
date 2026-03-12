@@ -12,6 +12,7 @@ import type { BeatRatio } from "@/lib/analyzeSwipeTranscript";
 import { extractSwipePatterns } from "@/lib/swipePatternExtractor";
 import { WORDS_PER_CLIP, beatsForClipDuration } from "./soraConstants";
 import { computeAnthropicCostCents } from "@/lib/billing/pricing";
+import { settleJobCost } from "@/lib/billing/settleJobCost";
 
 function parsePositiveIntConfig(raw: string | undefined, fallback: number): number {
   const parsed = Number(raw);
@@ -1136,15 +1137,16 @@ async function callAnthropic(system: string, prompt: string): Promise<{
   console.log("Anthropic client timeout:", 60000);
 
   const isRetryable = (err: any) => {
+    const RETRYABLE_STATUS_CODES = [429, 500, 502, 503, 504];
     const msg = String(err?.message ?? err).toLowerCase();
+    const status = Number(err?.status ?? err?.statusCode ?? err?.response?.status ?? NaN);
     return (
       msg.includes('timed out') ||
       msg.includes('timeout') ||
       msg.includes('fetch') ||
       msg.includes('network') ||
-      msg.includes('429') ||
-      msg.includes('rate') ||
-      msg.includes('5')
+      msg.includes('rate limit') ||
+      RETRYABLE_STATUS_CODES.some((code) => status === code || msg.includes(String(code)))
     );
   };
 
@@ -1214,10 +1216,28 @@ function parseJsonFromLLM(text: string): ScriptJSON {
 
   let braceCount = 0;
   let end = -1;
+  let inString = false;
+  let escaped = false;
 
   for (let i = start; i < raw.length; i++) {
-    if (raw[i] === '{') braceCount++;
-    if (raw[i] === '}') braceCount--;
+    const ch = raw[i];
+
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (ch === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+
+    if (ch === '{') braceCount++;
+    if (ch === '}') braceCount--;
     if (braceCount === 0) {
       end = i;
       break;
@@ -2428,7 +2448,7 @@ export async function runScriptGeneration(args: {
     throw new Error('No patterns found in pattern brain for this project.');
   }
 
-  const { system, prompt, promptInjections } = buildScriptPrompt({
+  const { system, prompt, promptInjections, validationInputs } = buildScriptPrompt({
     productName: project.name,
     avatar: (avatar?.persona as any) ?? {},
     productIntel: productIntelPayload,
@@ -2457,43 +2477,73 @@ export async function runScriptGeneration(args: {
     },
   });
 
-  console.log(
-    "[ScriptGeneration] Anthropic prompt injections",
-    markMissingPromptFields(promptInjections)
-  );
-  const llmResult = await callAnthropic(system, prompt);
-  const responseText = llmResult.text;
-  const scriptJson = parseJsonFromLLM(responseText);
-  const voFull = buildVoFullFromScriptJson(scriptJson);
-  const derivedWordCount = countWords(voFull);
-  const selectedSwipeMetadata = swipeFile?.swipeMetadata ?? null;
+  let pendingUsageEntries: Array<{
+    metric: string;
+    provider: string;
+    model: string;
+    units: number;
+    costCents: number;
+    metadata: Record<string, unknown>;
+  }> = [];
 
-  const updatedScript = await prisma.script.update({
-    where: { id: scriptRecord.id },
-    data: {
-      rawJson: {
-        ...(scriptJson as Record<string, unknown>),
-        vo_full: voFull,
-        ...(selectedSwipeMetadata
-          ? {
-              swipeMechanism: selectedSwipeMetadata.adMechanism,
-              swipeTranscript: swipeFile?.transcript ?? null,
-            }
-          : {}),
-      } as any,
-      wordCount:
-        typeof scriptJson.word_count === 'number'
-          ? scriptJson.word_count
-          : derivedWordCount,
-      status: ScriptStatus.READY,
-    },
-  });
+  try {
+    console.log(
+      "[ScriptGeneration] Anthropic prompt injections",
+      markMissingPromptFields(promptInjections)
+    );
+    const llmResult = await callAnthropic(system, prompt);
+    pendingUsageEntries = llmResult.usageEntry ? [llmResult.usageEntry] : [];
+    const responseText = llmResult.text;
+    const scriptJson = parseJsonFromLLM(responseText);
+    const voFull = buildVoFullFromScriptJson(scriptJson);
+    const derivedWordCount = countWords(voFull);
+    const selectedSwipeMetadata = swipeFile?.swipeMetadata ?? null;
+    const validationReport = validateScriptAgainstGates({
+      scriptJson,
+      ...validationInputs,
+    });
 
-  return {
-    script: updatedScript,
-    researchSources,
-    usageEntries: llmResult.usageEntry ? [llmResult.usageEntry] : [],
-  };
+    if (!validationReport.gatesPassed) {
+      console.warn("[script] quality gate failed", validationReport.warnings);
+      throw new Error(`Script quality gate failed: ${validationReport.warnings.join(" | ")}`);
+    }
+
+    const updatedScript = await prisma.script.update({
+      where: { id: scriptRecord.id },
+      data: {
+        rawJson: {
+          ...(scriptJson as Record<string, unknown>),
+          vo_full: voFull,
+          validationReport,
+          ...(selectedSwipeMetadata
+            ? {
+                swipeMechanism: selectedSwipeMetadata.adMechanism,
+                swipeTranscript: swipeFile?.transcript ?? null,
+              }
+            : {}),
+        } as any,
+        wordCount:
+          typeof scriptJson.word_count === 'number'
+            ? scriptJson.word_count
+            : derivedWordCount,
+        status: ScriptStatus.READY,
+      },
+    });
+
+    return {
+      script: updatedScript,
+      researchSources,
+      usageEntries: pendingUsageEntries,
+    };
+  } catch (error) {
+    await prisma.script.delete({
+      where: { id: scriptRecord.id },
+    });
+    if (pendingUsageEntries.length > 0 && error && typeof error === "object") {
+      (error as any).usageEntries = pendingUsageEntries;
+    }
+    throw error;
+  }
 }
 
 /**
@@ -2535,6 +2585,22 @@ export async function startScriptGenerationJob(projectId: string, job: Job) {
       usageEntries: generation.usageEntries ?? [],
     };
   } catch (err: any) {
+    const usageEntries = Array.isArray(err?.usageEntries) ? err.usageEntries : [];
+    if (usageEntries.length > 0) {
+      try {
+        await settleJobCost({
+          jobId: job.id,
+          userId: job.userId,
+          projectId,
+          usageEntries,
+        });
+      } catch (settlementError) {
+        console.error("[scriptGeneration] Failed to settle failed-attempt usage", {
+          jobId: job.id,
+          error: String((settlementError as any)?.message ?? settlementError),
+        });
+      }
+    }
     await updateJobStatus(job.id, JobStatus.FAILED);
     await prisma.job.update({
       where: { id: job.id },

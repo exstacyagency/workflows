@@ -24,38 +24,41 @@ function buildSoraClipPlan(
   preferredClipDuration: SoraClipLength = 10,
 ): SoraClipLength[] {
   const target = Math.max(10, Math.round(totalDurationSeconds));
-  const combos: SoraClipLength[][] = [];
+  const memo = new Map<number, SoraClipLength[] | null>();
 
-  function dfs(remaining: number, acc: SoraClipLength[]) {
-    if (remaining === 0) {
-      combos.push([...acc]);
-      return;
-    }
-    for (const len of SORA_CLIP_LENGTHS) {
-      if (remaining - len < 0) continue;
-      acc.push(len);
-      dfs(remaining - len, acc);
-      acc.pop();
-    }
+  function comparePlans(a: SoraClipLength[] | null, b: SoraClipLength[] | null): SoraClipLength[] | null {
+    if (!a) return b;
+    if (!b) return a;
+    const aPreferredHits = a.filter((len) => len === preferredClipDuration).length;
+    const bPreferredHits = b.filter((len) => len === preferredClipDuration).length;
+    if (aPreferredHits !== bPreferredHits) return aPreferredHits > bPreferredHits ? a : b;
+    const aDelta = Math.abs(a.length - preferredClipCount);
+    const bDelta = Math.abs(b.length - preferredClipCount);
+    if (aDelta !== bDelta) return aDelta < bDelta ? a : b;
+    return a.length <= b.length ? a : b;
   }
 
-  dfs(target, []);
-  if (combos.length === 0) {
+  function bestPlan(remaining: number): SoraClipLength[] | null {
+    if (remaining === 0) return [];
+    if (remaining < 0) return null;
+    if (memo.has(remaining)) return memo.get(remaining) ?? null;
+
+    let best: SoraClipLength[] | null = null;
+    for (const len of SORA_CLIP_LENGTHS) {
+      const suffix = bestPlan(remaining - len);
+      if (!suffix) continue;
+      best = comparePlans(best, [len, ...suffix]);
+    }
+    memo.set(remaining, best);
+    return best;
+  }
+
+  const best = bestPlan(target);
+  if (!best) {
     const fallbackCount = Math.max(1, Math.round(target / 10));
     return Array.from({ length: fallbackCount }, () => 10);
   }
-
-  combos.sort((a, b) => {
-    const aPreferredHits = a.filter((len) => len === preferredClipDuration).length;
-    const bPreferredHits = b.filter((len) => len === preferredClipDuration).length;
-    if (aPreferredHits !== bPreferredHits) return bPreferredHits - aPreferredHits;
-    const aDelta = Math.abs(a.length - preferredClipCount);
-    const bDelta = Math.abs(b.length - preferredClipCount);
-    if (aDelta !== bDelta) return aDelta - bDelta;
-    // Prefer fewer clips when equally close.
-    return a.length - b.length;
-  });
-  return combos[0];
+  return best;
 }
 
 function mergeSourceBeatsIntoClipBuckets(

@@ -6,6 +6,7 @@ import path from "node:path";
 import prisma from '@/lib/prisma';
 import { JobType } from '@prisma/client';
 import { env, requireEnv } from './configGuard.ts';
+import { computeAnthropicCostCents } from "@/lib/billing/pricing";
 
 type CustomerAvatarJSON = {
   avatar: {
@@ -421,7 +422,11 @@ async function callAnthropic(
               provider: "anthropic",
               model,
               units: totalTokens,
-              costCents: 0,
+              costCents: computeAnthropicCostCents(
+                model,
+                Math.max(0, Math.trunc(inputTokens)),
+                Math.max(0, Math.trunc(outputTokens)),
+              ),
               metadata: {
                 inputTokens: Math.max(0, Math.trunc(inputTokens)),
                 outputTokens: Math.max(0, Math.trunc(outputTokens)),

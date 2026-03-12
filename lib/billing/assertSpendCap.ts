@@ -57,16 +57,20 @@ export async function assertUnderSpendCap(
   });
   const settledCents = Math.trunc(Number(aggregate._sum.costCents ?? 0));
 
-  // Keep this scoped to the project (as requested) for in-flight estimate.
-  const runningJobs = await prisma.job.findMany({
+  const inFlightJobs = await prisma.job.findMany({
     where: {
-      projectId,
-      status: "RUNNING",
+      userId,
+      status: { in: ["PENDING", "RUNNING"] },
     },
-    select: { actualCost: true },
+    select: { actualCost: true, estimatedCost: true },
   });
-  const inFlightCents = runningJobs.reduce(
-    (sum, job) => sum + Math.trunc(Number(job.actualCost ?? 0)),
+  const inFlightCents = inFlightJobs.reduce(
+    (sum, job) =>
+      sum +
+      Math.max(
+        Math.trunc(Number(job.actualCost ?? 0)),
+        Math.trunc(Number(job.estimatedCost ?? 0)),
+      ),
     0,
   );
 

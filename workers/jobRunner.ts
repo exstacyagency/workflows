@@ -455,6 +455,21 @@ async function markFailed({ jobId, error }: { jobId: string; error: unknown }) {
   await updateRunStatus(existing.runId, existing.projectId);
 }
 
+async function markCancelled({
+  jobId,
+  projectId,
+  payload,
+  message = "Job cancelled by user",
+}: {
+  jobId: string;
+  projectId: string;
+  payload: JsonObject;
+  message?: string;
+}) {
+  await rollbackJobQuotaIfNeeded({ jobId, projectId, payload });
+  await markFailed({ jobId, error: message });
+}
+
 async function updateRunStatus(runId: string | null | undefined, projectId: string) {
   if (!runId) return;
 
@@ -1048,14 +1063,9 @@ async function runJob(
           });
           throw error;
         }
-        await markCompleted({
-          jobId,
-          result,
-          summary: `Video prompts generated: ${result.processed}/${result.sceneCount} scenes`,
-        });
-
         const chainType = String((payload as any)?.chainNext?.type ?? "");
         const rootKey = String(job.idempotencyKey ?? (payload as any)?.idempotencyKey ?? "").trim();
+        let queuedImagesJob = false;
         if (chainType === "VIDEO_IMAGE_GENERATION" && rootKey) {
           const imageKey = `${rootKey}:images`;
           try {
@@ -1073,12 +1083,22 @@ async function runJob(
                 },
               },
             });
+            queuedImagesJob = true;
           } catch (e: any) {
             const code = String(e?.code ?? "");
             const msg = String(e?.message ?? "");
             const isUnique = code === "P2002" || msg.toLowerCase().includes("unique constraint");
             if (!isUnique) throw e;
+            queuedImagesJob = true;
           }
+        }
+
+        await markCompleted({
+          jobId,
+          result,
+          summary: `Video prompts generated: ${result.processed}/${result.sceneCount} scenes`,
+        });
+        if (queuedImagesJob) {
           await appendResultSummary(jobId, "Queued video images job");
         }
 
@@ -1530,6 +1550,11 @@ async function runJob(
     }
   } catch (e: any) {
     if (e instanceof JobCancelledError || isCancelLikeErrorValue(e?.message ?? e)) {
+      await markCancelled({
+        jobId,
+        projectId: job.projectId,
+        payload,
+      });
       return;
     }
     try {

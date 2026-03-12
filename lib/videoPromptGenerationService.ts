@@ -9,6 +9,7 @@ import { sanitizeCharacterDescription } from "@/lib/sanitizeCharacterDescription
 import prisma from '@/lib/prisma';
 import { JobStatus, PanelType } from '@prisma/client';
 import { updateJobStatus } from '@/lib/jobs/updateJobStatus';
+import { computeAnthropicCostCents } from "@/lib/billing/pricing";
 
 type SceneReferenceFrame = {
   kind: 'creator' | 'product';
@@ -114,6 +115,9 @@ async function loadProductReferenceImages(args: {
 function resolvePanelType(raw: any, panelType: unknown): PanelType {
   if (raw?.panelType === 'B_ROLL_ONLY' || panelType === 'B_ROLL_ONLY') {
     return 'B_ROLL_ONLY';
+  }
+  if (raw?.panelType === 'PRODUCT_ONLY' || panelType === 'PRODUCT_ONLY') {
+    return 'PRODUCT_ONLY';
   }
   return 'ON_CAMERA';
 }
@@ -456,7 +460,11 @@ async function generateKlingPromptWithClaude(args: {
             provider: "anthropic",
             model: VIDEO_PROMPT_MODEL,
             units: totalTokens,
-            costCents: 0,
+            costCents: computeAnthropicCostCents(
+              VIDEO_PROMPT_MODEL,
+              Math.max(0, Math.trunc(inputTokens)),
+              Math.max(0, Math.trunc(outputTokens)),
+            ),
             metadata: {
               inputTokens: Math.max(0, Math.trunc(inputTokens)),
               outputTokens: Math.max(0, Math.trunc(outputTokens)),
