@@ -9,6 +9,7 @@ import {
   recordAuthSuccess,
 } from "@/lib/authAbuseGuard";
 import { normalizeEmail } from "@/lib/normalizeEmail";
+import { rateLimit } from "@/lib/rateLimiter";
 
 function isValidEmail(email: string): boolean {
   // Basic pragmatic format check for API-side validation.
@@ -23,6 +24,18 @@ export async function POST(req: NextRequest) {
     null;
 
   try {
+    const requestRate = await rateLimit(req, {
+      keyPrefix: "auth:register",
+      limit: 10,
+      windowSec: 60,
+    });
+    if (!requestRate.allowed) {
+      return NextResponse.json(
+        { error: requestRate.reason ?? "Rate limit exceeded" },
+        { status: 429 }
+      );
+    }
+
     let body: Record<string, unknown>;
     try {
       body = await req.json();

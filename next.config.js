@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 
 const MODE = process.env.MODE ?? "dev";
 const BUILD_ID = process.env.BUILD_ID ?? crypto.randomBytes(8).toString("hex");
+const APP_ORIGIN = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
 
 function getRuntimeMode() {
   const nodeEnv = process.env.NODE_ENV;
@@ -21,6 +22,27 @@ console.log(`[BOOT] Runtime mode: ${runtimeMode}`);
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   env: { MODE },
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
+        ],
+      },
+      {
+        source: "/api/:path*",
+        headers: [
+          { key: "Access-Control-Allow-Origin", value: APP_ORIGIN },
+          { key: "Access-Control-Allow-Methods", value: "GET,POST,PUT,DELETE,OPTIONS" },
+          { key: "Access-Control-Allow-Headers", value: "Content-Type, Authorization" },
+        ],
+      },
+    ];
+  },
   generateBuildId: async () => BUILD_ID,
   webpack: (config, { dev, isServer }) => {
     if (dev || process.env.NODE_ENV === "test") {

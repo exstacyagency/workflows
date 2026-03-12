@@ -15,6 +15,26 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
+  const isStateChangingApiRoute =
+    pathname.startsWith("/api/") &&
+    pathname !== "/api/stripe/webhook" &&
+    ["POST", "PUT", "PATCH", "DELETE"].includes(req.method);
+
+  if (isStateChangingApiRoute) {
+    const origin = req.headers.get("origin");
+    const host = req.headers.get("host");
+
+    if (origin && host) {
+      try {
+        if (new URL(origin).host !== host) {
+          return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+        }
+      } catch {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+    }
+  }
+
   // Allow test routes in dev/beta
   if (pathname.startsWith("/api/test/")) {
     const mode =
