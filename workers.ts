@@ -1,21 +1,8 @@
-// workers.ts
-function getRuntimeMode() {
-	const nodeEnv = process.env.NODE_ENV;
-	const explicitMode = process.env.MODE;
-	if (nodeEnv === "production") {
-		if (explicitMode === "prod" || explicitMode === "beta") {
-			return explicitMode;
-		}
-		return "beta";
-	}
-	return explicitMode === "prod" || explicitMode === "beta"
-		? explicitMode
-		: "dev";
-}
-const runtimeMode = getRuntimeMode();
-if (process.env.NODE_ENV === "production" && runtimeMode === "dev") {
-	throw new Error("🚨 Production runtime resolved to dev — this is a fatal error");
-}
+import { cfg } from "./lib/config";
+import { requireRuntimeMode } from "./lib/runtime/requireMode";
+
+requireRuntimeMode();
+const runtimeMode = cfg.MODE || cfg.mode || "dev";
 console.log(`[BOOT] Runtime mode: ${runtimeMode}`);
 
 async function startWorkers() {

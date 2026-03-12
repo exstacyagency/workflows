@@ -6,6 +6,12 @@ function getEnv(key: string): string {
 }
 /* eslint-enable no-restricted-properties */
 
+function requireEnv(key: string): string {
+  const value = getEnv(key);
+  if (value) return value;
+  throw new Error(`${key} is required`);
+}
+
 const nodeEnv = getEnv("NODE_ENV") || "development";
 const runtimeMode = getEnv("MODE") || "alpha";
 const securitySweep = getEnv("SECURITY_SWEEP") === "1";
@@ -29,7 +35,7 @@ export function getRuntimeConfig() {
     isGolden,
     securitySweep,
     SECURITY_SWEEP: securitySweep,
-    jwtSecret: getEnv("JWT_SECRET") || "dev-secret-change-in-prod",
+    jwtSecret: requireEnv("JWT_SECRET"),
     authTestSecret: getEnv("AUTH_TEST_SECRET"),
     databaseUrl: getEnv("DATABASE_URL"),
     redisUrl: getEnv("REDIS_URL"),

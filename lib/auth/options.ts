@@ -86,7 +86,8 @@ export const authOptions: NextAuthOptions = {
       },
       async authorize(credentials, req) {
         try {
-          if (cfg.isDev || cfg.MODE === "beta" || cfg.MODE === "test") {
+          if (cfg.isDev || cfg.MODE === "test") {
+            // TODO(low): if beta environments truly need test-session auth, re-enable it only behind a dedicated explicit flag.
             let token = credentials?.token;
             if (!token && req.headers?.cookie) {
               const match = req.headers.cookie.match(/test_session=([^;]+)/);
