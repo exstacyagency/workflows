@@ -53,6 +53,19 @@ function getMergedVideoUrlFromFalResponse(payload: any): string | null {
   return null;
 }
 
+function getStoryboardSceneVideoUrls(storyboard: {
+  scenes: Array<{ rawJson: unknown }>;
+}): Set<string> {
+  return new Set(
+    storyboard.scenes
+      .map((scene) => {
+        const raw = scene.rawJson as any;
+        return String(raw?.videoUrl ?? raw?.video_url ?? "").trim();
+      })
+      .filter(Boolean),
+  );
+}
+
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ storyboardId: string }> },
@@ -137,6 +150,13 @@ export async function POST(
       .filter((c): c is ClipInput => c !== null);
   }
   const videoUrls = clips.map((c) => c.videoUrl);
+  const allowedStoryboardUrls = getStoryboardSceneVideoUrls(storyboard);
+  if (videoUrls.some((url) => !allowedStoryboardUrls.has(url))) {
+    return NextResponse.json(
+      { error: "Merge request may only use videos already attached to this storyboard." },
+      { status: 400 },
+    );
+  }
 
   if (videoUrls.length === 0) {
     return NextResponse.json(

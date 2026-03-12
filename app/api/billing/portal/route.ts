@@ -45,6 +45,7 @@ export async function POST() {
 
     return NextResponse.json({ url: session.url }, { status: 200 });
   } catch (err) {
+    // TODO(low): separate provider operational errors from config errors; this path currently reports both as "not configured".
     console.error("Stripe billing portal error", err);
     return NextResponse.json(
       { error: "Stripe is not configured" },

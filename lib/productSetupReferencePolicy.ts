@@ -1,21 +1,31 @@
 import { cfg } from "@/lib/config";
 
-const productSetupBucket =
-  cfg.raw("AWS_S3_BUCKET_PRODUCT_SETUP") || cfg.raw("S3_BUCKET_PRODUCT_SETUP");
-const productSetupRegion =
-  cfg.raw("AWS_S3_REGION_PRODUCT_SETUP") ||
-  cfg.raw("S3_PRODUCT_SETUP_REGION") ||
-  cfg.raw("AWS_S3_REGION") ||
-  cfg.raw("S3_MEDIA_REGION");
-const productSetupEndpoint =
-  cfg.raw("AWS_S3_ENDPOINT_PRODUCT_SETUP") || cfg.raw("S3_PRODUCT_SETUP_ENDPOINT");
-const explicitPublicBaseUrl = cfg.raw("S3_PRODUCT_SETUP_PUBLIC_BASE_URL");
-
 function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
 }
 
+function getProductSetupConfig() {
+  return {
+    productSetupBucket:
+      cfg.raw("AWS_S3_BUCKET_PRODUCT_SETUP") || cfg.raw("S3_BUCKET_PRODUCT_SETUP"),
+    productSetupRegion:
+      cfg.raw("AWS_S3_REGION_PRODUCT_SETUP") ||
+      cfg.raw("S3_PRODUCT_SETUP_REGION") ||
+      cfg.raw("AWS_S3_REGION") ||
+      cfg.raw("S3_MEDIA_REGION"),
+    productSetupEndpoint:
+      cfg.raw("AWS_S3_ENDPOINT_PRODUCT_SETUP") || cfg.raw("S3_PRODUCT_SETUP_ENDPOINT"),
+    explicitPublicBaseUrl: cfg.raw("S3_PRODUCT_SETUP_PUBLIC_BASE_URL"),
+  };
+}
+
 function getProductSetupPublicBaseUrl(): string {
+  const {
+    productSetupBucket,
+    productSetupRegion,
+    productSetupEndpoint,
+    explicitPublicBaseUrl,
+  } = getProductSetupConfig();
   if (explicitPublicBaseUrl) {
     return trimTrailingSlash(explicitPublicBaseUrl);
   }
@@ -87,4 +97,3 @@ export async function assertProductSetupReferenceReachable(
     clearTimeout(timeout);
   }
 }
-

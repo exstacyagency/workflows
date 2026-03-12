@@ -147,6 +147,7 @@ export async function DELETE(
   }
 
   const deletedJobs = await prisma.$transaction(async (tx) => {
+    // TODO(medium): consider a soft-delete/archive path for creative jobs; this hard delete removes linked scripts/storyboards immediately.
     const scripts = await tx.script.findMany({
       where: { jobId: { in: targetIds } },
       select: { id: true },

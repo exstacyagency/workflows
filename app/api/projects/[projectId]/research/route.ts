@@ -98,6 +98,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ proj
     return NextResponse.json({ error: 'projectId is required' }, { status: 400 });
   }
   const deny = await requireProjectOwner404(projectId);
+  // TODO(low): preserve the exact deny response so unauthorized and forbidden cases are not collapsed together.
   if (deny) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const { searchParams } = new URL(req.url);
   const jobId = searchParams.get('jobId');
@@ -244,6 +245,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ p
   }
 
   const deny = await requireProjectOwner404(projectId);
+  // TODO(low): preserve the exact deny response so unauthorized and forbidden cases are not collapsed together.
   if (deny) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   let body: any = {};

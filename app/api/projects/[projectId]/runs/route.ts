@@ -133,6 +133,7 @@ export async function POST(
 
     let run;
     if (requestedRunId) {
+      // TODO(medium): consider disallowing caller-specified run IDs outside trusted tooling to keep run creation opaque and server-owned.
       const existing = await prisma.researchRun.findUnique({
         where: { id: requestedRunId },
       });

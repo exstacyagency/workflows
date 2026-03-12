@@ -16,6 +16,7 @@ export type ProductCharacterState = {
 };
 
 export async function ensureProductCharacterColumns() {
+  // TODO(medium): move these schema mutations into managed migrations; mutating tables at runtime can deadlock or fail under restricted DB roles.
   await ensureProductTableColumns();
   await prisma.$executeRawUnsafe(`
     ALTER TABLE "product"
@@ -104,6 +105,7 @@ export async function saveCharacterAvatarImage(
   args: { taskId: string; imageUrl: string | null },
 ) {
   await ensureProductCharacterColumns();
+  // TODO(medium): move this schema mutation into managed migrations; mutating tables at runtime can deadlock or fail under restricted DB roles.
   await prisma.$executeRawUnsafe(`
     ALTER TABLE "product" ADD COLUMN IF NOT EXISTS "character_avatar_image_url" text;
   `);

@@ -42,6 +42,7 @@ export async function POST(req: NextRequest) {
   if (!appUrl) {
     return NextResponse.json({ error: "Billing not configured" }, { status: 500 });
   }
+  // TODO(low): validate APP_URL against an allowlist/base-origin config so misconfiguration cannot redirect checkout callbacks to the wrong host.
 
   const user = await prisma.user.findUnique({
     where: { id: userId },

@@ -28,6 +28,7 @@ export async function POST(
     return NextResponse.json({ error: "Not Found" }, { status: 404 });
   }
 
+  // TODO(medium): consider a distinct reset/cancelled state instead of overloading FAILED for manual operator actions.
   await prisma.job.update({
     where: { id: awaitedParams.jobId },
     data: {

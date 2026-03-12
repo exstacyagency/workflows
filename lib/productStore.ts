@@ -18,6 +18,7 @@ export type OwnedProductRow = {
 };
 
 export async function ensureProductTableColumns() {
+  // TODO(medium): move these schema mutations into managed migrations; mutating tables at runtime can deadlock or fail under restricted DB roles.
   await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS "product" (
       "id" text PRIMARY KEY,
@@ -91,6 +92,7 @@ export async function ensureProductTableColumns() {
 }
 
 export async function ensureStoryboardSceneApprovalColumn() {
+  // TODO(medium): move this schema mutation into managed migrations; mutating tables at runtime can deadlock or fail under restricted DB roles.
   await prisma.$executeRawUnsafe(`
     ALTER TABLE storyboard_scene
     ADD COLUMN IF NOT EXISTS approved boolean NOT NULL DEFAULT false;

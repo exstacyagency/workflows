@@ -86,6 +86,7 @@ async function assertProjectOwner(projectId: string, userId: string) {
 }
 
 async function ensureProductsTable() {
+  // TODO(medium): move these schema mutations into managed migrations; mutating tables at runtime can deadlock or fail under restricted DB roles.
   await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS "product" (
       "id" text PRIMARY KEY,

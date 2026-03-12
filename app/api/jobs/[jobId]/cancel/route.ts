@@ -35,6 +35,7 @@ export async function POST(
     );
   }
 
+  // TODO(medium): cancel currently reuses FAILED; consider a dedicated cancelled state once the schema supports it.
   await prisma.job.update({
     where: { id: awaitedParams.jobId },
     data: {

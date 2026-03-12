@@ -54,41 +54,47 @@ export async function enqueueJob(
     }
 
   if (backend === "db") {
-    if (idempotencyKey) {
+    try {
+      const job = await prisma.job.create({
+        data: {
+          projectId: input.projectId,
+          userId,
+          type: input.type,
+          status: JobStatus.PENDING,
+          idempotencyKey,
+          payload: input.payload,
+          runtimeMode,
+        },
+        select: { id: true },
+      });
+      return { jobId: job.id, reused: false };
+    } catch (error: any) {
+      if (error?.code !== "P2002" || !idempotencyKey) {
+        throw error;
+      }
+
       const existing = await prisma.job.findFirst({
         where: {
+          userId,
           projectId: input.projectId,
           type: input.type,
           idempotencyKey,
         },
         select: { id: true },
       });
-
-      if (existing) {
-        await prisma.job.update({
-          where: { id: existing.id },
-          data: {
-            error: Prisma.JsonNull,
-            payload: input.payload,
-          },
-        });
-        return { jobId: existing.id, reused: true };
+      if (!existing) {
+        throw error;
       }
-    }
 
-    const job = await prisma.job.create({
-      data: {
-        projectId: input.projectId,
-        userId,
-        type: input.type,
-        status: JobStatus.PENDING,
-        idempotencyKey,
-        payload: input.payload,
-          runtimeMode,
-      },
-      select: { id: true },
-    });
-    return { jobId: job.id, reused: false };
+      await prisma.job.update({
+        where: { id: existing.id },
+        data: {
+          error: Prisma.JsonNull,
+          payload: input.payload,
+        },
+      });
+      return { jobId: existing.id, reused: true };
+    }
   }
 
   // Redis backend (fail-fast if not configured).

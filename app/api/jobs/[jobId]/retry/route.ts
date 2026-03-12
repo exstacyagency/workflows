@@ -34,8 +34,7 @@ export async function POST(
     );
   }
 
-  // enqueue retry here
-  // await enqueueJob(job)
+  // TODO(medium): this route currently returns success without actually re-enqueueing the job.
 
   return NextResponse.json({ ok: true });
 }

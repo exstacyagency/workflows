@@ -15,6 +15,7 @@ export type ExtractedProductIntel = {
 
 const PRODUCT_INTEL_MODEL = cfg.raw('ANTHROPIC_MODEL') || 'claude-sonnet-4-6';
 const PRODUCT_INTEL_MAX_TOKENS = Number(cfg.raw("PRODUCT_INTEL_MAX_TOKENS") ?? 4000);
+// TODO(medium): instantiate Anthropic lazily only after env validation so import-time config errors do not linger for the process lifetime.
 
 function cleanText(value: unknown): string {
   return String(value ?? "")
@@ -92,6 +93,7 @@ export async function extractProductIntel(url: string): Promise<ExtractedProduct
     throw new Error("No text response from Claude");
   }
 
+  // TODO(medium): replace the greedy JSON regex with quote-aware extraction; braces in quoted text can still break parsing.
   const jsonMatch = lastText.text.match(/\{[\s\S]*\}/);
   if (!jsonMatch) {
     throw new Error(`No JSON found in response. Got: ${lastText.text.substring(0, 200)}`);

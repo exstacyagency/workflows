@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { assertEntitled } from "@/lib/entitlements";
+import { getSessionUserId } from "@/lib/getSessionUserId";
 
 type CampaignPayload = {
   accountId?: unknown;
@@ -8,6 +9,11 @@ type CampaignPayload = {
 };
 
 export async function POST(req: Request) {
+  const userId = await getSessionUserId();
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   let body: CampaignPayload;
 
   try {
@@ -31,10 +37,18 @@ export async function POST(req: Request) {
    * ------------------------------------------------- */
   const account = await prisma.account.findUnique({
     where: { id: accountId },
-    select: { id: true, tier: true },
+    select: {
+      id: true,
+      tier: true,
+      users: {
+        where: { id: userId },
+        select: { id: true },
+        take: 1,
+      },
+    },
   });
 
-  if (!account) {
+  if (!account || account.users.length === 0) {
     return NextResponse.json(
       { error: "Account not found" },
       { status: 404 }

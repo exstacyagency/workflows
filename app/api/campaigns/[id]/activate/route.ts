@@ -1,11 +1,17 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { assertEntitled } from "@/lib/entitlements";
+import { getSessionUserId } from "@/lib/getSessionUserId";
 
 export async function POST(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const userId = await getSessionUserId();
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { id: campaignId } = await params;
 
   if (!campaignId) {
@@ -21,10 +27,19 @@ export async function POST(
       id: true,
       state: true,
       accountId: true,
+      account: {
+        select: {
+          users: {
+            where: { id: userId },
+            select: { id: true },
+            take: 1,
+          },
+        },
+      },
     },
   });
 
-  if (!campaign) {
+  if (!campaign || campaign.account.users.length === 0) {
     return NextResponse.json(
       { error: "Campaign not found" },
       { status: 404 }

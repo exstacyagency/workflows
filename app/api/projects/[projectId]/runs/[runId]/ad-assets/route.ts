@@ -25,6 +25,7 @@ export async function GET(
   if (deny) return deny;
 
   try {
+    // TODO(low): this raw SQL projection duplicates shape logic that also exists in other ad-asset APIs; centralize it to reduce drift.
     type AssetRow = {
       id: string;
       jobId: string | null;
@@ -257,6 +258,7 @@ export async function PATCH(
   }
 
   try {
+    // TODO(medium): clearing transcript/OCR fields should probably also reset any derived quality-gate fields that depend on them.
     const asset = await prisma.adAsset.findFirst({
       where: {
         id: assetId,

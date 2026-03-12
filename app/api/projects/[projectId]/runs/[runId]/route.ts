@@ -120,6 +120,7 @@ export async function DELETE(
     }
 
     const deletedJobsCount = await prisma.$transaction(async (tx) => {
+      // TODO(medium): consider a soft-delete/archive path for runs; this hard delete removes all linked artifacts in one step.
       const jobs = await tx.job.findMany({
         where: { projectId, runId },
         select: { id: true },
