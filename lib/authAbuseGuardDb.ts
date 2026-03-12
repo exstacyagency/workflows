@@ -21,6 +21,69 @@ function normEmail(email: string) {
   return email.trim().toLowerCase();
 }
 
+async function recordFailureDb(params: {
+  kind: Kind;
+  ip?: string | null;
+  email?: string | null;
+}) {
+  // TODO(medium): make these DB counter updates serializable/atomic; concurrent attempts can still race under load.
+  const ip = (params.ip ?? "unknown").trim() || "unknown";
+  const email = params.email ? normEmail(params.email) : null;
+  const t = now();
+
+  try {
+    const ipRow0 = await loadKey(params.kind, "ip", ip);
+    const ipRow = ipRow0 ? await resetIfWindowExpired(ipRow0) : null;
+    const ipCount = (ipRow?.count ?? 0) + 1;
+    const ipLocked = ipCount >= MAX_ATTEMPTS ? new Date(t + LOCKOUT_MS) : null;
+    await (prisma as any).authThrottle.update({
+      where: { id: ipRow.id },
+      data: { count: ipCount, lockedUntil: ipLocked },
+    });
+
+    if (params.kind === "login" && email) {
+      const emRow0 = await loadKey(params.kind, "email", email);
+      const emRow = emRow0 ? await resetIfWindowExpired(emRow0) : null;
+      const emCount = (emRow?.count ?? 0) + 1;
+      const emLocked = emCount >= MAX_ATTEMPTS ? new Date(t + LOCKOUT_MS) : null;
+      await (prisma as any).authThrottle.update({
+        where: { id: emRow.id },
+        data: { count: emCount, lockedUntil: emLocked },
+      });
+    }
+  } catch (e) {
+    memFail({ kind: params.kind, ip, email: email ?? undefined } as any);
+  }
+}
+
+async function recordSuccessDb(params: {
+  kind: Kind;
+  ip?: string | null;
+  email?: string | null;
+}) {
+  const ip = (params.ip ?? "unknown").trim() || "unknown";
+  const email = params.email ? normEmail(params.email) : null;
+  const t = now();
+
+  try {
+    const ipRow0 = await loadKey(params.kind, "ip", ip);
+    await (prisma as any).authThrottle.update({
+      where: { id: ipRow0.id },
+      data: { count: 0, lockedUntil: null, resetAt: new Date(t + WINDOW_MS) },
+    });
+
+    if (params.kind === "login" && email) {
+      const emRow0 = await loadKey(params.kind, "email", email);
+      await (prisma as any).authThrottle.update({
+        where: { id: emRow0.id },
+        data: { count: 0, lockedUntil: null, resetAt: new Date(t + WINDOW_MS) },
+      });
+    }
+  } catch (e) {
+    memOk({ kind: params.kind, ip, email: email ?? undefined } as any);
+  }
+}
+
 async function upsertKey(kind: Kind, scope: Scope, identifier: string) {
   const resetAt = new Date(now() + WINDOW_MS);
   return (prisma as any).authThrottle.upsert({
@@ -110,6 +173,7 @@ export async function consumeRegisterAttemptDb(params: {
   const ip = (params.ip ?? "unknown").trim() || "unknown";
   const email = params.email ? normEmail(params.email) : null;
   const t = now();
+  // TODO(medium): make this consume path serializable/atomic; concurrent attempts can still race under load.
 
   try {
     const ipRow0 = await loadKey("register", "ip", ip);
@@ -143,60 +207,26 @@ export async function recordLoginFailureDb(params: {
   ip?: string | null;
   email?: string | null;
 }) {
-  const ip = (params.ip ?? "unknown").trim() || "unknown";
-  const email = params.email ? normEmail(params.email) : null;
-  const t = now();
-
-  try {
-    const ipRow0 = await loadKey("login", "ip", ip);
-    const ipRow = ipRow0 ? await resetIfWindowExpired(ipRow0) : null;
-
-    const ipCount = (ipRow?.count ?? 0) + 1;
-    const ipLocked = ipCount >= MAX_ATTEMPTS ? new Date(t + LOCKOUT_MS) : null;
-    await (prisma as any).authThrottle.update({
-      where: { id: ipRow.id },
-      data: { count: ipCount, lockedUntil: ipLocked },
-    });
-
-    if (email) {
-      const emRow0 = await loadKey("login", "email", email);
-      const emRow = emRow0 ? await resetIfWindowExpired(emRow0) : null;
-      const emCount = (emRow?.count ?? 0) + 1;
-      const emLocked =
-        emCount >= MAX_ATTEMPTS ? new Date(t + LOCKOUT_MS) : null;
-      await (prisma as any).authThrottle.update({
-        where: { id: emRow.id },
-        data: { count: emCount, lockedUntil: emLocked },
-      });
-    }
-  } catch (e) {
-    memFail({ kind: "login", ip, email: email ?? undefined } as any);
-  }
+  return recordFailureDb({ kind: "login", ...params });
 }
 
 export async function recordLoginSuccessDb(params: {
   ip?: string | null;
   email?: string | null;
 }) {
-  const ip = (params.ip ?? "unknown").trim() || "unknown";
-  const email = params.email ? normEmail(params.email) : null;
-  const t = now();
+  return recordSuccessDb({ kind: "login", ...params });
+}
 
-  try {
-    const ipRow0 = await loadKey("login", "ip", ip);
-    await (prisma as any).authThrottle.update({
-      where: { id: ipRow0.id },
-      data: { count: 0, lockedUntil: null, resetAt: new Date(t + WINDOW_MS) },
-    });
+export async function recordRegisterFailureDb(params: {
+  ip?: string | null;
+  email?: string | null;
+}) {
+  return recordFailureDb({ kind: "register", ...params });
+}
 
-    if (email) {
-      const emRow0 = await loadKey("login", "email", email);
-      await (prisma as any).authThrottle.update({
-        where: { id: emRow0.id },
-        data: { count: 0, lockedUntil: null, resetAt: new Date(t + WINDOW_MS) },
-      });
-    }
-  } catch (e) {
-    memOk({ kind: "login", ip, email: email ?? undefined } as any);
-  }
+export async function recordRegisterSuccessDb(params: {
+  ip?: string | null;
+  email?: string | null;
+}) {
+  return recordSuccessDb({ kind: "register", ...params });
 }

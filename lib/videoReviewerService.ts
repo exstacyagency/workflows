@@ -123,6 +123,7 @@ async function mergeStoryboardIfComplete(storyboardId: string) {
 export async function runVideoReviewer() {
   requireEnv(['FAL_API_KEY'], 'FAL');
 
+  // TODO(medium): scan storyboards in batches or by candidate status instead of loading the full table into memory.
   const storyboards = await prisma.storyboard.findMany({
     include: {
       scenes: true,

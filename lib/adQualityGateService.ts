@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { AdPlatform } from "@prisma/client";
 import { cfg } from "@/lib/config";
 import { prisma } from "@/lib/prisma";
+import { computeAnthropicCostCents } from "@/lib/billing/pricing";
 
 type QualityIssue =
   | "ui_chrome"
@@ -44,6 +45,7 @@ const anthropic = new Anthropic({
   apiKey: cfg.raw("ANTHROPIC_API_KEY"),
   timeout: 60000,
 });
+// TODO(medium): instantiate Anthropic lazily after env validation so import-time config failures do not linger for the process lifetime.
 
 function asObject(value: unknown): Record<string, any> {
   if (value && typeof value === "object" && !Array.isArray(value)) {
@@ -196,7 +198,11 @@ JSON only:
           provider: "anthropic",
           model: QUALITY_MODEL,
           units: totalTokens,
-          costCents: 0,
+          costCents: computeAnthropicCostCents(
+            QUALITY_MODEL,
+            Math.max(0, Math.trunc(inputTokens)),
+            Math.max(0, Math.trunc(outputTokens)),
+          ),
           metadata: {
             inputTokens: Math.max(0, Math.trunc(inputTokens)),
             outputTokens: Math.max(0, Math.trunc(outputTokens)),

@@ -26,6 +26,7 @@ export const authOptions: NextAuthOptions = {
       },
       async authorize(credentials, req) {
         try {
+          // TODO(low): gate these auth attempt logs behind a debug flag to avoid leaking login metadata into routine logs.
           console.log("[auth] authorize attempt for:", credentials?.email);
           
           if (!credentials?.email || !credentials?.password) {

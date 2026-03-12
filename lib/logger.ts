@@ -31,6 +31,7 @@ export async function logAudit(params: LogAuditParams): Promise<void> {
       },
     });
   } catch (error) {
+    // TODO(medium): route audit-write failures to a fallback sink/alert path; they are currently only logged and then dropped.
     console.error('Failed to write audit log', error);
   }
 }

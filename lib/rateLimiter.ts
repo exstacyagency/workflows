@@ -17,6 +17,27 @@ type RequestRateLimitOptions = {
   key?: string;
 };
 
+async function withSerializableRetry<T>(fn: () => Promise<T>, retries = 3): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= retries; attempt += 1) {
+    try {
+      return await fn();
+    } catch (error: any) {
+      lastError = error;
+      const code = String(error?.code ?? "");
+      const message = String(error?.message ?? "");
+      const isSerializationConflict =
+        code === "P2034" ||
+        message.includes("could not serialize access") ||
+        message.includes("deadlock detected");
+      if (!isSerializationConflict || attempt === retries) {
+        throw error;
+      }
+    }
+  }
+  throw lastError;
+}
+
 async function internalCheckRateLimit(
   key: string,
   opts: { limit: number; windowMs: number },
@@ -26,35 +47,40 @@ async function internalCheckRateLimit(
   const now = Date.now();
   const windowStartMs = Math.floor(now / windowMs) * windowMs;
   const windowStart = new Date(windowStartMs);
+  return withSerializableRetry(async () =>
+    prisma.$transaction(
+      async (tx) => {
+        const existing = await (tx as any).rateLimitBucket.findUnique({
+          where: { key },
+          select: { id: true, windowStart: true, count: true },
+        });
 
-  const existing = await (prisma as any).rateLimitBucket.findUnique({
-    where: { key },
-    select: { windowStart: true },
-  });
+        if (!existing || existing.windowStart.getTime() !== windowStartMs) {
+          await (tx as any).rateLimitBucket.upsert({
+            where: { key },
+            create: { key, windowStart, count: 1 },
+            update: { windowStart, count: 1 },
+          });
+          return { allowed: true };
+        }
 
-  if (!existing || existing.windowStart.getTime() !== windowStartMs) {
-    await (prisma as any).rateLimitBucket.upsert({
-      where: { key },
-      create: { key, windowStart, count: 1 },
-      update: { windowStart, count: 1 },
-    });
-    return { allowed: true };
-  }
+        if (existing.count >= limit) {
+          return {
+            allowed: false,
+            reason: `Rate limit exceeded (${limit}/${Math.floor(windowMs / 1000)}s)`,
+          };
+        }
 
-  const updated = await (prisma as any).rateLimitBucket.update({
-    where: { key },
-    data: { count: { increment: 1 } },
-    select: { count: true },
-  });
+        await (tx as any).rateLimitBucket.update({
+          where: { id: existing.id },
+          data: { count: { increment: 1 } },
+        });
 
-  if (updated.count > limit) {
-    return {
-      allowed: false,
-      reason: `Rate limit exceeded (${limit}/${Math.floor(windowMs / 1000)}s)`,
-    };
-  }
-
-  return { allowed: true };
+        return { allowed: true };
+      },
+      { isolationLevel: 'Serializable' }
+    )
+  );
 }
 
 export async function checkRateLimit(
@@ -132,6 +158,7 @@ export async function rateLimit(
 ): Promise<RateLimitResult> {
   const forwarded = req.headers.get('x-forwarded-for') ?? '';
   const realIp = req.headers.get('x-real-ip') ?? '';
+  // TODO(low): treat "unknown" as a coarse shared bucket only until trusted proxy headers are guaranteed everywhere.
   const ip = (forwarded || realIp).split(',')[0]?.trim() || 'unknown';
   const key = opts.key ?? ip;
   const windowMs = (opts.windowSec ?? 60) * 1000;

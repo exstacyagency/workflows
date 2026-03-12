@@ -10,17 +10,20 @@ function assertRedisConfigured() {
   return url;
 }
 
-const REDIS_URL = (cfg.raw("REDIS_URL") ?? '').trim();
-
 const redisBaseOptions = {
   maxRetriesPerRequest: null,
   enableReadyCheck: false,
 } as const;
 
+function getRedisUrl() {
+  return (cfg.raw("REDIS_URL") ?? '').trim();
+}
+
 export const redis: Redis | null = (() => {
-  if (!REDIS_URL) return null;
+  const redisUrl = getRedisUrl();
+  if (!redisUrl) return null;
   try {
-    const client = new Redis(REDIS_URL, { ...redisBaseOptions });
+    const client = new Redis(redisUrl, { ...redisBaseOptions });
     client.on('error', (err) => {
       console.error('[redis] error', (err as any)?.message ?? err);
     });
@@ -102,8 +105,7 @@ function getDbQueue(name: QueueName): Bull.Queue {
 }
 
 export function getQueue(name: QueueName): Bull.Queue {
-  // eslint-disable-next-line no-restricted-properties
-  const backend = process.env.QUEUE_BACKEND ?? 'redis';
+  const backend = cfg.raw("QUEUE_BACKEND") ?? 'redis';
 
   if (backend === 'redis') {
     assertRedisAvailable();

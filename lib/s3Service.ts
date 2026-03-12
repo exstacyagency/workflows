@@ -2,47 +2,6 @@ import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { readFile } from "node:fs/promises";
 import { cfg } from "@/lib/config";
 
-const defaultBucket = cfg.raw("AWS_S3_BUCKET") || cfg.raw("S3_MEDIA_BUCKET");
-const defaultRegion = cfg.raw("AWS_S3_REGION") || cfg.raw("S3_MEDIA_REGION");
-const defaultEndpoint = cfg.raw("AWS_S3_ENDPOINT") || cfg.raw("S3_MEDIA_ENDPOINT");
-const accessKeyId = cfg.raw("AWS_ACCESS_KEY_ID") || cfg.raw("S3_ACCESS_KEY_ID");
-const secretAccessKey = cfg.raw("AWS_SECRET_ACCESS_KEY") || cfg.raw("S3_SECRET_ACCESS_KEY");
-
-const productSetupBucket =
-  cfg.raw("AWS_S3_BUCKET_PRODUCT_SETUP") || cfg.raw("S3_BUCKET_PRODUCT_SETUP");
-const productSetupRegion =
-  cfg.raw("AWS_S3_REGION_PRODUCT_SETUP") || cfg.raw("S3_PRODUCT_SETUP_REGION") || defaultRegion;
-const productSetupEndpoint =
-  cfg.raw("AWS_S3_ENDPOINT_PRODUCT_SETUP") || cfg.raw("S3_PRODUCT_SETUP_ENDPOINT") || defaultEndpoint;
-const productSetupPublicBaseUrl = cfg.raw("S3_PRODUCT_SETUP_PUBLIC_BASE_URL");
-const videoFramesBucket =
-  cfg.raw("AWS_S3_BUCKET_VIDEO_FRAMES") || cfg.raw("S3_BUCKET_VIDEO_FRAMES");
-const videoFramesRegion =
-  cfg.raw("AWS_S3_REGION_VIDEO_FRAMES") || cfg.raw("S3_VIDEO_FRAMES_REGION") || defaultRegion;
-const videoFramesEndpoint =
-  cfg.raw("AWS_S3_ENDPOINT_VIDEO_FRAMES") || cfg.raw("S3_VIDEO_FRAMES_ENDPOINT") || defaultEndpoint;
-const videoFramesPublicBaseUrl = cfg.raw("S3_VIDEO_FRAMES_PUBLIC_BASE_URL");
-const avatarCharacterGenerationBucket =
-  cfg.raw("AWS_S3_BUCKET_AVATAR_CHARACTER_GENERATION") ||
-  cfg.raw("S3_BUCKET_AVATAR_CHARACTER_GENERATION");
-const avatarCharacterGenerationRegion =
-  cfg.raw("AWS_S3_REGION_AVATAR_CHARACTER_GENERATION") ||
-  cfg.raw("S3_AVATAR_CHARACTER_GENERATION_REGION") ||
-  defaultRegion;
-const avatarCharacterGenerationEndpoint =
-  cfg.raw("AWS_S3_ENDPOINT_AVATAR_CHARACTER_GENERATION") ||
-  cfg.raw("S3_AVATAR_CHARACTER_GENERATION_ENDPOINT") ||
-  defaultEndpoint;
-const avatarCharacterGenerationPublicBaseUrl =
-  cfg.raw("S3_AVATAR_CHARACTER_GENERATION_PUBLIC_BASE_URL");
-const trimmedClipsBucket =
-  cfg.raw("AWS_S3_BUCKET_TRIMMED_CLIPS") || cfg.raw("S3_BUCKET_TRIMMED_CLIPS");
-const trimmedClipsRegion =
-  cfg.raw("AWS_S3_REGION_TRIMMED_CLIPS") || cfg.raw("S3_TRIMMED_CLIPS_REGION") || defaultRegion;
-const trimmedClipsEndpoint =
-  cfg.raw("AWS_S3_ENDPOINT_TRIMMED_CLIPS") || cfg.raw("S3_TRIMMED_CLIPS_ENDPOINT") || defaultEndpoint;
-const trimmedClipsPublicBaseUrl = cfg.raw("S3_TRIMMED_CLIPS_PUBLIC_BASE_URL");
-
 type BucketTarget =
   | "default"
   | "product_setup"
@@ -55,53 +14,85 @@ type BucketConfig = {
   region: string | null;
   endpoint: string | null;
   publicBaseUrl: string | null;
-};
-
-const BUCKETS: Record<BucketTarget, BucketConfig> = {
-  default: {
-    bucket: defaultBucket,
-    region: defaultRegion,
-    endpoint: defaultEndpoint,
-    publicBaseUrl: null,
-  },
-  product_setup: {
-    bucket: productSetupBucket,
-    region: productSetupRegion,
-    endpoint: productSetupEndpoint,
-    publicBaseUrl: productSetupPublicBaseUrl,
-  },
-  video_frames: {
-    bucket: videoFramesBucket,
-    region: videoFramesRegion,
-    endpoint: videoFramesEndpoint,
-    publicBaseUrl: videoFramesPublicBaseUrl,
-  },
-  avatar_character_generation: {
-    bucket: avatarCharacterGenerationBucket,
-    region: avatarCharacterGenerationRegion,
-    endpoint: avatarCharacterGenerationEndpoint,
-    publicBaseUrl: avatarCharacterGenerationPublicBaseUrl,
-  },
-  trimmed_clips: {
-    bucket: trimmedClipsBucket,
-    region: trimmedClipsRegion,
-    endpoint: trimmedClipsEndpoint,
-    publicBaseUrl: trimmedClipsPublicBaseUrl,
-  },
+  accessKeyId: string | null;
+  secretAccessKey: string | null;
 };
 
 const s3Clients = new Map<string, S3Client>();
 let warnedMissing = false;
 
 function getBucketConfig(target: BucketTarget): BucketConfig {
-  return BUCKETS[target];
+  const defaultBucket = cfg.raw("AWS_S3_BUCKET") || cfg.raw("S3_MEDIA_BUCKET");
+  const defaultRegion = cfg.raw("AWS_S3_REGION") || cfg.raw("S3_MEDIA_REGION");
+  const defaultEndpoint = cfg.raw("AWS_S3_ENDPOINT") || cfg.raw("S3_MEDIA_ENDPOINT");
+  const accessKeyId = cfg.raw("AWS_ACCESS_KEY_ID") || cfg.raw("S3_ACCESS_KEY_ID");
+  const secretAccessKey = cfg.raw("AWS_SECRET_ACCESS_KEY") || cfg.raw("S3_SECRET_ACCESS_KEY");
+
+  const buckets: Record<BucketTarget, BucketConfig> = {
+    default: {
+      bucket: defaultBucket,
+      region: defaultRegion,
+      endpoint: defaultEndpoint,
+      publicBaseUrl: null,
+      accessKeyId,
+      secretAccessKey,
+    },
+    product_setup: {
+      bucket: cfg.raw("AWS_S3_BUCKET_PRODUCT_SETUP") || cfg.raw("S3_BUCKET_PRODUCT_SETUP"),
+      region:
+        cfg.raw("AWS_S3_REGION_PRODUCT_SETUP") || cfg.raw("S3_PRODUCT_SETUP_REGION") || defaultRegion,
+      endpoint:
+        cfg.raw("AWS_S3_ENDPOINT_PRODUCT_SETUP") || cfg.raw("S3_PRODUCT_SETUP_ENDPOINT") || defaultEndpoint,
+      publicBaseUrl: cfg.raw("S3_PRODUCT_SETUP_PUBLIC_BASE_URL"),
+      accessKeyId,
+      secretAccessKey,
+    },
+    video_frames: {
+      bucket: cfg.raw("AWS_S3_BUCKET_VIDEO_FRAMES") || cfg.raw("S3_BUCKET_VIDEO_FRAMES"),
+      region:
+        cfg.raw("AWS_S3_REGION_VIDEO_FRAMES") || cfg.raw("S3_VIDEO_FRAMES_REGION") || defaultRegion,
+      endpoint:
+        cfg.raw("AWS_S3_ENDPOINT_VIDEO_FRAMES") || cfg.raw("S3_VIDEO_FRAMES_ENDPOINT") || defaultEndpoint,
+      publicBaseUrl: cfg.raw("S3_VIDEO_FRAMES_PUBLIC_BASE_URL"),
+      accessKeyId,
+      secretAccessKey,
+    },
+    avatar_character_generation: {
+      bucket:
+        cfg.raw("AWS_S3_BUCKET_AVATAR_CHARACTER_GENERATION") ||
+        cfg.raw("S3_BUCKET_AVATAR_CHARACTER_GENERATION"),
+      region:
+        cfg.raw("AWS_S3_REGION_AVATAR_CHARACTER_GENERATION") ||
+        cfg.raw("S3_AVATAR_CHARACTER_GENERATION_REGION") ||
+        defaultRegion,
+      endpoint:
+        cfg.raw("AWS_S3_ENDPOINT_AVATAR_CHARACTER_GENERATION") ||
+        cfg.raw("S3_AVATAR_CHARACTER_GENERATION_ENDPOINT") ||
+        defaultEndpoint,
+      publicBaseUrl: cfg.raw("S3_AVATAR_CHARACTER_GENERATION_PUBLIC_BASE_URL"),
+      accessKeyId,
+      secretAccessKey,
+    },
+    trimmed_clips: {
+      bucket: cfg.raw("AWS_S3_BUCKET_TRIMMED_CLIPS") || cfg.raw("S3_BUCKET_TRIMMED_CLIPS"),
+      region:
+        cfg.raw("AWS_S3_REGION_TRIMMED_CLIPS") || cfg.raw("S3_TRIMMED_CLIPS_REGION") || defaultRegion,
+      endpoint:
+        cfg.raw("AWS_S3_ENDPOINT_TRIMMED_CLIPS") || cfg.raw("S3_TRIMMED_CLIPS_ENDPOINT") || defaultEndpoint,
+      publicBaseUrl: cfg.raw("S3_TRIMMED_CLIPS_PUBLIC_BASE_URL"),
+      accessKeyId,
+      secretAccessKey,
+    },
+  };
+
+  return buckets[target];
 }
 
 function getS3Client(target: BucketTarget): S3Client | null {
-  const { bucket, region, endpoint } = getBucketConfig(target);
+  const { bucket, region, endpoint, accessKeyId, secretAccessKey } = getBucketConfig(target);
   if (!bucket || !region) return null;
 
-  const cacheKey = `${region}|${endpoint || ""}`;
+  const cacheKey = `${region}|${endpoint || ""}|${accessKeyId || ""}|${secretAccessKey || ""}`;
   const existing = s3Clients.get(cacheKey);
   if (existing) return existing;
 
@@ -207,6 +198,7 @@ export async function uploadFrame(
   assetId: string,
   timestamp: number
 ): Promise<string | null> {
+  // TODO(low): this warning is global; include target details if bucket-level config diverges later.
   if (!getS3Client("default") || !getBucketConfig("default").bucket) {
     if (!warnedMissing) {
       warnedMissing = true;

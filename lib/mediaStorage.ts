@@ -3,23 +3,32 @@ import { cfg } from "@/lib/config";
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
-const bucket = cfg.raw("S3_MEDIA_BUCKET");
-const region = cfg.raw("S3_MEDIA_REGION");
-
 let s3Client: S3Client | null = null;
+let s3ClientKey: string | null = null;
+
+function getMediaConfig() {
+  const bucket = cfg.raw("S3_MEDIA_BUCKET");
+  const region = cfg.raw("S3_MEDIA_REGION");
+  const accessKeyId = cfg.raw("S3_ACCESS_KEY_ID");
+  const secretAccessKey = cfg.raw("S3_SECRET_ACCESS_KEY");
+  return { bucket, region, accessKeyId, secretAccessKey };
+}
 
 function getS3() {
+  const { bucket, region, accessKeyId, secretAccessKey } = getMediaConfig();
   if (!bucket || !region) return null;
-  if (!s3Client) {
+  const nextKey = `${bucket}|${region}|${accessKeyId || ""}|${secretAccessKey || ""}`;
+  if (!s3Client || s3ClientKey !== nextKey) {
     s3Client = new S3Client({
       region,
-      credentials: cfg.raw("S3_ACCESS_KEY_ID")
+      credentials: accessKeyId
         ? {
-            accessKeyId: cfg.raw("S3_ACCESS_KEY_ID")!,
-            secretAccessKey: cfg.raw("S3_SECRET_ACCESS_KEY")!,
+            accessKeyId: accessKeyId!,
+            secretAccessKey: secretAccessKey!,
           }
         : undefined,
     });
+    s3ClientKey = nextKey;
   }
   return s3Client;
 }
@@ -31,6 +40,7 @@ export async function getSignedMediaUrl(
   if (!key) return null;
 
   const s3 = getS3();
+  const { bucket } = getMediaConfig();
   if (!s3 || !bucket) {
     if (cfg.raw("NODE_ENV") === "production") {
       throw new Error("S3 media signing not configured in production");

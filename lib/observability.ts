@@ -4,6 +4,7 @@ export function getRequestId(req: NextRequest): string {
   return (
     req.headers.get("x-request-id") ||
     req.headers.get("x-request-id".toUpperCase()) ||
+    // TODO(low): synthesize a request ID when upstream headers are missing so unrelated requests do not all collapse to "unknown".
     "unknown"
   );
 }
@@ -25,4 +26,3 @@ export function logError(event: string, err: any, ctx: Record<string, any> = {})
     })
   );
 }
-

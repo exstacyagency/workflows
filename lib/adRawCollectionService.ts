@@ -112,7 +112,7 @@ function sleep(ms: number) {
 }
 
 function getAdResearchApifyToken(): string {
-  // Temporary debug signal for env wiring issues.
+  // TODO(low): remove env-presence logging once APIFY wiring is stable.
   console.log('[adRawCollectionService] APIFY_TOKEN:', env('APIFY_TOKEN') ? 'Present' : 'Missing');
   console.log('[adRawCollectionService] APIFY_API_TOKEN_AUX:', env('APIFY_API_TOKEN_AUX') ? 'Present' : 'Missing');
   console.log('[adRawCollectionService] APIFY_API_TOKEN:', env('APIFY_API_TOKEN') ? 'Present' : 'Missing');
@@ -192,6 +192,7 @@ export async function fetchDatasetItems(datasetId: string): Promise<any[]> {
   const token = getAdResearchApifyToken();
 
   const url = new URL(`${APIFY_BASE}/datasets/${encodeURIComponent(datasetId)}/items`);
+  // TODO(medium): move the token out of the query string to avoid leaking it via URL logs and proxies.
   url.searchParams.set('token', token);
   url.searchParams.set('clean', 'true');
   url.searchParams.set('format', 'json');
@@ -212,6 +213,7 @@ export async function waitForApifyRun(runId: string): Promise<string> {
   const deadlineMs = Date.now() + APIFY_MAX_WAIT_MS;
   while (true) {
     const url = new URL(`${APIFY_BASE}/actor-runs/${encodeURIComponent(runId)}`);
+    // TODO(medium): move the token out of the query string to avoid leaking it via URL logs and proxies.
     url.searchParams.set('token', token);
 
     const res = await fetch(url.toString(), { method: 'GET' });
@@ -248,6 +250,7 @@ export async function runApifyActor(input: Record<string, unknown>): Promise<{ r
   const actorId = env('APIFY_TIKTOK_ACTOR_ID')!;
 
   const url = new URL(`${APIFY_BASE}/acts/${encodeURIComponent(actorId)}/runs`);
+  // TODO(medium): move the token out of the query string to avoid leaking it via URL logs and proxies.
   url.searchParams.set('token', token);
   url.searchParams.set('waitForFinish', '0');
 
@@ -554,6 +557,9 @@ async function saveAdsToPrisma(options: {
   }));
 
   console.log("[adRawCollection] About to insert", data.length, "ad assets");
+  await prisma.adAsset.deleteMany({
+    where: { jobId },
+  });
   const result = await prisma.adAsset.createMany({ data });
   console.log("[adRawCollection] Inserted", result.count, "ad assets");
 }
@@ -642,6 +648,7 @@ export async function startAdRawCollectionJob(params: {
   config?: AdCollectionConfig;
 }) {
   const { projectId, industryCode, runId, jobId, config } = params;
+  // TODO(medium): this service still duplicates worker job-state transitions instead of returning pure results.
   await updateJobStatus(jobId, JobStatus.RUNNING);
   try {
     const result = await runAdRawCollection({

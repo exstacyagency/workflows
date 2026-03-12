@@ -27,6 +27,7 @@ async function pollUpscaleRequest(
   maxAttempts = 20,
   delayMs = 30000,
 ): Promise<{ videoUrl: string; width?: number; height?: number; duration?: number; computeSeconds?: number }> {
+  // TODO(medium): persist provider request IDs on the script before polling so failed runs can be resumed or inspected.
   const pollStart = Date.now();
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -176,6 +177,7 @@ export async function runVideoUpscalerBatch(): Promise<{
 }> {
   requireEnv(["FAL_API_KEY"], "FAL");
 
+  // TODO(medium): batch this query instead of scanning every pending upscale in one pass when the script table grows.
   const scripts = await prisma.script.findMany({
     where: {
       status: "upscale_pending",

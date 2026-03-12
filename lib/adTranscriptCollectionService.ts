@@ -112,6 +112,7 @@ async function createAssemblyAiClient() {
     const { AssemblyAI } = await import("assemblyai");
     return new AssemblyAI({ apiKey });
   } catch {
+    // TODO(low): preload this dependency at boot or bundle time so the first transcription attempt does not fail at runtime.
     throw new Error("AssemblyAI SDK not installed. Run `npm install assemblyai` and restart.");
   }
 }
@@ -438,6 +439,7 @@ export async function startAdTranscriptJob(params: {
   forceReprocess?: boolean;
 }) {
   const { projectId, jobId, runId, forceReprocess } = params;
+  // TODO(medium): this service still owns job-state transitions even though the worker layer already orchestrates status changes.
   const currentJob = await prisma.job.findUnique({
     where: { id: jobId },
     select: { status: true },

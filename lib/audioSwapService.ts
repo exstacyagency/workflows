@@ -37,6 +37,7 @@ export async function runAudioSwapForScript(args: AudioSwapArgs): Promise<AudioS
   }
   if (!mergedVideoUrl) throw new Error("Script has no mergedVideoUrl to swap audio");
 
+  // TODO(medium): this downloads the full merged asset into memory before forwarding it to ElevenLabs.
   // Download the source audio payload from merged video URL.
   const audioRes = await fetch(mergedVideoUrl);
   if (!audioRes.ok) throw new Error(`Failed to fetch source audio: ${audioRes.status}`);
@@ -68,6 +69,7 @@ export async function runAudioSwapForScript(args: AudioSwapArgs): Promise<AudioS
   await prisma.script.update({
     where: { id: args.scriptId },
     data: {
+      // TODO(medium): store swapped-audio outputs in a dedicated field once the schema can distinguish audio artifacts from upscaled video assets.
       upscaledVideoUrl: outputAudioUrl,
       status: "upscaled",
       upscaleError: null,

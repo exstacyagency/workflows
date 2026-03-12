@@ -302,6 +302,7 @@ async function processSingleAd(assetId: string, apiKey: string, forceReprocess: 
   if (videoUrls.length === 0) return { processed: false, reason: "missing_video_url", apiCalls: 0, framesExtracted: 0 };
 
   const highlightSeconds = parseHighlightSeconds(raw);
+  // TODO(low): trim these per-asset debug logs behind a debug flag so large OCR runs do not flood logs with raw highlight data.
   console.log("[OCR Debug] Asset:", assetId);
   console.log("[OCR Debug] Raw conversion spikes:", raw?.metrics?.conversion_spikes ?? null);
   console.log(
@@ -497,6 +498,7 @@ export async function runAdOcrCollection(args: {
     );
   }
 
+  // TODO(medium): persist the per-asset failures somewhere durable; partial OCR failures are currently returned only in-memory to the caller.
   return {
     totalAssets: assetsToProcess.length,
     processed,
@@ -514,6 +516,7 @@ export async function startAdOcrJob(params: {
   forceReprocess?: boolean;
 }) {
   const { projectId, jobId, runId, forceReprocess } = params;
+  // TODO(medium): this service still owns job-state transitions even though the worker layer already orchestrates status changes.
   await updateJobStatus(jobId, JobStatus.RUNNING);
   try {
     const result = await runAdOcrCollection({ projectId, jobId, runId, forceReprocess });

@@ -14,6 +14,7 @@ const UGC_SCENE_STYLE_SUFFIX =
   "UGC smartphone video style, natural casual aesthetic, authentic not professionally produced";
 const HAS_ANTHROPIC_API_KEY = Boolean(cfg.raw("ANTHROPIC_API_KEY"));
 
+// TODO(low): gate env-presence and raw-response logging behind a debug flag to avoid noisy logs and prompt leakage.
 console.log("[imagePromptGeneration] ANTHROPIC_API_KEY present:", HAS_ANTHROPIC_API_KEY);
 
 type PromptPair = {
