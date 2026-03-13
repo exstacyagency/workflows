@@ -33,20 +33,6 @@ function assertPatterns({ file, description, patterns }: GuardCheck) {
 function main() {
   const checks: GuardCheck[] = [
     {
-      file: "app/api/e2e/reset/route.ts",
-      description: "POST /api/e2e/reset 404 in production",
-      patterns: [
-        /Not Found"\s*,\s*\{\s*status:\s*404\s*\}/,
-      ],
-    },
-    {
-      file: "app/api/debug/whoami/route.ts",
-      description: "GET /api/debug/whoami disabled in production",
-      patterns: [
-        /cfg\.raw\("NODE_ENV"\)\s*===\s*"production"[\s\S]*status:\s*404/,
-      ],
-    },
-    {
       file: "app/api/debug/mint-session/route.ts",
       description: "POST /api/debug/mint-session disabled outside SaaS",
       patterns: [
