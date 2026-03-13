@@ -29,15 +29,6 @@ type PollResult = {
 const DEFAULT_INTERVAL_MS = Number(cfg.raw("KIE_CHARACTER_POLL_INTERVAL_MS") ?? 5_000);
 const DEFAULT_MAX_ATTEMPTS = Number(cfg.raw("KIE_CHARACTER_POLL_ATTEMPTS") ?? 120);
 
-function callbackPayloadFields(): Record<string, string> {
-  const callBackUrl = String(cfg.raw("KIE_CALLBACK_URL") ?? "").trim();
-  const progressCallBackUrl = String(cfg.raw("KIE_PROGRESS_CALLBACK_URL") ?? "").trim();
-  return {
-    ...(callBackUrl ? { callBackUrl } : {}),
-    ...(progressCallBackUrl ? { progressCallBackUrl } : {}),
-  };
-}
-
 function asObject(value: unknown): Record<string, unknown> {
   if (value && typeof value === "object" && !Array.isArray(value)) {
     return value as Record<string, unknown>;
@@ -120,7 +111,7 @@ function extractCharacterUserName(response: PollTaskResponse): string | null {
   );
 }
 
-function normalizeState(response: PollTaskResponse): "RUNNING" | "SUCCEEDED" | "FAILED" {
+export function normalizeState(response: PollTaskResponse): "RUNNING" | "SUCCEEDED" | "FAILED" {
   const data = unwrapData(response);
   const rawState = pickString(
     data.state,
@@ -163,7 +154,7 @@ async function createTask(
   return taskId;
 }
 
-async function getTask(taskId: string): Promise<PollTaskResponse | string> {
+export async function getTask(taskId: string): Promise<PollTaskResponse | string> {
   const { statusPath } = kieJobPathsFromEnv();
   const path = statusPath.includes("taskId=")
     ? `${statusPath}${encodeURIComponent(taskId)}`
@@ -174,37 +165,77 @@ async function getTask(taskId: string): Promise<PollTaskResponse | string> {
   return json ?? text;
 }
 
-export async function createSeedVideo(args: {
+export async function createCharacterAvatarImage(args: {
   prompt: string;
-  creatorReferenceImageUrl?: string | null;
 }): Promise<{ taskId: string }> {
-  const model = cfg.raw("KIE_CHARACTER_SEED_MODEL") || "sora-2-text-to-video";
+  const model = cfg.raw("KIE_CHARACTER_IMAGE_MODEL") || "nano-banana-2";
   const payload: Record<string, unknown> = {
     model,
-    ...callbackPayloadFields(),
     input: {
       prompt: args.prompt,
-      aspect_ratio: "portrait",
-      n_frames: "10",
-      remove_watermark: true,
-      upload_method: "s3",
+      aspect_ratio: "2:3",
+      resolution: "2K",
+      output_format: "png",
     },
   };
 
-  const taskId = await createTask(payload, "[KIE createSeedVideo] payload:");
+  const taskId = await createTask(payload, "[KIE createCharacterAvatarImage] payload:");
   return { taskId };
+}
+
+export function extractImageUrl(response: PollTaskResponse): string | null {
+  const data = unwrapData(response);
+  const result = asObject(data.result);
+  const rootResult = asObject(response.result);
+
+  let parsedResultJson: Record<string, unknown> = {};
+  try {
+    const rawResultJson = data.resultJson ?? result.resultJson ?? rootResult.resultJson;
+    parsedResultJson =
+      typeof rawResultJson === "string"
+        ? asObject(JSON.parse(rawResultJson))
+        : asObject(rawResultJson);
+  } catch {
+    parsedResultJson = {};
+  }
+
+  const parsedResultObject = asObject(parsedResultJson.resultObject);
+
+  return pickString(
+    data.imageUrl,
+    data.image_url,
+    data.url,
+    result.imageUrl,
+    result.image_url,
+    result.url,
+    rootResult.imageUrl,
+    rootResult.image_url,
+    rootResult.url,
+    parsedResultJson.imageUrl,
+    parsedResultJson.image_url,
+    parsedResultJson.url,
+    parsedResultObject.imageUrl,
+    parsedResultObject.image_url,
+    parsedResultObject.url,
+    Array.isArray(data.resultUrls) ? data.resultUrls[0] : null,
+    Array.isArray(result.resultUrls) ? result.resultUrls[0] : null,
+    Array.isArray(rootResult.resultUrls) ? rootResult.resultUrls[0] : null,
+    Array.isArray(parsedResultJson.resultUrls) ? parsedResultJson.resultUrls[0] : null,
+    Array.isArray(parsedResultObject.resultUrls) ? parsedResultObject.resultUrls[0] : null,
+  );
 }
 
 export async function createCharacter(args: {
   originTaskId: string;
+  characterPrompt: string;
 }): Promise<{ taskId: string }> {
   const model = cfg.raw("KIE_CHARACTER_REFERENCE_MODEL") || "sora-2-characters-pro";
   const payload: Record<string, unknown> = {
     model,
-    ...callbackPayloadFields(),
     input: {
       origin_task_id: args.originTaskId,
-      timestamps: [1.0, 4.0],
+      character_prompt: args.characterPrompt,
+      timestamps: "1.0,4.0",
       remove_watermark: true,
       upload_method: "s3",
     },

@@ -3,21 +3,27 @@ import { prisma } from "@/lib/prisma";
 import { getSessionUserId } from "@/lib/getSessionUserId";
 import { requireProjectOwner404 } from "@/lib/auth/requireProjectOwner404";
 import { checkRateLimit } from "@/lib/rateLimiter";
+import { isAdminRequest } from "@/lib/admin/isAdminRequest";
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { projectId: string; jobId: string } }
+  { params }: { params: Promise<{ projectId: string; jobId: string }> }
 ) {
+  const awaitedParams = await params;
   const userId = await getSessionUserId();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { projectId, jobId } = params;
+  const { projectId, jobId } = awaitedParams;
   if (!projectId || !jobId) {
     return NextResponse.json({ error: "projectId and jobId are required" }, { status: 400 });
   }
 
   const deny = await requireProjectOwner404(projectId);
   if (deny) return deny;
+
+  if (!isAdminRequest(req)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   const rate = await checkRateLimit(`deadletter:clear-attempts:${userId}`, {
     limit: 30,

@@ -8,15 +8,27 @@ import type { Job } from '@prisma/client';
 import { guardedExternalCall } from './externalCallGuard.ts';
 import { env, requireEnv } from './configGuard.ts';
 import { flag, devNumber } from './flags.ts';
+import type { BeatRatio } from "@/lib/analyzeSwipeTranscript";
+import { extractSwipePatterns } from "@/lib/swipePatternExtractor";
+import { WORDS_PER_CLIP, beatsForClipDuration } from "./soraConstants";
+import { computeAnthropicCostCents } from "@/lib/billing/pricing";
+import { settleJobCost } from "@/lib/billing/settleJobCost";
 
-const LLM_TIMEOUT_MS = Number(cfg.raw("LLM_TIMEOUT_MS") ?? 90_000);
+function parsePositiveIntConfig(raw: string | undefined, fallback: number): number {
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return fallback;
+  const normalized = Math.trunc(parsed);
+  return normalized > 0 ? normalized : fallback;
+}
+
+const LLM_TIMEOUT_MS = parsePositiveIntConfig(cfg.raw("LLM_TIMEOUT_MS"), 90_000);
 console.log("[LLM] timeout config:", {
   raw: cfg.raw("LLM_TIMEOUT_MS"),
   resolved: LLM_TIMEOUT_MS,
 });
-const LLM_BREAKER_FAILS = Number(cfg.raw("LLM_BREAKER_FAILS") ?? 3);
-const LLM_BREAKER_COOLDOWN_MS = Number(cfg.raw("LLM_BREAKER_COOLDOWN_MS") ?? 60_000);
-const LLM_RETRIES = Number(cfg.raw("LLM_RETRIES") ?? 1);
+const LLM_BREAKER_FAILS = parsePositiveIntConfig(cfg.raw("LLM_BREAKER_FAILS"), 3);
+const LLM_BREAKER_COOLDOWN_MS = parsePositiveIntConfig(cfg.raw("LLM_BREAKER_COOLDOWN_MS"), 60_000);
+const LLM_RETRIES = parsePositiveIntConfig(cfg.raw("LLM_RETRIES"), 1);
 
 type Pattern = {
   pattern_name: string;
@@ -122,7 +134,7 @@ type PromptInjectionValues = {
 
 type BeatPlanEntry = {
   label: string;
-  duration: string;
+  duration?: string;
   guidance?: string;
   formulaComponent?: string;
 };
@@ -168,6 +180,8 @@ type PatternSelection = {
 };
 
 type SwipeTemplate = {
+  adMechanism?: string;
+  mechanismDescription?: string;
   hookPattern: string;
   problemPattern: string;
   solutionPattern: string;
@@ -182,8 +196,11 @@ type SwipeTemplate = {
 type SwipeFileSelection = {
   id: string;
   views: number | null;
+  transcript: string | null;
   swipeMetadata: SwipeTemplate;
 };
+
+type ScriptStrategy = "swipe_template" | "research_formula";
 
 type ProductCollectionJobContext = {
   id: string;
@@ -208,6 +225,8 @@ type ResearchSourcesUsed = {
   productIntelDate: string | null;
   swipeFileId: string | null;
   swipeFileViews: number | null;
+  scriptStrategy: ScriptStrategy;
+  requestedSwipeTemplateAdId: string | null;
 };
 
 function toIso(date: Date | null | undefined): string | null {
@@ -500,6 +519,30 @@ function normalizeBeatCountValue(value: unknown): number {
   return rounded;
 }
 
+function normalizeBeatRatios(value: unknown): BeatRatio[] {
+  if (!Array.isArray(value)) return [];
+  const normalized: BeatRatio[] = [];
+  for (const entry of value) {
+    const item = asObject(entry);
+    if (!item) continue;
+    const label = asString(item.label);
+    const startPct = asNumber(item.startPct);
+    const endPct = asNumber(item.endPct);
+    if (!label || startPct === null || endPct === null) continue;
+    if (startPct < 0 || endPct > 1 || startPct >= endPct) continue;
+    normalized.push({ label, startPct, endPct });
+  }
+  return normalized;
+}
+
+function toJsonBeatRatios(ratios: BeatRatio[]): Array<{ label: string; startPct: number; endPct: number }> {
+  return ratios.map((ratio) => ({
+    label: ratio.label,
+    startPct: ratio.startPct,
+    endPct: ratio.endPct,
+  }));
+}
+
 function formatSecondsForPrompt(value: number): string {
   const rounded = Math.round(value * 10) / 10;
   if (Number.isInteger(rounded)) return String(rounded);
@@ -527,22 +570,19 @@ function buildDefaultBeatLabels(beatCount: number): string[] {
   return labels;
 }
 
-function buildDefaultBeatPlan(targetDuration: number, beatCount: number): BeatPlanEntry[] {
+function buildDefaultBeatPlan(
+  targetDuration: number,
+  beatCount: number,
+  clipDurationSeconds: 10 | 15,
+): BeatPlanEntry[] {
   const safeDuration = normalizeTargetDurationValue(targetDuration);
-  const safeBeatCount = normalizeBeatCountValue(beatCount);
+  const safeClipDuration = clipDurationSeconds === 15 ? 15 : 10;
+  const computedBeatCount = beatsForClipDuration(safeDuration, safeClipDuration);
+  const safeBeatCount = normalizeBeatCountValue(beatCount || computedBeatCount);
   const labels = buildDefaultBeatLabels(safeBeatCount);
-  const secondsPerBeat = safeDuration / safeBeatCount;
-  let start = 0;
-
-  return labels.map((label, index) => {
-    const end = index === safeBeatCount - 1 ? safeDuration : start + secondsPerBeat;
-    const entry: BeatPlanEntry = {
-      label,
-      duration: `${formatSecondsForPrompt(start)}-${formatSecondsForPrompt(end)}s`,
-    };
-    start = end;
-    return entry;
-  });
+  return labels.map((label) => ({
+    label,
+  }));
 }
 
 function parsePrescriptiveBodySegments(body: string): string[] {
@@ -558,7 +598,10 @@ function parsePrescriptiveBodySegments(body: string): string[] {
     .filter(Boolean);
 }
 
-function normalizeTimingDuration(value: Record<string, unknown>, fallback: string): string {
+function normalizeTimingDuration(
+  value: Record<string, unknown>,
+  fallback?: string,
+): string | undefined {
   return (
     asString(value.timing) ||
     asString(value.time_range) ||
@@ -593,11 +636,16 @@ function buildBeatPlanFromPatternData(
   rawPatternJson: unknown,
   targetDuration: number,
   beatCount: number,
+  clipDurationSeconds: 10 | 15,
 ): {
   beats: BeatPlanEntry[];
   source: "timingPatterns" | "prescriptiveGuidance.body" | "default";
 } {
-  const fallbackBeats = buildDefaultBeatPlan(targetDuration, beatCount);
+  const fallbackBeats = buildDefaultBeatPlan(
+    targetDuration,
+    beatCount,
+    clipDurationSeconds,
+  );
   const root = asObject(rawPatternJson);
   const patternsRoot = asObject(root?.patterns);
   const timingPatternsRaw = Array.isArray(patternsRoot?.timingPatterns)
@@ -647,12 +695,37 @@ function extractTransferFormula(rawPatternJson: unknown): string | null {
   const prescriptiveGuidance =
     asObject(patternsRoot?.prescriptiveGuidance) ||
     asObject(root?.prescriptiveGuidance);
+  if (!prescriptiveGuidance) return null;
 
-  return (
-    asString(prescriptiveGuidance?.transferFormula) ||
-    asString(prescriptiveGuidance?.transfer_formula) ||
-    null
-  );
+  const transferRaw =
+    prescriptiveGuidance?.transferFormula ??
+    prescriptiveGuidance?.transfer_formula;
+
+  const legacy = asString(transferRaw);
+  if (legacy) return legacy;
+
+  const transferObj = asObject(transferRaw);
+  if (!transferObj) return null;
+
+  const label = asString(transferObj.label);
+  const components = Array.isArray(transferObj.components) ? transferObj.components : [];
+  const componentLines = components
+    .map((entry) => {
+      const component = asObject(entry);
+      if (!component) return null;
+      const name = asString(component.name);
+      const executionBrief =
+        asString(component.executionBrief) ||
+        asString(component.execution_brief);
+      if (!name || !executionBrief) return null;
+      return `  - ${name}: ${executionBrief}`;
+    })
+    .filter((line): line is string => Boolean(line));
+
+  if (!label && componentLines.length === 0) return null;
+  if (componentLines.length === 0) return label;
+  if (!label) return `Components:\n${componentLines.join("\n")}`;
+  return `${label}\nComponents:\n${componentLines.join("\n")}`;
 }
 
 function extractPsychologicalMechanism(rawPatternJson: unknown): string | null {
@@ -661,12 +734,27 @@ function extractPsychologicalMechanism(rawPatternJson: unknown): string | null {
   const prescriptiveGuidance =
     asObject(patternsRoot?.prescriptiveGuidance) ||
     asObject(root?.prescriptiveGuidance);
+  if (!prescriptiveGuidance) return null;
 
-  return (
-    asString(prescriptiveGuidance?.psychologicalMechanism) ||
-    asString(prescriptiveGuidance?.psychological_mechanism) ||
-    null
-  );
+  const mechanismRaw =
+    prescriptiveGuidance?.psychologicalMechanism ??
+    prescriptiveGuidance?.psychological_mechanism;
+
+  const legacy = asString(mechanismRaw);
+  if (legacy) return legacy;
+
+  const mechanismObj = asObject(mechanismRaw);
+  if (!mechanismObj) return null;
+
+  const label = asString(mechanismObj.label);
+  const executionBrief =
+    asString(mechanismObj.executionBrief) ||
+    asString(mechanismObj.execution_brief);
+
+  if (!label && !executionBrief) return null;
+  if (!executionBrief) return label;
+  if (!label) return `How to execute: ${executionBrief}`;
+  return `${label}\nHow to execute: ${executionBrief}`;
 }
 
 function buildVoiceCadenceConstraint(rawPatternJson: unknown): string {
@@ -1028,8 +1116,18 @@ async function loadProductIntelFromCollectionJob(
   return null;
 }
 
-async function callAnthropic(system: string, prompt: string): Promise<string> {
-  const model = cfg.raw('ANTHROPIC_MODEL') || 'claude-sonnet-4-5-20250929';
+async function callAnthropic(system: string, prompt: string): Promise<{
+  text: string;
+  usageEntry: {
+    metric: string;
+    provider: string;
+    model: string;
+    units: number;
+    costCents: number;
+    metadata: Record<string, unknown>;
+  } | null;
+}> {
+  const model = cfg.raw('ANTHROPIC_MODEL') || 'claude-sonnet-4-6';
   requireEnv(['ANTHROPIC_API_KEY'], 'ANTHROPIC');
   const apiKey = env('ANTHROPIC_API_KEY')!;
   const anthropic = new Anthropic({
@@ -1039,15 +1137,16 @@ async function callAnthropic(system: string, prompt: string): Promise<string> {
   console.log("Anthropic client timeout:", 60000);
 
   const isRetryable = (err: any) => {
+    const RETRYABLE_STATUS_CODES = [429, 500, 502, 503, 504];
     const msg = String(err?.message ?? err).toLowerCase();
+    const status = Number(err?.status ?? err?.statusCode ?? err?.response?.status ?? NaN);
     return (
       msg.includes('timed out') ||
       msg.includes('timeout') ||
       msg.includes('fetch') ||
       msg.includes('network') ||
-      msg.includes('429') ||
-      msg.includes('rate') ||
-      msg.includes('5')
+      msg.includes('rate limit') ||
+      RETRYABLE_STATUS_CODES.some((code) => status === code || msg.includes(String(code)))
     );
   };
 
@@ -1083,7 +1182,25 @@ async function callAnthropic(system: string, prompt: string): Promise<string> {
             .join("\n")
             .trim()
         : "";
-      return textContent || String((data as any)?.content ?? "");
+      const text = textContent || String((data as any)?.content ?? "");
+      const providerRequestId = (data as any)?.id ?? null;
+      const inputTokens = Math.max(0, Math.trunc(Number((data as any)?.usage?.input_tokens ?? 0)));
+      const outputTokens = Math.max(0, Math.trunc(Number((data as any)?.usage?.output_tokens ?? 0)));
+      const totalTokens = inputTokens + outputTokens;
+      const costCents =
+        totalTokens > 0 ? computeAnthropicCostCents(model, inputTokens, outputTokens) : 0;
+      const usageEntry =
+        totalTokens > 0
+          ? {
+              metric: "tokens",
+              provider: "anthropic",
+              model,
+              units: totalTokens,
+              costCents,
+              metadata: { inputTokens, outputTokens, providerRequestId },
+            }
+          : null;
+      return { text, usageEntry };
     },
   });
 }
@@ -1099,10 +1216,28 @@ function parseJsonFromLLM(text: string): ScriptJSON {
 
   let braceCount = 0;
   let end = -1;
+  let inString = false;
+  let escaped = false;
 
   for (let i = start; i < raw.length; i++) {
-    if (raw[i] === '{') braceCount++;
-    if (raw[i] === '}') braceCount--;
+    const ch = raw[i];
+
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (ch === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+
+    if (ch === '{') braceCount++;
+    if (ch === '}') braceCount--;
     if (braceCount === 0) {
       end = i;
       break;
@@ -1321,7 +1456,7 @@ function buildScriptPrompt(args: {
   patternRawJson: unknown;
   swipeFile: SwipeFileSelection | null;
   targetDuration: number;
-  beatCount: number;
+  clipDurationSeconds: 10 | 15;
   patterns: Pattern[];
   antiPatterns: AntiPattern[];
   stackingRules: StackingRule[];
@@ -1338,7 +1473,7 @@ function buildScriptPrompt(args: {
     patternRawJson,
     swipeFile,
     targetDuration,
-    beatCount,
+    clipDurationSeconds,
     patterns,
     antiPatterns,
     stackingRules,
@@ -1492,10 +1627,12 @@ function buildScriptPrompt(args: {
   const copyReadyPhrasesList = copyReadyPhrases.length
     ? copyReadyPhrases.map((phrase, index) => `${index + 1}. "${phrase}"`).join("\n")
     : "MISSING";
+  const beatCount = beatsForClipDuration(targetDuration, clipDurationSeconds);
   const beatPlanBase = buildBeatPlanFromPatternData(
     patternRawJson,
     targetDuration,
     beatCount,
+    clipDurationSeconds,
   );
   const transferFormula = extractTransferFormula(patternRawJson);
   const beatPlan = {
@@ -1504,11 +1641,16 @@ function buildScriptPrompt(args: {
   };
   const psychologicalMechanism = extractPsychologicalMechanism(patternRawJson) || "MISSING";
   const voiceCadenceConstraint = buildVoiceCadenceConstraint(patternRawJson);
-  const schemaTimingPlan = buildDefaultBeatPlan(targetDuration, beatCount);
+  const schemaTimingPlan = buildDefaultBeatPlan(
+    targetDuration,
+    beatCount,
+    clipDurationSeconds,
+  );
   const dynamicWordCeiling = Math.round((targetDuration / 60) * 135 * 0.9);
+  const wordsPerBeat = WORDS_PER_CLIP[clipDurationSeconds];
   const beatStructureLines = beatPlan.beats
     .map((beat, index) => {
-      return `- Beat ${index + 1}: ${beat.label} (${beat.duration})`;
+      return `- Beat ${index + 1}: ${beat.label}`;
     })
     .join("\n");
   const formulaComponentsPerBeatLines = beatPlan.beats
@@ -1526,29 +1668,27 @@ ${formulaComponentsPerBeatLines}`
     .map(
       (timedBeat, index) => {
         const beat = beatPlan.beats[index] ?? timedBeat;
-        return `    {\n      "beat": "${escapePromptJsonString(beat.label)}",\n      "duration": "${escapePromptJsonString(timedBeat.duration)}",\n      "vo": "text"\n    }`;
+        const durationLabel = asString(timedBeat.duration) ?? `${clipDurationSeconds}s`;
+        return `    {\n      "beat": "${escapePromptJsonString(beat.label)}",\n      "duration": "${escapePromptJsonString(durationLabel)}",\n      "vo": "text (max ${wordsPerBeat} words, speakable in ${clipDurationSeconds}s)"\n    }`;
       }
     )
     .join(",\n");
   const swipeMetadata = swipeFile?.swipeMetadata ?? null;
   const swipeFileViewsLabel =
     typeof swipeFile?.views === "number" ? swipeFile.views.toLocaleString() : "unknown";
-  const swipeBeatStructure = swipeMetadata?.beatStructure?.length
-    ? swipeMetadata.beatStructure
-        .map((beat) => `- ${beat.beat} (${beat.duration}): ${beat.pattern}`)
-        .join("\n")
-    : "- Not provided";
   const swipeTemplateSection = swipeMetadata
     ? `SWIPE FILE TEMPLATE (from ${swipeFileViewsLabel} views)
-Hook (0-3s): ${swipeMetadata.hookPattern}
-Problem (3-8s): ${swipeMetadata.problemPattern}
-Solution (8-13s): ${swipeMetadata.solutionPattern}
-CTA (13-15s): ${swipeMetadata.ctaPattern}
+Mechanism: ${swipeMetadata.adMechanism} — ${swipeMetadata.mechanismDescription}
 
-Beat structure:
-${swipeBeatStructure}
+Source transcript — this is your structural blueprint:
+${swipeFile?.transcript ?? ""}
 
-Apply this structure exactly, but fill it with this project's avatar language and product claims.
+Replicate exactly:
+- How it opens (first 3 words set the tone — match that energy)
+- How it moves beat to beat (rhythm, pacing, sentence length)
+- How it closes (the emotional or logical landing)
+
+Replace brand, product, and claims with this project's equivalent. Do not reformat into POV statements, problem/solution structure, or any other framework unless the source transcript uses it. The transcript above is the ground truth — not a suggestion.
 `
     : "";
 
@@ -1556,15 +1696,18 @@ Apply this structure exactly, but fill it with this project's avatar language an
   // Tier 1 = hard architectural constraints, Tier 2 = pass/fail quality gates, Tier 3 = flexible guidance.
   const system = swipeMetadata
     ? "You are a TikTok conversion copywriter. Use the provided swipe template as the primary script structure while keeping all output constraints. Output ONLY valid JSON. No markdown. No preamble."
-    : "You are a TikTok conversion copywriter. You write 30-second UGC scripts that stop scrolls and drive purchases. Every word earns its place. Output ONLY valid JSON. No markdown. No preamble.";
+    : "You are a TikTok conversion copywriter. You write UGC scripts that stop scrolls and drive purchases. Every word earns its place. Output ONLY valid JSON. No markdown. No preamble.";
 
   const prompt = `${swipeTemplateSection}TIER 1 - STRUCTURE (NON-NEGOTIABLE)
-targetDuration: ${targetDuration}
-beatCount: ${beatCount}
+${swipeMetadata
+  ? `// Structure governed by swipe template above. Beat count, timing, and formula constraints are suppressed.`
+  : `beatCount: ${beatCount}
+clipDurationSeconds: ${clipDurationSeconds}
+wordsPerBeat: ${wordsPerBeat} (hard ceiling - each beat VO must be speakable in ${clipDurationSeconds}s at natural pace)
 dynamicWordCeiling: ${dynamicWordCeiling}
 beatStructureLines:
 ${beatStructureLines}
-${tier1FormulaSection}
+${tier1FormulaSection}`}
 Break any Tier 1 rule and the output is unusable. These are architectural constraints.
 
 TIER 2 - QUALITY GATES (GO/NO-GO)
@@ -1573,6 +1716,7 @@ copyReadyPhrases list:
 ${copyReadyPhrasesList}
 verifiedNumericClaims (use these or use no numbers):
 ${verifiedNumericClaims.length > 0 ? verifiedNumericClaims.map((claim, idx) => `${idx + 1}. ${claim}`).join('\n') : "None provided"}
+- Each beat VO must not exceed ${wordsPerBeat} words. Count words before outputting. Beats exceeding this limit fail the quality gate.
 finalBeatOutcome requirement:
 "${successLooksLikeQuote || "MISSING"}"
 Pass all three gates or the script fails review.
@@ -1639,12 +1783,19 @@ type ScriptJobPayload = {
   customerAnalysisJobId?: unknown;
   targetDuration?: unknown;
   beatCount?: unknown;
+  beatCountExplicit?: unknown;
+  clipDurationSeconds?: unknown;
+  beatRatios?: unknown;
+  scriptStrategy?: unknown;
+  swipeTemplateAdId?: unknown;
 };
 
 type ScriptGenerationJobConfig = {
   customerAnalysisJobId: string | null;
   targetDuration: number;
-  beatCount: number;
+  clipDurationSeconds: 10 | 15;
+  scriptStrategy: ScriptStrategy;
+  swipeTemplateAdId: string | null;
 };
 
 async function getRequestedScriptGenerationConfig(jobId?: string): Promise<ScriptGenerationJobConfig> {
@@ -1652,7 +1803,9 @@ async function getRequestedScriptGenerationConfig(jobId?: string): Promise<Scrip
     return {
       customerAnalysisJobId: null,
       targetDuration: DEFAULT_SCRIPT_TARGET_DURATION,
-      beatCount: DEFAULT_SCRIPT_BEAT_COUNT,
+      clipDurationSeconds: 10,
+      scriptStrategy: "swipe_template",
+      swipeTemplateAdId: null,
     };
   }
   const job = await prisma.job.findUnique({
@@ -1667,12 +1820,21 @@ async function getRequestedScriptGenerationConfig(jobId?: string): Promise<Scrip
     typeof payload?.customerAnalysisJobId === 'string'
       ? payload.customerAnalysisJobId.trim()
       : '';
+  const scriptStrategyRaw =
+    typeof payload?.scriptStrategy === "string" ? payload.scriptStrategy.trim() : "";
+  const scriptStrategy: ScriptStrategy =
+    scriptStrategyRaw === "research_formula" ? "research_formula" : "swipe_template";
+  const swipeTemplateAdIdRaw =
+    typeof payload?.swipeTemplateAdId === "string" ? payload.swipeTemplateAdId.trim() : "";
   const targetDuration = normalizeTargetDurationValue(payload?.targetDuration);
-  const beatCount = normalizeBeatCountValue(payload?.beatCount);
+  const clipDurationSecondsRaw = payload?.clipDurationSeconds;
+  const clipDurationSeconds: 10 | 15 = clipDurationSecondsRaw === 15 ? 15 : 10;
   return {
     customerAnalysisJobId: selectedId || null,
     targetDuration,
-    beatCount,
+    clipDurationSeconds,
+    scriptStrategy,
+    swipeTemplateAdId: swipeTemplateAdIdRaw || null,
   };
 }
 
@@ -1680,6 +1842,12 @@ async function getAvatarForScript(
   projectId: string,
   customerAnalysisJobId: string | null
 ): Promise<AvatarSelection> {
+  const loadFallbackAvatar = async () =>
+    prisma.customerAvatar.findFirst({
+      where: { projectId },
+      orderBy: { createdAt: "desc" },
+    });
+
   if (!customerAnalysisJobId) {
     const latestAnalysisJob = await prisma.job.findFirst({
       where: {
@@ -1718,10 +1886,7 @@ async function getAvatarForScript(
       }
     }
 
-    const fallbackAvatar = await prisma.customerAvatar.findFirst({
-      where: { projectId },
-      orderBy: { createdAt: "desc" },
-    });
+    const fallbackAvatar = await loadFallbackAvatar();
     return { avatar: fallbackAvatar, customerAnalysis: null };
   }
 
@@ -1742,14 +1907,24 @@ async function getAvatarForScript(
   });
 
   if (!analysisJob) {
-    throw new Error('Selected research run is invalid or not completed.');
+    const fallbackAvatar = await loadFallbackAvatar();
+    return { avatar: fallbackAvatar, customerAnalysis: null };
   }
 
   const summary = asObject(analysisJob.resultSummary);
   const avatarId = asString(summary?.avatarId);
 
   if (!avatarId) {
-    throw new Error('Selected research run has no linked customer avatar.');
+    const fallbackAvatar = await loadFallbackAvatar();
+    return {
+      avatar: fallbackAvatar,
+      customerAnalysis: {
+        jobId: analysisJob.id,
+        runId: analysisJob.runId ?? null,
+        createdAt: analysisJob.createdAt,
+        completedAt: analysisJob.updatedAt,
+      },
+    };
   }
 
   const avatar = await prisma.customerAvatar.findFirst({
@@ -1757,7 +1932,16 @@ async function getAvatarForScript(
   });
 
   if (!avatar) {
-    throw new Error('Customer avatar for the selected research run was not found.');
+    const fallbackAvatar = await loadFallbackAvatar();
+    return {
+      avatar: fallbackAvatar,
+      customerAnalysis: {
+        jobId: analysisJob.id,
+        runId: analysisJob.runId ?? null,
+        createdAt: analysisJob.createdAt,
+        completedAt: analysisJob.updatedAt,
+      },
+    };
   }
 
   return {
@@ -1916,7 +2100,8 @@ async function selectPatternResult(
 
 async function selectSwipeFile(
   projectId: string,
-  preferredRunId: string | null
+  preferredRunId: string | null,
+  requestedSwipeTemplateAdId: string | null
 ): Promise<SwipeFileSelection | null> {
   type SwipeCandidateRow = {
     id: string;
@@ -1931,49 +2116,156 @@ async function selectSwipeFile(
         FROM "ad_asset" a
         LEFT JOIN "job" j ON j."id" = a."jobId"
         WHERE a."projectId" = ${projectId}
-          AND COALESCE(a."isSwipeFile", false) = true
-          AND a."swipeMetadata" IS NOT NULL
+          AND COALESCE(a."contentViable", false) = true
+          AND (a."rawJson"->>'transcript') IS NOT NULL
+          AND LENGTH(TRIM(a."rawJson"->>'transcript')) > 100
           ${runId ? Prisma.sql`AND j."runId" = ${runId}` : Prisma.empty}
-        ORDER BY a."createdAt" DESC
-        LIMIT 40
+        ORDER BY
+          COALESCE(
+            NULLIF(regexp_replace(a."rawJson"->'qualityGate'->>'viewCount', '[^0-9\\.-]', '', 'g'), '')::double precision,
+            NULLIF(regexp_replace(a."rawJson"->'metrics'->>'views', '[^0-9\\.-]', '', 'g'), '')::double precision,
+            NULLIF(regexp_replace(a."rawJson"->'metrics'->>'view', '[^0-9\\.-]', '', 'g'), '')::double precision,
+            NULLIF(regexp_replace(a."rawJson"->'metrics'->>'plays', '[^0-9\\.-]', '', 'g'), '')::double precision,
+            NULLIF(regexp_replace(a."rawJson"->>'views', '[^0-9\\.-]', '', 'g'), '')::double precision,
+            NULLIF(regexp_replace(a."rawJson"->>'view', '[^0-9\\.-]', '', 'g'), '')::double precision,
+            NULLIF(regexp_replace(a."rawJson"->>'plays', '[^0-9\\.-]', '', 'g'), '')::double precision,
+            0
+          ) DESC,
+          a."createdAt" DESC
+        LIMIT 60
       `
     );
 
-  const sameRunCandidates = preferredRunId
-    ? await getCandidates(preferredRunId)
-    : [];
-  const fallbackCandidates = await getCandidates(null);
-  const candidateMap = new Map<string, typeof fallbackCandidates[number]>();
-  for (const candidate of [...sameRunCandidates, ...fallbackCandidates]) {
-    candidateMap.set(candidate.id, candidate);
-  }
+  const sameRunCandidates = preferredRunId ? await getCandidates(preferredRunId) : [];
+  const scopedCandidates =
+    sameRunCandidates.length > 0 ? sameRunCandidates : await getCandidates(null);
+  const candidateScope = sameRunCandidates.length > 0 ? "same_run" : "project_wide";
 
-  const candidates: Array<SwipeFileSelection & { createdAt: Date }> = [];
-  for (const candidate of Array.from(candidateMap.values())) {
-    const swipeMetadata = normalizeSwipeTemplate(candidate.swipeMetadata);
+  const scoreSwipe = (rawJson: Prisma.JsonValue): number => {
+    const raw = asObject(rawJson) ?? {};
+    const metrics = asObject(raw.metrics) ?? {};
+    const views = asNumber(metrics.views ?? metrics.view ?? metrics.plays);
+    const engagementScore = asNumber(metrics.engagement_score);
+    const retention3s = asNumber(metrics.retention_3s);
+    const retention10s = asNumber(metrics.retention_10s);
+    const ctr = asNumber(metrics.ctr);
+
+    const viewsNorm = views && views > 0 ? Math.min(1, Math.log10(views + 1) / 7) : 0;
+    const engagementNorm = engagementScore !== null ? Math.max(0, Math.min(1, engagementScore)) : 0;
+    const r3Norm = retention3s !== null ? Math.max(0, Math.min(1, retention3s)) : 0;
+    const r10Norm = retention10s !== null ? Math.max(0, Math.min(1, retention10s)) : 0;
+    const ctrNorm = ctr !== null ? Math.max(0, Math.min(1, ctr)) : 0;
+
+    return (
+      0.35 * engagementNorm +
+      0.25 * r3Norm +
+      0.2 * r10Norm +
+      0.1 * ctrNorm +
+      0.1 * viewsNorm
+    );
+  };
+
+  const orderedCandidates = scopedCandidates
+    .map((candidate) => ({
+      candidate,
+      score: scoreSwipe(candidate.rawJson),
+      views: extractSwipeViews(candidate.rawJson),
+    }))
+    .sort((a, b) => {
+      const aViews = a.views ?? 0;
+      const bViews = b.views ?? 0;
+      if (aViews !== bViews) return bViews - aViews;
+      if (a.score !== b.score) return b.score - a.score;
+      return b.candidate.createdAt.getTime() - a.candidate.createdAt.getTime();
+    });
+
+  const MAX_INLINE_EXTRACT = 5;
+  const candidates: Array<SwipeFileSelection & { createdAt: Date; score: number }> = [];
+  for (let index = 0; index < orderedCandidates.length; index += 1) {
+    const entry = orderedCandidates[index];
+    const candidate = entry.candidate;
+    const raw = asObject(candidate.rawJson) ?? {};
+    const transcript =
+      asString(raw.transcript) ||
+      asString(raw.transcriptText) ||
+      asString(raw.transcript_text) ||
+      asString(raw.whisperTranscript) ||
+      asString(raw.assemblyTranscript) ||
+      null;
+    let swipeMetadata = normalizeSwipeTemplate(candidate.swipeMetadata);
+
+    const shouldExtractInline =
+      !swipeMetadata &&
+      (index < MAX_INLINE_EXTRACT || candidate.id === requestedSwipeTemplateAdId);
+    if (!swipeMetadata && shouldExtractInline) {
+      if (transcript && transcript.length > 100) {
+        try {
+          const duration = Math.max(
+            1,
+            Math.round(
+              asNumber(raw.videoDuration) ??
+                asNumber(raw.duration) ??
+                asNumber(asObject(raw.metrics)?.duration) ??
+                15
+            )
+          );
+          const extracted = await extractSwipePatterns(transcript, duration);
+          swipeMetadata = normalizeSwipeTemplate(extracted);
+          if (swipeMetadata) {
+            const swipeMetadataJson = JSON.stringify(swipeMetadata);
+            await prisma.$executeRaw`
+              UPDATE "ad_asset"
+              SET "swipeMetadata" = ${swipeMetadataJson}::jsonb,
+                  "updatedAt" = NOW()
+              WHERE "id" = ${candidate.id}
+            `;
+          }
+        } catch (err) {
+          console.warn("[ScriptGen] Inline swipe metadata extraction failed", {
+            candidateId: candidate.id,
+            error: String((err as any)?.message ?? err),
+          });
+        }
+      }
+    }
+
     if (!swipeMetadata) continue;
     candidates.push({
       id: candidate.id,
-      views: extractSwipeViews(candidate.rawJson),
+      views: entry.views,
+      transcript,
       swipeMetadata,
       createdAt: candidate.createdAt,
+      score: entry.score,
     });
   }
 
-  candidates.sort((a, b) => {
-    const viewsA = a.views ?? -1;
-    const viewsB = b.views ?? -1;
-    if (viewsA !== viewsB) return viewsB - viewsA;
-    return b.createdAt.getTime() - a.createdAt.getTime();
-  });
+  if (requestedSwipeTemplateAdId) {
+    const requested = candidates.find((c) => c.id === requestedSwipeTemplateAdId) ?? null;
+    if (!requested) {
+      throw new Error("Selected swipe template ad is not available for script generation.");
+    }
+    console.log("[ScriptGen] Swipe file selected by user:", requested.id);
+    return {
+      id: requested.id,
+      views: requested.views ?? null,
+      transcript: requested.transcript ?? null,
+      swipeMetadata: requested.swipeMetadata,
+    };
+  }
 
   const selected = candidates[0] ?? null;
-  console.log("[ScriptGen] Swipe file selected:", selected?.id || "none");
+  console.log("[ScriptGen] Swipe file selected:", selected?.id || "none", {
+    candidateScope,
+    preferredRunId,
+    candidateCount: candidates.length,
+  });
   if (!selected) return null;
 
   return {
     id: selected.id,
     views: selected.views ?? null,
+    transcript: selected.transcript ?? null,
     swipeMetadata: selected.swipeMetadata,
   };
 }
@@ -2051,9 +2343,19 @@ export async function runScriptGeneration(args: {
   jobId?: string;
   customerAnalysisJobId?: string;
   targetDuration?: number;
-  beatCount?: number;
+  clipDurationSeconds?: 10 | 15;
+  scriptStrategy?: ScriptStrategy;
+  swipeTemplateAdId?: string | null;
 }) {
-  const { projectId, jobId, customerAnalysisJobId, targetDuration, beatCount } = args;
+  const {
+    projectId,
+    jobId,
+    customerAnalysisJobId,
+    targetDuration,
+    clipDurationSeconds,
+    scriptStrategy,
+    swipeTemplateAdId,
+  } = args;
 
   // Load dependencies:
   const project = await prisma.project.findUnique({
@@ -2069,9 +2371,18 @@ export async function runScriptGeneration(args: {
   const selectedTargetDuration = normalizeTargetDurationValue(
     targetDuration ?? requestedConfig.targetDuration
   );
-  const selectedBeatCount = normalizeBeatCountValue(
-    beatCount ?? requestedConfig.beatCount
-  );
+  const selectedClipDurationSeconds: 10 | 15 =
+    clipDurationSeconds === 15
+      ? 15
+      : requestedConfig.clipDurationSeconds === 15
+        ? 15
+        : 10;
+  const selectedScriptStrategy: ScriptStrategy =
+    scriptStrategy ?? requestedConfig.scriptStrategy;
+  const selectedSwipeTemplateAdId =
+    (typeof swipeTemplateAdId === "string" ? swipeTemplateAdId.trim() : "") ||
+    requestedConfig.swipeTemplateAdId ||
+    null;
 
   const avatarSelection = await getAvatarForScript(projectId, selectedCustomerAnalysisJobId);
   const avatar = avatarSelection.avatar;
@@ -2079,10 +2390,19 @@ export async function runScriptGeneration(args: {
 
   const patternSelection = await selectPatternResult(projectId, selectedCustomerAnalysis);
   const patternResult = patternSelection.patternResult;
-  const swipeFile = await selectSwipeFile(
-    projectId,
-    patternResult?.jobRunId ?? selectedCustomerAnalysis?.runId ?? null
-  );
+  const swipeFile =
+    selectedScriptStrategy === "swipe_template"
+      ? await selectSwipeFile(
+          projectId,
+          patternResult?.jobRunId ?? selectedCustomerAnalysis?.runId ?? null,
+          selectedSwipeTemplateAdId
+        )
+      : null;
+  if (selectedScriptStrategy === "swipe_template" && !swipeFile) {
+    throw new Error(
+      "No swipe template candidates found (same run and project-wide). Only quality-passed, pattern-promoted swipe ads can be used."
+    );
+  }
 
   const productIntelSelection = await selectProductIntelInput(
     projectId,
@@ -2103,6 +2423,8 @@ export async function runScriptGeneration(args: {
     productIntelDate: toIso(productIntelDate),
     swipeFileId: swipeFile?.id ?? null,
     swipeFileViews: swipeFile?.views ?? null,
+    scriptStrategy: selectedScriptStrategy,
+    requestedSwipeTemplateAdId: selectedSwipeTemplateAdId,
   };
 
   const missingDeps: string[] = [];
@@ -2133,11 +2455,15 @@ export async function runScriptGeneration(args: {
     patternRawJson: patternResult?.rawJson ?? null,
     swipeFile,
     targetDuration: selectedTargetDuration,
-    beatCount: selectedBeatCount,
+    clipDurationSeconds: selectedClipDurationSeconds,
     patterns,
     antiPatterns,
     stackingRules,
   });
+
+  if (!env('ANTHROPIC_API_KEY')) {
+    throw new Error("Anthropic is not configured for script generation.");
+  }
 
   const scriptRecord = await prisma.script.create({
     data: {
@@ -2146,62 +2472,78 @@ export async function runScriptGeneration(args: {
       mergedVideoUrl: null,
       upscaledVideoUrl: null,
       status: ScriptStatus.PENDING,
-      rawJson: {
-        targetDuration: selectedTargetDuration,
-        beatCount: selectedBeatCount,
-      },
+      rawJson: {},
       wordCount: 0,
     },
   });
 
-  if (!env('ANTHROPIC_API_KEY')) {
-    console.warn(
-      'ANTHROPIC_API_KEY not set – dev mode, skipping LLM call for script generation',
+  let pendingUsageEntries: Array<{
+    metric: string;
+    provider: string;
+    model: string;
+    units: number;
+    costCents: number;
+    metadata: Record<string, unknown>;
+  }> = [];
+
+  try {
+    console.log(
+      "[ScriptGeneration] Anthropic prompt injections",
+      markMissingPromptFields(promptInjections)
     );
+    const llmResult = await callAnthropic(system, prompt);
+    pendingUsageEntries = llmResult.usageEntry ? [llmResult.usageEntry] : [];
+    const responseText = llmResult.text;
+    const scriptJson = parseJsonFromLLM(responseText);
+    const voFull = buildVoFullFromScriptJson(scriptJson);
+    const derivedWordCount = countWords(voFull);
+    const selectedSwipeMetadata = swipeFile?.swipeMetadata ?? null;
+    const validationReport = validateScriptAgainstGates({
+      scriptJson,
+      ...validationInputs,
+    });
+
+    if (!validationReport.gatesPassed) {
+      console.warn("[script] quality gate failed", validationReport.warnings);
+      throw new Error(`Script quality gate failed: ${validationReport.warnings.join(" | ")}`);
+    }
+
+    const updatedScript = await prisma.script.update({
+      where: { id: scriptRecord.id },
+      data: {
+        rawJson: {
+          ...(scriptJson as Record<string, unknown>),
+          vo_full: voFull,
+          validationReport,
+          ...(selectedSwipeMetadata
+            ? {
+                swipeMechanism: selectedSwipeMetadata.adMechanism,
+                swipeTranscript: swipeFile?.transcript ?? null,
+              }
+            : {}),
+        } as any,
+        wordCount:
+          typeof scriptJson.word_count === 'number'
+            ? scriptJson.word_count
+            : derivedWordCount,
+        status: ScriptStatus.READY,
+      },
+    });
+
     return {
-      script: scriptRecord,
+      script: updatedScript,
       researchSources,
+      usageEntries: pendingUsageEntries,
     };
+  } catch (error) {
+    await prisma.script.delete({
+      where: { id: scriptRecord.id },
+    });
+    if (pendingUsageEntries.length > 0 && error && typeof error === "object") {
+      (error as any).usageEntries = pendingUsageEntries;
+    }
+    throw error;
   }
-
-  console.log(
-    "[ScriptGeneration] Anthropic prompt injections",
-    markMissingPromptFields(promptInjections)
-  );
-  const responseText = await callAnthropic(system, prompt);
-  const scriptJson = parseJsonFromLLM(responseText);
-  const validationReport = validateScriptAgainstGates({
-    scriptJson,
-    copyReadyPhrases: validationInputs.copyReadyPhrases,
-    verifiedNumericClaims: validationInputs.verifiedNumericClaims,
-    successLooksLikeQuote: validationInputs.successLooksLikeQuote,
-  });
-  const voFull = buildVoFullFromScriptJson(scriptJson);
-  const derivedWordCount = countWords(voFull);
-
-  const updatedScript = await prisma.script.update({
-    where: { id: scriptRecord.id },
-    data: {
-      rawJson: {
-        ...(scriptJson as Record<string, unknown>),
-        vo_full: voFull,
-        targetDuration: selectedTargetDuration,
-        beatCount: selectedBeatCount,
-        validationReport,
-      } as any,
-      wordCount:
-        typeof scriptJson.word_count === 'number'
-          ? scriptJson.word_count
-          : derivedWordCount,
-      status: ScriptStatus.READY,
-    },
-  });
-
-  return {
-    script: updatedScript,
-    researchSources,
-    validationReport,
-  };
 }
 
 /**
@@ -2221,18 +2563,13 @@ export async function startScriptGenerationJob(projectId: string, job: Job) {
     const generation = await runScriptGeneration({ projectId, jobId: job.id });
     const script = generation.script;
     const researchSources = generation.researchSources ?? {};
-    const validationReport = generation.validationReport ?? null;
-    const warningCount = Array.isArray(validationReport?.warnings)
-      ? validationReport.warnings.length
-      : 0;
     const completionSummary = {
-      summary: `Script generated (scriptId=${script.id}, words=${script.wordCount ?? 'unknown'})${warningCount > 0 ? ` | ${warningCount} quality warning${warningCount === 1 ? "" : "s"}` : ""}`,
+      summary: `Script generated (scriptId=${script.id}, words=${script.wordCount ?? 'unknown'})`,
       scriptId: script.id,
       customerAnalysisRunDate: researchSources.customerAnalysisRunDate ?? null,
       patternAnalysisRunDate: researchSources.patternAnalysisRunDate ?? null,
       productIntelDate: researchSources.productIntelDate ?? null,
       researchSources,
-      validationReport,
     };
 
     // Persist result metadata in the same completion transition.
@@ -2245,8 +2582,25 @@ export async function startScriptGenerationJob(projectId: string, job: Job) {
       jobId: job.id,
       scriptId: script.id,
       script,
+      usageEntries: generation.usageEntries ?? [],
     };
   } catch (err: any) {
+    const usageEntries = Array.isArray(err?.usageEntries) ? err.usageEntries : [];
+    if (usageEntries.length > 0) {
+      try {
+        await settleJobCost({
+          jobId: job.id,
+          userId: job.userId,
+          projectId,
+          usageEntries,
+        });
+      } catch (settlementError) {
+        console.error("[scriptGeneration] Failed to settle failed-attempt usage", {
+          jobId: job.id,
+          error: String((settlementError as any)?.message ?? settlementError),
+        });
+      }
+    }
     await updateJobStatus(job.id, JobStatus.FAILED);
     await prisma.job.update({
       where: { id: job.id },

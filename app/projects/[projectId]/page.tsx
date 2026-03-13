@@ -31,7 +31,7 @@ const dateFormatter = new Intl.DateTimeFormat('en-US', {
   minute: '2-digit',
 });
 
-type Params = { params: { projectId: string } };
+type Params = { params: Promise<{ projectId: string }> };
 type ProductListItem = {
   id: string;
   name: string;
@@ -69,7 +69,7 @@ async function ensureProductsTable() {
 }
 
 export default async function ProjectDashboardPage({ params }: Params) {
-  const projectId = params.projectId;
+  const { projectId } = await params;
   const project = await prisma.project.findUnique({
     where: { id: projectId },
     include: {

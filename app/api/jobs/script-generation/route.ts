@@ -1,7 +1,6 @@
 // app/api/jobs/script-generation/route.ts
 import { cfg } from "@/lib/config";
 import { NextRequest, NextResponse } from "next/server";
-import { startScriptGenerationJob } from "../../../../lib/scriptGenerationService";
 import { requireProjectOwner } from "../../../../lib/requireProjectOwner";
 import { ProjectJobSchema, parseJson } from "../../../../lib/validation/jobs";
 import { checkRateLimit } from "../../../../lib/rateLimiter";
@@ -10,7 +9,6 @@ import { JobStatus, JobType, ScriptStatus, Prisma } from "@prisma/client";
 import { logAudit } from "../../../../lib/logger";
 import { getSessionUserId } from "../../../../lib/getSessionUserId";
 import { enforceUserConcurrency } from "../../../../lib/jobGuards";
-import { runWithState } from "../../../../lib/jobRuntime";
 import { flag } from "../../../../lib/flags";
 import { getRequestId, logError, logInfo } from "../../../../lib/observability";
 import { z } from "zod";
@@ -28,8 +26,42 @@ const ScriptGenerationSchema = ProjectJobSchema.extend({
   runId: z.string().optional(),
   forceNew: z.boolean().optional(),
   targetDuration: z.number().int().min(1).max(180).default(30),
-  beatCount: z.number().int().min(1).max(10).default(5),
+  beatCount: z.number().int().min(1).max(10).optional(),
+  clipDurationSeconds: z.union([z.literal(10), z.literal(15)]).default(10),
+  beatRatios: z
+    .array(
+      z.object({
+        label: z.string().trim().min(1),
+        startPct: z.number().min(0).max(1),
+        endPct: z.number().min(0).max(1),
+      })
+    )
+    .optional(),
+  scriptStrategy: z.enum(["swipe_template", "research_formula"]).optional(),
+  swipeTemplateAdId: z.string().trim().min(1).optional(),
 });
+
+type SwipeTemplateCandidateRow = { id: string };
+
+async function querySwipeTemplateCandidates(
+  projectId: string,
+  runId: string | null,
+): Promise<SwipeTemplateCandidateRow[]> {
+  return prisma.$queryRaw<SwipeTemplateCandidateRow[]>(
+    Prisma.sql`
+      SELECT a."id"
+      FROM "ad_asset" a
+      LEFT JOIN "job" j ON j."id" = a."jobId"
+      WHERE a."projectId" = ${projectId}
+        AND COALESCE(a."contentViable", false) = true
+        AND (a."rawJson"->>'transcript') IS NOT NULL
+        AND LENGTH(TRIM(a."rawJson"->>'transcript')) > 100
+        ${runId ? Prisma.sql`AND j."runId" = ${runId}` : Prisma.empty}
+      ORDER BY a."createdAt" DESC
+      LIMIT 100
+    `,
+  );
+}
 
 export async function POST(req: NextRequest) {
   const requestId = getRequestId(req);
@@ -146,7 +178,14 @@ export async function POST(req: NextRequest) {
         : "none";
     const selectedTargetDuration = Number(parsed.data.targetDuration);
     const selectedBeatCount = Number(parsed.data.beatCount);
-    let idempotencyKey = `script-generation:${projectId}:${effectiveRunId}:${selectedProductId}:${selectedCustomerAnalysisJobId}:${selectedTargetDuration}:${selectedBeatCount}`;
+    const selectedBeatRatiosSignature = Array.isArray(parsed.data.beatRatios)
+      ? parsed.data.beatRatios
+          .map((ratio) => `${ratio.label}:${ratio.startPct}-${ratio.endPct}`)
+          .join("|")
+      : "none";
+    const selectedScriptStrategy = String(parsed.data.scriptStrategy || "swipe_template");
+    const selectedSwipeTemplateAdId = String(parsed.data.swipeTemplateAdId || "auto");
+    let idempotencyKey = `script-generation:${projectId}:${effectiveRunId}:${selectedProductId}:${selectedCustomerAnalysisJobId}:${selectedTargetDuration}:${selectedBeatCount}:${selectedBeatRatiosSignature}:${selectedScriptStrategy}:${selectedSwipeTemplateAdId}`;
     if (breakerTest) idempotencyKey += `:${Date.now()}`;
     const bypassIdempotencyRecord = async (
       jobId: string,
@@ -201,6 +240,44 @@ export async function POST(req: NextRequest) {
             ok: existingJob.status === JobStatus.COMPLETED,
           },
           { status: 200 },
+        );
+      }
+    }
+
+    const shouldUseSwipeTemplate =
+      selectedScriptStrategy === "swipe_template";
+    const requestedSwipeTemplateAdId =
+      typeof parsed.data.swipeTemplateAdId === "string"
+        ? parsed.data.swipeTemplateAdId.trim()
+        : "";
+    if (shouldUseSwipeTemplate) {
+      const sameRunCandidates = await querySwipeTemplateCandidates(
+        projectId,
+        effectiveRunId || null,
+      );
+      const projectWideCandidates =
+        sameRunCandidates.length > 0
+          ? sameRunCandidates
+          : await querySwipeTemplateCandidates(projectId, null);
+      const availableIds = new Set(projectWideCandidates.map((row) => row.id));
+
+      if (availableIds.size === 0) {
+        return NextResponse.json(
+          {
+            error:
+              "No swipe-eligible ads found. Ads must be quality-passed and include a meaningful transcript.",
+          },
+          { status: 400 },
+        );
+      }
+
+      if (requestedSwipeTemplateAdId && !availableIds.has(requestedSwipeTemplateAdId)) {
+        return NextResponse.json(
+          {
+            error:
+              "Selected swipe template ad is not available. It must be swipe-eligible for the selected run scope.",
+          },
+          { status: 400 },
         );
       }
     }
@@ -351,7 +428,7 @@ export async function POST(req: NextRequest) {
           projectId,
           userId,
           type: JobType.SCRIPT_GENERATION,
-          status: JobStatus.RUNNING,
+          status: JobStatus.PENDING,
           idempotencyKey,
           runId: effectiveRunId,
           payload: {
@@ -412,17 +489,9 @@ export async function POST(req: NextRequest) {
       metadata: { type: "script-generation" },
     });
 
-    const state = await runWithState(job.id, () =>
-      startScriptGenerationJob(projectId, job),
-    );
-
-    if (!state.ok && reservation) {
-      await rollbackQuota(userId, reservation.periodKey, "researchQueries", 1);
-    }
-
     return NextResponse.json(
-      { jobId: job.id, runId: effectiveRunId, ...state },
-      { status: state.ok ? 200 : 500 },
+      { jobId: job.id, runId: effectiveRunId, ok: true, started: true },
+      { status: 200 },
     );
   } catch (err: any) {
     if (reservation && userIdForQuota) {

@@ -32,7 +32,8 @@ async function latestJob(projectId: string, typeKeys: string[]) {
   return jobs.find((j) => allowed.has(String(j.type)));
 }
 
-export async function GET(req: Request, { params }: { params: { projectId: string } }) {
+export async function GET(req: Request, { params }: { params: Promise<{ projectId: string }> }) {
+  const awaitedParams = await params;
   try {
     const url = new URL(req.url);
     const wantDebug = url.searchParams.get("debug") === "1";
@@ -41,7 +42,7 @@ export async function GET(req: Request, { params }: { params: { projectId: strin
     const userId = await getSessionUserId();
     if (!userId) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
-    const projectId = String(params.projectId || "");
+    const projectId = String(awaitedParams.projectId || "");
     if (!projectId) return NextResponse.json({ ok: false, error: "Missing projectId" }, { status: 400 });
 
     const deny = await requireProjectOwner404(projectId);

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, Suspense, useMemo, useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -13,7 +13,7 @@ function getErrorMessage(error: string | null): string | null {
   return "Sign in failed. Please try again.";
 }
 
-export default function ApiSignInPage() {
+function ApiSignInPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -97,5 +97,13 @@ export default function ApiSignInPage() {
         </form>
       </div>
     </main>
+  );
+}
+
+export default function ApiSignInPage() {
+  return (
+    <Suspense fallback={null}>
+      <ApiSignInPageInner />
+    </Suspense>
   );
 }

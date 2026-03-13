@@ -1,25 +1,32 @@
 import { redirect } from "next/navigation";
 
 type SignInPageProps = {
-  searchParams?: {
+  searchParams?: Promise<{
     callbackUrl?: string;
     registered?: string;
     error?: string;
-  };
+  }>;
 };
 
-export default function SignInPage({ searchParams }: SignInPageProps) {
-  const callbackUrl =
-    typeof searchParams?.callbackUrl === "string" && searchParams.callbackUrl.length > 0
-      ? searchParams.callbackUrl
+export default async function SignInPage({ searchParams }: SignInPageProps) {
+  const resolvedSearchParams: {
+    callbackUrl?: string;
+    registered?: string;
+    error?: string;
+  } = await (searchParams ?? Promise.resolve({}));
+  const { callbackUrl, registered, error } = resolvedSearchParams;
+
+  const resolvedCallbackUrl =
+    typeof callbackUrl === "string" && callbackUrl.length > 0
+      ? callbackUrl
       : "/studio";
 
-  const params = new URLSearchParams({ callbackUrl });
-  if (typeof searchParams?.registered === "string" && searchParams.registered.length > 0) {
-    params.set("registered", searchParams.registered);
+  const params = new URLSearchParams({ callbackUrl: resolvedCallbackUrl });
+  if (typeof registered === "string" && registered.length > 0) {
+    params.set("registered", registered);
   }
-  if (typeof searchParams?.error === "string" && searchParams.error.length > 0) {
-    params.set("error", searchParams.error);
+  if (typeof error === "string" && error.length > 0) {
+    params.set("error", error);
   }
 
   redirect(`/api/auth/signin?${params.toString()}`);

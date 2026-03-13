@@ -42,10 +42,13 @@ export const apifyClient = {
       if (!token) throw new Error("APIFY_API_TOKEN not set");
 
       const runResponse = await fetchWithRetry(
-        `${APIFY_BASE}/acts/${actorId}/runs?token=${token}&waitForFinish=120`,
+        `${APIFY_BASE}/acts/${actorId}/runs?waitForFinish=120`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
           body: JSON.stringify(input),
         },
         `apify-${actorId}`

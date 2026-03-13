@@ -9,12 +9,32 @@ import { requireProjectOwner } from '../../../../lib/requireProjectOwner';
 import { assertMinPlan, UpgradeRequiredError } from '../../../../lib/billing/requirePlan';
 import { checkRateLimit } from '../../../../lib/rateLimiter';
 import { reserveQuota, rollbackQuota, QuotaExceededError } from '../../../../lib/billing/usage';
+import { sanitizeCharacterDescription } from "@/lib/sanitizeCharacterDescription";
 
 const BodySchema = z.object({
   projectId: z.string().min(1),
   scriptId: z.string().optional(),
   productId: z.string().optional(),
   runId: z.string().optional(),
+  characterId: z.string().optional(),
+  characterName: z.string().optional(),
+  characterDescription: z.string().optional(),
+  storyboardMode: z.enum(["ai", "manual"]).optional(),
+  manualPanels: z
+    .array(
+      z.object({
+        beatLabel: z.string().optional(),
+        startTime: z.string().optional(),
+        endTime: z.string().optional(),
+        vo: z.string().optional(),
+        creatorAction: z.string().optional(),
+        textOverlay: z.string().optional(),
+        visualDescription: z.string().optional(),
+        productPlacement: z.string().optional(),
+      }),
+    )
+    .optional(),
+  attemptKey: z.string().optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -51,6 +71,10 @@ export async function POST(req: NextRequest) {
       scriptId: rawScriptId,
       productId: rawProductId,
       runId: rawRunId,
+      characterId: rawCharacterId,
+      storyboardMode: rawStoryboardMode,
+      manualPanels: rawManualPanels,
+      attemptKey: rawAttemptKey,
     } = parsed.data;
 
     const auth = await requireProjectOwner(projectId);
@@ -85,8 +109,24 @@ export async function POST(req: NextRequest) {
 
     const requestedRunId = String(rawRunId ?? "").trim();
     const requestedProductId = String(rawProductId ?? "").trim();
+    const requestedCharacterId = String(rawCharacterId ?? "").trim();
+    if (!requestedCharacterId) {
+      return NextResponse.json(
+        { error: "characterId is required for storyboard generation" },
+        { status: 400 },
+      );
+    }
+    const storyboardMode = rawStoryboardMode === "manual" ? "manual" : "ai";
+    const manualPanels = storyboardMode === "manual" && Array.isArray(rawManualPanels)
+      ? rawManualPanels
+      : undefined;
+    const attemptKey = String(rawAttemptKey ?? "").trim() || `${Date.now()}`;
     let effectiveRunId: string | null = null;
     let effectiveProductId: string | null = null;
+    let effectiveCharacterId: string | null = null;
+    let effectiveCharacterName: string | null = null;
+    let effectiveCharacterDescription: string | null = null;
+    let effectiveCharacterGender: string | null = null;
     if (requestedRunId) {
       const run = await prisma.researchRun.findUnique({
         where: { id: requestedRunId },
@@ -102,8 +142,9 @@ export async function POST(req: NextRequest) {
     }
 
     if (requestedProductId) {
-      const productRows = await prisma.$queryRaw<Array<{ id: string }>>`
+      const productRows = await prisma.$queryRaw<Array<{ id: string; characterGender: string | null }>>`
         SELECT "id"
+             , "character_gender" AS "characterGender"
         FROM "product"
         WHERE "id" = ${requestedProductId}
           AND "project_id" = ${projectId}
@@ -116,6 +157,66 @@ export async function POST(req: NextRequest) {
         );
       }
       effectiveProductId = requestedProductId;
+      effectiveCharacterGender = String(productRows[0]?.characterGender ?? "").trim() || null;
+    }
+
+    if (requestedCharacterId) {
+      const character = await prisma.character.findFirst({
+        where: {
+          id: requestedCharacterId,
+          projectId,
+        },
+        select: {
+          id: true,
+          runId: true,
+          productId: true,
+          name: true,
+          creatorVisualPrompt: true,
+        },
+      });
+      if (!character) {
+        return NextResponse.json(
+          { error: "characterId not found for this project" },
+          { status: 400 },
+        );
+      }
+      if (effectiveRunId && character.runId !== effectiveRunId) {
+        return NextResponse.json(
+          { error: "characterId does not belong to selected run" },
+          { status: 400 },
+        );
+      }
+      if (effectiveProductId && character.productId !== effectiveProductId) {
+        return NextResponse.json(
+          { error: "characterId does not belong to selected product" },
+          { status: 400 },
+        );
+      }
+      effectiveCharacterId = character.id;
+      if (!effectiveProductId && character.productId) {
+        effectiveProductId = character.productId;
+      }
+      effectiveCharacterName = String(character.name ?? "").trim() || null;
+      effectiveCharacterDescription = sanitizeCharacterDescription(
+        String(character.creatorVisualPrompt ?? "").trim() || null
+      );
+    }
+
+    if (!effectiveCharacterGender && effectiveProductId) {
+      const productGenderRows = await prisma.$queryRaw<Array<{ characterGender: string | null }>>`
+        SELECT "character_gender" AS "characterGender"
+        FROM "product"
+        WHERE "id" = ${effectiveProductId}
+          AND "project_id" = ${projectId}
+        LIMIT 1
+      `;
+      effectiveCharacterGender = String(productGenderRows[0]?.characterGender ?? "").trim() || null;
+    }
+    if (!effectiveCharacterName || !effectiveCharacterDescription) {
+      return NextResponse.json(
+        { error: "Selected character is missing name or creatorVisualPrompt" },
+        { status: 400 },
+      );
     }
 
     const requestedScriptId = String(rawScriptId ?? "").trim();
@@ -147,6 +248,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const STORYBOARD_COST_PER_SCENE_CENTS = 5;
+    const STORYBOARD_MIN_ESTIMATED_CENTS = 25;
+    const estimatedSceneCount =
+      storyboardMode === "manual" && Array.isArray(manualPanels)
+        ? manualPanels.length
+        : 6;
+    const estimatedCostCents = Math.max(
+      STORYBOARD_MIN_ESTIMATED_CENTS,
+      estimatedSceneCount * STORYBOARD_COST_PER_SCENE_CENTS,
+    );
+
     // Idempotency: one storyboard generation job per (projectId, scriptIdUsed)
     const scriptIdUsed = script.id;
     const idempotencyKey = JSON.stringify([
@@ -154,6 +266,10 @@ export async function POST(req: NextRequest) {
       JobType.STORYBOARD_GENERATION,
       scriptIdUsed,
       effectiveProductId ?? "no_product",
+      effectiveRunId ?? "no_run",
+      effectiveCharacterId ?? "no_character",
+      storyboardMode,
+      attemptKey,
     ]);
 
     const existing = await prisma.job.findFirst({
@@ -214,6 +330,12 @@ export async function POST(req: NextRequest) {
       projectId,
       scriptId: scriptIdUsed,
       ...(effectiveProductId ? { productId: effectiveProductId } : {}),
+      ...(effectiveCharacterId ? { characterId: effectiveCharacterId } : {}),
+      ...(effectiveCharacterName ? { characterName: effectiveCharacterName } : {}),
+      ...(effectiveCharacterDescription ? { characterDescription: effectiveCharacterDescription } : {}),
+      ...(effectiveCharacterGender ? { characterGender: effectiveCharacterGender } : {}),
+      storyboardMode,
+      ...(manualPanels ? { manualPanels } : {}),
       idempotencyKey,
       ...(effectiveRunId ? { runId: effectiveRunId } : {}),
       ...(reservation ? { quotaReservation: reservation } : {}),
@@ -227,6 +349,7 @@ export async function POST(req: NextRequest) {
         type: JobType.STORYBOARD_GENERATION,
         status: securitySweep ? JobStatus.COMPLETED : JobStatus.PENDING,
         idempotencyKey,
+        estimatedCost: securitySweep ? 0 : estimatedCostCents,
         payload,
         ...(effectiveRunId ? { runId: effectiveRunId } : {}),
         ...(securitySweep
@@ -245,6 +368,8 @@ export async function POST(req: NextRequest) {
         jobId: job.id,
         runId: job.runId ?? effectiveRunId,
         scriptIdUsed,
+        storyboardMode,
+        ...(effectiveCharacterId ? { characterId: effectiveCharacterId } : {}),
         reused: false,
         started: !securitySweep,
         ...(securitySweep ? { skipped: true, reason: 'SECURITY_SWEEP' } : {}),

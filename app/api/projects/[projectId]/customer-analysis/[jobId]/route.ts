@@ -7,14 +7,15 @@ import path from "node:path";
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { projectId: string; jobId: string } }
+  { params }: { params: Promise<{ projectId: string; jobId: string }> }
 ) {
+  const awaitedParams = await params;
   const session = await requireSession(req);
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { projectId, jobId } = params;
+  const { projectId, jobId } = awaitedParams;
   const includeInputs = req.nextUrl.searchParams.get("includeInputs") === "1";
   const deny = await requireProjectOwner404(projectId);
   if (deny) return deny;
@@ -50,6 +51,7 @@ export async function GET(
 
   let analysisInputs: Record<string, unknown> | null = null;
   if (includeInputs) {
+    // TODO(medium): gate includeInputs behind an additional operator/admin check if raw Anthropic request logs should not be exposed to all project owners.
     const analysisInputMeta = (summary.analysisInput ?? {}) as Record<string, unknown>;
     const anthropicRequestLogPath =
       typeof analysisInputMeta.anthropicRequestLogPath === "string"

@@ -14,21 +14,23 @@ type RunRow = {
   createdAt: Date;
   jobCount: number;
   latestJobType: string | null;
+  latestJobSubtype: string | null;
   latestJobStatus: string | null;
   runNumber: number;
 };
 
 export async function GET(
   _req: NextRequest,
-  { params }: { params: { projectId: string } }
+  { params }: { params: Promise<{ projectId: string }> }
 ) {
+  const awaitedParams = await params;
   const userId = await getSessionUserId();
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
-    const pathProjectId = String(params.projectId || "").trim();
+    const pathProjectId = String(awaitedParams.projectId || "").trim();
     if (!pathProjectId) {
       return NextResponse.json({ error: "projectId required" }, { status: 400 });
     }
@@ -63,6 +65,7 @@ export async function GET(
           LEFT JOIN LATERAL (
             SELECT
               j2."type"::text AS "latestJobType",
+              COALESCE(j2."payload"->>'jobType', j2."payload"->>'kind') AS "latestJobSubtype",
               j2."status"::text AS "latestJobStatus"
             FROM "job" j2
             WHERE j2."runId" = rr."id"
@@ -71,7 +74,7 @@ export async function GET(
             LIMIT 1
           ) lj ON TRUE
           WHERE rr."projectId" = ${pathProjectId}
-          GROUP BY rr."id", rr."projectId", rr."name", rr."status", rr."createdAt", lj."latestJobType", lj."latestJobStatus"
+          GROUP BY rr."id", rr."projectId", rr."name", rr."status", rr."createdAt", lj."latestJobType", lj."latestJobSubtype", lj."latestJobStatus"
         )
         SELECT
           rr.*,
@@ -92,15 +95,16 @@ export async function GET(
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { projectId: string } }
+  { params }: { params: Promise<{ projectId: string }> }
 ) {
+  const awaitedParams = await params;
   const userId = await getSessionUserId();
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
-    const pathProjectId = String(params.projectId || "").trim();
+    const pathProjectId = String(awaitedParams.projectId || "").trim();
     const body = await req.json().catch(() => ({}));
     const requestedRunId = String(body?.runId || "").trim();
     const bodyProjectId = String(body?.projectId || "").trim();
@@ -129,6 +133,7 @@ export async function POST(
 
     let run;
     if (requestedRunId) {
+      // TODO(medium): consider disallowing caller-specified run IDs outside trusted tooling to keep run creation opaque and server-owned.
       const existing = await prisma.researchRun.findUnique({
         where: { id: requestedRunId },
       });

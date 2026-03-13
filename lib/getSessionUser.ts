@@ -3,7 +3,7 @@ import { getTestUser } from "@/lib/auth/getTestUser";
 import { headers } from "next/headers";
 
 export async function getSessionUser() {
-  const testUser = getTestUser(headers());
+  const testUser = getTestUser(await headers());
   if (testUser) return testUser;
 
   const session = await getAuthSession();

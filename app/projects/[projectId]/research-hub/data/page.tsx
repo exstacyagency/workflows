@@ -61,46 +61,6 @@ function getSupportedJobType(input: string): SupportedJobType | null {
   return null;
 }
 
-function resolveRunIdForJobType(jobs: JobRecord[], jobType: SupportedJobType): string | null {
-  const subtypeMap: Record<SupportedJobType, string[]> = {
-    "ad-transcripts": ["ad_transcripts", "ad_transcript_collection"],
-    "ad-ocr": ["ad_ocr_collection"],
-    "ad-collection": ["ad_raw_collection"],
-    "ad-quality-gate": ["ad_quality_gate"],
-    "pattern-analysis": ["ad_pattern_analysis"],
-  };
-  const typeMap: Record<SupportedJobType, string> = {
-    "ad-transcripts": "AD_PERFORMANCE",
-    "ad-ocr": "AD_PERFORMANCE",
-    "ad-collection": "AD_PERFORMANCE",
-    "ad-quality-gate": "AD_QUALITY_GATE",
-    "pattern-analysis": "PATTERN_ANALYSIS",
-  };
-
-  const acceptedSubtypes = subtypeMap[jobType];
-  const acceptedType = typeMap[jobType];
-  const byCreatedAtDesc = [...jobs].sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-  );
-
-  const completed = byCreatedAtDesc.find(
-    (job) =>
-      job.type === acceptedType &&
-      job.status === "COMPLETED" &&
-      !!job.runId &&
-      acceptedSubtypes.includes(getSubtype(job)),
-  );
-  if (completed?.runId) return completed.runId;
-
-  const anyStatus = byCreatedAtDesc.find(
-    (job) =>
-      job.type === acceptedType &&
-      !!job.runId &&
-      acceptedSubtypes.includes(getSubtype(job)),
-  );
-  return anyStatus?.runId ?? null;
-}
-
 function getVideoUrl(raw: Record<string, any>): string {
   const candidate =
     raw?.video_info?.video_url?.["720p"] ??
@@ -161,6 +121,11 @@ export default function ResearchHubDataPage() {
   const [effectiveRunId, setEffectiveRunId] = useState<string | null>(null);
   const [assets, setAssets] = useState<AdAsset[]>([]);
   const [patternJob, setPatternJob] = useState<JobRecord | null>(null);
+  const [deletingAssetId, setDeletingAssetId] = useState<string | null>(null);
+  const [clearingAssetKey, setClearingAssetKey] = useState<string | null>(null);
+  const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -183,9 +148,9 @@ export default function ResearchHubDataPage() {
         }
         const jobs = Array.isArray(jobsData.jobs) ? (jobsData.jobs as JobRecord[]) : [];
 
-        const runId = queryRunId || resolveRunIdForJobType(jobs, focusJobType);
+        const runId = queryRunId;
         if (!runId) {
-          throw new Error(`No run found for jobType=${focusJobType}`);
+          throw new Error("runId is required. Select a run from Research Hub and re-open View All Data.");
         }
         setEffectiveRunId(runId);
 
@@ -302,6 +267,18 @@ export default function ResearchHubDataPage() {
   const qualityAssessed = qualityRows.filter((row) => row.viable !== null || row.issue || row.reason).length;
   const qualityViable = qualityRows.filter((row) => row.viable === true).length;
   const qualityRejected = qualityRows.filter((row) => row.viable === false).length;
+  const visibleAssetIds = useMemo(() => {
+    if (focusJobType === "ad-transcripts") return transcriptRows.map((row) => row.id);
+    if (focusJobType === "ad-quality-gate") return qualityRows.map((row) => row.id);
+    return [];
+  }, [focusJobType, qualityRows, transcriptRows]);
+  const allVisibleSelected =
+    visibleAssetIds.length > 0 && visibleAssetIds.every((id) => selectedAssetIds.includes(id));
+  const selectedCount = selectedAssetIds.length;
+
+  useEffect(() => {
+    setSelectedAssetIds((prev) => prev.filter((id) => visibleAssetIds.includes(id)));
+  }, [visibleAssetIds]);
 
   const exportConfig = useMemo(() => {
     if (!focusJobType) {
@@ -519,6 +496,167 @@ export default function ResearchHubDataPage() {
     downloadCsv(`${focusJobType}-${safeRunId}-${timestamp}.csv`, exportConfig.columns, exportConfig.rows);
   }
 
+  async function handleDeleteAsset(assetId: string) {
+    if (!effectiveRunId) {
+      setError("Cannot delete asset without runId.");
+      return;
+    }
+    if (!window.confirm("Delete this data point? This cannot be undone.")) return;
+
+    setDeletingAssetId(assetId);
+    setError(null);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/runs/${effectiveRunId}/ad-assets`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assetId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error || "Failed to delete data point");
+      }
+      setAssets((prev) => prev.filter((asset) => asset.id !== assetId));
+    } catch (e: any) {
+      setError(e?.message || "Failed to delete data point");
+    } finally {
+      setDeletingAssetId(null);
+    }
+  }
+
+  async function handleClearAssetData(assetId: string, mode: "transcript" | "ocr") {
+    if (!effectiveRunId) {
+      setError("Cannot clear fields without runId.");
+      return;
+    }
+
+    const message =
+      mode === "transcript"
+        ? "Clear transcript fields for this ad (without deleting the ad)?"
+        : "Clear OCR fields for this ad (without deleting the ad)?";
+    if (!window.confirm(message)) return;
+
+    const key = `${mode}:${assetId}`;
+    setClearingAssetKey(key);
+    setError(null);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/runs/${effectiveRunId}/ad-assets`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          assetId,
+          clearTranscript: mode === "transcript",
+          clearOcr: mode === "ocr",
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error || "Failed to clear asset fields");
+      }
+
+      setAssets((prev) =>
+        prev.map((asset) => {
+          if (asset.id !== assetId) return asset;
+          const raw =
+            asset.rawJson && typeof asset.rawJson === "object" && !Array.isArray(asset.rawJson)
+              ? ({ ...asset.rawJson } as Record<string, any>)
+              : {};
+
+          if (mode === "transcript") {
+            delete raw.transcript;
+            delete raw.transcriptWords;
+            delete raw.transcriptSource;
+          } else {
+            delete raw.ocrText;
+            delete raw.ocrFrames;
+            delete raw.ocrConfidence;
+            const metrics =
+              raw.metrics && typeof raw.metrics === "object" && !Array.isArray(raw.metrics)
+                ? ({ ...raw.metrics } as Record<string, any>)
+                : null;
+            if (metrics) {
+              delete metrics.ocr_meta;
+              raw.metrics = metrics;
+            }
+          }
+
+          return {
+            ...asset,
+            updatedAt: typeof data?.updatedAt === "string" ? data.updatedAt : asset.updatedAt,
+            rawJson: raw,
+          };
+        }),
+      );
+    } catch (e: any) {
+      setError(e?.message || "Failed to clear asset fields");
+    } finally {
+      setClearingAssetKey(null);
+    }
+  }
+
+  function toggleSelectAsset(assetId: string) {
+    setSelectedAssetIds((prev) =>
+      prev.includes(assetId) ? prev.filter((id) => id !== assetId) : [...prev, assetId],
+    );
+  }
+
+  function toggleSelectAllVisible() {
+    if (allVisibleSelected) {
+      setSelectedAssetIds((prev) => prev.filter((id) => !visibleAssetIds.includes(id)));
+      return;
+    }
+    setSelectedAssetIds((prev) => Array.from(new Set([...prev, ...visibleAssetIds])));
+  }
+
+  async function handleDeleteSelected() {
+    if (!effectiveRunId || selectedAssetIds.length === 0) return;
+    if (!window.confirm(`Delete ${selectedAssetIds.length} selected data point(s)? This cannot be undone.`)) return;
+
+    setBulkDeleting(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/runs/${effectiveRunId}/ad-assets`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assetIds: selectedAssetIds }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error || "Failed to delete selected data points");
+      }
+      setAssets((prev) => prev.filter((asset) => !selectedAssetIds.includes(asset.id)));
+      setSelectedAssetIds([]);
+    } catch (e: any) {
+      setError(e?.message || "Failed to delete selected data points");
+    } finally {
+      setBulkDeleting(false);
+    }
+  }
+
+  async function handleDeleteAll() {
+    if (!effectiveRunId) return;
+    if (!window.confirm("Delete all data points in this view/run? This cannot be undone.")) return;
+
+    setDeletingAll(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/runs/${effectiveRunId}/ad-assets`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deleteAll: true }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error || "Failed to delete all data points");
+      }
+      setAssets([]);
+      setSelectedAssetIds([]);
+    } catch (e: any) {
+      setError(e?.message || "Failed to delete all data points");
+    } finally {
+      setDeletingAll(false);
+    }
+  }
+
   return (
     <div className="px-6 py-6 max-w-7xl mx-auto">
       <div className="mb-6 flex items-start justify-between gap-4">
@@ -551,6 +689,32 @@ export default function ResearchHubDataPage() {
         >
           Export CSV
         </button>
+        {(focusJobType === "ad-transcripts" || focusJobType === "ad-quality-gate") && (
+          <>
+            <button
+              onClick={handleDeleteSelected}
+              disabled={selectedCount === 0 || bulkDeleting || deletingAll || !effectiveRunId}
+              className={`px-3 py-2 text-sm rounded border ${
+                selectedCount === 0 || bulkDeleting || deletingAll || !effectiveRunId
+                  ? "border-slate-700 text-slate-500 cursor-not-allowed"
+                  : "border-rose-700 text-rose-200 hover:bg-rose-900/40"
+              }`}
+            >
+              {bulkDeleting ? "Deleting..." : `Delete Selected (${selectedCount})`}
+            </button>
+            <button
+              onClick={handleDeleteAll}
+              disabled={deletingAll || bulkDeleting || assets.length === 0 || !effectiveRunId}
+              className={`px-3 py-2 text-sm rounded border ${
+                deletingAll || bulkDeleting || assets.length === 0 || !effectiveRunId
+                  ? "border-slate-700 text-slate-500 cursor-not-allowed"
+                  : "border-rose-700 text-rose-200 hover:bg-rose-900/40"
+              }`}
+            >
+              {deletingAll ? "Deleting..." : "Delete All"}
+            </button>
+          </>
+        )}
       </div>
 
       {loading && (
@@ -587,17 +751,36 @@ export default function ResearchHubDataPage() {
               <table className="w-full min-w-[1200px]">
                 <thead className="bg-slate-800/50 border-b border-slate-700">
                   <tr>
+                    <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">
+                      <input
+                        type="checkbox"
+                        checked={allVisibleSelected}
+                        onChange={toggleSelectAllVisible}
+                        className="h-4 w-4"
+                        aria-label="Select all visible rows"
+                      />
+                    </th>
                     <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Updated</th>
                     <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Asset</th>
                     <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Video URL</th>
                     <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Transcript</th>
                     <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Timestamps</th>
                     <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">AssemblyAI</th>
+                    <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800">
                   {transcriptRows.map((row) => (
                     <tr key={row.id} className="align-top">
+                      <td className="px-3 py-2 text-xs text-slate-300">
+                        <input
+                          type="checkbox"
+                          checked={selectedAssetIds.includes(row.id)}
+                          onChange={() => toggleSelectAsset(row.id)}
+                          className="h-4 w-4"
+                          aria-label={`Select asset ${row.id}`}
+                        />
+                      </td>
                       <td className="px-3 py-2 text-xs text-slate-300">{new Date(row.updatedAt).toLocaleString()}</td>
                       <td className="px-3 py-2 text-xs text-slate-300">
                         <div className="font-medium text-slate-200">{row.adName}</div>
@@ -643,6 +826,31 @@ export default function ResearchHubDataPage() {
                           Transcript ID: {row.transcriptSource.transcriptId || "—"}
                         </div>
                       </td>
+                      <td className="px-3 py-2 text-xs text-slate-300">
+                        <div className="flex flex-wrap gap-1">
+                          <button
+                            onClick={() => handleClearAssetData(row.id, "transcript")}
+                            disabled={clearingAssetKey === `transcript:${row.id}` || deletingAssetId === row.id}
+                            className="rounded border border-amber-700 px-2 py-1 text-amber-200 hover:bg-amber-900/40 disabled:opacity-50"
+                          >
+                            {clearingAssetKey === `transcript:${row.id}` ? "Clearing..." : "Clear Transcript"}
+                          </button>
+                          <button
+                            onClick={() => handleClearAssetData(row.id, "ocr")}
+                            disabled={clearingAssetKey === `ocr:${row.id}` || deletingAssetId === row.id}
+                            className="rounded border border-sky-700 px-2 py-1 text-sky-200 hover:bg-sky-900/40 disabled:opacity-50"
+                          >
+                            {clearingAssetKey === `ocr:${row.id}` ? "Clearing..." : "Clear OCR"}
+                          </button>
+                          <button
+                            onClick={() => handleDeleteAsset(row.id)}
+                            disabled={deletingAssetId === row.id || Boolean(clearingAssetKey)}
+                            className="rounded border border-red-700 px-2 py-1 text-red-200 hover:bg-red-900 disabled:opacity-50"
+                          >
+                            {deletingAssetId === row.id ? "Deleting..." : "Delete"}
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -678,6 +886,15 @@ export default function ResearchHubDataPage() {
               <table className="w-full min-w-[1200px]">
                 <thead className="bg-slate-800/50 border-b border-slate-700">
                   <tr>
+                    <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">
+                      <input
+                        type="checkbox"
+                        checked={allVisibleSelected}
+                        onChange={toggleSelectAllVisible}
+                        className="h-4 w-4"
+                        aria-label="Select all visible rows"
+                      />
+                    </th>
                     <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Updated</th>
                     <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Asset ID</th>
                     <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Video URL</th>
@@ -688,11 +905,21 @@ export default function ResearchHubDataPage() {
                     <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Issue</th>
                     <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Confidence</th>
                     <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Reason</th>
+                    <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800">
                   {qualityRows.map((row) => (
                     <tr key={row.id} className="align-top">
+                      <td className="px-3 py-2 text-xs text-slate-300">
+                        <input
+                          type="checkbox"
+                          checked={selectedAssetIds.includes(row.id)}
+                          onChange={() => toggleSelectAsset(row.id)}
+                          className="h-4 w-4"
+                          aria-label={`Select asset ${row.id}`}
+                        />
+                      </td>
                       <td className="px-3 py-2 text-xs text-slate-300">{new Date(row.updatedAt).toLocaleString()}</td>
                       <td className="px-3 py-2 text-xs font-mono text-slate-300">{row.id}</td>
                       <td className="px-3 py-2 text-xs">
@@ -735,6 +962,15 @@ export default function ResearchHubDataPage() {
                       </td>
                       <td className="px-3 py-2 text-xs text-slate-300 whitespace-pre-wrap break-words">
                         {row.reason || "—"}
+                      </td>
+                      <td className="px-3 py-2 text-xs text-slate-300">
+                        <button
+                          onClick={() => handleDeleteAsset(row.id)}
+                          disabled={deletingAssetId === row.id}
+                          className="rounded border border-red-700 px-2 py-1 text-red-200 hover:bg-red-900 disabled:opacity-50"
+                        >
+                          {deletingAssetId === row.id ? "Deleting..." : "Delete"}
+                        </button>
                       </td>
                     </tr>
                   ))}

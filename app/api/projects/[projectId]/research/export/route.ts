@@ -17,13 +17,14 @@ function normalizeReviewText(value: unknown): string {
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { projectId: string } }
+  { params }: { params: Promise<{ projectId: string }> }
 ) {
+  const awaitedParams = await params;
   const session = await requireSession(req);
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-  const { projectId } = params;
+  const { projectId } = awaitedParams;
   if (!projectId) {
     return NextResponse.json({ error: 'projectId is required' }, { status: 400 });
   }
@@ -32,7 +33,10 @@ export async function GET(
 
   const { searchParams } = new URL(req.url);
   const jobId = searchParams.get('jobId');
+  const jobType = searchParams.get('jobType');
   const runId = searchParams.get('runId');
+  const productId = searchParams.get('productId');
+  const product = searchParams.get('product');
   const subreddit = searchParams.get('subreddit');
   const solutionKeyword = searchParams.get('solutionKeyword');
   const minScoreParam = searchParams.get('minScore');
@@ -43,8 +47,38 @@ export async function GET(
   if (jobId) {
     where.jobId = jobId;
   }
-  if (runId) {
-    where.job = { ...(where.job ?? {}), runId };
+  if (runId || jobType) {
+    where.job = {
+      ...(where.job ?? {}),
+      ...(runId ? { runId } : {}),
+      ...(jobType ? { type: jobType as any } : {}),
+    };
+  }
+  if (!jobId && (productId || product)) {
+    const productJobs = await prisma.job.findMany({
+      where: {
+        projectId,
+        ...(jobType ? { type: jobType as any } : {}),
+        ...(productId
+          ? {
+              payload: {
+                path: ['productId'],
+                equals: productId,
+              },
+            }
+          : {}),
+        ...(!productId && product
+          ? {
+              payload: {
+                path: ['productName'],
+                equals: product,
+              },
+            }
+          : {}),
+      },
+      select: { id: true },
+    });
+    where.jobId = { in: productJobs.map((j) => j.id) };
   }
   if (subreddit) {
     where.subreddit = subreddit;

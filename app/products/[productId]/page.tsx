@@ -10,6 +10,7 @@ type ProductSetupRow = {
   creatorReferenceImageUrl: string | null;
   productReferenceImageUrl: string | null;
   characterReferenceVideoUrl: string | null;
+  characterAvatarImageUrl: string | null;
   soraCharacterId: string | null;
   characterCameoCreatedAt: Date | null;
   creatorVisualPrompt: string | null;
@@ -20,11 +21,27 @@ type ProductSetupRow = {
   projectName: string;
 };
 
+type CharacterRow = {
+  id: string;
+  name: string;
+  characterUserName: string | null;
+  soraCharacterId: string | null;
+  seedVideoUrl: string | null;
+  creatorVisualPrompt: string | null;
+  elevenLabsVoiceId: string | null;
+  createdAt: Date;
+};
+
 export default async function ProductSetupPage({
   params,
+  searchParams,
 }: {
-  params: { productId: string };
+  params: Promise<{ productId: string }>;
+  searchParams?: Promise<{ runId?: string }>;
 }) {
+  const { productId } = await params;
+  const resolvedSearchParams: { runId?: string } =
+    await (searchParams ?? Promise.resolve({}));
   const userId = await getSessionUserId();
   if (!userId) {
     redirect("/api/auth/signin");
@@ -39,6 +56,7 @@ export default async function ProductSetupPage({
       p."creator_reference_image_url" AS "creatorReferenceImageUrl",
       p."product_reference_image_url" AS "productReferenceImageUrl",
       p."character_reference_video_url" AS "characterReferenceVideoUrl",
+      p."character_avatar_image_url" AS "characterAvatarImageUrl",
       p."sora_character_id" AS "soraCharacterId",
       p."character_cameo_created_at" AS "characterCameoCreatedAt",
       p."creator_visual_prompt" AS "creatorVisualPrompt",
@@ -49,7 +67,7 @@ export default async function ProductSetupPage({
       pr."name" AS "projectName"
     FROM "product" p
     INNER JOIN "project" pr ON pr."id" = p."project_id"
-    WHERE p."id" = ${params.productId}
+    WHERE p."id" = ${productId}
       AND pr."userId" = ${userId}
     LIMIT 1
   `;
@@ -58,6 +76,35 @@ export default async function ProductSetupPage({
   if (!product) {
     notFound();
   }
+  const runs = await prisma.researchRun.findMany({
+    where: { projectId: product.projectId },
+    select: { id: true, name: true },
+    orderBy: { createdAt: "desc" },
+  });
+  console.log("DEBUG runs:", JSON.stringify(runs));
+  console.log("DEBUG product.projectId:", product.projectId);
+  const selectedRunId = resolvedSearchParams.runId?.trim() || runs[0]?.id || null;
+
+  const characters = selectedRunId
+    ? ((await prisma.character.findMany({
+        where: {
+          productId: product.id,
+          runId: selectedRunId,
+        },
+        select: {
+          id: true,
+          name: true,
+          characterUserName: true,
+          soraCharacterId: true,
+          seedVideoUrl: true,
+          creatorVisualPrompt: true,
+          elevenLabsVoiceId: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: "asc" },
+      })) as CharacterRow[])
+    : [];
+  console.log("DEBUG productId:", product.id, "characters found:", characters.length);
 
   const setupData: ProductSetupData = {
     id: product.id,
@@ -65,6 +112,7 @@ export default async function ProductSetupPage({
     creatorReferenceImageUrl: product.creatorReferenceImageUrl,
     productReferenceImageUrl: product.productReferenceImageUrl,
     characterReferenceVideoUrl: product.characterReferenceVideoUrl,
+    characterAvatarImageUrl: product.characterAvatarImageUrl,
     soraCharacterId: product.soraCharacterId,
     characterCameoCreatedAt: product.characterCameoCreatedAt
       ? product.characterCameoCreatedAt.toISOString()
@@ -73,6 +121,18 @@ export default async function ProductSetupPage({
     characterSeedVideoTaskId: product.characterSeedVideoTaskId,
     characterSeedVideoUrl: product.characterSeedVideoUrl,
     characterUserName: product.characterUserName,
+    characters: characters.map((char) => ({
+      id: char.id,
+      name: char.name,
+      characterUserName: char.characterUserName,
+      soraCharacterId: char.soraCharacterId,
+      seedVideoUrl: char.seedVideoUrl,
+      creatorVisualPrompt: char.creatorVisualPrompt,
+      elevenLabsVoiceId: char.elevenLabsVoiceId,
+      createdAt: char.createdAt.toISOString(),
+    })),
+    runs: runs.map((run) => ({ id: run.id, name: run.name })),
+    selectedRunId,
     project: {
       id: product.projectId,
       name: product.projectName,

@@ -23,6 +23,7 @@
 .env.test
 .env.production
 .env.*
+*.env
 !.env.example
 npm-debug.log*
 yarn-debug.log*
@@ -35,3 +36,5 @@ e2e/golden/output/
 /tmp/golden-output/
 logs/anthropic/
 .vercel
+.codex-dumps/
+artifacts/

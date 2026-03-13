@@ -6,6 +6,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { guardedExternalCall } from './externalCallGuard.ts';
 import { requireEnv } from './configGuard.ts';
 import { updateJobStatus } from "@/lib/jobs/updateJobStatus";
+import { computeAnthropicCostCents } from "@/lib/billing/pricing";
 
 const APIFY_TIMEOUT_MS = Number(cfg.raw("APIFY_TIMEOUT_MS") ?? 30_000);
 const APIFY_BREAKER_FAILS = Number(cfg.raw("APIFY_BREAKER_FAILS") ?? 3);
@@ -23,6 +24,7 @@ const anthropic = new Anthropic({
   apiKey: cfg.raw("ANTHROPIC_API_KEY"),
   timeout: 60000,
 });
+// TODO(medium): instantiate Anthropic lazily after env validation so import-time config failures do not linger for the process lifetime.
 
 function isAnthropicRetryable(err: any) {
   const status = Number((err as any)?.status ?? (err as any)?.response?.status ?? NaN);
@@ -42,8 +44,8 @@ function isAnthropicRetryable(err: any) {
   );
 }
 
-export async function runPatternAnalysis(args: { projectId: string; jobId: string }) {
-  const { projectId, jobId } = args;
+export async function runPatternAnalysis(args: { projectId: string; jobId: string; runId?: string | null }) {
+  const { projectId, jobId, runId } = args;
 
   let job = await prisma.job.findUnique({ where: { id: jobId } });
   if (!job) {
@@ -55,8 +57,13 @@ export async function runPatternAnalysis(args: { projectId: string; jobId: strin
   try {
     requireEnv(['ANTHROPIC_API_KEY'], 'ANTHROPIC');
 
+    const effectiveRunId = String(runId ?? (job as any)?.runId ?? "").trim() || null;
     const assets = await prisma.adAsset.findMany({
-      where: { projectId },
+      where: {
+        projectId,
+        contentViable: true,
+        ...(effectiveRunId ? { job: { is: { runId: effectiveRunId } } } : {}),
+      },
       select: { id: true, rawJson: true },
       take: 50,
     });
@@ -76,7 +83,7 @@ export async function runPatternAnalysis(args: { projectId: string; jobId: strin
       label: 'Anthropic messages.create',
       fn: async () => {
         return anthropic.messages.create({
-          model: 'claude-opus-4-20250514',
+          model: 'claude-opus-4-6',
           max_tokens: 8000,
           messages: [{ role: 'user', content: prompt }],
         });
@@ -86,6 +93,33 @@ export async function runPatternAnalysis(args: { projectId: string; jobId: strin
 
     const rawText = message.content[0].type === 'text' ? message.content[0].text : '';
     const parsed = JSON.parse(rawText);
+    const inputTokens = Number((message as any)?.usage?.input_tokens ?? 0);
+    const outputTokens = Number((message as any)?.usage?.output_tokens ?? 0);
+    const totalTokens = Math.max(0, Math.trunc(inputTokens + outputTokens));
+    const costCents =
+      totalTokens > 0
+        ? computeAnthropicCostCents(
+            "claude-opus-4-6",
+            Math.max(0, Math.trunc(inputTokens)),
+            Math.max(0, Math.trunc(outputTokens)),
+          )
+        : 0;
+    const usageEntries =
+      totalTokens > 0
+        ? [
+            {
+              metric: "tokens",
+              provider: "anthropic",
+              model: "claude-opus-4-6",
+              units: totalTokens,
+              costCents,
+              metadata: {
+                inputTokens: Math.max(0, Math.trunc(inputTokens)),
+                outputTokens: Math.max(0, Math.trunc(outputTokens)),
+              },
+            },
+          ]
+        : [];
 
     await prisma.$transaction(async (tx) => {
       const result = await tx.adPatternResult.create({
@@ -116,7 +150,10 @@ export async function runPatternAnalysis(args: { projectId: string; jobId: strin
       },
     });
 
-    return parsed;
+    return {
+      ...parsed,
+      usageEntries,
+    };
   } catch (err: any) {
     await updateJobStatus(job.id, JobStatus.FAILED);
     await prisma.job.update({
@@ -128,6 +165,7 @@ export async function runPatternAnalysis(args: { projectId: string; jobId: strin
 }
 
 function buildPatternPrompt(assets: any[]): string {
+  // TODO(medium): cap or summarize transcript inputs more aggressively; large prompt payloads here can spike cost and latency.
   const adData = assets.map((a, i) => {
     const raw = (a.rawJson as any) || {};
     return ({

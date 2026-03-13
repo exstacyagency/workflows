@@ -3,16 +3,13 @@ import { getSessionUserId } from "@/lib/getSessionUserId";
 import { prisma } from "@/lib/prisma";
 import { ensureStoryboardSceneApprovalColumn } from "@/lib/productStore";
 import type { Prisma } from "@prisma/client";
-import {
-  validateStoryboardAgainstGates,
-  type StoryboardValidationReport,
-} from "@/lib/storyboardValidation";
 
 type StoryboardPanelResponse = {
   sceneId: string;
   sceneNumber: number;
   approved: boolean;
   panelType: "ON_CAMERA" | "B_ROLL_ONLY";
+  voiceoverOnly: boolean;
   beatLabel: string;
   startTime: string;
   endTime: string;
@@ -21,13 +18,15 @@ type StoryboardPanelResponse = {
   lastFramePrompt: string | null;
   firstFrameImageUrl: string | null;
   lastFrameImageUrl: string | null;
+  videoUrl: string | null;
   videoPrompt: string | null;
   characterAction: string | null;
+  characterName: string | null;
+  characterDescription: string | null;
   environment: string | null;
   cameraDirection: string;
   productPlacement: string;
   bRollSuggestions: string[];
-  transitionType: string;
 };
 
 type StoryboardResponseBody = {
@@ -37,8 +36,10 @@ type StoryboardResponseBody = {
   createdAt: string;
   updatedAt: string;
   panels: StoryboardPanelResponse[];
-  validationReport: StoryboardValidationReport;
 };
+
+const DEFAULT_ENVIRONMENT_DESCRIPTION =
+  "Same environment as Scene 1, with consistent room layout, props, and lighting.";
 
 function asObject(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -55,6 +56,7 @@ function asStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value
     .map((entry) => (typeof entry === "string" ? entry.trim() : String(entry ?? "").trim()))
+    .filter((entry) => !/^character\s*handle\s*:/i.test(entry))
     .filter(Boolean);
 }
 
@@ -117,15 +119,27 @@ function normalizePanelFromRaw(args: {
   sceneId: string;
   sceneNumber: number;
   approved: boolean;
+  voiceoverOnlyFromDb?: boolean | null;
+  firstFrameImageUrlFromDb?: string | null;
+  lastFrameImageUrlFromDb?: string | null;
 }): StoryboardPanelResponse {
   const raw = asObject(args.rawValue) ?? {};
   const panelType = normalizePanelType(raw.panelType);
-  const frameUrls = extractSceneFrameUrls(raw);
+  const frameUrlsFromJson = extractSceneFrameUrls(raw);
+  const frameUrls = {
+    firstFrameImageUrl: args.firstFrameImageUrlFromDb ?? frameUrlsFromJson.firstFrameImageUrl,
+    lastFrameImageUrl:
+      args.lastFrameImageUrlFromDb ??
+      frameUrlsFromJson.lastFrameImageUrl ??
+      args.firstFrameImageUrlFromDb ??
+      frameUrlsFromJson.firstFrameImageUrl,
+  };
   return {
     sceneId: args.sceneId,
     sceneNumber: args.sceneNumber,
     approved: args.approved,
     panelType,
+    voiceoverOnly: Boolean(args.voiceoverOnlyFromDb ?? raw.voiceoverOnly ?? raw.voiceover_only),
     beatLabel: asString(raw.beatLabel) || `Beat ${args.sceneNumber}`,
     startTime: asString(raw.startTime),
     endTime: asString(raw.endTime),
@@ -134,13 +148,15 @@ function normalizePanelFromRaw(args: {
     lastFramePrompt: asNullableString(raw.lastFramePrompt),
     firstFrameImageUrl: frameUrls.firstFrameImageUrl,
     lastFrameImageUrl: frameUrls.lastFrameImageUrl,
+    videoUrl: asNullableString(raw.videoUrl) ?? asNullableString(raw.video_url),
     videoPrompt: asNullableString(raw.videoPrompt),
     characterAction: asNullableString(raw.characterAction),
+    characterName: asNullableString(raw.characterName),
+    characterDescription: asNullableString(raw.characterDescription),
     environment: asNullableString(raw.environment),
     cameraDirection: asString(raw.cameraDirection),
     productPlacement: asString(raw.productPlacement),
     bRollSuggestions: asStringArray(raw.bRollSuggestions),
-    transitionType: asString(raw.transitionType),
   };
 }
 
@@ -152,6 +168,7 @@ function normalizePanelFromInput(value: unknown, index: number): StoryboardPanel
     sceneNumber: index + 1,
     approved: false,
     panelType,
+    voiceoverOnly: Boolean(raw.voiceoverOnly ?? raw.voiceover_only),
     beatLabel: asString(raw.beatLabel) || `Beat ${index + 1}`,
     startTime: asString(raw.startTime),
     endTime: asString(raw.endTime),
@@ -160,20 +177,37 @@ function normalizePanelFromInput(value: unknown, index: number): StoryboardPanel
     lastFramePrompt: asNullableString(raw.lastFramePrompt),
     firstFrameImageUrl: asNullableString(raw.firstFrameImageUrl),
     lastFrameImageUrl: asNullableString(raw.lastFrameImageUrl),
+    videoUrl: asNullableString(raw.videoUrl) ?? asNullableString(raw.video_url),
     videoPrompt: asNullableString(raw.videoPrompt),
     characterAction: panelType === "B_ROLL_ONLY" ? asNullableString(raw.characterAction) : asString(raw.characterAction),
+    characterName: asNullableString(raw.characterName),
+    characterDescription: asNullableString(raw.characterDescription),
     environment: panelType === "B_ROLL_ONLY" ? asNullableString(raw.environment) : asString(raw.environment),
     cameraDirection: asString(raw.cameraDirection),
     productPlacement: asString(raw.productPlacement),
     bRollSuggestions: asStringArray(raw.bRollSuggestions),
-    transitionType: asString(raw.transitionType),
   };
+}
+
+function lockEnvironmentToSceneOne(panels: StoryboardPanelResponse[]): StoryboardPanelResponse[] {
+  if (!panels.length) return panels;
+  const canonical =
+    (panels[0]?.environment ?? "").trim() ||
+    panels
+      .map((panel) => String(panel.environment ?? "").trim())
+      .find(Boolean) ||
+    DEFAULT_ENVIRONMENT_DESCRIPTION;
+  return panels.map((panel) => ({
+    ...panel,
+    environment: canonical,
+  }));
 }
 
 export async function GET(
   _req: NextRequest,
-  { params }: { params: { storyboardId: string } },
+  { params }: { params: Promise<{ storyboardId: string }> },
 ) {
+  const awaitedParams = await params;
   const userId = await getSessionUserId();
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -182,7 +216,7 @@ export async function GET(
   try {
     await ensureStoryboardSceneApprovalColumn();
 
-    const storyboardId = String(params?.storyboardId ?? "").trim();
+    const storyboardId = String(awaitedParams?.storyboardId ?? "").trim();
     if (!storyboardId) {
       return NextResponse.json({ error: "storyboardId is required" }, { status: 400 });
     }
@@ -205,6 +239,9 @@ export async function GET(
           select: {
             id: true,
             sceneNumber: true,
+            voiceoverOnly: true,
+            firstFrameImageUrl: true,
+            lastFrameImageUrl: true,
             // TODO: Restore after panelType migration runs.
             // panelType: true,
             rawJson: true,
@@ -239,10 +276,11 @@ export async function GET(
         sceneId: scene.id,
         sceneNumber: scene.sceneNumber,
         approved: approvalBySceneId.get(scene.id) ?? false,
+        voiceoverOnlyFromDb: scene.voiceoverOnly,
+        firstFrameImageUrlFromDb: scene.firstFrameImageUrl ?? null,
+        lastFrameImageUrlFromDb: scene.lastFrameImageUrl ?? null,
       }),
     );
-
-    const validationReport = validateStoryboardAgainstGates(panels);
 
     const responseBody: { success: boolean; storyboard: StoryboardResponseBody } = {
       success: true,
@@ -253,7 +291,6 @@ export async function GET(
         createdAt: storyboard.createdAt.toISOString(),
         updatedAt: storyboard.updatedAt.toISOString(),
         panels,
-        validationReport,
       },
     };
 
@@ -280,15 +317,16 @@ export async function GET(
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { storyboardId: string } },
+  { params }: { params: Promise<{ storyboardId: string }> },
 ) {
+  const awaitedParams = await params;
   const userId = await getSessionUserId();
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
-    const storyboardId = String(params?.storyboardId ?? "").trim();
+    const storyboardId = String(awaitedParams?.storyboardId ?? "").trim();
     if (!storyboardId) {
       return NextResponse.json({ error: "storyboardId is required" }, { status: 400 });
     }
@@ -320,8 +358,9 @@ export async function PATCH(
       return NextResponse.json({ error: "Storyboard not found" }, { status: 404 });
     }
 
-    const panels = rawPanels.map((panel, index) => normalizePanelFromInput(panel, index));
-
+    const panels = lockEnvironmentToSceneOne(
+      rawPanels.map((panel, index) => normalizePanelFromInput(panel, index)),
+    );
     await prisma.$transaction(async (tx) => {
       await tx.storyboardScene.deleteMany({
         where: { storyboardId: storyboard.id },
@@ -332,6 +371,7 @@ export async function PATCH(
           data: {
             storyboardId: storyboard.id,
             sceneNumber: index + 1,
+            voiceoverOnly: Boolean(panels[index].voiceoverOnly),
             // TODO: Restore after panelType migration runs.
             // panelType: panels[index].panelType,
             status: "ready",
@@ -364,6 +404,9 @@ export async function PATCH(
           select: {
             id: true,
             sceneNumber: true,
+            voiceoverOnly: true,
+            firstFrameImageUrl: true,
+            lastFrameImageUrl: true,
             // TODO: Restore after panelType migration runs.
             // panelType: true,
             rawJson: true,
@@ -382,10 +425,11 @@ export async function PATCH(
         sceneId: scene.id,
         sceneNumber: scene.sceneNumber,
         approved: false,
+        voiceoverOnlyFromDb: scene.voiceoverOnly,
+        firstFrameImageUrlFromDb: scene.firstFrameImageUrl ?? null,
+        lastFrameImageUrlFromDb: scene.lastFrameImageUrl ?? null,
       }),
     );
-    const validationReport = validateStoryboardAgainstGates(responsePanels);
-
     return NextResponse.json(
       {
         success: true,
@@ -396,7 +440,6 @@ export async function PATCH(
           createdAt: updated.createdAt.toISOString(),
           updatedAt: updated.updatedAt.toISOString(),
           panels: responsePanels,
-          validationReport,
         },
       },
       { status: 200 },

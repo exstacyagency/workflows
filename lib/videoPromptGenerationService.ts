@@ -1,9 +1,15 @@
 // lib/videoPromptGenerationService.ts
 import Anthropic from "@anthropic-ai/sdk";
 import { cfg } from "@/lib/config";
+import {
+  assertProductSetupReferenceReachable,
+  assertProductSetupReferenceUrl,
+} from "@/lib/productSetupReferencePolicy";
+import { sanitizeCharacterDescription } from "@/lib/sanitizeCharacterDescription";
 import prisma from '@/lib/prisma';
 import { JobStatus, PanelType } from '@prisma/client';
 import { updateJobStatus } from '@/lib/jobs/updateJobStatus';
+import { computeAnthropicCostCents } from "@/lib/billing/pricing";
 
 type SceneReferenceFrame = {
   kind: 'creator' | 'product';
@@ -11,10 +17,26 @@ type SceneReferenceFrame = {
   url: string;
 };
 
-const VIDEO_PROMPT_SYSTEM_PROMPT =
-  "You write Kling AI video prompts. Translate storyboard direction into camera-ready prompts under 200 characters. Be specific. Every word earns its place.";
+const VIDEO_PROMPT_SYSTEM_PROMPT = `You are a Sora 2 API generating UGC direct-response video ad prompts optimized for conversion. Output ONLY the prompt text. No preamble, no explanation, no markdown.
 
-const VIDEO_PROMPT_MODEL = cfg.raw("ANTHROPIC_MODEL") || "claude-sonnet-4-5-20250929";
+VISUAL IDENTITY (apply to every scene):
+- Shot on iPhone 15 Pro front camera, ~24mm equivalent, vertical 9:16
+- Handheld selfie grip with micro-jitter and subtle sway
+- Shallow depth of field, soft background blur
+- Natural phone grain, slight exposure variation, no filters
+- Single-take aesthetic - no cuts, no transitions within clip
+- Audio: iPhone mic, slight room reverb, ambient background noise, NO music
+
+CHARACTER CONSISTENCY:
+- CHARACTER ANCHOR overrides all other character instructions when present
+- Match the anchor description exactly - face, hair, skin, clothing, age
+- If no anchor provided, maintain consistent identity across scenes
+- Audio delivery: natural human pacing, authentic cadence, real pauses and breath — not polished, not rushed, not performative`;
+
+const UGC_CONVERSION_REQUIRED_LINE =
+  "Style target: UGC direct-response conversion ad (not polished commercial).";
+
+const VIDEO_PROMPT_MODEL = cfg.raw("ANTHROPIC_MODEL") || "claude-sonnet-4-6";
 
 function asString(value: unknown): string {
   if (typeof value !== "string") return "";
@@ -66,15 +88,36 @@ async function loadProductReferenceImages(args: {
       AND "project_id" = ${args.projectId}
     LIMIT 1
   `;
+  const creatorReferenceImageUrl = normalizeUrl(productRows[0]?.creatorReferenceImageUrl);
+  const productReferenceImageUrl = normalizeUrl(productRows[0]?.productReferenceImageUrl);
+
+  if (creatorReferenceImageUrl) {
+    assertProductSetupReferenceUrl(creatorReferenceImageUrl, "creatorReferenceImageUrl");
+    await assertProductSetupReferenceReachable(
+      creatorReferenceImageUrl,
+      "creatorReferenceImageUrl",
+    );
+  }
+  if (productReferenceImageUrl) {
+    assertProductSetupReferenceUrl(productReferenceImageUrl, "productReferenceImageUrl");
+    await assertProductSetupReferenceReachable(
+      productReferenceImageUrl,
+      "productReferenceImageUrl",
+    );
+  }
+
   return {
-    creatorReferenceImageUrl: normalizeUrl(productRows[0]?.creatorReferenceImageUrl),
-    productReferenceImageUrl: normalizeUrl(productRows[0]?.productReferenceImageUrl),
+    creatorReferenceImageUrl,
+    productReferenceImageUrl,
   };
 }
 
 function resolvePanelType(raw: any, panelType: unknown): PanelType {
   if (raw?.panelType === 'B_ROLL_ONLY' || panelType === 'B_ROLL_ONLY') {
     return 'B_ROLL_ONLY';
+  }
+  if (raw?.panelType === 'PRODUCT_ONLY' || panelType === 'PRODUCT_ONLY') {
+    return 'PRODUCT_ONLY';
   }
   return 'ON_CAMERA';
 }
@@ -90,9 +133,98 @@ function extractTextContent(response: any): string {
 }
 
 function normalizeKlingPrompt(text: string): string {
-  const normalized = String(text ?? "").replace(/\s+/g, " ").trim();
-  if (normalized.length <= 200) return normalized;
-  return normalized.slice(0, 200).trimEnd();
+  const normalized = String(text ?? "").replace(/\r/g, "").trim();
+  if (normalized.length <= 2400) return normalized;
+  return normalized.slice(0, 2400).trimEnd();
+}
+
+function normalizeForMatch(value: string): string {
+  return String(value ?? "")
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function ensurePromptContainsVo(prompt: string, requiredVo: string): string {
+  const nextPrompt = String(prompt ?? "").trim();
+  const vo = String(requiredVo ?? "").trim();
+  if (!vo) return nextPrompt;
+
+  const promptMatch = normalizeForMatch(nextPrompt);
+  const voMatch = normalizeForMatch(vo);
+  if (voMatch && promptMatch.includes(voMatch)) {
+    return nextPrompt;
+  }
+
+  return `${nextPrompt}\n\nVO line: "${vo}"`.trim();
+}
+
+function ensurePromptContainsCharacterHandle(prompt: string, characterHandle: string | null): string {
+  const nextPrompt = String(prompt ?? "").trim();
+  const normalizedHandle = normalizeCharacterHandleForPrompt(characterHandle);
+  if (!normalizedHandle) return nextPrompt;
+
+  const promptMatch = normalizeForMatch(nextPrompt);
+  const handleMatch = normalizeForMatch(normalizedHandle);
+  if (handleMatch && promptMatch.includes(handleMatch)) {
+    return nextPrompt;
+  }
+
+  return `${nextPrompt}\n\nCharacter handle: ${normalizedHandle}`.trim();
+}
+
+function ensurePromptStatesOffCameraVoice(prompt: string, panelType: PanelType): string {
+  const nextPrompt = String(prompt ?? "").trim();
+  if (panelType !== "B_ROLL_ONLY") return nextPrompt;
+
+  const requiredLine = "Creator is speaking but is not shown.";
+  const promptMatch = normalizeForMatch(nextPrompt);
+  const requiredMatch = normalizeForMatch(requiredLine);
+  if (requiredMatch && promptMatch.includes(requiredMatch)) {
+    return nextPrompt;
+  }
+
+  return `${nextPrompt}\n\n${requiredLine}`.trim();
+}
+
+function ensurePromptContainsUgcConversionStyle(prompt: string): string {
+  const nextPrompt = String(prompt ?? "").trim();
+  const promptMatch = normalizeForMatch(nextPrompt);
+  const requiredMatch = normalizeForMatch(UGC_CONVERSION_REQUIRED_LINE);
+  if (requiredMatch && promptMatch.includes(requiredMatch)) return nextPrompt;
+  return `${nextPrompt}\n\n${UGC_CONVERSION_REQUIRED_LINE}`.trim();
+}
+
+function ensurePromptContainsCharacterProfile(
+  prompt: string,
+  characterName: string | null,
+  characterDescription: string | null,
+): string {
+  let nextPrompt = String(prompt ?? "").trim();
+  const name = String(characterName ?? "").trim();
+  const description = String(characterDescription ?? "").trim();
+
+  if (name) {
+    const requiredNameLine = `Character name: ${name}`;
+    const promptMatch = normalizeForMatch(nextPrompt);
+    const requiredNameMatch = normalizeForMatch(requiredNameLine);
+    if (!(requiredNameMatch && promptMatch.includes(requiredNameMatch))) {
+      nextPrompt = `${nextPrompt}\n\n${requiredNameLine}`.trim();
+    }
+  }
+
+  if (description) {
+    const requiredDescriptionLine = `Character description: ${description}`;
+    const promptMatch = normalizeForMatch(nextPrompt);
+    const requiredDescriptionMatch = normalizeForMatch(requiredDescriptionLine);
+    if (!(requiredDescriptionMatch && promptMatch.includes(requiredDescriptionMatch))) {
+      nextPrompt = `${nextPrompt}\n\n${requiredDescriptionLine}`.trim();
+    }
+  }
+
+  return nextPrompt;
 }
 
 function formatDurationLabel(durationSec: number): string {
@@ -100,69 +232,165 @@ function formatDurationLabel(durationSec: number): string {
   return Number.isInteger(rounded) ? String(rounded) : String(rounded);
 }
 
+function normalizeCharacterHandleForPrompt(value: string | null): string | null {
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+  return `@${raw.replace(/^@+/, "")}`;
+}
+
 function buildVideoPromptUserPrompt(args: {
   sceneNumber: number;
+  totalScenes: number;
   durationSec: number;
   vo: string;
+  scriptVoFull: string | null;
+  scriptBeat: { beat?: string; duration?: string; vo?: string } | null;
   panelType: PanelType;
   characterAction: string | null;
+  characterHandle: string | null;
   environment: string | null;
   cameraDirection: string;
   productPlacement: string;
   bRollSuggestions: string[];
+  characterAnchor: string | null;
+  characterDescription: string;
+  genderPresentation: string | null;
+  voiceoverOnly: boolean;
+  characterName: string | null;
   hasCreatorRef: boolean;
   hasProductRef: boolean;
 }): string {
   const {
     sceneNumber,
+    totalScenes,
     durationSec,
     vo,
+    scriptVoFull,
+    scriptBeat,
     panelType,
     characterAction,
+    characterHandle,
     environment,
     cameraDirection,
     productPlacement,
     bRollSuggestions,
+    characterAnchor,
+    characterDescription,
+    genderPresentation,
+    voiceoverOnly,
+    characterName,
     hasCreatorRef,
     hasProductRef,
   } = args;
+  const normalizedCharacterHandle = normalizeCharacterHandleForPrompt(characterHandle);
+  const beatLabel = asString(scriptBeat?.beat);
 
-  return `Scene ${sceneNumber}, ${formatDurationLabel(durationSec)}s.
+return `SCENE ${sceneNumber} of ${totalScenes} | ${formatDurationLabel(durationSec)}s | ${panelType}
+${beatLabel ? `Beat: ${beatLabel}` : ""}
 
-VO: ${vo || 'N/A'}
+FULL AD VO (for context only):
+"${scriptVoFull || "N/A"}"
 
-Panel type: ${panelType}
+THIS SCENE VO (include verbatim):
+"${vo || "N/A"}"
 
-Character: ${characterAction || 'N/A'}
-Environment: ${environment || 'N/A'}
-Camera: ${cameraDirection || 'N/A'}
-Product placement: ${productPlacement || 'N/A'}
-B-roll shots: ${bRollSuggestions.length > 0 ? bRollSuggestions.join('; ') : 'N/A'}
+CONVERSION OBJECTIVE:
+- This scene must feel native to feed UGC and drive action (scroll-stop -> trust -> product clarity -> outcome/next step).
+- Keep tone personal and believable, not polished brand-commercial.
+- Prioritize direct-response clarity over cinematic style.
 
-${hasCreatorRef ? 'Subject from creator reference image.' : ''}
-${hasProductRef ? 'Product from product reference image.' : ''}
+STORYBOARD DIRECTION:
+SET DRESSING (render these props explicitly):
+${environment || "real home/work setting, lived-in and natural"}
+Time of day: match environment exactly — if environment specifies night, window lighting must be completely dark outside, no daylight, no dusk, no golden hour visible.
+Camera: ${cameraDirection || "medium close-up, eye level, centered"}
+Character action: ${characterAction || "N/A"}
+Product placement: ${productPlacement || "none"}
+${bRollSuggestions.length > 0 ? `B-roll overlays: ${bRollSuggestions.join("; ")}` : ""}
+${normalizedCharacterHandle ? `Character handle: ${normalizedCharacterHandle} (include verbatim with @ symbol)` : ""}
+${hasCreatorRef ? "Subject: match creator reference image exactly." : ""}
+${hasProductRef ? "Product: match product reference image exactly." : ""}
 
-Write a Kling prompt. Specify subject, exact action with timing, camera movement, lighting. Under 200 chars. No fluff.`;
+${characterName ? `Character name: ${characterName}` : ""}
+CHARACTER ANCHOR (non-negotiable, apply exactly):
+${characterAnchor || characterDescription}
+${genderPresentation ? `Gender presentation: ${genderPresentation}` : ""}
+
+OUTPUT STRUCTURE - use these exact labels:
+
+[Scene: one sentence - subject, environment, atmosphere]
+
+Environment:
+- [specific props and set dressing visible in frame]
+- [room details - walls, surfaces, lighting fixtures]
+
+Cinematography:
+- Shot: [framing, angle, distance]
+- Lighting: [source, quality, temperature]
+- Palette: [3-5 color anchors]
+- Motion: [camera movement, handheld behavior]
+
+Performance:
+- 0s: [opening action]
+- ${Math.round(durationSec * 0.3)}s: [mid action]
+- ${Math.round(durationSec * 0.7)}s: [${voiceoverOnly ? "creator visible, listening/reacting, mouth closed and neutral — NOT speaking" : "product/key moment"}]
+- ${formatDurationLabel(durationSec)}s: [closing action]
+
+${voiceoverOnly
+  ? `VO (voiceover only — do NOT animate lip sync): "${vo || "N/A"}"
+Creator is present but silent. Mouth closed or neutral expression. No speaking motion. Voiceover is audio-only overlay.`
+  : `VO: "${vo || "N/A"}"`}
+
+Audio:
+- [ambient sound description]
+- No music. iPhone mic. Single-take.
+
+UGC keywords: smartphone selfie, handheld realism, front-camera authenticity, raw UGC monologue, micro-jitters, imperfect framing, no filters, one-take aesthetic, subtle exposure shifts.
+
+CONSTRAINTS:
+- Vertical 9:16 format
+- ${formatDurationLabel(durationSec)}s clip duration
+- Include scene VO verbatim
+- No cinematic film language - this is a phone video
+- Must be UGC direct-response conversion style, not a polished commercial`;
 }
 
 async function generateKlingPromptWithClaude(args: {
   sceneNumber: number;
+  totalScenes: number;
   durationSec: number;
   vo: string;
+  requiredVo: string;
+  scriptVoFull: string | null;
+  scriptBeat: { beat?: string; duration?: string; vo?: string } | null;
   panelType: PanelType;
   characterAction: string | null;
+  characterHandle: string | null;
   environment: string | null;
   cameraDirection: string;
   productPlacement: string;
   bRollSuggestions: string[];
+  characterAnchor: string | null;
+  characterDescription: string;
+  genderPresentation: string | null;
+  voiceoverOnly: boolean;
+  characterName: string | null;
   hasCreatorRef: boolean;
   hasProductRef: boolean;
-  fallbackPrompt: string;
-}): Promise<string> {
+}): Promise<{
+  prompt: string;
+  usageEntry: {
+    metric: string;
+    provider: string;
+    model: string;
+    units: number;
+    costCents: number;
+    metadata: Record<string, unknown>;
+  } | null;
+}> {
   const apiKey = cfg.raw("ANTHROPIC_API_KEY");
   if (!apiKey) {
-    console.warn("[videoPromptGeneration] Missing ANTHROPIC_API_KEY; using fallback prompt template.");
-    return normalizeKlingPrompt(args.fallbackPrompt);
+    throw new Error("Missing ANTHROPIC_API_KEY");
   }
 
   const anthropic = new Anthropic({
@@ -172,14 +400,23 @@ async function generateKlingPromptWithClaude(args: {
 
   const userPrompt = buildVideoPromptUserPrompt({
     sceneNumber: args.sceneNumber,
+    totalScenes: args.totalScenes,
     durationSec: args.durationSec,
-    vo: args.vo,
+    vo: args.requiredVo,
+    scriptVoFull: args.scriptVoFull ?? null,
+    scriptBeat: args.scriptBeat ?? null,
     panelType: args.panelType,
     characterAction: args.characterAction,
+    characterHandle: args.characterHandle ?? null,
     environment: args.environment,
     cameraDirection: args.cameraDirection,
     productPlacement: args.productPlacement,
     bRollSuggestions: args.bRollSuggestions,
+    characterAnchor: args.characterAnchor,
+    characterDescription: args.characterDescription,
+    genderPresentation: args.genderPresentation,
+    voiceoverOnly: args.voiceoverOnly,
+    characterName: args.characterName,
     hasCreatorRef: args.hasCreatorRef,
     hasProductRef: args.hasProductRef,
   });
@@ -187,7 +424,7 @@ async function generateKlingPromptWithClaude(args: {
   try {
     const response = await anthropic.messages.create({
       model: VIDEO_PROMPT_MODEL,
-      max_tokens: 200,
+      max_tokens: 2400,
       system: VIDEO_PROMPT_SYSTEM_PROMPT,
       messages: [{ role: "user", content: userPrompt }],
     });
@@ -196,20 +433,54 @@ async function generateKlingPromptWithClaude(args: {
       throw new Error("Claude returned empty video prompt text");
     }
     const prompt = normalizeKlingPrompt(text);
+    const promptWithVo = ensurePromptContainsVo(prompt, args.requiredVo);
+    const promptWithHandle = ensurePromptContainsCharacterHandle(
+      promptWithVo,
+      args.characterHandle ?? null,
+    );
+    const promptWithVoiceVisibility = ensurePromptStatesOffCameraVoice(
+      promptWithHandle,
+      args.panelType,
+    );
+    const promptWithUgcConversionStyle = ensurePromptContainsUgcConversionStyle(
+      promptWithVoiceVisibility,
+    );
+    const promptWithCharacterProfile = ensurePromptContainsCharacterProfile(
+      promptWithUgcConversionStyle,
+      args.characterName,
+      args.characterDescription,
+    );
+    const inputTokens = Number((response as any)?.usage?.input_tokens ?? 0);
+    const outputTokens = Number((response as any)?.usage?.output_tokens ?? 0);
+    const totalTokens = Math.max(0, Math.trunc(inputTokens + outputTokens));
+    const usageEntry =
+      totalTokens > 0
+        ? {
+            metric: "tokens",
+            provider: "anthropic",
+            model: VIDEO_PROMPT_MODEL,
+            units: totalTokens,
+            costCents: computeAnthropicCostCents(
+              VIDEO_PROMPT_MODEL,
+              Math.max(0, Math.trunc(inputTokens)),
+              Math.max(0, Math.trunc(outputTokens)),
+            ),
+            metadata: {
+              inputTokens: Math.max(0, Math.trunc(inputTokens)),
+              outputTokens: Math.max(0, Math.trunc(outputTokens)),
+            },
+          }
+        : null;
     console.log(`[videoPromptGeneration] Generated prompt for scene ${args.sceneNumber}`, {
-      prompt,
+      prompt: promptWithCharacterProfile,
     });
-    return prompt;
+    return { prompt: promptWithCharacterProfile, usageEntry };
   } catch (error: any) {
-    console.error("[videoPromptGeneration] Claude prompt generation failed; using fallback template.", {
+    console.error("[videoPromptGeneration] Claude prompt generation failed.", {
       sceneNumber: args.sceneNumber,
       error: String(error?.message ?? error),
     });
-    const prompt = normalizeKlingPrompt(args.fallbackPrompt);
-    console.log(`[videoPromptGeneration] Generated prompt for scene ${args.sceneNumber}`, {
-      prompt,
-    });
-    return prompt;
+    throw error;
   }
 }
 
@@ -240,64 +511,6 @@ function buildSceneReferenceFrames(args: {
 }
 
 /**
- * Build a per-scene video prompt.
- *
- * Mirrors the intent of your n8n "Generate Video Prompt":
- * - Use duration
- * - Use motion arc (if present in rawJson)
- * - Emphasize smooth interpolation + character consistency
- * - Use first/last frame as anchors (implicitly via narrative)
- */
-function buildVideoPromptForScene(opts: {
-  sceneNumber: number;
-  durationSec: number;
-  firstFrameUrl?: string | null;
-  lastFrameUrl?: string | null;
-  raw: any;
-  panelType: PanelType;
-  creatorReferenceImageUrl?: string | null;
-  productReferenceImageUrl?: string | null;
-}): string {
-  const {
-    sceneNumber,
-    durationSec,
-    firstFrameUrl,
-    lastFrameUrl,
-    raw,
-    panelType,
-    creatorReferenceImageUrl,
-    productReferenceImageUrl,
-  } = opts;
-
-  const motionArc: string =
-    raw?.motion_arc ||
-    `Smooth movement from first frame to last frame for scene ${sceneNumber}`;
-
-  const referencesInfo = [
-    panelType !== 'B_ROLL_ONLY' && creatorReferenceImageUrl
-      ? 'Keep the subject from creator reference image consistent across the scene.'
-      : null,
-    productReferenceImageUrl
-      ? 'Show the product from product reference image with matching appearance and branding.'
-      : null,
-  ]
-    .filter(Boolean)
-    .join(' ');
-
-  const framesInfo = [
-    firstFrameUrl ? `First frame: ${firstFrameUrl}` : null,
-    lastFrameUrl ? `Last frame: ${lastFrameUrl}` : null,
-    creatorReferenceImageUrl ? `Creator reference image: ${creatorReferenceImageUrl}` : null,
-    productReferenceImageUrl ? `Product reference image: ${productReferenceImageUrl}` : null,
-  ]
-    .filter(Boolean)
-    .join(' | ');
-
-  return `${durationSec}s. ${motionArc}. Maintain character consistency between first and last frame. Smooth interpolation between poses. ${referencesInfo} ${framesInfo}`
-    .trim();
-}
-
-/**
  * Generate video prompts for all scenes in a storyboard that:
  * - have firstFrameUrl and lastFrameUrl
  * - do NOT have videoPrompt yet
@@ -306,6 +519,10 @@ export async function runVideoPromptGeneration(args: {
   storyboardId: string;
   jobId?: string;
   productId?: string | null;
+  characterHandle?: string | null;
+  characterName?: string | null;
+  characterDescription?: string | null;
+  characterGender?: string | null;
   creatorReferenceImageUrl?: string | null;
   productReferenceImageUrl?: string | null;
 }) {
@@ -320,6 +537,7 @@ export async function runVideoPromptGeneration(args: {
       scenes: true,
       script: {
         select: {
+          rawJson: true,
           job: {
             select: {
               payload: true,
@@ -341,6 +559,16 @@ export async function runVideoPromptGeneration(args: {
   });
 
   const scriptJobPayload = asObject(storyboard.script?.job?.payload) ?? {};
+  const scriptRaw = (storyboard.script?.rawJson ?? {}) as any;
+  const scriptVoFull = asString(scriptRaw.vo_full) || null;
+  const scriptScenes = Array.isArray(scriptRaw.scenes) ? scriptRaw.scenes : [];
+  const globalCharacterHandle = normalizeCharacterHandleForPrompt(
+    args.characterHandle ?? null,
+  );
+  const globalCharacterName = asString(args.characterName ?? null) || null;
+  const globalCharacterDescription =
+    sanitizeCharacterDescription(asString(args.characterDescription ?? null)) || null;
+  const globalGenderPresentation = asString(args.characterGender ?? null) || null;
   const effectiveProductId =
     normalizeUrl(args.productId) ||
     normalizeUrl(scriptJobPayload.productId) ||
@@ -359,39 +587,63 @@ export async function runVideoPromptGeneration(args: {
 
   let scenes = storyboard.scenes;
   let processed = 0;
+  const usageEntries: Array<{
+    metric: string;
+    provider: string;
+    model: string;
+    units: number;
+    costCents: number;
+    metadata: Record<string, unknown>;
+  }> = [];
 
   if (scenes.length === 0) {
     const panelType: PanelType = 'ON_CAMERA';
+    const fallbackSceneBeatRaw = asObject(scriptScenes[0]) ?? null;
+    const fallbackSceneBeat: { beat?: string; duration?: string; vo?: string } | null =
+      fallbackSceneBeatRaw
+        ? {
+            beat: asString(fallbackSceneBeatRaw.beat) || undefined,
+            duration: asString(fallbackSceneBeatRaw.duration) || undefined,
+            vo: asString(fallbackSceneBeatRaw.vo) || undefined,
+          }
+        : null;
+    const fallbackRequiredVo = asString(fallbackSceneBeat?.vo);
+    if (!fallbackRequiredVo) {
+      throw new Error("Scene 1 missing VO. Cannot generate video prompt without scene VO.");
+    }
     const sceneReferenceFrames = buildSceneReferenceFrames({
       panelType,
       creatorReferenceImageUrl,
       productReferenceImageUrl,
     });
 
-    const fallbackPrompt = buildVideoPromptForScene({
+    const generation = await generateKlingPromptWithClaude({
       sceneNumber: 1,
-      durationSec: 8,
-      raw: {},
-      panelType,
-      creatorReferenceImageUrl:
-        sceneReferenceFrames.find((frame) => frame.kind === 'creator')?.url ?? null,
-      productReferenceImageUrl:
-        sceneReferenceFrames.find((frame) => frame.kind === 'product')?.url ?? null,
-    });
-    const prompt = await generateKlingPromptWithClaude({
-      sceneNumber: 1,
+      totalScenes: 1,
       durationSec: 8,
       vo: "",
+      requiredVo: fallbackRequiredVo,
+      scriptVoFull,
+      scriptBeat: fallbackSceneBeat,
       panelType,
       characterAction: null,
+      characterHandle: globalCharacterHandle,
       environment: null,
       cameraDirection: "",
       productPlacement: "",
       bRollSuggestions: [],
+      characterAnchor: null,
+      characterDescription:
+        globalCharacterDescription ||
+        "Same creator identity as the ad context. Maintain face, hair, clothing, and age consistency.",
+      genderPresentation: globalGenderPresentation,
+      voiceoverOnly: false,
+      characterName: globalCharacterName,
       hasCreatorRef: Boolean(sceneReferenceFrames.find((frame) => frame.kind === 'creator')?.url),
       hasProductRef: Boolean(sceneReferenceFrames.find((frame) => frame.kind === 'product')?.url),
-      fallbackPrompt,
     });
+    if (generation.usageEntry) usageEntries.push(generation.usageEntry);
+    const prompt = generation.prompt;
 
     const created = await prisma.storyboardScene.create({
       data: {
@@ -416,12 +668,8 @@ export async function runVideoPromptGeneration(args: {
     processed = 1;
   }
 
-  const targetScenes = scenes.filter(
-    (s: any) => {
-      const vp = (s as any).videoPrompt ?? (s.rawJson as any)?.videoPrompt ?? '';
-      return !vp || String(vp).trim().length === 0;
-    },
-  );
+  const targetScenes = scenes;
+  const totalScenes = targetScenes.length;
 
   if (!targetScenes.length) {
     console.log("[videoPromptGeneration] All prompts generated successfully", {
@@ -433,6 +681,7 @@ export async function runVideoPromptGeneration(args: {
       storyboardId,
       sceneCount: scenes.length,
       processed,
+      usageEntries,
     };
   }
 
@@ -455,40 +704,75 @@ export async function runVideoPromptGeneration(args: {
       sceneReferenceFrames.find((frame) => frame.kind === 'product')?.url ?? null;
 
     const vo = asString(raw.vo);
+    const sceneBeatRaw = asObject(scriptScenes[sceneNumber - 1]) ?? null;
+    const sceneBeat: { beat?: string; duration?: string; vo?: string } | null = sceneBeatRaw
+      ? {
+          beat: asString(sceneBeatRaw.beat) || undefined,
+          duration: asString(sceneBeatRaw.duration) || undefined,
+          vo: asString(sceneBeatRaw.vo) || undefined,
+        }
+      : null;
+    const sceneBeatVo = asString(sceneBeat?.vo);
+    const requiredVo = vo || sceneBeatVo;
+    if (!requiredVo) {
+      throw new Error(`Scene ${sceneNumber} missing VO. Cannot generate video prompt without scene VO.`);
+    }
     const characterAction = asString(raw.characterAction) || null;
+    const characterHandle = globalCharacterHandle || null;
     const environment = asString(raw.environment) || null;
     const cameraDirection = asString(raw.cameraDirection);
     const productPlacement = asString(raw.productPlacement);
     const bRollSuggestions = asStringArray(raw.bRollSuggestions);
+    const voiceoverOnly = Boolean((scene as any).voiceoverOnly ?? raw.voiceoverOnly);
+    const genderPresentation =
+      asString((raw as any).genderPresentation) ||
+      asString((raw as any).characterGender) ||
+      globalGenderPresentation ||
+      null;
+    const characterDescription =
+      sanitizeCharacterDescription(asString((raw as any).characterDescription)) ||
+      sanitizeCharacterDescription(asString((raw as any).characterAnchor)) ||
+      sanitizeCharacterDescription(globalCharacterDescription) ||
+      (characterHandle
+        ? `Creator handle ${normalizeCharacterHandleForPrompt(characterHandle)}. Keep identity and styling consistent across scenes.`
+        : "Same creator identity across scenes. Keep face, hair, clothing, and age consistent.");
+    const characterName = asString((raw as any).characterName) || globalCharacterName || null;
+    const characterAnchor = asString((raw as any).characterAnchor) || null;
 
-    const fallbackPrompt = buildVideoPromptForScene({
+    const generation = await generateKlingPromptWithClaude({
       sceneNumber,
-      durationSec,
-      firstFrameUrl,
-      lastFrameUrl,
-      raw,
-      panelType,
-      creatorReferenceImageUrl: sceneCreatorReferenceImageUrl,
-      productReferenceImageUrl: sceneProductReferenceImageUrl,
-    });
-    const prompt = await generateKlingPromptWithClaude({
-      sceneNumber,
+      totalScenes,
       durationSec,
       vo,
+      requiredVo,
+      scriptVoFull,
+      scriptBeat: sceneBeat,
       panelType,
       characterAction,
+      characterHandle,
       environment,
       cameraDirection,
       productPlacement,
       bRollSuggestions,
+      characterAnchor,
+      characterDescription,
+      genderPresentation,
+      voiceoverOnly,
+      characterName,
       hasCreatorRef: Boolean(sceneCreatorReferenceImageUrl),
       hasProductRef: Boolean(sceneProductReferenceImageUrl),
-      fallbackPrompt,
     });
+    if (generation.usageEntry) usageEntries.push(generation.usageEntry);
+    const prompt = generation.prompt;
+    const persistedPrompt = ensurePromptContainsCharacterProfile(
+      prompt,
+      characterName,
+      characterDescription,
+    );
     console.log('[videoPromptGeneration] Claude prompt generated', {
       storyboardId,
       sceneNumber,
-      prompt,
+      prompt: persistedPrompt,
     });
 
     const hasFrames = Boolean(firstFrameUrl && lastFrameUrl);
@@ -499,8 +783,10 @@ export async function runVideoPromptGeneration(args: {
       : (scene as any).status || 'pending';
 
     const rawForUpdate = raw && typeof raw === 'object' && !Array.isArray(raw) ? { ...raw } : {};
-    rawForUpdate.videoPrompt = prompt;
+    rawForUpdate.videoPrompt = persistedPrompt;
     rawForUpdate.panelType = panelType;
+    rawForUpdate.characterDescription = characterDescription;
+    rawForUpdate.characterName = characterName;
     rawForUpdate.creatorReferenceImageUrl = sceneCreatorReferenceImageUrl;
     rawForUpdate.productReferenceImageUrl = sceneProductReferenceImageUrl;
     rawForUpdate.referenceFrames = sceneReferenceFrames;
@@ -540,6 +826,7 @@ export async function runVideoPromptGeneration(args: {
     storyboardId,
     sceneCount: scenes.length,
     processed,
+    usageEntries,
   };
 }
 
@@ -550,6 +837,10 @@ export async function startVideoPromptGenerationJob(params: {
   storyboardId: string;
   jobId: string;
   productId?: string | null;
+  characterHandle?: string | null;
+  characterName?: string | null;
+  characterDescription?: string | null;
+  characterGender?: string | null;
   creatorReferenceImageUrl?: string | null;
   productReferenceImageUrl?: string | null;
 }) {
@@ -557,6 +848,10 @@ export async function startVideoPromptGenerationJob(params: {
     storyboardId,
     jobId,
     productId,
+    characterHandle,
+    characterName,
+    characterDescription,
+    characterGender,
     creatorReferenceImageUrl,
     productReferenceImageUrl,
   } = params;
@@ -581,6 +876,10 @@ export async function startVideoPromptGenerationJob(params: {
       storyboardId,
       jobId,
       productId,
+      characterHandle,
+      characterName,
+      characterDescription,
+      characterGender,
       creatorReferenceImageUrl,
       productReferenceImageUrl,
     });

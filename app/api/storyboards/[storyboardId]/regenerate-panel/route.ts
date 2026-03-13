@@ -3,13 +3,17 @@ import Anthropic from "@anthropic-ai/sdk";
 import { cfg } from "@/lib/config";
 import { getSessionUserId } from "@/lib/getSessionUserId";
 import { prisma } from "@/lib/prisma";
+import { computeAnthropicCostCents } from "@/lib/billing/pricing";
 
 type PanelTypeValue = "ON_CAMERA" | "B_ROLL_ONLY";
 type RegenerateTarget = "panel_direction" | "video_prompt";
 
-const VIDEO_PROMPT_SYSTEM_PROMPT =
-  "You write Kling AI video prompts. Translate storyboard direction into camera-ready prompts under 200 characters. Be specific. Every word earns its place.";
-const VIDEO_PROMPT_MODEL = cfg.raw("ANTHROPIC_MODEL") || "claude-sonnet-4-5-20250929";
+const VIDEO_PROMPT_SYSTEM_PROMPT = `You are a video director writing production-grade Sora 2 prompts for UGC supplement ads.
+Return only the final prompt text.
+Write clear cinematic direction with concrete subject action, camera language, lighting, and environment details.
+Keep temporal continuity and character consistency across the shot.
+Must be UGC conversion-focused (creator-native, handheld, social-feed direct response), not a polished commercial.`;
+const VIDEO_PROMPT_MODEL = cfg.raw("ANTHROPIC_MODEL") || "claude-sonnet-4-6";
 
 type StoryboardPanel = {
   panelType: PanelTypeValue;
@@ -18,12 +22,16 @@ type StoryboardPanel = {
   endTime: string;
   vo: string;
   characterAction: string | null;
+  characterName: string | null;
+  characterDescription: string | null;
   environment: string | null;
   cameraDirection: string;
   productPlacement: string;
   bRollSuggestions: string[];
-  transitionType: string;
 };
+
+const DEFAULT_ENVIRONMENT_DESCRIPTION =
+  "Same environment as Scene 1, with consistent room layout, props, and lighting.";
 
 function asObject(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -63,35 +71,84 @@ function parseJsonFromModelText(text: string): unknown {
     throw new Error("Claude returned an empty response.");
   }
 
-  try {
-    return JSON.parse(trimmed);
-  } catch {}
+  const tryParse = (candidate: string): unknown | null => {
+    try {
+      return JSON.parse(candidate);
+    } catch {
+      return null;
+    }
+  };
 
-  const fenced = trimmed.match(/```json\s*([\s\S]*?)```/i) || trimmed.match(/```\s*([\s\S]*?)```/);
+  const parseWithRepairs = (candidate: string): unknown | null => {
+    const normalizedQuotes = candidate
+      .replace(/[\u2018\u2019]/g, "'")
+      .replace(/[\u201C\u201D]/g, '"');
+    const noTrailingCommas = normalizedQuotes.replace(/,\s*([}\]])/g, "$1");
+    const quotedKeys = noTrailingCommas.replace(
+      /([{,]\s*)([A-Za-z_][A-Za-z0-9_ ]*)(\s*:)/g,
+      (_match, p1, p2, p3) => `${p1}"${String(p2).trim()}"${p3}`,
+    );
+    const doubleQuotedStrings = quotedKeys.replace(
+      /'([^'\\]*(?:\\.[^'\\]*)*)'/g,
+      (_match, p1) => `"${String(p1).replace(/"/g, '\\"')}"`,
+    );
+    return tryParse(doubleQuotedStrings);
+  };
+
+  const extractFirstBalancedObject = (source: string): string | null => {
+    const start = source.indexOf("{");
+    if (start < 0) return null;
+    let depth = 0;
+    let inString = false;
+    let escape = false;
+    for (let idx = start; idx < source.length; idx += 1) {
+      const char = source[idx];
+      if (inString) {
+        if (escape) {
+          escape = false;
+        } else if (char === "\\") {
+          escape = true;
+        } else if (char === "\"") {
+          inString = false;
+        }
+        continue;
+      }
+      if (char === "\"") {
+        inString = true;
+        continue;
+      }
+      if (char === "{") depth += 1;
+      if (char === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          return source.slice(start, idx + 1);
+        }
+      }
+    }
+    return null;
+  };
+
+  const direct = tryParse(trimmed);
+  if (direct !== null) return direct;
+
+  const fenced =
+    trimmed.match(/```json\s*([\s\S]*?)```/i) ||
+    trimmed.match(/```\s*([\s\S]*?)```/);
   if (fenced?.[1]) {
-    return JSON.parse(fenced[1].trim());
+    const parsedFenced = tryParse(fenced[1].trim()) ?? parseWithRepairs(fenced[1].trim());
+    if (parsedFenced !== null) return parsedFenced;
   }
 
-  const objStart = trimmed.indexOf("{");
-  if (objStart < 0) {
+  const balanced = extractFirstBalancedObject(trimmed);
+  if (!balanced) {
     throw new Error("Claude response does not contain JSON.");
   }
 
-  let depth = 0;
-  let end = -1;
-  for (let idx = objStart; idx < trimmed.length; idx += 1) {
-    const char = trimmed[idx];
-    if (char === "{") depth += 1;
-    if (char === "}") depth -= 1;
-    if (depth === 0) {
-      end = idx;
-      break;
-    }
-  }
-  if (end === -1) {
-    throw new Error("Claude response contains invalid JSON.");
-  }
-  return JSON.parse(trimmed.slice(objStart, end + 1));
+  const parsedBalanced = tryParse(balanced) ?? parseWithRepairs(balanced);
+  if (parsedBalanced !== null) return parsedBalanced;
+
+  const preview = balanced.slice(0, 240).replace(/\s+/g, " ").trim();
+  throw new Error(`Claude response contains invalid JSON. Preview: ${preview}`);
 }
 
 function normalizePanel(
@@ -109,12 +166,23 @@ function normalizePanel(
     endTime: asString(raw.endTime),
     vo: asString(raw.vo),
     characterAction: characterAction || null,
+    characterName: asString(raw.characterName) || null,
+    characterDescription: asString(raw.characterDescription) || null,
     environment: environment || null,
     cameraDirection: asString(raw.cameraDirection),
     productPlacement: asString(raw.productPlacement),
     bRollSuggestions: asStringArray(raw.bRollSuggestions),
-    transitionType: asString(raw.transitionType),
   };
+}
+
+function canonicalEnvironmentFromPanels(panels: StoryboardPanel[]): string | null {
+  if (!panels.length) return null;
+  const sceneOneEnvironment = (panels[0]?.environment ?? "").trim();
+  if (sceneOneEnvironment) return sceneOneEnvironment;
+  const firstAvailable = panels
+    .map((panel) => String(panel.environment ?? "").trim())
+    .find(Boolean);
+  return firstAvailable || DEFAULT_ENVIRONMENT_DESCRIPTION;
 }
 
 function buildPrompt(args: {
@@ -133,6 +201,8 @@ Beat: ${targetPanel.beatLabel}
 Timing: ${targetPanel.startTime}-${targetPanel.endTime}
 VO: ${targetPanel.vo}
 Panel Type: ${targetPanel.panelType}
+Character Name: ${targetPanel.characterName || "Not provided"}
+Character Description: ${targetPanel.characterDescription || "Not provided"}
 
 Previous panel context:
 ${previousPanel ? `${previousPanel.beatLabel}: ${previousPanel.vo}` : "None"}
@@ -140,25 +210,54 @@ ${previousPanel ? `${previousPanel.beatLabel}: ${previousPanel.vo}` : "None"}
 Next panel context:
 ${nextPanel ? `${nextPanel.beatLabel}: ${nextPanel.vo}` : "None"}
 
+Style requirement:
+- UGC conversion ad, not commercial.
+- Creator-native, phone-shot realism, direct-response clarity.
+- No cinematic polish, no brand-commercial staging.
+
 Output JSON schema:
 {
   "panelType": "ON_CAMERA | B_ROLL_ONLY",
   "beatLabel": "string",
   "characterAction": "string | null",
+  "characterName": "string | null",
+  "characterDescription": "string | null",
   "environment": "string | null",
   "cameraDirection": "string",
   "productPlacement": "string",
-  "bRollSuggestions": ["string"],
-  "transitionType": "string"
+  "bRollSuggestions": ["string"]
 }
 
 Keep the same voice and continuity with surrounding panels. Return ONLY valid JSON.`;
 }
 
 function normalizeKlingPrompt(text: string): string {
-  const normalized = String(text ?? "").replace(/\s+/g, " ").trim();
-  if (normalized.length <= 200) return normalized;
-  return normalized.slice(0, 200).trimEnd();
+  const normalized = String(text ?? "").replace(/\r/g, "").trim();
+  if (normalized.length <= 2400) return normalized;
+  return normalized.slice(0, 2400).trimEnd();
+}
+
+function ensurePromptContainsCharacterProfile(
+  prompt: string,
+  characterName: string | null,
+  characterDescription: string | null,
+): string {
+  let next = String(prompt ?? "").trim();
+  const name = asString(characterName);
+  const description = asString(characterDescription);
+  if (name) {
+    const line = `Character name: ${name}`;
+    if (!next.toLowerCase().includes(line.toLowerCase())) {
+      next = `${next}\n\n${line}`.trim();
+    }
+  }
+  if (description) {
+    const line = `Character description: ${description}`;
+    if (!next.toLowerCase().includes(line.toLowerCase())) {
+      next = `${next}\n\n${line}`.trim();
+    }
+  }
+  return next;
 }
 
 function formatDurationLabel(durationSec: number): string {
@@ -180,35 +279,52 @@ function buildVideoPromptRegenerationPrompt(args: {
   hasProductRef: boolean;
 }): string {
   const { sceneNumber, durationSec, panel, hasCreatorRef, hasProductRef } = args;
-  return `Scene ${sceneNumber}, ${formatDurationLabel(durationSec)}s.
+  return `You are generating a Sora 2 video prompt for Scene ${sceneNumber} of a UGC supplement ad.
 
-VO: ${panel.vo || "N/A"}
-
-Panel type: ${panel.panelType}
-
-Character: ${panel.characterAction || "N/A"}
+STORYBOARD PANEL:
+Scene ${sceneNumber} | ${formatDurationLabel(durationSec)}s | ${panel.panelType}
+Scene VO: ${panel.vo || "N/A"}
+Character action: ${panel.characterAction || "N/A"}
 Environment: ${panel.environment || "N/A"}
 Camera: ${panel.cameraDirection || "N/A"}
 Product placement: ${panel.productPlacement || "N/A"}
-B-roll shots: ${panel.bRollSuggestions.length > 0 ? panel.bRollSuggestions.join("; ") : "N/A"}
+${panel.bRollSuggestions.length > 0 ? `B-roll: ${panel.bRollSuggestions.join("; ")}` : ""}
+${hasCreatorRef ? "Subject: use creator reference image." : ""}
+${hasProductRef ? "Product: use product reference image." : ""}
 
-${hasCreatorRef ? "Subject from creator reference image." : ""}
-${hasProductRef ? "Product from product reference image." : ""}
+Write a Sora 2 prompt using this structure and labels:
 
-Write a Kling prompt. Specify subject, exact action with timing, camera movement, lighting. Under 200 chars. No fluff.`;
+[Scene description: subject, environment, atmosphere]
+
+Cinematography:
+Camera shot: [framing and angle]
+Lighting + palette: [light source, quality, 3-5 color anchors]
+Mood: [tone]
+
+Actions:
+- [0s: opening beat]
+- [Xs: next beat with timing]
+- [Final beat]
+
+Output requirements:
+- 350-1200 characters
+- No preamble or explanation
+- Include concrete physical actions and camera movement
+- Avoid generic filler phrasing`;
 }
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { storyboardId: string } },
+  { params }: { params: Promise<{ storyboardId: string }> },
 ) {
+  const awaitedParams = await params;
   const userId = await getSessionUserId();
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
-    const storyboardId = String(params?.storyboardId ?? "").trim();
+    const storyboardId = String(awaitedParams?.storyboardId ?? "").trim();
     if (!storyboardId) {
       return NextResponse.json({ error: "storyboardId is required" }, { status: 400 });
     }
@@ -311,7 +427,7 @@ export async function POST(
 
       const response = await anthropic.messages.create({
         model: VIDEO_PROMPT_MODEL,
-        max_tokens: 200,
+        max_tokens: 2400,
         system: VIDEO_PROMPT_SYSTEM_PROMPT,
         messages: [
           {
@@ -327,16 +443,36 @@ export async function POST(
         ],
       });
 
+      const providerRequestId = (response as any)?.id ?? null;
+      const inputTokens = Math.max(0, Math.trunc(Number(response?.usage?.input_tokens ?? 0)));
+      const outputTokens = Math.max(0, Math.trunc(Number(response?.usage?.output_tokens ?? 0)));
+      const costCents = computeAnthropicCostCents(VIDEO_PROMPT_MODEL, inputTokens, outputTokens);
+
+      console.log("[regenerate-panel/video_prompt] cost", {
+        storyboardId,
+        panelIndex,
+        model: VIDEO_PROMPT_MODEL,
+        inputTokens,
+        outputTokens,
+        costCents,
+        providerRequestId,
+      });
+
       const promptText = extractTextContent(response);
       if (!promptText) {
         throw new Error("Claude returned an empty video prompt.");
       }
+      const promptWithCharacterProfile = ensurePromptContainsCharacterProfile(
+        normalizeKlingPrompt(promptText),
+        targetPanel.characterName || null,
+        targetPanel.characterDescription || null,
+      );
 
       return NextResponse.json(
         {
           success: true,
           panelIndex,
-          videoPrompt: normalizeKlingPrompt(promptText),
+          videoPrompt: promptWithCharacterProfile,
         },
         { status: 200 },
       );
@@ -361,11 +497,27 @@ export async function POST(
       ],
     });
 
+    const providerRequestId = (response as any)?.id ?? null;
+    const inputTokens = Math.max(0, Math.trunc(Number(response?.usage?.input_tokens ?? 0)));
+    const outputTokens = Math.max(0, Math.trunc(Number(response?.usage?.output_tokens ?? 0)));
+    const costCents = computeAnthropicCostCents("claude-haiku-4-5-20251001", inputTokens, outputTokens);
+
+    console.log("[regenerate-panel/panel_direction] cost", {
+      storyboardId,
+      panelIndex,
+      model: "claude-haiku-4-5-20251001",
+      inputTokens,
+      outputTokens,
+      costCents,
+      providerRequestId,
+    });
+
     const responseText = extractTextContent(response);
     const parsed = parseJsonFromModelText(responseText);
     const parsedObject = asObject(parsed) ?? {};
 
     const regeneratedPanelType = normalizePanelType(parsedObject.panelType ?? targetPanel.panelType);
+    const canonicalEnvironment = canonicalEnvironmentFromPanels(panels);
     const regeneratedPanel: StoryboardPanel = {
       panelType: regeneratedPanelType,
       beatLabel: asString(parsedObject.beatLabel) || targetPanel.beatLabel,
@@ -376,14 +528,13 @@ export async function POST(
         regeneratedPanelType === "B_ROLL_ONLY"
           ? asString(parsedObject.characterAction) || targetPanel.characterAction || null
           : asString(parsedObject.characterAction) || targetPanel.characterAction || "",
-      environment:
-        regeneratedPanelType === "B_ROLL_ONLY"
-          ? asString(parsedObject.environment) || targetPanel.environment || null
-          : asString(parsedObject.environment) || targetPanel.environment || null,
+      characterName: asString(parsedObject.characterName) || targetPanel.characterName || null,
+      characterDescription:
+        asString(parsedObject.characterDescription) || targetPanel.characterDescription || null,
+      environment: canonicalEnvironment,
       cameraDirection: asString(parsedObject.cameraDirection) || targetPanel.cameraDirection,
       productPlacement: asString(parsedObject.productPlacement) || targetPanel.productPlacement,
       bRollSuggestions: asStringArray(parsedObject.bRollSuggestions),
-      transitionType: asString(parsedObject.transitionType) || targetPanel.transitionType,
     };
 
     return NextResponse.json(

@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { ResearchSource } from "@prisma/client";
 import { cfg } from "@/lib/config";
 import { prisma } from "@/lib/prisma";
+import { computeAnthropicCostCents } from "@/lib/billing/pricing";
 
 export interface ProductIntel {
   main_benefit?: string;
@@ -51,6 +52,18 @@ type WebSearchEnrichment = {
   resolved_fields?: Partial<Record<ProductIntelField, unknown>>;
   validated_fields?: Partial<Record<ProductIntelField, ValidatedField>>;
   citations?: Partial<Record<ProductIntelField, Citation[]>>;
+};
+
+type BillingUsageEntry = {
+  metric: string;
+  provider: string;
+  model: string;
+  units: number;
+  costCents: number;
+  metadata: {
+    inputTokens: number;
+    outputTokens: number;
+  };
 };
 
 const PRODUCT_INTEL_FIELDS: ProductIntelField[] = [
@@ -190,7 +203,7 @@ function getMissingFields(intel: ProductIntel): ProductIntelField[] {
 function normalizeCitationArray(value: unknown): Citation[] {
   if (!Array.isArray(value)) return [];
   return value
-    .map((entry) => {
+    .map((entry): Citation | null => {
       if (!entry || typeof entry !== "object") return null;
       const sourceUrl = String((entry as { source_url?: unknown }).source_url ?? "").trim();
       if (!sourceUrl) return null;
@@ -221,7 +234,7 @@ function normalizeCitationArray(value: unknown): Citation[] {
 function countCitations(value: unknown): number {
   if (!value || typeof value !== "object") return 0;
   const record = value as Record<string, unknown>;
-  return Object.values(record).reduce((total, fieldCitations) => {
+  return Object.values(record).reduce<number>((total, fieldCitations) => {
     return total + normalizeCitationArray(fieldCitations).length;
   }, 0);
 }
@@ -410,9 +423,9 @@ async function runWebSearchEnrichment(
     baseIntel: ProductIntel;
     missingFields: ProductIntelField[];
   }
-): Promise<WebSearchEnrichment | null> {
+): Promise<{ enrichment: WebSearchEnrichment | null; usageEntries: BillingUsageEntry[] }> {
   const { productUrl, sourceUrls, baseIntel, missingFields } = args;
-  if (missingFields.length === 0) return null;
+  if (missingFields.length === 0) return { enrichment: null, usageEntries: [] };
 
   const validationPrompt = `Fix bad extraction and fill gaps.
 
@@ -477,15 +490,36 @@ Fix the garbage. Don't validate it.`;
   const tools = [{ type: "web_search_20250305", name: "web_search" }] as const;
   const messages: any[] = [{ role: "user", content: validationPrompt }];
   let finalText = "";
+  const usageEntries: BillingUsageEntry[] = [];
 
   for (let step = 0; step < WEB_SEARCH_TOOL_MAX_STEPS; step++) {
     const response: any = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
+      model: "claude-sonnet-4-6",
       max_tokens: 2400,
       system: validationSystem,
       messages,
       tools,
     } as any);
+    const inputTokens = Number((response as any)?.usage?.input_tokens ?? 0);
+    const outputTokens = Number((response as any)?.usage?.output_tokens ?? 0);
+    const totalTokens = Math.max(0, Math.trunc(inputTokens + outputTokens));
+    if (totalTokens > 0) {
+      usageEntries.push({
+        metric: "tokens",
+        provider: "anthropic",
+        model: "claude-sonnet-4-6",
+        units: totalTokens,
+        costCents: computeAnthropicCostCents(
+          "claude-sonnet-4-6",
+          Math.max(0, Math.trunc(inputTokens)),
+          Math.max(0, Math.trunc(outputTokens)),
+        ),
+        metadata: {
+          inputTokens: Math.max(0, Math.trunc(inputTokens)),
+          outputTokens: Math.max(0, Math.trunc(outputTokens)),
+        },
+      });
+    }
 
     const textBlocks = Array.isArray(response?.content)
       ? response.content.filter((block: any) => block?.type === "text")
@@ -498,7 +532,10 @@ Fix the garbage. Don't validate it.`;
       if (!finalText) {
         throw new Error("Web search enrichment response missing text content");
       }
-      return extractObjectJson<WebSearchEnrichment>(finalText);
+      return {
+        enrichment: extractObjectJson<WebSearchEnrichment>(finalText),
+        usageEntries,
+      };
     }
 
     const toolUses = (response.content ?? []).filter(
@@ -551,7 +588,7 @@ export async function collectProductIntelWithWebFetch(
   returnsUrl?: string | null,
   shippingUrl?: string | null,
   aboutUrl?: string | null
-): Promise<ProductIntel> {
+): Promise<ProductIntel & { usageEntries: BillingUsageEntry[] }> {
   console.log("[Product Intel] Starting collection for URL:", productUrl);
   const apiKey = cfg.raw("ANTHROPIC_API_KEY");
   if (!apiKey) {
@@ -623,7 +660,7 @@ If you see marketing fluff, dig for the spec underneath it. Numbers over words. 
   const extractionSystem = "Return ONLY valid JSON. No markdown.";
 
   const extraction = await anthropic.messages.create({
-    model: "claude-sonnet-4-20250514",
+    model: "claude-sonnet-4-6",
     max_tokens: 2000,
     system: extractionSystem,
     messages: [
@@ -633,6 +670,30 @@ If you see marketing fluff, dig for the spec underneath it. Numbers over words. 
       },
     ],
   });
+  const usageEntries: BillingUsageEntry[] = [];
+  const extractionInputTokens = Number((extraction as any)?.usage?.input_tokens ?? 0);
+  const extractionOutputTokens = Number((extraction as any)?.usage?.output_tokens ?? 0);
+  const extractionTotalTokens = Math.max(
+    0,
+    Math.trunc(extractionInputTokens + extractionOutputTokens)
+  );
+  if (extractionTotalTokens > 0) {
+    usageEntries.push({
+      metric: "tokens",
+      provider: "anthropic",
+      model: "claude-sonnet-4-6",
+      units: extractionTotalTokens,
+      costCents: computeAnthropicCostCents(
+        "claude-sonnet-4-6",
+        Math.max(0, Math.trunc(extractionInputTokens)),
+        Math.max(0, Math.trunc(extractionOutputTokens)),
+      ),
+      metadata: {
+        inputTokens: Math.max(0, Math.trunc(extractionInputTokens)),
+        outputTokens: Math.max(0, Math.trunc(extractionOutputTokens)),
+      },
+    });
+  }
 
   const text = extraction.content.find((c) => c.type === "text")?.text || "{}";
   const baseProductIntel = normalizeProductIntel(extractJson(text));
@@ -648,9 +709,10 @@ If you see marketing fluff, dig for the spec underneath it. Numbers over words. 
         baseIntel: baseProductIntel,
         missingFields,
       });
-      if (enrichment) {
+      usageEntries.push(...enrichment.usageEntries);
+      if (enrichment.enrichment) {
         productIntel = normalizeProductIntel(
-          mergeSearchEnrichment(baseProductIntel, enrichment)
+          mergeSearchEnrichment(baseProductIntel, enrichment.enrichment)
         );
       }
     } catch (error) {
@@ -683,5 +745,8 @@ If you see marketing fluff, dig for the spec underneath it. Numbers over words. 
     },
   });
 
-  return productIntel;
+  return {
+    ...productIntel,
+    usageEntries,
+  };
 }

@@ -8,6 +8,7 @@ type Entry = {
   lockedUntil: number;
 };
 
+// TODO(medium): keep this module as a local/dev fallback only; production auth throttling should use the DB-backed implementation.
 const store = new Map<string, Entry>();
 
 const WINDOW_MS = Number(cfg.raw("AUTH_WINDOW_MS") ?? 10 * 60_000); // 10 min

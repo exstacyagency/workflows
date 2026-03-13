@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { AdPlatform } from "@prisma/client";
 import { cfg } from "@/lib/config";
 import { prisma } from "@/lib/prisma";
+import { computeAnthropicCostCents } from "@/lib/billing/pricing";
 
 type QualityIssue =
   | "ui_chrome"
@@ -18,7 +19,19 @@ type QualityAssessment = {
   reason: string;
 };
 
-const DEFAULT_QUALITY_MODEL = "claude-sonnet-4-5-20250929";
+type BillingUsageEntry = {
+  metric: string;
+  provider: string;
+  model: string;
+  units: number;
+  costCents: number;
+  metadata: {
+    inputTokens: number;
+    outputTokens: number;
+  };
+};
+
+const DEFAULT_QUALITY_MODEL = "claude-sonnet-4-6";
 const QUALITY_MODEL = (() => {
   const configured = cfg.raw("ANTHROPIC_QUALITY_MODEL");
   if (typeof configured === "string" && configured.trim().length > 0) {
@@ -32,6 +45,7 @@ const anthropic = new Anthropic({
   apiKey: cfg.raw("ANTHROPIC_API_KEY"),
   timeout: 60000,
 });
+// TODO(medium): instantiate Anthropic lazily after env validation so import-time config failures do not linger for the process lifetime.
 
 function asObject(value: unknown): Record<string, any> {
   if (value && typeof value === "object" && !Array.isArray(value)) {
@@ -45,6 +59,16 @@ function firstString(...values: unknown[]): string | null {
     if (typeof value !== "string") continue;
     const normalized = value.trim();
     if (normalized) return normalized;
+  }
+  return null;
+}
+
+function asBoolean(value: unknown): boolean | null {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true") return true;
+    if (normalized === "false") return false;
   }
   return null;
 }
@@ -120,7 +144,10 @@ function normalizeAssessment(payload: Record<string, any>): QualityAssessment {
   };
 }
 
-async function assessAdQuality(ocrText: string | null, transcript: string | null): Promise<QualityAssessment> {
+async function assessAdQuality(
+  ocrText: string | null,
+  transcript: string | null
+): Promise<{ assessment: QualityAssessment; usageEntry: BillingUsageEntry | null }> {
   const ocrBlock = (ocrText ?? "none").slice(0, 4000);
   const transcriptBlock = (transcript ?? "none").slice(0, 4000);
 
@@ -160,7 +187,29 @@ JSON only:
 
   const text = response.content.find((entry) => entry.type === "text");
   const parsed = extractJsonObject(text?.type === "text" ? text.text : "{}");
-  return normalizeAssessment(parsed);
+  const assessment = normalizeAssessment(parsed);
+  const inputTokens = Number((response as any)?.usage?.input_tokens ?? 0);
+  const outputTokens = Number((response as any)?.usage?.output_tokens ?? 0);
+  const totalTokens = Math.max(0, Math.trunc(inputTokens + outputTokens));
+  const usageEntry =
+    totalTokens > 0
+      ? {
+          metric: "tokens",
+          provider: "anthropic",
+          model: QUALITY_MODEL,
+          units: totalTokens,
+          costCents: computeAnthropicCostCents(
+            QUALITY_MODEL,
+            Math.max(0, Math.trunc(inputTokens)),
+            Math.max(0, Math.trunc(outputTokens)),
+          ),
+          metadata: {
+            inputTokens: Math.max(0, Math.trunc(inputTokens)),
+            outputTokens: Math.max(0, Math.trunc(outputTokens)),
+          },
+        }
+      : null;
+  return { assessment, usageEntry };
 }
 
 export async function runAdQualityGate(args: {
@@ -192,6 +241,9 @@ export async function runAdQualityGate(args: {
     select: {
       id: true,
       rawJson: true,
+      contentViable: true,
+      qualityConfidence: true,
+      qualityReason: true,
     },
     orderBy: { createdAt: "asc" },
   });
@@ -199,7 +251,12 @@ export async function runAdQualityGate(args: {
   const candidates = assets.filter((asset) => {
     const raw = asObject(asset.rawJson);
     const alreadyAssessed = Boolean(raw.qualityGate && typeof raw.qualityGate === "object");
-    if (!forceReprocess && alreadyAssessed) return false;
+    const needsColumnBackfill =
+      alreadyAssessed &&
+      (asset.contentViable === null ||
+        asset.qualityConfidence === null ||
+        !firstString(asset.qualityReason));
+    if (!forceReprocess && alreadyAssessed && !needsColumnBackfill) return false;
     const transcript = firstString(raw.transcript);
     const ocrText = firstString(raw.ocrText);
     return Boolean(transcript || ocrText);
@@ -219,21 +276,64 @@ export async function runAdQualityGate(args: {
   let assessed = 0;
   let viable = 0;
   const rejectionReasons: Record<string, number> = {};
+  const usageEntries: BillingUsageEntry[] = [];
 
   for (const asset of candidates) {
     const raw = asObject(asset.rawJson);
+    const qualityGate = asObject(raw.qualityGate);
+    const alreadyAssessed = Boolean(raw.qualityGate && typeof raw.qualityGate === "object");
     const transcript = firstString(raw.transcript);
     const ocrText = firstString(raw.ocrText);
 
-    const assessment = await assessAdQuality(ocrText, transcript);
+    if (!forceReprocess && alreadyAssessed) {
+      const accepted = asBoolean(raw.contentViable) === true || asBoolean(qualityGate.viable) === true;
+      const confidence = clampConfidence(firstNumber(raw.qualityConfidence, qualityGate.confidence));
+      const qualityIssue = (firstString(raw.qualityIssue, qualityGate.issue) ?? "valid") as QualityIssue;
+      const qualityReason = firstString(raw.qualityReason, qualityGate.reason) ?? "Backfilled from quality gate metadata";
+      const viabilityScore = accepted ? confidence / 100 : 0;
+      const transcriptText = typeof transcript === "string" ? transcript.trim() : "";
+      const transcriptWordCount = transcriptText ? transcriptText.split(/\s+/).filter(Boolean).length : 0;
+      const hasMeaningfulTranscript = transcriptText.length > 100 && transcriptWordCount >= 20;
+      const swipeCandidate = viabilityScore > 0.85 && hasMeaningfulTranscript;
+
+      await prisma.adAsset.update({
+        where: { id: asset.id },
+        data: {
+          contentViable: accepted,
+          qualityIssue,
+          qualityConfidence: confidence,
+          qualityReason,
+          swipeCandidate,
+        },
+      });
+
+      assessed += 1;
+      if (accepted) viable += 1;
+      else rejectionReasons[qualityIssue] = (rejectionReasons[qualityIssue] || 0) + 1;
+      continue;
+    }
+
+    const qualityResult = await assessAdQuality(ocrText, transcript);
+    const assessment = qualityResult.assessment;
+    if (qualityResult.usageEntry) {
+      usageEntries.push(qualityResult.usageEntry);
+    }
     const accepted = assessment.viable && assessment.confidence >= QUALITY_CONFIDENCE_THRESHOLD;
     const viabilityScore = assessment.viable ? assessment.confidence / 100 : 0;
     const viewCount = extractViewCount(raw);
-    const isSwipeFile = viabilityScore > 0.85 && viewCount > 1_000_000;
+    const transcriptText = typeof raw.transcript === "string" ? raw.transcript.trim() : "";
+    const transcriptWordCount = transcriptText ? transcriptText.split(/\s+/).filter(Boolean).length : 0;
+    const hasMeaningfulTranscript = transcriptText.length > 100 && transcriptWordCount >= 20;
+    const swipeCandidate =
+      viabilityScore > 0.85 && hasMeaningfulTranscript;
 
     await prisma.adAsset.update({
       where: { id: asset.id },
       data: {
+        contentViable: accepted,
+        qualityIssue: assessment.primaryIssue,
+        qualityConfidence: assessment.confidence,
+        qualityReason: assessment.reason,
         rawJson: {
           ...raw,
           contentViable: accepted,
@@ -242,7 +342,7 @@ export async function runAdQualityGate(args: {
           qualityReason: assessment.reason,
           viabilityScore,
           viewCount,
-          isSwipeFile,
+          swipeCandidate,
           qualityGate: {
             viable: accepted,
             rawViable: assessment.viable,
@@ -251,17 +351,13 @@ export async function runAdQualityGate(args: {
             reason: assessment.reason,
             viabilityScore,
             confidenceThreshold: QUALITY_CONFIDENCE_THRESHOLD,
-            isSwipeFile,
+            swipeCandidate,
             assessedAt: new Date().toISOString(),
           },
         } as any,
+        swipeCandidate,
       },
     });
-    await prisma.$executeRaw`
-      UPDATE "ad_asset"
-      SET "isSwipeFile" = ${isSwipeFile}
-      WHERE "id" = ${asset.id}
-    `;
 
     assessed += 1;
     if (accepted) {
@@ -285,5 +381,6 @@ export async function runAdQualityGate(args: {
     rejected,
     summary,
     confidenceThreshold: QUALITY_CONFIDENCE_THRESHOLD,
+    usageEntries,
   };
 }

@@ -6,8 +6,9 @@ import { JobStatus } from "@prisma/client";
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { jobId: string } }
+  { params }: { params: Promise<{ jobId: string }> }
 ) {
+  const awaitedParams = await params;
   const session = await requireSession(req);
 
   if (!session || !session.user) {
@@ -17,7 +18,7 @@ export async function POST(
   const job = await prisma.job.findUnique({
     where: {
       id_userId: {
-        id: params.jobId,
+        id: awaitedParams.jobId,
         userId: session.user.id,
       },
     },
@@ -27,10 +28,25 @@ export async function POST(
     return NextResponse.json({ error: "Not Found" }, { status: 404 });
   }
 
+  if (job.status !== JobStatus.PENDING && job.status !== JobStatus.RUNNING) {
+    return NextResponse.json(
+      { error: "Only pending or running jobs can be cancelled." },
+      { status: 400 },
+    );
+  }
+
+  // TODO(medium): cancel currently reuses FAILED; consider a dedicated cancelled state once the schema supports it.
   await prisma.job.update({
-    where: { id: params.jobId },
+    where: { id: awaitedParams.jobId },
     data: {
       status: JobStatus.FAILED,
+      payload: {
+        ...(job.payload && typeof job.payload === "object" && !Array.isArray(job.payload) ? job.payload : {}),
+        cancelRequested: true,
+        cancelRequestedAt: new Date().toISOString(),
+        cancelRequestedBy: session.user.id,
+        cancelReason: "Job cancelled by user",
+      } as any,
       error: "Job cancelled by user",
       updatedAt: new Date(),
     },

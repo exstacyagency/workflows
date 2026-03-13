@@ -1,5 +1,7 @@
 import { cfg } from "@/lib/config";
 import { kieJobPathsFromEnv, kieRequest } from "@/lib/kie/kieHttp";
+import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import type {
   VideoImageProvider,
   CreateVideoImagesInput,
@@ -41,6 +43,10 @@ function safeParseJsonString(s: any): any | null {
   } catch {
     return null;
   }
+}
+
+function isAwsS3HttpUrl(url: string): boolean {
+  return /^https?:\/\/[^/]*\.s3[.-][^/]*amazonaws\.com\/.+/i.test(url);
 }
 
 function extractImagesFromKie(json: any): Array<{ frameIndex: number; url: string }> {
@@ -173,59 +179,67 @@ export class KieImageProvider implements VideoImageProvider {
       throw new Error(`Invalid input: prompts[0].prompt is required`);
     }
 
-    const firstNegative = input.prompts[0]?.negativePrompt?.trim() ?? "";
     const continuityReferenceUrl = input.prompts[0]?.previousSceneLastFrameImageUrl
       ? String(input.prompts[0].previousSceneLastFrameImageUrl).trim()
       : "";
     const primaryInputImageUrl = input.prompts[0]?.inputImageUrl
       ? String(input.prompts[0].inputImageUrl).trim()
       : "";
-    const imageInputUrls = [primaryInputImageUrl, continuityReferenceUrl].filter(Boolean);
-    const contextImageUrls = imageInputUrls;
+    const extraReferenceUrls = Array.isArray(input.prompts[0]?.referenceImageUrls)
+      ? input.prompts[0].referenceImageUrls
+          .map((url) => String(url ?? "").trim())
+          .filter(Boolean)
+      : [];
+    // Ordered image inputs for first-frame generation:
+    // 1) Previous-scene continuity frame
+    // 2) Creator avatar anchor
+    // 3) Product anchor / additional references
+    const imageInputUrls = Array.from(
+      new Set(
+        [
+          continuityReferenceUrl,
+          primaryInputImageUrl,
+          ...extraReferenceUrls,
+        ].filter((url): url is string => typeof url === "string" && url.length > 0),
+      ),
+    );
+    const awsRegion =
+      cfg.raw("AWS_REGION")?.trim() ||
+      cfg.raw("AWS_S3_REGION")?.trim() ||
+      "us-east-2";
+    const s3 = new S3Client({
+      region: awsRegion,
+    });
+    const presignedImageInputUrls = await Promise.all(
+      imageInputUrls.map(async (url) => {
+        try {
+          if (!isAwsS3HttpUrl(url)) {
+            return url;
+          }
+          const parsed = new URL(url);
+          const bucket = parsed.hostname.split(".")[0];
+          const key = parsed.pathname.slice(1);
+          return await getSignedUrl(
+            s3,
+            new GetObjectCommand({ Bucket: bucket, Key: key }),
+            { expiresIn: 3600 }
+          );
+        } catch {
+          return url; // non-S3 URLs pass through unchanged
+        }
+      })
+    );
 
     const payload = {
       model: this.model,
-      idempotencyKey: input.idempotencyKey,
-      force: !!input.force,
-      // Some KIE jobs schemas require prompt at the top level.
-      prompt: firstPrompt,
-      negative_prompt: firstNegative || undefined,
       input: {
-        // Many KIE schemas require input.prompt specifically.
         prompt: firstPrompt,
-        negative_prompt: firstNegative || undefined,
-        ...(imageInputUrls.length > 0 ? { image_input: imageInputUrls } : {}),
+        ...(presignedImageInputUrls.length > 0
+          ? { image_input: presignedImageInputUrls }
+          : {}),
         aspect_ratio: "9:16",
         resolution: "2K",
         output_format: "png",
-        storyboardId: input.storyboardId,
-        ...(continuityReferenceUrl
-          ? { previousSceneLastFrameImageUrl: continuityReferenceUrl }
-          : {}),
-        ...(contextImageUrls.length > 0 ? { contextImageUrls } : {}),
-        frames: input.prompts.map((p) => {
-          return {
-            previousSceneLastFrameImageUrl: p.previousSceneLastFrameImageUrl ?? null,
-            ...(p.previousSceneLastFrameImageUrl
-              ? { additionalInputImageUrls: [p.previousSceneLastFrameImageUrl] }
-              : {}),
-            ...(p.inputImageUrl || p.previousSceneLastFrameImageUrl
-              ? {
-                  contextImageUrls: [p.inputImageUrl, p.previousSceneLastFrameImageUrl].filter(
-                    (url): url is string => Boolean(url),
-                  ),
-                }
-              : {}),
-            frameIndex: p.frameIndex,
-            // KIE commonly uses snake_case keys.
-            prompt: (p.prompt ?? "").trim(),
-            negative_prompt: (p.negativePrompt ?? "").trim() || undefined,
-            maskImageUrl: p.maskImageUrl ?? null,
-            width: p.width,
-            height: p.height,
-          };
-        }),
-        options: input.options ?? {},
       },
     };
 

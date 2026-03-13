@@ -1,4 +1,4 @@
-import { assertRuntimeMode } from "@/src/runtime/assertMode";
+import { assertRuntimeMode } from "@/lib/jobRuntimeMode";
 
 export type QuotaResult = {
   ok: boolean;

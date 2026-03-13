@@ -3,12 +3,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { hash } from "bcryptjs";
 import { logAudit } from "@/lib/logger";
-import { consumeRegisterAttemptDb } from "@/lib/authAbuseGuardDb";
 import {
-  recordAuthFailure,
-  recordAuthSuccess,
-} from "@/lib/authAbuseGuard";
+  consumeRegisterAttemptDb,
+  recordRegisterFailureDb,
+  recordRegisterSuccessDb,
+} from "@/lib/authAbuseGuardDb";
 import { normalizeEmail } from "@/lib/normalizeEmail";
+import { rateLimit } from "@/lib/rateLimiter";
 
 function isValidEmail(email: string): boolean {
   // Basic pragmatic format check for API-side validation.
@@ -23,6 +24,18 @@ export async function POST(req: NextRequest) {
     null;
 
   try {
+    const requestRate = await rateLimit(req, {
+      keyPrefix: "auth:register",
+      limit: 10,
+      windowSec: 60,
+    });
+    if (!requestRate.allowed) {
+      return NextResponse.json(
+        { error: requestRate.reason ?? "Rate limit exceeded" },
+        { status: 429 }
+      );
+    }
+
     let body: Record<string, unknown>;
     try {
       body = await req.json();
@@ -54,7 +67,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (!email || !isValidEmail(email)) {
-      recordAuthFailure({ kind: "register", ip, email });
+      await recordRegisterFailureDb({ ip, email });
       return NextResponse.json(
         { error: "Invalid email format" },
         { status: 400 }
@@ -62,7 +75,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (!password || password.length < 8) {
-      recordAuthFailure({ kind: "register", ip, email });
+      await recordRegisterFailureDb({ ip, email });
       return NextResponse.json(
         { error: "Password must be at least 8 characters" },
         { status: 400 }
@@ -71,7 +84,7 @@ export async function POST(req: NextRequest) {
 
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) {
-      recordAuthFailure({ kind: "register", ip, email });
+      await recordRegisterFailureDb({ ip, email });
       return NextResponse.json(
         { error: "User already exists" },
         { status: 409 }
@@ -84,7 +97,7 @@ export async function POST(req: NextRequest) {
       data: { email, name, passwordHash },
       select: { id: true, email: true, name: true, createdAt: true },
     });
-    recordAuthSuccess({ kind: "register", ip, email });
+    await recordRegisterSuccessDb({ ip, email });
 
     await logAudit({
       userId: user.id,
@@ -96,7 +109,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ user }, { status: 201 });
   } catch (error: any) {
     console.error("Error in /api/auth/register", error);
-    recordAuthFailure({ kind: "register", ip, email });
+    await recordRegisterFailureDb({ ip, email });
 
     if (error?.code === "P2002") {
       return NextResponse.json(

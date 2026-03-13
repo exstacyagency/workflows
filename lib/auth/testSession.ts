@@ -5,11 +5,10 @@ import { env } from "@/lib/env";
 /**
  * Test routes are allowed in:
  * - NODE_ENV === test (CI)
- * - MODE === beta (self-operator beta)
+ * - NODE_ENV === development (local only)
  */
 export function isTestEnvAllowed(): boolean {
   if (env.NODE_ENV === "test") return true;
-  if (env.MODE === "beta") return true;
   if (env.NODE_ENV === "development") return true;
   return false;
 }

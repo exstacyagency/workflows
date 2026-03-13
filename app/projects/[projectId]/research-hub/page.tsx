@@ -55,6 +55,7 @@ interface ResearchStep {
   prerequisites?: string[];
   status: JobStatus;
   lastJob?: Job;
+  attemptCount?: number;
 }
 
 interface ResearchTrack {
@@ -93,6 +94,16 @@ interface ProductCollectionFormData {
   shippingUrl: string;
   aboutUrl: string;
 }
+
+const RESEARCH_JOB_TYPES = new Set<string>([
+  "CUSTOMER_RESEARCH",
+  "CUSTOMER_ANALYSIS",
+  "AD_PERFORMANCE",
+  "AD_QUALITY_GATE",
+  "PATTERN_ANALYSIS",
+  "PRODUCT_DATA_COLLECTION",
+  "PRODUCT_ANALYSIS",
+]);
 
 const INDUSTRY_SUGGESTIONS = [
   { code: "22000000000", label: "Apparel & Accessories" },
@@ -217,7 +228,7 @@ export default function ResearchHubPage() {
       VIDEO_IMAGE_GENERATION: "Generate Images",
       VIDEO_GENERATION: "Generate Video",
       VIDEO_REVIEW: "Review Video",
-      VIDEO_UPSCALER: "Upscale & Export",
+      VIDEO_UPSCALER: "Swap Audio",
     };
     return names[job.type] || job.type;
   };
@@ -417,6 +428,29 @@ export default function ResearchHubPage() {
     () => products.find((product) => product.id === selectedProductId) ?? null,
     [products, selectedProductId]
   );
+  const customerDataHref = useMemo(() => {
+    const params = new URLSearchParams();
+    params.set("jobType", "CUSTOMER_RESEARCH");
+    if (selectedRunId) params.set("runId", selectedRunId);
+    if (selectedProductId) params.set("productId", selectedProductId);
+    if (selectedProduct?.name) params.set("product", selectedProduct.name);
+    const query = params.toString();
+    return `/projects/${projectId}/research/data${query ? `?${query}` : ""}`;
+  }, [projectId, selectedProduct?.name, selectedProductId, selectedRunId]);
+  const adDataHref = useMemo(() => {
+    const params = new URLSearchParams();
+    params.set("jobType", "ad-transcripts");
+    if (selectedRunId) params.set("runId", selectedRunId);
+    return `/projects/${projectId}/research-hub/data?${params.toString()}`;
+  }, [projectId, selectedRunId]);
+  const productDataHref = useMemo(() => {
+    const params = new URLSearchParams();
+    params.set("jobType", "PRODUCT_DATA_COLLECTION");
+    if (selectedRunId) params.set("runId", selectedRunId);
+    if (selectedProductId) params.set("productId", selectedProductId);
+    if (selectedProduct?.name) params.set("product", selectedProduct.name);
+    return `/projects/${projectId}/research/data?${params.toString()}`;
+  }, [projectId, selectedProduct?.name, selectedProductId, selectedRunId]);
 
   // Auto-refresh jobs every 3 seconds for live status updates
   useEffect(() => {
@@ -440,7 +474,7 @@ export default function ResearchHubPage() {
     );
 
     newCompletions.forEach((job) => {
-      setStatusMessage(`${getJobTypeLabel(job.type)} completed`);
+      setStatusMessage(`${getRunJobName(job)} completed`);
       const jobSubtype = String(job.payload?.jobType || job.metadata?.jobType || "").trim();
       if (jobSubtype === "ad_raw_collection" && job.runId) {
         setCurrentRunId(job.runId);
@@ -550,11 +584,14 @@ export default function ResearchHubPage() {
   ];
 
   // Get step status based on current run
-  const getStepStatus = (jobType: JobType, stepId: string): { status: JobStatus; lastJob?: Job } => {
+  const getStepStatus = (
+    jobType: JobType,
+    stepId: string
+  ): { status: JobStatus; lastJob?: Job; attemptCount: number } => {
     if (jobType === "AD_PERFORMANCE") {
       const adRunId = currentRunId || selectedRunId;
       if (!adRunId) {
-        return { status: "NOT_STARTED" };
+        return { status: "NOT_STARTED", attemptCount: 0 };
       }
       const matchingJobs = jobs.filter((j) => {
         const jobSubtype = j.payload?.jobType || j.metadata?.jobType;
@@ -571,29 +608,33 @@ export default function ResearchHubPage() {
       )[0];
 
       if (!job) {
-        return { status: "NOT_STARTED" };
+        return { status: "NOT_STARTED", attemptCount: 0 };
       }
 
       if (stepId === "ad-ocr" && adOcrCoverage.totalAssets > 0) {
         if (adOcrCoverage.assetsWithOcr >= adOcrCoverage.totalAssets) {
-          return { status: "COMPLETED", lastJob: job };
+          return { status: "COMPLETED", lastJob: job, attemptCount: matchingJobs.length };
         }
       }
 
       return {
         status: job.status,
         lastJob: job,
+        attemptCount: matchingJobs.length,
       };
     }
 
     const activeRunId = currentRunId || selectedRunId;
     if (!activeRunId) {
-      return { status: "NOT_STARTED" };
+      return { status: "NOT_STARTED", attemptCount: 0 };
     }
 
-    const job = jobs.find(j => j.type === jobType && j.runId === activeRunId);
+    const matchingJobs = jobs
+      .filter((j) => j.type === jobType && j.runId === activeRunId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const job = matchingJobs[0];
     if (!job) {
-      return { status: "NOT_STARTED" };
+      return { status: "NOT_STARTED", attemptCount: 0 };
     }
 
     console.log(`[Step Status] ${stepId}:`, {
@@ -607,6 +648,7 @@ export default function ResearchHubPage() {
     return {
       status: job.status,
       lastJob: job,
+      attemptCount: matchingJobs.length,
     };
   };
 
@@ -614,12 +656,13 @@ export default function ResearchHubPage() {
   const updatedTracks = tracks.map((track) => ({
     ...track,
     steps: track.steps.map((step) => {
-      const { status, lastJob } = getStepStatus(step.jobType, step.id);
+      const { status, lastJob, attemptCount } = getStepStatus(step.jobType, step.id);
       
       return {
         ...step,
         status,
         lastJob,
+        attemptCount,
       };
     }),
   }));
@@ -667,6 +710,16 @@ export default function ResearchHubPage() {
         new Date(job.createdAt).getTime() > new Date(latest.createdAt).getTime() ? job : latest
       )
     : null;
+
+  const recentResearchJobs = useMemo(
+    () =>
+      jobs
+        .filter((job) => RESEARCH_JOB_TYPES.has(String(job.type)))
+        .slice()
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .slice(0, 10),
+    [jobs]
+  );
 
   const arePrerequisitesComplete = (step: ResearchStep, track: ResearchTrack): boolean => {
     const prerequisiteIds =
@@ -1095,6 +1148,14 @@ export default function ResearchHubPage() {
               )}
             </div>
           </div>
+          <div className="ml-4">
+            <Link
+              href={`/projects/${projectId}/usage`}
+              className="inline-flex items-center gap-2 rounded bg-slate-800 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-700"
+            >
+              Usage & Costs
+            </Link>
+          </div>
         </div>
       </div>
 
@@ -1112,7 +1173,7 @@ export default function ResearchHubPage() {
                   <div>
                     <p className="text-sm font-medium text-sky-300">RUNNING</p>
                     <p className="text-xs text-slate-400">
-                      {runningJob ? getJobTypeLabel(runningJob.type) : "Processing"}
+                      {runningJob ? getRunJobName(runningJob) : "Processing"}
                     </p>
                   </div>
                 </div>
@@ -1190,50 +1251,37 @@ export default function ResearchHubPage() {
                 />
               </div>
             </div>
-            {selectedProductId && (
-              <div className="mt-3">
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Link
+                href={customerDataHref}
+                className="inline-block rounded bg-slate-800 px-4 py-2 text-sm text-slate-200 hover:bg-slate-700"
+              >
+                View Customer Data
+              </Link>
+              {selectedRunId ? (
                 <Link
-                  href={`/projects/${projectId}/research/data?productId=${selectedProductId}`}
-                  className="inline-block px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded text-sm text-slate-200"
+                  href={adDataHref}
+                  className="inline-block rounded bg-slate-800 px-4 py-2 text-sm text-slate-200 hover:bg-slate-700"
                 >
-                  View All Data
+                  View Ad Data
                 </Link>
-              </div>
-            )}
-            {selectedRun && (
-              <div className="mt-3 text-sm text-slate-400">
-                <div className="mt-2 text-slate-400">Jobs in this run:</div>
-                <div className="mt-2 space-y-1">
-                  {selectedRun.jobs
-                    .slice()
-                    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
-                    .map((job) => {
-                      const statusIcon =
-                        job.status === "COMPLETED"
-                          ? "✓"
-                          : job.status === "FAILED"
-                            ? "✕"
-                            : job.status === "RUNNING"
-                              ? "●"
-                              : "○";
-                      return (
-                        <div key={job.id} className="flex items-center gap-2">
-                          <span className="text-slate-300">{statusIcon}</span>
-                          <span>{getJobTypeLabel(job.type)}</span>
-                          <span className="text-xs text-slate-500">
-                            {job.status === "COMPLETED"
-                              ? new Date(job.createdAt).toLocaleTimeString("en-US", {
-                                  hour: "numeric",
-                                  minute: "2-digit",
-                                })
-                              : job.status.toLowerCase()}
-                          </span>
-                        </div>
-                      );
-                    })}
-                </div>
-              </div>
-            )}
+              ) : (
+                <button
+                  type="button"
+                  disabled
+                  title="Select a run to view ad data"
+                  className="inline-block cursor-not-allowed rounded bg-slate-900 px-4 py-2 text-sm text-slate-500"
+                >
+                  View Ad Data
+                </button>
+              )}
+              <Link
+                href={productDataHref}
+                className="inline-block rounded bg-slate-800 px-4 py-2 text-sm text-slate-200 hover:bg-slate-700"
+              >
+                View Product Data
+              </Link>
+            </div>
           </div>
         </div>
       </div>
@@ -1332,6 +1380,14 @@ export default function ResearchHubPage() {
                             {stepWithStatus.label}
                           </h3>
                           <p className="text-xs text-slate-400 mb-2">{stepWithStatus.description}</p>
+                          {stepWithStatus.attemptCount && stepWithStatus.attemptCount > 0 && (
+                            <p className="text-[11px] text-slate-500 mb-2">
+                              Attempt {stepWithStatus.attemptCount}
+                              {stepWithStatus.lastJob?.createdAt
+                                ? ` · Last run ${new Date(stepWithStatus.lastJob.createdAt).toLocaleString()}`
+                                : ""}
+                            </p>
+                          )}
                           {stepWithStatus.label === "Customer Analysis"
                             ? selectedRunId && analysisStatusJob && (
                                 <StatusBadge status={analysisStatusJob.status} />
@@ -1411,9 +1467,7 @@ export default function ResearchHubPage() {
 	                                  View Raw Data
 	                                </Link>
 	                              )}
-	                              {(stepWithStatus.id === "ad-transcripts" ||
-	                                stepWithStatus.id === "ad-quality-gate" ||
-	                                stepWithStatus.id === "pattern-analysis") && (
+	                              {stepWithStatus.id === "ad-transcripts" && (
                                 <button
                                   onClick={() => {
                                     const payloadRunId = String(stepWithStatus.lastJob?.payload?.runId ?? "").trim();
@@ -1505,14 +1559,15 @@ export default function ResearchHubPage() {
                               </div>
                             </div>
                           )}
-                          {stepWithStatus.status === "RUNNING" && stepWithStatus.lastJob && (
+                          {(stepWithStatus.status === "RUNNING" || stepWithStatus.status === "PENDING") &&
+                            stepWithStatus.lastJob && (
                             <button
                               onClick={() => cancelJob(stepWithStatus.lastJob!.id)}
                               className="px-2 py-1 text-xs text-red-400 hover:text-red-300"
                             >
                               Cancel
                             </button>
-                          )}
+                            )}
                         </div>
 
                         {/* Step Modal - Render inline */}
@@ -1581,13 +1636,24 @@ export default function ResearchHubPage() {
       <div className="mt-8 border-t border-slate-800 pt-6">
         <h2 className="text-lg font-semibold text-slate-200 mb-4">Recent Jobs</h2>
         <div className="space-y-2">
-          {jobs.slice(0, 10).map(job => {
+          {recentResearchJobs.map(job => {
             const rs = job.resultSummary as any;
+            const isCancelable = job.status === "RUNNING" || job.status === "PENDING";
             return (
               <div key={job.id} className="flex items-start justify-between gap-4 p-3 rounded-lg bg-slate-900/50 border border-slate-800">
                 <div className="flex-1">
                   <div className="text-sm font-medium text-slate-200">{job.type}</div>
                   <div className="text-xs text-slate-500">{new Date(job.createdAt).toLocaleString()}</div>
+                  {isCancelable && (
+                    <div className="mt-2">
+                      <button
+                        onClick={() => cancelJob(job.id)}
+                        className="px-2 py-1 text-xs text-red-400 hover:text-red-300 border border-red-500/30 rounded"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
                   {rs?.amazon && (
                     <div className="mt-2 rounded border border-slate-800 p-2 text-sm text-slate-300">
                       <div className="font-medium text-slate-200">Amazon</div>

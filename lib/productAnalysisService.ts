@@ -4,6 +4,7 @@ import { prisma } from './prisma';
 import { logError } from './logger';
 import { JobType, JobStatus } from '@prisma/client';
 import { env, requireEnv } from './configGuard.ts';
+import { computeAnthropicCostCents } from '@/lib/billing/pricing';
 
 interface ProductAnalysisParams {
   projectId: string;
@@ -98,10 +99,23 @@ Return valid JSON with this EXACT structure:
   return { system, prompt };
 }
 
-async function callAnthropic(system: string, prompt: string): Promise<string> {
+async function callAnthropic(system: string, prompt: string): Promise<{
+  text: string;
+  usageEntry: {
+    metric: string;
+    provider: string;
+    model: string;
+    units: number;
+    costCents: number;
+    metadata: {
+      inputTokens: number;
+      outputTokens: number;
+    };
+  } | null;
+}> {
   requireEnv(['ANTHROPIC_API_KEY'], 'ANTHROPIC');
   const apiKey = env('ANTHROPIC_API_KEY')!;
-  const model = cfg.raw('ANTHROPIC_MODEL') || 'claude-sonnet-4-5-20250929';
+  const model = cfg.raw('ANTHROPIC_MODEL') || 'claude-sonnet-4-6';
 
   const body = JSON.stringify({
     model,
@@ -129,12 +143,29 @@ async function callAnthropic(system: string, prompt: string): Promise<string> {
         throw new Error(`Anthropic request failed: ${res.status} ${text}`);
       }
 
+      const providerRequestId = res.headers.get('request-id') ?? null;
       const data = await res.json();
       const content = data?.content?.[0]?.text ?? data?.content ?? '';
       if (!content) {
         throw new Error('Anthropic response missing content');
       }
-      return content as string;
+      const inputTokens = Math.max(0, Math.trunc(Number(data?.usage?.input_tokens ?? 0)));
+      const outputTokens = Math.max(0, Math.trunc(Number(data?.usage?.output_tokens ?? 0)));
+      const totalTokens = inputTokens + outputTokens;
+      const costCents =
+        totalTokens > 0 ? computeAnthropicCostCents(String(model), inputTokens, outputTokens) : 0;
+      const usageEntry =
+        totalTokens > 0
+          ? {
+              metric: "tokens",
+              provider: "anthropic",
+              model: String(model),
+              units: totalTokens,
+              costCents,
+              metadata: { inputTokens, outputTokens, providerRequestId },
+            }
+          : null;
+      return { text: String(content), usageEntry };
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
       if (attempt === PRODUCT_ANALYSIS_LLM_RETRIES) {
@@ -254,8 +285,11 @@ export async function analyzeProductData(params: ProductAnalysisParams) {
     }
 
     const productPrompt = buildProductIntelPrompt(productName);
-    const productText = await callAnthropic(productPrompt.system, productPrompt.prompt);
-    const productJson = ensureObject<ProductIntelJSON>(parseJsonFromLLM(productText), 'Product intelligence');
+    const anthropicResult = await callAnthropic(productPrompt.system, productPrompt.prompt);
+    const productJson = ensureObject<ProductIntelJSON>(
+      parseJsonFromLLM(anthropicResult.text),
+      'Product intelligence'
+    );
 
     await archiveExistingProductIntel(projectId);
     const productRecord = await prisma.productIntelligence.create({
@@ -286,6 +320,7 @@ export async function analyzeProductData(params: ProductAnalysisParams) {
       summary: {
         product: productSummary,
       },
+      usageEntries: anthropicResult.usageEntry ? [anthropicResult.usageEntry] : [],
     };
   } catch (error: any) {
     logError('productAnalysis.failed', error, { jobId, projectId });

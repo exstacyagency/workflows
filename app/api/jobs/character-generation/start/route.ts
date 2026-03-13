@@ -5,10 +5,13 @@ import { z } from "zod";
 import { getSessionUserId } from "@/lib/getSessionUserId";
 import { prisma } from "@/lib/prisma";
 import { ensureProductTableColumns, findOwnedProductById } from "@/lib/productStore";
+import { saveCharacterAnchorPrompt } from "@/lib/productCharacterStore";
 
 const StartCharacterPipelineSchema = z.object({
   productId: z.string().trim().min(1, "productId is required"),
-  manualDescription: z.string().trim().max(1200).optional().nullable(),
+  manualDescription: z.string().trim().min(1, "manualDescription is required").max(1200),
+  characterName: z.string().trim().min(1).max(120).optional().nullable(),
+  runId: z.string().trim().min(1).max(200).optional().nullable(),
 });
 const CREATOR_AVATAR_JOB_TYPE = "CREATOR_AVATAR_GENERATION" as JobType;
 
@@ -35,13 +38,56 @@ export async function POST(req: NextRequest) {
     }
 
     const productId = parsed.data.productId;
-    const manualDescription = parsed.data.manualDescription?.trim() || null;
+    const manualDescription = parsed.data.manualDescription.trim();
+    const characterName = parsed.data.characterName?.trim() || null;
+    const requiredFields = [
+      "Age:",
+      "Ethnicity:",
+      "Hair:",
+      "Eyes:",
+      "Skin tone:",
+      "Face:",
+      "Build:",
+      "Wardrobe:",
+      "Vocal tone:",
+    ];
+    const missing = requiredFields.filter((field) => !manualDescription.includes(field));
+    if (missing.length > 0) {
+      return NextResponse.json(
+        { error: `Description missing required fields: ${missing.join(", ")}` },
+        { status: 400 },
+      );
+    }
+    const incomingRunId = parsed.data.runId?.trim() || null;
 
     await ensureProductTableColumns();
 
     const product = await findOwnedProductById(productId, userId);
     if (!product) {
       return NextResponse.json({ error: "Product not found" }, { status: 404 });
+    }
+
+    let runId = incomingRunId;
+    if (runId) {
+      const existingRun = await prisma.researchRun.findFirst({
+        where: {
+          id: runId,
+          projectId: product.projectId,
+        },
+        select: { id: true },
+      });
+      if (!existingRun) {
+        return NextResponse.json({ error: "Selected run is invalid for this project" }, { status: 400 });
+      }
+    } else {
+      const newRun = await prisma.researchRun.create({
+        data: {
+          projectId: product.projectId,
+          name: `Character Run ${new Date().toLocaleDateString()}`,
+        },
+        select: { id: true },
+      });
+      runId = newRun.id;
     }
 
     const existing = await prisma.$queryRaw<ExistingPipelineJobRow[]>`
@@ -53,6 +99,7 @@ export async function POST(req: NextRequest) {
       FROM "job" j
       WHERE j."projectId" = ${product.projectId}
         AND j."userId" = ${userId}
+        AND j."runId" = ${runId}
         AND j."status" IN (CAST('PENDING' AS "JobStatus"), CAST('RUNNING' AS "JobStatus"))
         AND j."type" IN (
           CAST('CREATOR_AVATAR_GENERATION' AS "JobType"),
@@ -91,10 +138,12 @@ export async function POST(req: NextRequest) {
         type: CREATOR_AVATAR_JOB_TYPE,
         status: JobStatus.PENDING,
         idempotencyKey,
+        runId,
         payload: {
           projectId: product.projectId,
           productId,
           manualDescription,
+          characterName,
           pipeline: "character_generation_v2",
         },
       },
@@ -104,6 +153,8 @@ export async function POST(req: NextRequest) {
         status: true,
       },
     });
+
+    await saveCharacterAnchorPrompt(productId, manualDescription);
 
     return NextResponse.json(
       {

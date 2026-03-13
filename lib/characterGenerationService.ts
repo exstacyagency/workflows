@@ -4,6 +4,7 @@ import prisma from '@/lib/prisma';
 import { JobStatus } from '@prisma/client';
 import { updateJobStatus } from '@/lib/jobs/updateJobStatus';
 import { env, requireEnv } from './configGuard.ts';
+import { computeAnthropicCostCents } from '@/lib/billing/pricing';
 
 type CharacterSpec = {
   age?: number;
@@ -123,8 +124,22 @@ Return ONLY JSON. No markdown fences.`;
 /**
  * Call Anthropic Claude with system + prompt.
  */
-async function callAnthropic(system: string, prompt: string): Promise<string> {
-  const model = cfg.raw('ANTHROPIC_MODEL') || 'claude-sonnet-4-5-20250929';
+async function callAnthropic(system: string, prompt: string): Promise<{
+  text: string;
+  usageEntry: {
+    metric: string;
+    provider: string;
+    model: string;
+    units: number;
+    costCents: number;
+    metadata: {
+      inputTokens: number;
+      outputTokens: number;
+      providerRequestId: string | null;
+    };
+  } | null;
+}> {
+  const model = cfg.raw('ANTHROPIC_MODEL') || 'claude-sonnet-4-6';
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -142,9 +157,27 @@ async function callAnthropic(system: string, prompt: string): Promise<string> {
     throw new Error(`Anthropic request failed: ${res.status} ${text}`);
   }
 
+  const providerRequestId = res.headers.get('request-id') ?? null;
   const data = await res.json();
   const content = data?.content?.[0]?.text ?? data?.content ?? '';
-  return content as string;
+  const inputTokens = Math.max(0, Math.trunc(Number(data?.usage?.input_tokens ?? 0)));
+  const outputTokens = Math.max(0, Math.trunc(Number(data?.usage?.output_tokens ?? 0)));
+  const totalTokens = inputTokens + outputTokens;
+  const costCents = totalTokens > 0 ? computeAnthropicCostCents(model, inputTokens, outputTokens) : 0;
+
+  const usageEntry =
+    totalTokens > 0
+      ? {
+          metric: "tokens",
+          provider: "anthropic",
+          model,
+          units: totalTokens,
+          costCents,
+          metadata: { inputTokens, outputTokens, providerRequestId },
+        }
+      : null;
+
+  return { text: String(content), usageEntry };
 }
 
 /**
@@ -212,12 +245,12 @@ export async function runCharacterGeneration(args: {
     customerAvatarJson: (avatar as any).persona ?? {},
   });
 
-  const responseText = await callAnthropic(
+  const anthropicResult = await callAnthropic(
     promptInfo.system,
     promptInfo.prompt,
   );
 
-  const parsed = parseJsonFromLLM(responseText) as CharacterResponse;
+  const parsed = parseJsonFromLLM(anthropicResult.text) as CharacterResponse;
 
   const ids = await saveCharactersFromResponse({
     projectId,
@@ -226,7 +259,10 @@ export async function runCharacterGeneration(args: {
     raw: parsed,
   });
 
-  return ids;
+  return {
+    ...ids,
+    usageEntries: anthropicResult.usageEntry ? [anthropicResult.usageEntry] : [],
+  };
 }
 
 /**

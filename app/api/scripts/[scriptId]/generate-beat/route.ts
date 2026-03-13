@@ -4,6 +4,7 @@ import { JobStatus, JobType } from "@prisma/client";
 import { cfg } from "@/lib/config";
 import { prisma } from "@/lib/prisma";
 import { getSessionUserId } from "@/lib/getSessionUserId";
+import { computeAnthropicCostCents } from "@/lib/billing/pricing";
 
 export const runtime = "nodejs";
 
@@ -167,14 +168,15 @@ function computeDataQuality(flags: {
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { scriptId: string } },
+  { params }: { params: Promise<{ scriptId: string }> },
 ) {
+  const awaitedParams = await params;
   const userId = await getSessionUserId(req);
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const scriptId = String(params?.scriptId || "").trim();
+  const scriptId = String(awaitedParams?.scriptId || "").trim();
   if (!scriptId) {
     return NextResponse.json({ error: "scriptId is required" }, { status: 400 });
   }
@@ -220,6 +222,7 @@ export async function POST(
       id: true,
       projectId: true,
       jobId: true,
+      rawJson: true,
     },
   });
   if (!script) {
@@ -248,6 +251,9 @@ export async function POST(
   }
 
   const runId = asString(scriptJob.runId);
+  const scriptRawJson = asObject(script.rawJson);
+  const swipeMechanism = asString(scriptRawJson?.swipeMechanism);
+  const swipeTranscript = asString(scriptRawJson?.swipeTranscript);
 
   let customerSource: CustomerLanguageSource = {
     copyReadyPhrases: [],
@@ -451,6 +457,14 @@ Write VO that sounds like the same person who wrote the surrounding beats. Retur
     prompt += `\n\nReference product facts only from these verified sources. Mechanism: ${mechanismProcess || "MISSING"}. Claims: ${specificClaims.join("; ")}. Features: ${keyFeatures.join(", ")}. Never invent statistics. If no numeric claim fits this beat use emotional language instead.`;
   }
 
+  if (swipeMechanism) {
+    prompt += `\n\nThis script was generated from a ${swipeMechanism} ad. The new beat must honor that mechanism and voice. Do not introduce POV framing, problem/solution structure, or any format the surrounding beats don't already use. Match the rhythm and sentence length of the beats above.`;
+  }
+
+  if (swipeTranscript) {
+    prompt += `\n\nOriginal source transcript for voice reference:\n${swipeTranscript}`;
+  }
+
   const anthropicApiKey = cfg.raw("ANTHROPIC_API_KEY");
   if (!anthropicApiKey) {
     return NextResponse.json(
@@ -470,6 +484,21 @@ Write VO that sounds like the same person who wrote the surrounding beats. Retur
       max_tokens: 150,
       messages: [{ role: "user", content: prompt }],
     });
+
+    const providerRequestId = (response as any)?.id ?? null;
+    const inputTokens = Math.max(0, Math.trunc(Number(response?.usage?.input_tokens ?? 0)));
+    const outputTokens = Math.max(0, Math.trunc(Number(response?.usage?.output_tokens ?? 0)));
+    const costCents = computeAnthropicCostCents("claude-haiku-4-5-20251001", inputTokens, outputTokens);
+
+    console.log("[generate-beat] cost", {
+      scriptId,
+      model: "claude-haiku-4-5-20251001",
+      inputTokens,
+      outputTokens,
+      costCents,
+      providerRequestId,
+    });
+
     voText = extractTextFromAnthropicResponse(response);
   } catch (error: any) {
     return NextResponse.json(

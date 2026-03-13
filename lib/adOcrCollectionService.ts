@@ -15,10 +15,12 @@ const MAX_FRAMES_PER_AD =
 
 let ffmpegCheckDone = false;
 let ffmpegAvailable = false;
+let ffmpegCommand = "ffmpeg";
 
 type OcrFrameResult = {
   second: number;
   text: string;
+  textFound: boolean;
   confidence: number | null;
   imageUrl: string | null;
 };
@@ -89,17 +91,26 @@ function parseHighlightSeconds(rawJson: unknown): number[] {
   return unique.slice(0, Math.max(1, MAX_FRAMES_PER_AD));
 }
 
-function extractVideoUrl(rawJson: unknown): string | null {
+function extractVideoUrls(rawJson: unknown): string[] {
   const raw = isPlainObject(rawJson) ? rawJson : {};
-  return (
-    firstString(
-      raw?.video_info?.video_url?.["720p"],
-      raw?.video_info?.video_url?.["1080p"],
-      raw?.url,
-      raw?.videoUrl,
-      raw?.mediaUrl
-    ) ?? null
-  );
+  const nestedVideoUrl = raw?.video_info?.video_url;
+  const candidates = [
+    firstString(raw?.video_info?.video_url?.["720p"]),
+    firstString(raw?.video_info?.video_url?.["1080p"]),
+    typeof nestedVideoUrl === "string" ? firstString(nestedVideoUrl) : null,
+    ...(isPlainObject(nestedVideoUrl)
+      ? Object.values(nestedVideoUrl).map((value) => firstString(value))
+      : []),
+    firstString(raw?.video_info?.download_addr),
+    firstString(raw?.video_info?.download_url),
+    firstString(raw?.video_info?.play_addr),
+    firstString(raw?.video_info?.play_url),
+    firstString(raw?.url),
+    firstString(raw?.videoUrl),
+    firstString(raw?.mediaUrl),
+  ].filter((v): v is string => Boolean(v));
+
+  return Array.from(new Set(candidates));
 }
 
 async function runCommand(cmd: string, args: string[], label: string): Promise<void> {
@@ -132,22 +143,61 @@ async function ensureFfmpegAvailable() {
   }
 
   ffmpegCheckDone = true;
-  try {
-    await runCommand("ffmpeg", ["-version"], "ffmpeg");
-    ffmpegAvailable = true;
-  } catch {
-    ffmpegAvailable = false;
-    throw new Error("ffmpeg is not available in this runtime. Use Railway/Render/Docker or another non-Vercel worker.");
+  const candidates = [
+    cfg.raw("FFMPEG_PATH"),
+    "/opt/homebrew/bin/ffmpeg",
+    "/usr/local/bin/ffmpeg",
+    "ffmpeg",
+  ].filter((v): v is string => Boolean(v && v.trim()));
+
+  for (const candidate of candidates) {
+    try {
+      await runCommand(candidate, ["-version"], "ffmpeg");
+      ffmpegCommand = candidate;
+      ffmpegAvailable = true;
+      return;
+    } catch {
+      // try next candidate
+    }
   }
+
+  ffmpegAvailable = false;
+  throw new Error(
+    `ffmpeg is not available in this runtime. Tried: ${candidates.join(", ")}. Use Railway/Render/Docker or another non-Vercel worker.`,
+  );
 }
 
 async function downloadVideo(videoUrl: string, outputPath: string) {
-  const response = await fetch(videoUrl);
-  if (!response.ok) {
-    throw new Error(`Failed to download video (${response.status})`);
+  const attempts: Array<HeadersInit | undefined> = [
+    {
+      "user-agent":
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+      accept: "*/*",
+      referer: "https://www.tiktok.com/",
+    },
+    undefined,
+  ];
+
+  let lastError: Error | null = null;
+  for (const headers of attempts) {
+    try {
+      const response = await fetch(videoUrl, {
+        method: "GET",
+        headers,
+        redirect: "follow",
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to download video (${response.status})`);
+      }
+      const buffer = Buffer.from(await response.arrayBuffer());
+      await fs.writeFile(outputPath, buffer);
+      return;
+    } catch (error: any) {
+      lastError = new Error(String(error?.message ?? error));
+    }
   }
-  const buffer = Buffer.from(await response.arrayBuffer());
-  await fs.writeFile(outputPath, buffer);
+
+  throw new Error(lastError?.message ?? "Failed to download video");
 }
 
 async function extractFramesAtHighlights(videoPath: string, framesDir: string, seconds: number[]) {
@@ -166,7 +216,7 @@ async function extractFramesAtHighlights(videoPath: string, framesDir: string, s
     framePattern,
   ];
 
-  await runCommand("ffmpeg", ffmpegArgs, "ffmpeg frame extraction");
+  await runCommand(ffmpegCommand, ffmpegArgs, "ffmpeg frame extraction");
   const files = await fs.readdir(framesDir);
   return files
     .filter((file) => /^frame_\d+\.png$/i.test(file))
@@ -248,10 +298,11 @@ async function processSingleAd(assetId: string, apiKey: string, forceReprocess: 
     return { processed: false, reason: "already_processed", apiCalls: 0, framesExtracted: 0 };
   }
 
-  const videoUrl = extractVideoUrl(raw);
-  if (!videoUrl) return { processed: false, reason: "missing_video_url", apiCalls: 0, framesExtracted: 0 };
+  const videoUrls = extractVideoUrls(raw);
+  if (videoUrls.length === 0) return { processed: false, reason: "missing_video_url", apiCalls: 0, framesExtracted: 0 };
 
   const highlightSeconds = parseHighlightSeconds(raw);
+  // TODO(low): trim these per-asset debug logs behind a debug flag so large OCR runs do not flood logs with raw highlight data.
   console.log("[OCR Debug] Asset:", assetId);
   console.log("[OCR Debug] Raw conversion spikes:", raw?.metrics?.conversion_spikes ?? null);
   console.log(
@@ -268,7 +319,21 @@ async function processSingleAd(assetId: string, apiKey: string, forceReprocess: 
   await fs.mkdir(framesDir, { recursive: true });
 
   try {
-    await downloadVideo(videoUrl, videoPath);
+    let downloadOk = false;
+    let lastDownloadError = "Unknown download error";
+    for (const candidateUrl of videoUrls) {
+      try {
+        await downloadVideo(candidateUrl, videoPath);
+        downloadOk = true;
+        break;
+      } catch (error: any) {
+        lastDownloadError = String(error?.message ?? error);
+      }
+    }
+    if (!downloadOk) {
+      throw new Error(lastDownloadError);
+    }
+
     for (const second of highlightSeconds) {
       console.log("[OCR Debug] Extracting frame at second:", second, "for asset:", assetId);
     }
@@ -295,10 +360,10 @@ async function processSingleAd(assetId: string, apiKey: string, forceReprocess: 
           second
         );
       }
-      if (!result.text) continue;
       ocrFrames.push({
         second,
-        text: result.text,
+        text: result.text || "",
+        textFound: Boolean(result.text && result.text.trim().length > 0),
         confidence: result.confidence,
         imageUrl,
       });
@@ -426,16 +491,19 @@ export async function runAdOcrCollection(args: {
     }
   }
 
-  if (errors.length > 0) {
+  if (errors.length > 0 && processed === 0) {
     const first = errors[0];
     throw new Error(
       `OCR collection failed for ${errors.length}/${assetsToProcess.length} assets (first ${first.assetId}: ${first.error})`
     );
   }
 
+  // TODO(medium): persist the per-asset failures somewhere durable; partial OCR failures are currently returned only in-memory to the caller.
   return {
     totalAssets: assetsToProcess.length,
     processed,
+    failed: errors.length,
+    firstError: errors[0] ?? null,
     framesExtracted: totalFrames,
     apiCalls: totalApiCalls,
   };
@@ -448,6 +516,7 @@ export async function startAdOcrJob(params: {
   forceReprocess?: boolean;
 }) {
   const { projectId, jobId, runId, forceReprocess } = params;
+  // TODO(medium): this service still owns job-state transitions even though the worker layer already orchestrates status changes.
   await updateJobStatus(jobId, JobStatus.RUNNING);
   try {
     const result = await runAdOcrCollection({ projectId, jobId, runId, forceReprocess });
@@ -455,7 +524,7 @@ export async function startAdOcrJob(params: {
     await prisma.job.update({
       where: { id: jobId },
       data: {
-        resultSummary: `OCR: ${result.processed}/${result.totalAssets} (frames ${result.framesExtracted}, api calls ${result.apiCalls})`,
+        resultSummary: `OCR: ${result.processed}/${result.totalAssets} processed, ${result.failed ?? 0} failed (frames ${result.framesExtracted}, api calls ${result.apiCalls})`,
       },
     });
     return { jobId, ...result };

@@ -4,15 +4,16 @@ import { prisma } from "@/lib/prisma";
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { projectId: string } }
+  { params }: { params: Promise<{ projectId: string }> }
 ) {
+  const awaitedParams = await params;
   try {
     const userId = await getSessionUserId();
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { projectId } = params;
+    const { projectId } = awaitedParams;
     const project = await prisma.project.findFirst({
       where: { id: projectId, userId },
       select: { id: true },
@@ -30,7 +31,7 @@ export async function GET(
         )::int AS "assetsWithOcr"
       FROM "ad_asset"
       WHERE "projectId" = ${projectId}
-        AND "platform" = 'TIKTOK'
+        AND "platform" = CAST('TIKTOK' AS "AdPlatform")
     `;
 
     const counts = rows[0] ?? { totalAssets: 0, assetsWithOcr: 0 };

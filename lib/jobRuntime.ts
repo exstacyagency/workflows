@@ -34,6 +34,7 @@ export async function getRetryState(jobId: string) {
 export async function recordFailureForRetry(jobId: string, errMsg: string) {
   const { job, payload } = await getRetryState(jobId);
   const attempts = Number(payload.attempts ?? 0) + 1;
+  // TODO(medium): despite the name, this helper never schedules a retry/backoff and always terminally fails the job.
 
   if (job.status === JobStatus.FAILED || job.status === JobStatus.COMPLETED) {
     return { willRetry: false, attempts, backoffMs: null };
@@ -85,6 +86,7 @@ export async function runWithState(jobId: string, fn: () => Promise<any>) {
     });
     return { ok: true, result };
   } catch (e: any) {
+    // TODO(medium): thread AbortSignal into callers so timed-out work can stop mutating external systems after this catch path runs.
     const msg = String(e?.message ?? e);
     const retry = await recordFailureForRetry(jobId, msg);
     return { ok: false, error: msg, retry };

@@ -12,6 +12,7 @@ export type FramePrompt = {
   prompt: string;
   negativePrompt?: string;
   inputImageUrl?: string | null;
+  referenceImageUrls?: string[];
   previousSceneLastFrameImageUrl?: string | null;
   maskImageUrl?: string | null;
   width?: number;
@@ -163,6 +164,9 @@ export async function startMultiFrameVideoImages(args: StartMultiFrameArgs): Pro
           prompt: fp.prompt,
           negativePrompt: fp.negativePrompt,
           inputImageUrl: fp.inputImageUrl ?? null,
+          referenceImageUrls: Array.isArray(fp.referenceImageUrls)
+            ? fp.referenceImageUrls.filter((url): url is string => Boolean(String(url ?? "").trim()))
+            : [],
           previousSceneLastFrameImageUrl: fp.previousSceneLastFrameImageUrl ?? null,
           maskImageUrl: fp.maskImageUrl ?? null,
           width: fp.width,
@@ -263,11 +267,13 @@ export async function pollMultiFrameVideoImages(args: PollMultiFrameArgs): Promi
         rawByTask[t.taskId] = s.raw;
 
         const url = s.images?.[0]?.url ?? null;
+        const normalizedStatus: FrameTask["status"] =
+          url && s.status !== "FAILED" ? "SUCCEEDED" : s.status;
         next[idx] = {
           ...t,
-          status: s.status,
+          status: normalizedStatus,
           url: url ?? t.url ?? null,
-          error: s.status === "FAILED" ? (s.errorMessage ?? t.error ?? "KIE task failed") : null,
+          error: normalizedStatus === "FAILED" ? (s.errorMessage ?? t.error ?? "KIE task failed") : null,
         };
       } catch (e: any) {
         next[idx] = {

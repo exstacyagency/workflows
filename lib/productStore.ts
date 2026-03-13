@@ -7,15 +7,18 @@ export type OwnedProductRow = {
   creatorReferenceImageUrl: string | null;
   productReferenceImageUrl: string | null;
   characterReferenceVideoUrl: string | null;
+  characterAvatarImageUrl: string | null;
   soraCharacterId: string | null;
   characterCameoCreatedAt: Date | null;
   creatorVisualPrompt: string | null;
   characterSeedVideoTaskId: string | null;
   characterSeedVideoUrl: string | null;
   characterUserName: string | null;
+  characterAnchorPrompt: string | null;
 };
 
 export async function ensureProductTableColumns() {
+  // TODO(medium): move these schema mutations into managed migrations; mutating tables at runtime can deadlock or fail under restricted DB roles.
   await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS "product" (
       "id" text PRIMARY KEY,
@@ -56,6 +59,10 @@ export async function ensureProductTableColumns() {
   `);
   await prisma.$executeRawUnsafe(`
     ALTER TABLE "product"
+    ADD COLUMN IF NOT EXISTS "character_avatar_image_url" text;
+  `);
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "product"
     ADD COLUMN IF NOT EXISTS "sora_character_id" text;
   `);
   await prisma.$executeRawUnsafe(`
@@ -78,9 +85,14 @@ export async function ensureProductTableColumns() {
     ALTER TABLE "product"
     ADD COLUMN IF NOT EXISTS "character_user_name" text;
   `);
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "product"
+    ADD COLUMN IF NOT EXISTS "character_anchor_prompt" text;
+  `);
 }
 
 export async function ensureStoryboardSceneApprovalColumn() {
+  // TODO(medium): move this schema mutation into managed migrations; mutating tables at runtime can deadlock or fail under restricted DB roles.
   await prisma.$executeRawUnsafe(`
     ALTER TABLE storyboard_scene
     ADD COLUMN IF NOT EXISTS approved boolean NOT NULL DEFAULT false;
@@ -99,12 +111,14 @@ export async function findOwnedProductById(
       p."creator_reference_image_url" AS "creatorReferenceImageUrl",
       p."product_reference_image_url" AS "productReferenceImageUrl",
       p."character_reference_video_url" AS "characterReferenceVideoUrl",
+      p."character_avatar_image_url" AS "characterAvatarImageUrl",
       p."sora_character_id" AS "soraCharacterId",
       p."character_cameo_created_at" AS "characterCameoCreatedAt",
       p."creator_visual_prompt" AS "creatorVisualPrompt",
       p."character_seed_video_task_id" AS "characterSeedVideoTaskId",
       p."character_seed_video_url" AS "characterSeedVideoUrl",
-      p."character_user_name" AS "characterUserName"
+      p."character_user_name" AS "characterUserName",
+      p."character_anchor_prompt" AS "characterAnchorPrompt"
     FROM "product" p
     INNER JOIN "project" pr ON pr."id" = p."project_id"
     WHERE p."id" = ${productId}

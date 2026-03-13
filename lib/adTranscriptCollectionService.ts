@@ -46,10 +46,9 @@ type TranscriptMeta = {
 
 function firstString(...values: unknown[]): string | null {
   for (const value of values) {
-    if (typeof value === "string") {
-      const normalized = value.trim();
-      if (normalized) return normalized;
-    }
+    if (typeof value !== "string") continue;
+    const normalized = value.trim();
+    if (normalized) return normalized;
   }
   return null;
 }
@@ -65,6 +64,43 @@ function firstNumber(...values: unknown[]): number | null {
   return null;
 }
 
+function uniqueStrings(values: Array<string | null | undefined>): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const value of values) {
+    if (!value || !value.trim()) continue;
+    const normalized = value.trim();
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    out.push(normalized);
+  }
+  return out;
+}
+
+function extractMediaUrls(rawJson: unknown): string[] {
+  const raw = (rawJson && typeof rawJson === "object" ? rawJson : {}) as Record<string, any>;
+  const nestedVideoUrl = raw?.video_info?.video_url;
+  const nestedVideoValues =
+    nestedVideoUrl && typeof nestedVideoUrl === "object" && !Array.isArray(nestedVideoUrl)
+      ? Object.values(nestedVideoUrl).map((value) => firstString(value))
+      : [];
+
+  return uniqueStrings([
+    firstString(raw?.video_info?.video_url?.["720p"]),
+    firstString(raw?.video_info?.video_url?.["1080p"]),
+    typeof nestedVideoUrl === "string" ? firstString(nestedVideoUrl) : null,
+    ...nestedVideoValues,
+    firstString(raw?.video_info?.download_addr),
+    firstString(raw?.video_info?.download_url),
+    firstString(raw?.video_info?.play_addr),
+    firstString(raw?.video_info?.play_url),
+    firstString(raw?.url),
+    firstString(raw?.videoUrl),
+    firstString(raw?.mediaUrl),
+    firstString(raw?.audioUrl),
+  ]);
+}
+
 function getAssemblyAiApiKey() {
   requireEnv(["ASSEMBLYAI_API_KEY"], "AssemblyAI");
   return env("ASSEMBLYAI_API_KEY")!;
@@ -76,6 +112,7 @@ async function createAssemblyAiClient() {
     const { AssemblyAI } = await import("assemblyai");
     return new AssemblyAI({ apiKey });
   } catch {
+    // TODO(low): preload this dependency at boot or bundle time so the first transcription attempt does not fail at runtime.
     throw new Error("AssemblyAI SDK not installed. Run `npm install assemblyai` and restart.");
   }
 }
@@ -146,6 +183,38 @@ async function transcribeWithAssemblyAi(mediaUrl: string): Promise<{
   };
 }
 
+async function transcribeWithAssemblyAiCandidates(mediaUrls: string[]): Promise<{
+  text: string;
+  words: TranscriptWord[];
+  transcriptId: string | null;
+  status: string | null;
+  confidence: number | null;
+  audioDuration: number | null;
+  mediaUrl: string;
+  attempts: number;
+}> {
+  let lastError: string = "AssemblyAI failed";
+  let attempts = 0;
+  for (const mediaUrl of mediaUrls) {
+    try {
+      attempts += 1;
+      const result = await transcribeWithAssemblyAi(mediaUrl);
+      return { ...result, mediaUrl, attempts };
+    } catch (error: any) {
+      lastError = String(error?.message ?? error);
+    }
+  }
+  throw new Error(lastError);
+}
+
+function normalizeAudioDurationSeconds(value: unknown): number {
+  const n = firstNumber(value);
+  if (n === null || !Number.isFinite(n) || n <= 0) return 0;
+  // Some providers return ms; treat very large values as ms.
+  if (n > 10_000) return Math.max(0, n / 1000);
+  return Math.max(0, n);
+}
+
 function isMusicLyrics(text: string): boolean {
   const lowerText = text.toLowerCase();
   const musicKeywords = ["verse", "chorus", "bridge", "instrumental", "lyrics"];
@@ -188,27 +257,58 @@ async function enrichAssetWithTranscript(assetId: string) {
     select: { id: true, rawJson: true },
   });
 
-  if (!asset) return;
+  if (!asset) return { status: "skipped" as const, billedAudioSeconds: 0, apiCalls: 0 };
   const existingTranscript = (asset.rawJson as any)?.transcript;
-  if (existingTranscript && String(existingTranscript).trim().length > 0) return;
+  if (existingTranscript && String(existingTranscript).trim().length > 0) {
+    return { status: "skipped" as const, billedAudioSeconds: 0, apiCalls: 0 };
+  }
 
-  const mediaUrl =
-    firstString(
-      (asset.rawJson as any)?.video_info?.video_url?.["720p"],
-      (asset.rawJson as any)?.video_info?.video_url?.["1080p"],
-      (asset.rawJson as any)?.url,
-      (asset.rawJson as any)?.videoUrl,
-      (asset.rawJson as any)?.mediaUrl,
-      (asset.rawJson as any)?.audioUrl
-    ) ?? null;
+  const mediaUrls = extractMediaUrls(asset.rawJson);
+  if (mediaUrls.length === 0) return { status: "skipped" as const, billedAudioSeconds: 0, apiCalls: 0 };
 
-  if (!mediaUrl) return;
-
-  const transcript = await transcribeWithAssemblyAi(mediaUrl);
+  const transcript = await transcribeWithAssemblyAiCandidates(mediaUrls);
   const text = transcript.text.trim();
+  if (text.length < 10) {
+    const noSpeechRawJson = {
+      ...(asset.rawJson as any),
+      transcript: "",
+      transcriptWords: [],
+      transcriptSource: {
+        provider: "assemblyai",
+        transcriptId: transcript.transcriptId,
+        status: "NO_SPEECH",
+        confidence: transcript.confidence,
+        mediaUrl: transcript.mediaUrl,
+      },
+      metrics: {
+        ...((asset.rawJson as any)?.metrics || {}),
+        transcript_meta: {
+          trigger_word_count: 0,
+          first_trigger_time: null,
+          trigger_density: 0,
+        },
+        transcript_provider: "assemblyai",
+      },
+    };
 
-  if (text.length < 10) return;
-  if (isMusicLyrics(text)) return;
+    await prisma.adAsset.update({
+      where: { id: asset.id },
+      data: { rawJson: noSpeechRawJson as any },
+    });
+
+    return {
+      status: "no_speech" as const,
+      billedAudioSeconds: normalizeAudioDurationSeconds(transcript.audioDuration),
+      apiCalls: Math.max(1, Number(transcript.attempts) || 1),
+    };
+  }
+  if (isMusicLyrics(text)) {
+    return {
+      status: "skipped" as const,
+      billedAudioSeconds: normalizeAudioDurationSeconds(transcript.audioDuration),
+      apiCalls: Math.max(1, Number(transcript.attempts) || 1),
+    };
+  }
 
   const duration = firstNumber(
     (asset.rawJson as any)?.metrics?.duration,
@@ -235,17 +335,21 @@ async function enrichAssetWithTranscript(assetId: string) {
       transcriptId: transcript.transcriptId,
       status: transcript.status,
       confidence: transcript.confidence,
-      mediaUrl,
+      mediaUrl: transcript.mediaUrl,
     },
     metrics: mergedMetrics,
   };
 
   await prisma.adAsset.update({
     where: { id: asset.id },
-    data: {
-      rawJson: newRawJson as any,
-    },
+    data: { rawJson: newRawJson as any },
   });
+
+  return {
+    status: "transcribed" as const,
+    billedAudioSeconds: normalizeAudioDurationSeconds(transcript.audioDuration),
+    apiCalls: Math.max(1, Number(transcript.attempts) || 1),
+  };
 }
 
 export async function runAdTranscriptCollection(args: {
@@ -255,8 +359,7 @@ export async function runAdTranscriptCollection(args: {
   forceReprocess?: boolean;
   onProgress?: (pct: number) => void;
 }) {
-  const { projectId, jobId, runId, forceReprocess = false, onProgress } = args;
-
+  const { projectId, runId, forceReprocess = false, onProgress } = args;
   requireEnv(["ASSEMBLYAI_API_KEY"], "AssemblyAI");
 
   if (!runId || !String(runId).trim()) {
@@ -288,19 +391,30 @@ export async function runAdTranscriptCollection(args: {
   }
 
   let processed = 0;
+  let noSpeech = 0;
+  let skipped = 0;
+  let completed = 0;
+  let billedAudioSeconds = 0;
+  let apiCalls = 0;
   const total = assetsToProcess.length;
   const errors: Array<{ assetId: string; error: any }> = [];
 
   const promises = assetsToProcess.map((asset) =>
     limit(async () => {
       try {
-        await enrichAssetWithTranscript(asset.id);
-        processed++;
+        const result = await enrichAssetWithTranscript(asset.id);
+        if (result.status === "transcribed") processed++;
+        if (result.status === "no_speech") noSpeech++;
+        if (result.status === "skipped") skipped++;
+        billedAudioSeconds += Math.max(0, Number(result.billedAudioSeconds) || 0);
+        apiCalls += Math.max(0, Number(result.apiCalls) || 0);
+        completed++;
         if (onProgress) {
-          onProgress(Math.floor((processed / total) * 100));
+          onProgress(Math.floor((completed / total) * 100));
         }
       } catch (err) {
         errors.push({ assetId: asset.id, error: err });
+        completed++;
       }
     })
   );
@@ -315,7 +429,7 @@ export async function runAdTranscriptCollection(args: {
     );
   }
 
-  return { totalAssets: total, processed };
+  return { totalAssets: total, processed, noSpeech, skipped, billedAudioSeconds, apiCalls };
 }
 
 export async function startAdTranscriptJob(params: {
@@ -325,6 +439,7 @@ export async function startAdTranscriptJob(params: {
   forceReprocess?: boolean;
 }) {
   const { projectId, jobId, runId, forceReprocess } = params;
+  // TODO(medium): this service still owns job-state transitions even though the worker layer already orchestrates status changes.
   const currentJob = await prisma.job.findUnique({
     where: { id: jobId },
     select: { status: true },
@@ -345,6 +460,7 @@ export async function startAdTranscriptJob(params: {
     maxRetries: ASSEMBLYAI_MAX_RETRIES,
     pollIntervalMs: ASSEMBLYAI_POLL_INTERVAL_MS,
   });
+
   try {
     const result = await runAdTranscriptCollection({
       projectId,
@@ -357,7 +473,7 @@ export async function startAdTranscriptJob(params: {
     await prisma.job.update({
       where: { id: jobId },
       data: {
-        resultSummary: `Transcripts: ${result.processed}/${result.totalAssets}`,
+        resultSummary: `Transcripts: ${result.processed}/${result.totalAssets} (no_speech: ${result.noSpeech ?? 0}, skipped: ${result.skipped ?? 0}, audio_s: ${Math.round(result.billedAudioSeconds ?? 0)}, api_calls: ${result.apiCalls ?? 0})`,
       },
     });
 

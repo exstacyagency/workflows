@@ -25,7 +25,10 @@ class CircuitBreaker {
     }
 
     try {
-      const result = await fn();
+      const timeoutError = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error(`Circuit breaker timeout for ${service} after ${this.timeout}ms`)), this.timeout);
+      });
+      const result = await Promise.race([fn(), timeoutError]);
       if (this.state === 'HALF_OPEN') this.state = 'CLOSED';
       this.failures = 0;
       return result;

@@ -8,6 +8,7 @@ export async function POST() {
   }
 
   const { id, email, token } = await createTestUser();
+  // TODO(medium): keep this helper scoped to local/test runs; it returns a live test-session token to the caller.
   
   return NextResponse.json({ 
     userId: id, 

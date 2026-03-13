@@ -9,8 +9,9 @@ import { getRequestId, logError, logInfo } from "@/lib/observability";
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { projectId: string } }
+  { params }: { params: Promise<{ projectId: string }> }
 ) {
+  const awaitedParams = await params;
   const requestId = getRequestId(req);
   logInfo("api.request", { requestId, path: req.nextUrl?.pathname });
 
@@ -23,7 +24,7 @@ export async function POST(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const { projectId } = params;
+    const { projectId } = awaitedParams;
     if (!projectId) {
       return NextResponse.json({ error: "projectId is required" }, { status: 400 });
     }

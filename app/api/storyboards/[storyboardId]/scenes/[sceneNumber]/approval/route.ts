@@ -61,8 +61,9 @@ function extractSceneFrameUrls(rawValue: unknown): {
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { storyboardId: string; sceneNumber: string } },
+  { params }: { params: Promise<{ storyboardId: string; sceneNumber: string }> },
 ) {
+  const awaitedParams = await params;
   const userId = await getSessionUserId();
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -71,12 +72,12 @@ export async function PATCH(
   try {
     await ensureStoryboardSceneApprovalColumn();
 
-    const storyboardId = asString(params?.storyboardId);
+    const storyboardId = asString(awaitedParams?.storyboardId);
     if (!storyboardId) {
       return NextResponse.json({ error: "storyboardId is required" }, { status: 400 });
     }
 
-    const sceneNumber = Number(params?.sceneNumber);
+    const sceneNumber = Number(awaitedParams?.sceneNumber);
     if (!Number.isInteger(sceneNumber) || sceneNumber < 1) {
       return NextResponse.json({ error: "sceneNumber must be a positive integer" }, { status: 400 });
     }

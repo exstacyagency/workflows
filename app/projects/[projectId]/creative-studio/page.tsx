@@ -7,6 +7,8 @@ import { JobStatus, JobType } from "@prisma/client";
 import toast, { Toaster } from "react-hot-toast";
 import Link from "next/link";
 import RunManagementModal from "@/components/RunManagementModal";
+import { analyzeSwipeTranscript, type SwipeAnalysis } from "@/lib/analyzeSwipeTranscript";
+import { VideoEditorStep } from "./VideoEditorStep";
 
 type Job = {
   id: string;
@@ -28,6 +30,20 @@ type ProductOption = {
   creatorReferenceImageUrl?: string | null;
   productReferenceImageUrl?: string | null;
   soraCharacterId?: string | null;
+  characterUserName?: string | null;
+  characters?: CharacterOption[];
+};
+
+type CharacterOption = {
+  id: string;
+  name: string;
+  productId?: string;
+  runId?: string | null;
+  characterUserName?: string | null;
+  soraCharacterId?: string | null;
+  creatorVisualPrompt?: string | null;
+  createdAt?: string | Date;
+  productName?: string;
 };
 
 type ResearchRunOption = {
@@ -65,7 +81,7 @@ type ScriptBeat = {
   beat: string;
   duration: string | number | null;
   vo: string;
-  aiDataQuality?: "partial" | "minimal" | null;
+  aiDataQuality?: "full" | "partial" | "minimal" | null;
 };
 
 type GeneratedBeatDataQuality = "full" | "partial" | "minimal";
@@ -85,6 +101,17 @@ type ScriptDetails = {
   createdAt: string;
 };
 
+type ManualStoryboardPanelDraft = {
+  beatLabel: string;
+  startTime: string;
+  endTime: string;
+  vo: string;
+  creatorAction: string;
+  textOverlay: string;
+  visualDescription: string;
+  productPlacement: string;
+};
+
 const DEFAULT_SCRIPT_TARGET_DURATION_SECONDS = 30;
 const PIPELINE_STEP_TYPES: JobType[] = [
   JobType.SCRIPT_GENERATION,
@@ -96,6 +123,7 @@ const PIPELINE_STEP_TYPES: JobType[] = [
   JobType.VIDEO_REVIEW,
   JobType.VIDEO_UPSCALER,
 ];
+const CREATIVE_JOB_TYPES = new Set<JobType>(PIPELINE_STEP_TYPES);
 
 type ScriptRunSummarySource = {
   present: boolean;
@@ -103,6 +131,39 @@ type ScriptRunSummarySource = {
   completedAt: string | null;
   avatarSummary?: string | null;
   productName?: string | null;
+  formulaSummary?: string | null;
+  formulaDetails?: {
+    label: string | null;
+    components: Array<{
+      name: string;
+      executionBrief: string;
+    }>;
+  } | null;
+  psychologicalMechanism?: string | null;
+  psychologicalMechanismDetails?: {
+    label: string | null;
+    executionBrief: string | null;
+  } | null;
+  summary?: string | null;
+};
+
+type SwipeRecommendationCandidate = {
+  assetId: string;
+  title: string | null;
+  score: number;
+  reasons: string[];
+  metrics: {
+    views: number | null;
+    engagementScore: number | null;
+    retention3s: number | null;
+    retention10s: number | null;
+    ctr: number | null;
+  };
+  sourceUrl: string | null;
+  transcriptSnippet: string | null;
+  ocrText: string | null;
+  selectionSource: "swipe_file" | "run_ad";
+  createdAt: string | null;
 };
 
 type ScriptRunSummary = {
@@ -110,6 +171,12 @@ type ScriptRunSummary = {
   customerAnalysis: ScriptRunSummarySource;
   patternAnalysis: ScriptRunSummarySource;
   productCollection: ScriptRunSummarySource;
+  swipeRecommendation?: {
+    present: boolean;
+    recommendedAdId: string | null;
+    sourceMode?: "swipe_file" | "run_ad";
+    candidates: SwipeRecommendationCandidate[];
+  };
 };
 
 type AddBeatExpansionProps = {
@@ -117,6 +184,45 @@ type AddBeatExpansionProps = {
   disabled: boolean;
   onWriteYourself: (afterIndex: number, beatLabel: string) => void;
   onGenerateWithAi: (afterIndex: number, beatLabel: string) => Promise<void>;
+};
+
+const STALE_RUNNING_JOB_MS = 5 * 60 * 1000; // 5 minutes
+
+type StoryboardPanel = {
+  id?: string;
+  sceneNumber?: number;
+  panelType?: "ON_CAMERA" | "PRODUCT_ONLY" | "B_ROLL_ONLY";
+  voiceoverOnly: boolean;
+  beatLabel?: string | null;
+  startTime?: string | null;
+  endTime?: string | null;
+  vo?: string | null;
+  characterAction?: string | null;
+  characterName?: string | null;
+  characterDescription?: string | null;
+  characterAnchor?: string | null;
+  characterHandle?: string | null;
+  cameraDirection?: string | null;
+  productPlacement?: string | null;
+  bRollSuggestions?: string[] | null;
+  environment?: string | null;
+  videoPrompt?: string | null;
+  videoUrl: string | null;
+  approved?: boolean | null;
+  status?: string | null;
+  rawJson?: Record<string, unknown> | null;
+  clipDurationSeconds?: number | null;
+  firstFrameImageUrl?: string | null;
+  lastFrameImageUrl?: string | null;
+  firstFramePrompt?: string | null;
+  lastFramePrompt?: string | null;
+};
+
+type StoryboardDetails = {
+  id: string;
+  status?: string | null;
+  targetDuration?: number | null;
+  panels: StoryboardPanel[];
 };
 
 function defaultInsertBeatLabel(afterIndex: number): string {
@@ -379,16 +485,29 @@ export default function CreativeStudioPage() {
   const [products, setProducts] = useState<ProductOption[]>([]);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(selectedProductIdFromUrl);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const [runCharacters, setRunCharacters] = useState<CharacterOption[]>([]);
+  const [selectedStoryboardCharacterId, setSelectedStoryboardCharacterId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [showScriptModal, setShowScriptModal] = useState(false);
+  const [showStoryboardModal, setShowStoryboardModal] = useState(false);
+  const [storyboardModalMode, setStoryboardModalMode] = useState<"choose" | "manual">("choose");
+  const [storyboardModalSubmitting, setStoryboardModalSubmitting] = useState(false);
+  const [storyboardModalError, setStoryboardModalError] = useState<string | null>(null);
+  const [manualStoryboardPanels, setManualStoryboardPanels] = useState<ManualStoryboardPanelDraft[]>([]);
   const [scriptModalMode, setScriptModalMode] = useState<"choose" | "ai" | "upload">("choose");
   const [scriptUploadText, setScriptUploadText] = useState("");
   const [scriptResearchRuns, setScriptResearchRuns] = useState<ResearchRunOption[]>([]);
   const [scriptRunsLoading, setScriptRunsLoading] = useState(false);
   const [selectedScriptResearchJobId, setSelectedScriptResearchJobId] = useState("");
-  const [scriptTargetDuration, setScriptTargetDuration] = useState<number>(30);
-  const [scriptBeatCount, setScriptBeatCount] = useState<number>(5);
+  const [scriptGenerationStrategy, setScriptGenerationStrategy] = useState<
+    "swipe_template" | "research_formula" | "upload_template"
+  >("swipe_template");
+  const [selectedSwipeTemplateAdId, setSelectedSwipeTemplateAdId] = useState<string>("");
+  const [manualSwipeTemplateTitle, setManualSwipeTemplateTitle] = useState("");
+  const [manualSwipeTemplateTranscript, setManualSwipeTemplateTranscript] = useState("");
+  const [manualSwipeTemplateUploading, setManualSwipeTemplateUploading] = useState(false);
+  const [swipeAnalysis, setSwipeAnalysis] = useState<SwipeAnalysis | null>(null);
   const [scriptNoResearchAcknowledged, setScriptNoResearchAcknowledged] = useState(false);
   const [scriptModalSubmitting, setScriptModalSubmitting] = useState(false);
   const [scriptModalError, setScriptModalError] = useState<string | null>(null);
@@ -401,6 +520,7 @@ export default function CreativeStudioPage() {
   const [scriptPanelData, setScriptPanelData] = useState<ScriptDetails | null>(null);
   const [scriptPanelEditMode, setScriptPanelEditMode] = useState(false);
   const [scriptPanelDraftBeats, setScriptPanelDraftBeats] = useState<ScriptBeat[]>([]);
+  const [scriptPanelCombinedVoDraft, setScriptPanelCombinedVoDraft] = useState("");
   const [scriptPanelSaving, setScriptPanelSaving] = useState(false);
   const [storyboardPanelData, setStoryboardPanelData] = useState<StoryboardDetails | null>(null);
   const [storyboardPanelLoading, setStoryboardPanelLoading] = useState(false);
@@ -408,6 +528,7 @@ export default function CreativeStudioPage() {
   const [storyboardPanelId, setStoryboardPanelId] = useState<string | null>(null);
   const [storyboardEditMode, setStoryboardEditMode] = useState(false);
   const [storyboardDraftPanels, setStoryboardDraftPanels] = useState<StoryboardPanel[]>([]);
+  const [storyboardBeatEditorDrafts, setStoryboardBeatEditorDrafts] = useState<string[]>([]);
   const [storyboardSaveError, setStoryboardSaveError] = useState<string | null>(null);
   const [storyboardSaving, setStoryboardSaving] = useState(false);
   const [storyboardRegeneratingIndex, setStoryboardRegeneratingIndex] = useState<number | null>(null);
@@ -425,16 +546,25 @@ export default function CreativeStudioPage() {
   const [imagePromptSaveError, setImagePromptSaveError] = useState<string | null>(null);
   const [imagePromptSaving, setImagePromptSaving] = useState(false);
   const [sceneReviewOpenByNumber, setSceneReviewOpenByNumber] = useState<Record<number, boolean>>({});
+  const [sceneVideoReviewOpenByNumber, setSceneVideoReviewOpenByNumber] = useState<Record<number, boolean>>({});
+  const [sceneAdditionalInstructionsByNumber, setSceneAdditionalInstructionsByNumber] = useState<Record<number, string>>({});
+  const [regenerateModalScene, setRegenerateModalScene] = useState<number | null>(null);
+  const [, setMergedVideoUrl] = useState<string | null>(null);
   const [sceneGeneratingNumber, setSceneGeneratingNumber] = useState<number | null>(null);
+  const [videoGeneratingNumber, setVideoGeneratingNumber] = useState<number | null>(null);
   const [sceneApprovingNumber, setSceneApprovingNumber] = useState<number | null>(null);
   const [sceneActionError, setSceneActionError] = useState<string | null>(null);
   const [resettingVideoImageJobId, setResettingVideoImageJobId] = useState<string | null>(null);
   const [cleaningOrphanedJobs, setCleaningOrphanedJobs] = useState(false);
+  const [cancellingJobIds, setCancellingJobIds] = useState<Record<string, boolean>>({});
   const [expandedCompletedStepKeys, setExpandedCompletedStepKeys] = useState<Record<string, boolean>>({});
   const [showRunManagerModal, setShowRunManagerModal] = useState(false);
+  const [showMissingProductImageWarning, setShowMissingProductImageWarning] = useState(false);
+  const [pendingVideoStep, setPendingVideoStep] = useState<ProductionStep | null>(null);
   const [projectRunsById, setProjectRunsById] = useState<Record<string, ProjectRunMetadata>>({});
   const selectedProductRef = useRef<string | null>(selectedProductIdFromUrl);
   const hasInitializedRunSelection = useRef(false);
+  const storyboardFetchRef = useRef(0);
 
   useEffect(() => {
     selectedProductRef.current = selectedProductId;
@@ -522,6 +652,57 @@ export default function CreativeStudioPage() {
     }
   }, [projectId, router, selectedProductIdFromUrl]);
 
+  const loadRunCharacters = useCallback(async () => {
+    const activeRunId = String(selectedRunId ?? "").trim();
+    const activeProductId = String(selectedProductId ?? "").trim();
+    if (!projectId || !activeRunId) {
+      setRunCharacters([]);
+      setSelectedStoryboardCharacterId(null);
+      return;
+    }
+    try {
+      const params = new URLSearchParams();
+      params.set("runId", activeRunId);
+      if (activeProductId) params.set("productId", activeProductId);
+      const res = await fetch(`/api/projects/${projectId}/characters?${params.toString()}`, {
+        cache: "no-store",
+      });
+      const data = await res.json().catch(() => []);
+      if (!res.ok || !Array.isArray(data)) {
+        throw new Error("Failed to load run characters");
+      }
+
+      const mapped: CharacterOption[] = data.map((entry: any) => ({
+        id: String(entry?.id ?? ""),
+        name: String(entry?.name ?? "Character"),
+        productId: String(entry?.productId ?? ""),
+        runId: entry?.runId ? String(entry.runId) : null,
+        characterUserName:
+          typeof entry?.characterUserName === "string" ? entry.characterUserName : null,
+        soraCharacterId:
+          typeof entry?.soraCharacterId === "string" ? entry.soraCharacterId : null,
+        createdAt:
+          typeof entry?.createdAt === "string" ? entry.createdAt : new Date().toISOString(),
+        productName:
+          typeof entry?.product?.name === "string"
+            ? entry.product.name
+            : (products.find((p) => p.id === String(entry?.productId ?? ""))?.name ?? "Product"),
+        creatorVisualPrompt:
+          typeof entry?.creatorVisualPrompt === "string" ? entry.creatorVisualPrompt : null,
+      }));
+
+      setRunCharacters(mapped);
+      setSelectedStoryboardCharacterId((current) => {
+        if (current && mapped.some((char) => char.id === current)) return current;
+        return mapped[0]?.id ?? null;
+      });
+    } catch (err: any) {
+      console.error("[Creative] Failed to load run characters", err);
+      setRunCharacters([]);
+      setSelectedStoryboardCharacterId(null);
+    }
+  }, [projectId, products, selectedProductId, selectedRunId]);
+
   useEffect(() => {
     if (!projectId) return;
     loadProducts();
@@ -536,6 +717,10 @@ export default function CreativeStudioPage() {
     if (!projectId) return;
     loadJobs(selectedProductId);
   }, [projectId, loadJobs, selectedProductId]);
+
+  useEffect(() => {
+    void loadRunCharacters();
+  }, [loadRunCharacters]);
 
   // Auto-refresh jobs every 5 seconds
   useEffect(() => {
@@ -567,22 +752,77 @@ export default function CreativeStudioPage() {
     [jobs]
   );
 
+  const isCancelableJob = useCallback((job: Job | null | undefined): boolean => {
+    if (!job) return false;
+    return job.status === JobStatus.PENDING || job.status === JobStatus.RUNNING;
+  }, []);
+
+  const cancelJob = useCallback(
+    async (jobId: string) => {
+      setCancellingJobIds((prev) => ({ ...prev, [jobId]: true }));
+      try {
+        const res = await fetch(`/api/jobs/${jobId}/cancel`, { method: "POST" });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(
+            typeof data?.error === "string" && data.error.trim().length > 0
+              ? data.error
+              : "Failed to cancel job",
+          );
+        }
+        toast.success("Job cancelled");
+        await loadJobs(selectedProductId);
+      } catch (err: any) {
+        toast.error(err?.message || "Failed to cancel job");
+      } finally {
+        setCancellingJobIds((prev) => {
+          const next = { ...prev };
+          delete next[jobId];
+          return next;
+        });
+      }
+    },
+    [loadJobs, selectedProductId],
+  );
+
   const runGroupsList = useMemo(() => Object.values(runGroups), [runGroups]);
   const selectedScriptResearchRun = useMemo(
     () => scriptResearchRuns.find((run) => run.jobId === selectedScriptResearchJobId) ?? null,
     [scriptResearchRuns, selectedScriptResearchJobId],
   );
+  const scriptSwipeCandidates = scriptRunSummary?.swipeRecommendation?.candidates ?? [];
+  const scriptSwipeFileCandidates = useMemo(
+    () => scriptSwipeCandidates.filter((candidate) => candidate.selectionSource === "swipe_file"),
+    [scriptSwipeCandidates],
+  );
+  const selectedSwipeCandidate =
+    scriptSwipeCandidates.find((candidate) => candidate.assetId === selectedSwipeTemplateAdId) ?? null;
+  const selectedSwipeFileCandidate =
+    scriptSwipeFileCandidates.find((candidate) => candidate.assetId === selectedSwipeTemplateAdId) ?? null;
+  const scriptGenerateDisabled =
+    scriptModalSubmitting ||
+    scriptRunsLoading ||
+    (scriptResearchRuns.length > 0 ? !selectedScriptResearchJobId : !scriptNoResearchAcknowledged) ||
+    (scriptGenerationStrategy === "swipe_template" &&
+      scriptSwipeCandidates.length > 0 &&
+      !selectedSwipeTemplateAdId) ||
+    (scriptGenerationStrategy === "upload_template" &&
+      scriptSwipeFileCandidates.length > 0 &&
+      !selectedSwipeTemplateAdId);
 
   function getRunJobName(job: Job) {
+    const payloadLabel =
+      typeof job?.payload?.jobLabel === "string" ? String(job.payload.jobLabel).trim() : "";
+    if (payloadLabel) return payloadLabel;
     const names: Record<string, string> = {
       SCRIPT_GENERATION: "Generate Script",
       STORYBOARD_GENERATION: "Create Storyboard",
       IMAGE_PROMPT_GENERATION: "Generate Image Prompts",
       VIDEO_PROMPT_GENERATION: "Generate Video Prompts",
-      VIDEO_IMAGE_GENERATION: "Generate Images",
+      VIDEO_IMAGE_GENERATION: "Generate First Frames",
       VIDEO_GENERATION: "Generate Video",
-      VIDEO_REVIEW: "Review Video",
-      VIDEO_UPSCALER: "Upscale & Export",
+      VIDEO_REVIEW: "Edit Video",
+      VIDEO_UPSCALER: "Swap Audio",
       CUSTOMER_RESEARCH: "Customer Research",
       CUSTOMER_ANALYSIS: "Customer Analysis",
       AD_PERFORMANCE: "Ad Collection",
@@ -647,20 +887,95 @@ export default function CreativeStudioPage() {
   const selectedRun = selectedRunId ? sortedRuns.find((run) => run.runId === selectedRunId) : null;
   const selectedRunJobs = useMemo(() => selectedRun?.jobs ?? [], [selectedRun]);
   const hasSelectedRunWithJobs = Boolean(selectedRunId && selectedRunJobs.length > 0);
+  const recentCreativeJobs = useMemo(
+    () =>
+      jobs
+        .filter((job) => CREATIVE_JOB_TYPES.has(job.type))
+        .slice()
+        .sort(
+          (a, b) =>
+            new Date(b.updatedAt ?? b.createdAt).getTime() -
+            new Date(a.updatedAt ?? a.createdAt).getTime()
+        )
+        .slice(0, 10),
+    [jobs]
+  );
   const orphanedJobsCount = useMemo(
     () => jobs.filter((job) => !String(job.runId ?? "").trim()).length,
     [jobs],
   );
   const jobsInActiveRun = useMemo(
-    () => (hasSelectedRunWithJobs ? selectedRunJobs : []),
-    [hasSelectedRunWithJobs, selectedRunJobs],
+    () => (selectedRunId ? selectedRunJobs : []),
+    [selectedRunId, selectedRunJobs],
   );
+  const generatedFirstFrameScenesInActiveRun = useMemo(() => {
+    const sceneNumbers = new Set<number>();
+    for (const job of jobsInActiveRun) {
+      if (job.type !== JobType.VIDEO_IMAGE_GENERATION) continue;
+      const payload = job.payload && typeof job.payload === "object"
+        ? (job.payload as Record<string, unknown>)
+        : null;
+      if (!payload) continue;
+      const prompts = Array.isArray(payload.prompts) ? payload.prompts : [];
+      for (const prompt of prompts) {
+        const sceneNumber = Number((prompt as any)?.sceneNumber);
+        if (Number.isInteger(sceneNumber) && sceneNumber > 0) {
+          sceneNumbers.add(sceneNumber);
+        }
+      }
+      const tasks = Array.isArray(payload.tasks) ? payload.tasks : [];
+      for (const task of tasks) {
+        const sceneNumber = Number((task as any)?.sceneNumber);
+        if (Number.isInteger(sceneNumber) && sceneNumber > 0) {
+          sceneNumbers.add(sceneNumber);
+        }
+      }
+    }
+    return sceneNumbers;
+  }, [jobsInActiveRun]);
+  const latestFirstFrameGenerationBySceneInActiveRun = useMemo(() => {
+    const latestByScene = new Map<number, number>();
+    for (const job of jobsInActiveRun) {
+      if (job.type !== JobType.VIDEO_IMAGE_GENERATION) continue;
+      if (job.status !== JobStatus.COMPLETED) continue;
+      const ts = new Date(job.updatedAt ?? job.createdAt).getTime();
+      if (!Number.isFinite(ts)) continue;
+      const payload = job.payload && typeof job.payload === "object"
+        ? (job.payload as Record<string, unknown>)
+        : null;
+      if (!payload) continue;
+      const seenSceneNumbers = new Set<number>();
+      const prompts = Array.isArray(payload.prompts) ? payload.prompts : [];
+      for (const prompt of prompts) {
+        const sceneNumber = Number((prompt as any)?.sceneNumber);
+        if (Number.isInteger(sceneNumber) && sceneNumber > 0) {
+          seenSceneNumbers.add(sceneNumber);
+        }
+      }
+      const tasks = Array.isArray(payload.tasks) ? payload.tasks : [];
+      for (const task of tasks) {
+        const sceneNumber = Number((task as any)?.sceneNumber);
+        if (Number.isInteger(sceneNumber) && sceneNumber > 0) {
+          seenSceneNumbers.add(sceneNumber);
+        }
+      }
+      for (const sceneNumber of seenSceneNumbers) {
+        const prev = latestByScene.get(sceneNumber) ?? 0;
+        if (ts > prev) latestByScene.set(sceneNumber, ts);
+      }
+    }
+    return latestByScene;
+  }, [jobsInActiveRun]);
   const selectedProduct = useMemo(
     () => products.find((p) => p.id === selectedProductId) ?? null,
     [products, selectedProductId],
   );
+  const allCharacters = useMemo(() => runCharacters, [runCharacters]);
   const hasSelectedProductCreatorReference = Boolean(
     String(selectedProduct?.creatorReferenceImageUrl ?? "").trim(),
+  );
+  const hasSelectedProductReferenceImage = Boolean(
+    String(selectedProduct?.productReferenceImageUrl ?? "").trim(),
   );
   const hasSelectedProductSoraCharacter = Boolean(
     String(selectedProduct?.soraCharacterId ?? "").trim(),
@@ -675,6 +990,7 @@ export default function CreativeStudioPage() {
         )
         .sort(sortByNewest);
       if (inSelectedRun[0]) return inSelectedRun[0];
+      if (selectedRunId) return null;
       return (
         jobs
           .filter(
@@ -683,7 +999,7 @@ export default function CreativeStudioPage() {
           .sort(sortByNewest)[0] ?? null
       );
     },
-    [jobs, jobsInActiveRun],
+    [jobs, jobsInActiveRun, selectedRunId],
   );
   const latestCompletedStoryboardId = useMemo(
     () => getStoryboardIdFromJob(latestCompletedStoryboardJob),
@@ -701,6 +1017,8 @@ export default function CreativeStudioPage() {
   useEffect(() => {
     closeScriptPanel();
     setExpandedCompletedStepKeys({});
+    setRunCharacters([]);
+    setSelectedStoryboardCharacterId(null);
     setVideoPromptEditMode(false);
     setVideoPromptDrafts([]);
     setVideoPromptSaveError(null);
@@ -712,7 +1030,11 @@ export default function CreativeStudioPage() {
     setImagePromptSaveError(null);
     setImagePromptSaving(false);
     setSceneReviewOpenByNumber({});
+    setSceneVideoReviewOpenByNumber({});
+    setSceneAdditionalInstructionsByNumber({});
+    setRegenerateModalScene(null);
     setSceneGeneratingNumber(null);
+    setVideoGeneratingNumber(null);
     setSceneApprovingNumber(null);
     setSceneActionError(null);
   }, [selectedRunId]);
@@ -740,7 +1062,9 @@ export default function CreativeStudioPage() {
       setImagePromptSaveError(null);
       setImagePromptSaving(false);
       setSceneReviewOpenByNumber({});
+      setSceneVideoReviewOpenByNumber({});
       setSceneGeneratingNumber(null);
+      setVideoGeneratingNumber(null);
       setSceneApprovingNumber(null);
       setSceneActionError(null);
       return;
@@ -761,7 +1085,9 @@ export default function CreativeStudioPage() {
     setImagePromptSaveError(null);
     setImagePromptSaving(false);
     setSceneReviewOpenByNumber({});
+    setSceneVideoReviewOpenByNumber({});
     setSceneGeneratingNumber(null);
+    setVideoGeneratingNumber(null);
     setSceneApprovingNumber(null);
     setSceneActionError(null);
 
@@ -803,13 +1129,9 @@ export default function CreativeStudioPage() {
         const normalizedPanels = Array.isArray(storyboard.panels)
           ? storyboard.panels.map((panel, index) => normalizeStoryboardPanel(panel, index))
           : [];
-        const validationReport = normalizeValidationReport(
-          (data?.storyboard as Record<string, unknown> | undefined)?.validationReport,
-        );
         setStoryboardPanelData({
           ...storyboard,
           panels: normalizedPanels,
-          validationReport,
         });
         setStoryboardDraftPanels(normalizedPanels);
         setStoryboardEditMode(false);
@@ -847,6 +1169,16 @@ export default function CreativeStudioPage() {
       hour12: true,
     });
 
+  function formatSwipeMetricPercent(value: number | null, digits = 1): string {
+    if (value === null || !Number.isFinite(value)) return "—";
+    return `${(value * 100).toFixed(digits)}%`;
+  }
+
+  function formatSwipeMetricNumber(value: number | null, digits = 3): string {
+    if (value === null || !Number.isFinite(value)) return "—";
+    return value.toFixed(digits);
+  }
+
   function getSummaryText(resultSummary: unknown): string {
     if (typeof resultSummary === "string" && resultSummary.trim()) {
       return resultSummary;
@@ -858,39 +1190,6 @@ export default function CreativeStudioPage() {
       }
     }
     return "Job completed";
-  }
-
-  function normalizeValidationReport(value: unknown): ValidationReport | null {
-    if (!value || typeof value !== "object") return null;
-    const raw = value as Record<string, unknown>;
-    const warnings = Array.isArray(raw.warnings)
-      ? raw.warnings
-          .map((entry) => (typeof entry === "string" ? entry.trim() : String(entry ?? "").trim()))
-          .filter(Boolean)
-      : [];
-    const qualityScoreRaw = Number(raw.qualityScore);
-    const qualityScore = Number.isFinite(qualityScoreRaw)
-      ? Math.max(0, Math.min(100, Math.round(qualityScoreRaw)))
-      : 0;
-    const gatesPassed = Boolean(raw.gatesPassed);
-
-    return {
-      gatesPassed,
-      warnings,
-      qualityScore,
-    };
-  }
-
-  function getValidationReportFromResultSummary(resultSummary: unknown): ValidationReport | null {
-    if (!resultSummary || typeof resultSummary !== "object") return null;
-    const raw = resultSummary as Record<string, unknown>;
-    return normalizeValidationReport(raw.validationReport);
-  }
-
-  function getScriptValidationReportFromRawJson(rawJson: unknown): ValidationReport | null {
-    if (!rawJson || typeof rawJson !== "object") return null;
-    const root = rawJson as Record<string, unknown>;
-    return normalizeValidationReport(root.validationReport);
   }
 
   function getScriptResearchSources(resultSummary: unknown): ScriptResearchSources | null {
@@ -928,51 +1227,80 @@ export default function CreativeStudioPage() {
     return String(panel.lastFrameImageUrl || panel.firstFrameImageUrl || "").trim();
   }
 
-  function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPanel {
+  function getSceneVideoUrl(panel: StoryboardPanel | null | undefined): string {
+    if (!panel) return "";
+    return String(panel.videoUrl || (panel.rawJson as any)?.videoUrl || (panel.rawJson as any)?.video_url || "").trim();
+  }
+
+function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPanel {
     const raw = panel && typeof panel === "object" ? (panel as Record<string, unknown>) : {};
     const asValue = (value: unknown) => (typeof value === "string" ? value.trim() : "");
     const panelTypeRaw = asValue(raw.panelType);
-    const panelType = panelTypeRaw === "B_ROLL_ONLY" ? "B_ROLL_ONLY" : "ON_CAMERA";
-    const characterAction = asValue(raw.characterAction);
+    const panelType =
+      panelTypeRaw === "B_ROLL_ONLY"
+        ? "B_ROLL_ONLY"
+        : panelTypeRaw === "PRODUCT_ONLY"
+          ? "PRODUCT_ONLY"
+          : "ON_CAMERA";
+    const characterAction =
+      asValue(raw.characterAction) ||
+      asValue(raw.creatorAction) ||
+      asValue(raw["Character Action"]);
+    const characterName = asValue(raw.characterName);
+    const characterDescription = asValue(raw.characterDescription);
     const environment = asValue(raw.environment);
     const sceneNumberRaw = Number(raw.sceneNumber);
     const sceneNumber = Number.isFinite(sceneNumberRaw) && sceneNumberRaw > 0
       ? Math.trunc(sceneNumberRaw)
       : index + 1;
     return {
-      sceneId: asValue(raw.sceneId) || undefined,
       sceneNumber,
       approved: Boolean(raw.approved),
       panelType,
-      beatLabel: asValue(raw.beatLabel) || `Beat ${index + 1}`,
+      voiceoverOnly: Boolean((raw as any).voiceoverOnly ?? (raw as any).voiceover_only),
+      beatLabel: `Beat ${index + 1}`,
       startTime: asValue(raw.startTime),
       endTime: asValue(raw.endTime),
       vo: asValue(raw.vo),
       firstFramePrompt: asValue(raw.firstFramePrompt) || null,
       lastFramePrompt: asValue(raw.lastFramePrompt) || null,
-      firstFrameImageUrl: asValue(raw.firstFrameImageUrl) || null,
-      lastFrameImageUrl: asValue(raw.lastFrameImageUrl) || null,
+      firstFrameImageUrl:
+        asValue(raw.firstFrameImageUrl) ||
+        asValue(raw.firstFrameUrl) ||
+        asValue(raw.first_frame_url) ||
+        null,
+      lastFrameImageUrl:
+        asValue(raw.lastFrameImageUrl) ||
+        asValue(raw.lastFrameUrl) ||
+        asValue(raw.last_frame_url) ||
+        null,
       videoPrompt: asValue(raw.videoPrompt) || null,
+      videoUrl:
+        asValue(raw.videoUrl) ||
+        asValue(raw.video_url) ||
+        null,
       characterAction: characterAction || null,
+      characterName: characterName || null,
+      characterDescription: characterDescription || null,
       environment: environment || null,
       cameraDirection: asValue(raw.cameraDirection),
       productPlacement: asValue(raw.productPlacement),
       bRollSuggestions: Array.isArray(raw.bRollSuggestions)
         ? raw.bRollSuggestions
             .map((entry) => (typeof entry === "string" ? entry.trim() : String(entry ?? "").trim()))
+            .filter((entry) => !/^character\s*handle\s*:/i.test(entry))
             .filter(Boolean)
         : [],
-      transitionType: asValue(raw.transitionType),
     };
   }
 
   function createEmptyStoryboardPanel(index: number, previousPanel?: StoryboardPanel): StoryboardPanel {
     const anchorTime = String(previousPanel?.endTime || previousPanel?.startTime || "0s").trim() || "0s";
     return {
-      sceneId: undefined,
       sceneNumber: index + 1,
       approved: false,
       panelType: "ON_CAMERA",
+      voiceoverOnly: false,
       beatLabel: `Beat ${index + 1}`,
       startTime: anchorTime,
       endTime: anchorTime,
@@ -982,24 +1310,127 @@ export default function CreativeStudioPage() {
       firstFrameImageUrl: null,
       lastFrameImageUrl: null,
       videoPrompt: null,
+      videoUrl: null,
       characterAction: null,
+      characterName: previousPanel?.characterName ?? null,
+      characterDescription: previousPanel?.characterDescription ?? null,
       environment: null,
       cameraDirection: "",
       productPlacement: "",
       bRollSuggestions: [],
-      transitionType: "",
     };
   }
 
-  function bRollSuggestionsToTextarea(value: string[]): string {
-    return value.join("\n");
+  function buildStoryboardBeatEditorText(panel: StoryboardPanel): string {
+    const bRollLines = (panel.bRollSuggestions ?? []).length > 0
+      ? (panel.bRollSuggestions ?? []).map((entry) => `- ${entry}`).join("\n")
+      : "- ";
+    return [
+      `Character Name: ${panel.characterName ?? ""}`,
+      `Character Description: ${panel.characterDescription ?? ""}`,
+      `Character Action: ${panel.characterAction ?? ""}`,
+      `Environment: ${panel.environment ?? ""}`,
+      `Camera Direction: ${panel.cameraDirection ?? ""}`,
+      `Product Placement: ${panel.productPlacement ?? ""}`,
+      `B-roll Suggestions:\n${bRollLines}`,
+    ].join("\n\n");
   }
 
-  function parseBrollSuggestionsTextarea(value: string): string[] {
-    return value
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean);
+  function buildStoryboardBeatEditorDraftsFromPanels(panels: StoryboardPanel[]): string[] {
+    return panels.map((panel) => buildStoryboardBeatEditorText(panel));
+  }
+
+  useEffect(() => {
+    if (!storyboardEditMode) return;
+    setStoryboardBeatEditorDrafts((prev) =>
+      storyboardDraftPanels.map((panel, index) => {
+        if (typeof prev[index] === "string") return prev[index];
+        return buildStoryboardBeatEditorText(panel);
+      }),
+    );
+  }, [storyboardDraftPanels, storyboardEditMode]);
+
+  function parseStoryboardBeatEditorText(
+    value: string,
+    fallbackPanel: StoryboardPanel,
+  ): {
+    characterName: string | null;
+    characterDescription: string | null;
+    characterAction: string | null;
+    environment: string | null;
+    cameraDirection: string;
+    productPlacement: string;
+    bRollSuggestions: string[];
+  } {
+    const labelMap: Array<{ label: string; key: string }> = [
+      { label: "Character Name", key: "characterName" },
+      { label: "Character Description", key: "characterDescription" },
+      { label: "Character Action", key: "characterAction" },
+      { label: "Environment", key: "environment" },
+      { label: "Camera Direction", key: "cameraDirection" },
+      { label: "Product Placement", key: "productPlacement" },
+      { label: "B-roll Suggestions", key: "bRollSuggestions" },
+    ];
+    const sections: Record<string, string> = {};
+    let activeKey: string | null = null;
+    const lines = String(value ?? "").replace(/\r\n/g, "\n").split("\n");
+    for (const rawLine of lines) {
+      const line = rawLine;
+      const matchedLabel = labelMap.find(({ label }) =>
+        new RegExp(`^${label}\\s*:`, "i").test(line.trim()),
+      );
+      if (matchedLabel) {
+        const content = line.replace(new RegExp(`^${matchedLabel.label}\\s*:`, "i"), "").trim();
+        sections[matchedLabel.key] = content;
+        activeKey = matchedLabel.key;
+        continue;
+      }
+      if (!activeKey) continue;
+      sections[activeKey] = sections[activeKey]
+        ? `${sections[activeKey]}\n${line}`
+        : line;
+    }
+
+    const parseNullable = (
+      key: string,
+      fallback: string | null,
+      preserveFallbackWhenEmpty = false,
+    ): string | null => {
+      if (!(key in sections)) return fallback;
+      const normalized = normalizeMultilineText(sections[key] ?? "");
+      if (normalized) return normalized;
+      return preserveFallbackWhenEmpty ? fallback : null;
+    };
+
+    const parseText = (key: string, fallback: string): string => {
+      if (!(key in sections)) return fallback;
+      return normalizeMultilineText(sections[key] ?? "");
+    };
+
+    const parseBroll = (): string[] => {
+      if (!("bRollSuggestions" in sections)) return fallbackPanel.bRollSuggestions ?? [];
+      return String(sections.bRollSuggestions ?? "")
+        .split("\n")
+        .map((entry) => entry.replace(/^\s*[-*]\s*/, "").trim())
+        .filter(Boolean);
+    };
+
+    return {
+      characterName: parseNullable("characterName", fallbackPanel.characterName ?? null),
+      characterDescription: parseNullable(
+        "characterDescription",
+        fallbackPanel.characterDescription ?? null,
+      ),
+      characterAction: parseNullable(
+        "characterAction",
+        fallbackPanel.characterAction ?? null,
+        true,
+      ),
+      environment: parseNullable("environment", fallbackPanel.environment ?? null),
+      cameraDirection: parseText("cameraDirection", fallbackPanel.cameraDirection ?? ""),
+      productPlacement: parseText("productPlacement", fallbackPanel.productPlacement ?? ""),
+      bRollSuggestions: parseBroll(),
+    };
   }
 
   function getSourceRowContent(source: ScriptRunSummarySource, fallback: string): {
@@ -1051,6 +1482,32 @@ export default function CreativeStudioPage() {
       if (match?.[1]) return match[1];
     }
     return null;
+  }
+
+  function getScriptIdFromJob(job: Job | null | undefined): string | null {
+    if (!job) return null;
+
+    const payload = job.payload && typeof job.payload === "object"
+      ? (job.payload as Record<string, unknown>)
+      : null;
+    const payloadResult =
+      payload?.result && typeof payload.result === "object"
+        ? (payload.result as Record<string, unknown>)
+        : null;
+
+    const fromPayloadResult =
+      typeof payloadResult?.scriptId === "string" && payloadResult.scriptId.trim()
+        ? payloadResult.scriptId.trim()
+        : null;
+    if (fromPayloadResult) return fromPayloadResult;
+
+    const fromPayload =
+      typeof payload?.scriptId === "string" && payload.scriptId.trim()
+        ? payload.scriptId.trim()
+        : null;
+    if (fromPayload) return fromPayload;
+
+    return getScriptIdFromResultSummary(job.resultSummary);
   }
 
   function getStoryboardIdFromJob(job: Job | null | undefined): string | null {
@@ -1123,7 +1580,6 @@ export default function CreativeStudioPage() {
 
     return rawScenes.map((scene, index) => {
       const parsed = scene && typeof scene === "object" ? (scene as Record<string, unknown>) : {};
-      const beatValue = parsed.beat;
       const voValue = parsed.vo;
       const durationValue = parsed.duration;
       const aiDataQualityValue = parsed.aiDataQuality;
@@ -1132,9 +1588,7 @@ export default function CreativeStudioPage() {
           ? aiDataQualityValue
           : null;
       return {
-        beat: cleanScriptBeatLabel(
-          typeof beatValue === "string" && beatValue.trim() ? beatValue.trim() : `Beat ${index + 1}`
-        ),
+        beat: `Beat ${index + 1}`,
         duration:
           typeof durationValue === "number" || typeof durationValue === "string"
             ? durationValue
@@ -1200,17 +1654,82 @@ export default function CreativeStudioPage() {
     const durations = buildEvenBeatDurations(targetDuration, beats.length);
     return beats.map((beat, index) => ({
       ...beat,
-      beat: String(beat.beat || `Beat ${index + 1}`).trim() || `Beat ${index + 1}`,
+      beat: `Beat ${index + 1}`,
       duration: durations[index] ?? beat.duration ?? null,
     }));
   }
 
-  function formatSceneDuration(value: string | number | null): string {
-    if (value == null) return "No timing";
-    if (typeof value === "number") return `${value}s`;
-    const normalized = value.trim();
-    if (!normalized) return "No timing";
-    return normalized.endsWith("s") ? normalized : `${normalized}s`;
+  function buildCombinedVoDraftFromBeats(beats: ScriptBeat[]): string {
+    return beats
+      .map((beat, index) => `Beat ${index + 1}:\n${normalizeMultilineText(String(beat.vo ?? ""))}`)
+      .join("\n\n");
+  }
+
+  function normalizeMultilineText(value: string): string {
+    return String(value ?? "")
+      .replace(/\r\n/g, "\n")
+      .replace(/[ \t]+\n/g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  }
+
+  function normalizeSingleLineText(value: string): string {
+    return String(value ?? "").replace(/\s+/g, " ").trim();
+  }
+
+  function enforceBlankLineBetweenTextLines(value: string): string {
+    const normalized = normalizeMultilineText(value);
+    if (!normalized) return "";
+
+    const lines = normalized.split("\n");
+    const result: string[] = [];
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line) continue;
+      if (result.length > 0) {
+        result.push("");
+      }
+      result.push(line);
+    }
+    return result.join("\n");
+  }
+
+  function splitCombinedVoDraftIntoSections(value: string): string[] {
+    const normalized = normalizeMultilineText(value);
+    if (!normalized) return [];
+    const lines = normalized.split("\n");
+    const sections: string[] = [];
+    let current: string[] | null = null;
+    let sawHeader = false;
+    const headerPattern = /^Beat\s+\d+\s*:/i;
+
+    for (const rawLine of lines) {
+      const line = rawLine.trimEnd();
+      if (headerPattern.test(line)) {
+        sawHeader = true;
+        if (current !== null) {
+          sections.push(normalizeMultilineText(current.join("\n")));
+        }
+        current = [];
+        continue;
+      }
+      if (current !== null) {
+        current.push(rawLine);
+      }
+    }
+
+    if (current !== null) {
+      sections.push(normalizeMultilineText(current.join("\n")));
+    }
+
+    if (sawHeader) {
+      return sections;
+    }
+
+    return normalized
+      .split(/\n\s*\n+/)
+      .map((section) => normalizeMultilineText(section))
+      .filter(Boolean);
   }
 
   function applyBeatStructureChange(updater: (prev: ScriptBeat[]) => ScriptBeat[]) {
@@ -1487,13 +2006,14 @@ export default function CreativeStudioPage() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(data?.error || "Failed to load script");
+        throw new Error(data?.error || `Failed to load script (${res.status})`);
       }
 
       const script = data as ScriptDetails;
       const beats = extractScriptBeats(script.rawJson);
       setScriptPanelData(script);
       setScriptPanelDraftBeats(beats);
+      setScriptPanelCombinedVoDraft(buildCombinedVoDraftFromBeats(beats));
     } catch (err: any) {
       setScriptPanelData(null);
       setScriptPanelDraftBeats([]);
@@ -1510,6 +2030,7 @@ export default function CreativeStudioPage() {
     setScriptPanelData(null);
     setScriptPanelEditMode(false);
     setScriptPanelDraftBeats([]);
+    setScriptPanelCombinedVoDraft("");
     setScriptPanelSaving(false);
   }
 
@@ -1519,12 +2040,17 @@ export default function CreativeStudioPage() {
     setScriptPanelSaving(true);
     setScriptPanelError(null);
     try {
-      const targetDuration = normalizeScriptTargetDuration(scriptPanelData?.rawJson);
-      const recalculatedScenes = redistributeBeatDurations(scriptPanelDraftBeats, targetDuration);
-      const payloadScenes = recalculatedScenes.map((scene) => ({
-        beat: scene.beat,
+      const sections = splitCombinedVoDraftIntoSections(scriptPanelCombinedVoDraft);
+      if (sections.length !== scriptPanelDraftBeats.length) {
+        throw new Error(
+          `Expected ${scriptPanelDraftBeats.length} sections (one per beat), found ${sections.length}. Keep one 'Beat N:' header per section.`,
+        );
+      }
+
+      const payloadScenes = scriptPanelDraftBeats.map((scene, index) => ({
+        beat: `Beat ${index + 1}`,
         duration: scene.duration,
-        vo: scene.vo,
+        vo: normalizeMultilineText(sections[index] ?? ""),
       }));
       const res = await fetch(`/api/projects/${projectId}/scripts/${scriptPanelOpenId}`, {
         method: "PATCH",
@@ -1539,8 +2065,10 @@ export default function CreativeStudioPage() {
       }
 
       const updatedScript = (data?.script ?? data) as ScriptDetails;
+      const updatedBeats = extractScriptBeats(updatedScript.rawJson);
       setScriptPanelData(updatedScript);
-      setScriptPanelDraftBeats(extractScriptBeats(updatedScript.rawJson));
+      setScriptPanelDraftBeats(updatedBeats);
+      setScriptPanelCombinedVoDraft(buildCombinedVoDraftFromBeats(updatedBeats));
       setScriptPanelEditMode(false);
       toast.success("Script updated.");
     } catch (err: any) {
@@ -1552,22 +2080,60 @@ export default function CreativeStudioPage() {
   }
 
   function openStoryboardEditMode() {
-    setStoryboardDraftPanels(
-      Array.isArray(storyboardPanelData?.panels)
-        ? storyboardPanelData.panels.map((panel, index) => normalizeStoryboardPanel(panel, index))
-        : [],
-    );
+    const nextPanels = Array.isArray(storyboardPanelData?.panels)
+      ? storyboardPanelData.panels.map((panel, index) => {
+          const normalized = normalizeStoryboardPanel(panel, index);
+          const source = panel as Record<string, unknown>;
+          const fallbackAction =
+            typeof source?.characterAction === "string"
+              ? source.characterAction
+              : typeof source?.creatorAction === "string"
+                ? source.creatorAction
+                : typeof source?.["Character Action"] === "string"
+                  ? source["Character Action"]
+                  : null;
+          return {
+            ...normalized,
+            characterAction:
+              normalized.characterAction ??
+              (typeof fallbackAction === "string" && fallbackAction.trim()
+                ? fallbackAction.trim()
+                : null),
+          };
+        })
+      : [];
+    setStoryboardDraftPanels(nextPanels);
+    setStoryboardBeatEditorDrafts(buildStoryboardBeatEditorDraftsFromPanels(nextPanels));
     setStoryboardEditMode(true);
     setStoryboardSaveError(null);
     setStoryboardRegenerateError(null);
   }
 
   function cancelStoryboardEditMode() {
-    setStoryboardDraftPanels(
-      Array.isArray(storyboardPanelData?.panels)
-        ? storyboardPanelData.panels.map((panel, index) => normalizeStoryboardPanel(panel, index))
-        : [],
-    );
+    const nextPanels = Array.isArray(storyboardPanelData?.panels)
+      ? storyboardPanelData.panels.map((panel, index) => {
+          const normalized = normalizeStoryboardPanel(panel, index);
+          const source = panel as Record<string, unknown>;
+          const fallbackAction =
+            typeof source?.characterAction === "string"
+              ? source.characterAction
+              : typeof source?.creatorAction === "string"
+                ? source.creatorAction
+                : typeof source?.["Character Action"] === "string"
+                  ? source["Character Action"]
+                  : null;
+          return {
+            ...normalized,
+            characterAction:
+              normalized.characterAction ??
+              (typeof fallbackAction === "string" && fallbackAction.trim()
+                ? fallbackAction.trim()
+                : null),
+          };
+        })
+      : [];
+    setStoryboardDraftPanels(nextPanels);
+    setStoryboardBeatEditorDrafts(buildStoryboardBeatEditorDraftsFromPanels(nextPanels));
     setStoryboardEditMode(false);
     setStoryboardSaveError(null);
     setStoryboardRegenerateError(null);
@@ -1578,9 +2144,24 @@ export default function CreativeStudioPage() {
     panelIndex: number,
     updater: (panel: StoryboardPanel) => StoryboardPanel,
   ) {
-    setStoryboardDraftPanels((prev) =>
-      prev.map((panel, index) => (index === panelIndex ? updater(panel) : panel)),
-    );
+    setStoryboardDraftPanels((prev) => {
+      const next = prev.map((panel, index) => (index === panelIndex ? updater(panel) : panel));
+      return lockStoryboardDraftEnvironmentToSceneOne(next);
+    });
+  }
+
+  function lockStoryboardDraftEnvironmentToSceneOne(panels: StoryboardPanel[]): StoryboardPanel[] {
+    if (!panels.length) return panels;
+    const canonical =
+      String(panels[0]?.environment ?? "").trim() ||
+      panels
+        .map((panel) => String(panel.environment ?? "").trim())
+        .find(Boolean) ||
+      "Same environment as Scene 1, with consistent room layout, props, and lighting.";
+    return panels.map((panel) => ({
+      ...panel,
+      environment: canonical,
+    }));
   }
 
   function handleAddStoryboardPanel(afterIndex: number) {
@@ -1589,22 +2170,22 @@ export default function CreativeStudioPage() {
       const previousPanel = prev[afterIndex];
       const next = [...prev];
       next.splice(insertionIndex, 0, createEmptyStoryboardPanel(insertionIndex, previousPanel));
-      return next.map((panel, index) => ({
+      return lockStoryboardDraftEnvironmentToSceneOne(next.map((panel, index) => ({
         ...panel,
-        beatLabel: panel.beatLabel.trim() || `Beat ${index + 1}`,
-      }));
+        beatLabel: `Beat ${index + 1}`,
+      })));
     });
   }
 
   function handleDeleteStoryboardPanel(panelIndex: number) {
     setStoryboardDraftPanels((prev) => {
       if (prev.length <= 1) return prev;
-      return prev
+      return lockStoryboardDraftEnvironmentToSceneOne(prev
         .filter((_, index) => index !== panelIndex)
         .map((panel, index) => ({
           ...panel,
-          beatLabel: panel.beatLabel.trim() || `Beat ${index + 1}`,
-        }));
+          beatLabel: `Beat ${index + 1}`,
+        })));
     });
   }
 
@@ -1617,8 +2198,79 @@ export default function CreativeStudioPage() {
       const next = [...prev];
       const [moved] = next.splice(panelIndex, 1);
       next.splice(destination, 0, moved);
-      return next;
+      return lockStoryboardDraftEnvironmentToSceneOne(next);
     });
+  }
+
+  function mergeAdjacentPanels(
+    panelA: StoryboardPanel,
+    panelB: StoryboardPanel,
+  ): StoryboardPanel {
+    const parseTimeSeconds = (value: string | null | undefined): number => {
+      const normalized = String(value ?? "").trim().toLowerCase();
+      const match = normalized.match(/^(-?\d+(?:\.\d+)?)s?$/);
+      if (!match) return 0;
+      const parsed = Number(match[1]);
+      return Number.isFinite(parsed) ? parsed : 0;
+    };
+    const formatTimeSeconds = (value: number): string =>
+      `${formatSecondsForBeatDuration(Math.max(0, value))}s`;
+
+    const voA = panelA.vo?.trim() ?? "";
+    const voB = panelB.vo?.trim() ?? "";
+    const combinedVo = [voA, voB].filter(Boolean).join(" ");
+
+    const bRollA = Array.isArray(panelA.bRollSuggestions) ? panelA.bRollSuggestions : [];
+    const bRollB = Array.isArray(panelB.bRollSuggestions) ? panelB.bRollSuggestions : [];
+
+    const actionA = panelA.characterAction?.trim() ?? "";
+    const actionB = panelB.characterAction?.trim() ?? "";
+    const combinedAction =
+      actionA && actionB && actionA !== actionB
+        ? `${actionA}, then ${actionB}`
+        : actionA || actionB || null;
+
+    const placementA = panelA.productPlacement?.trim() ?? "none";
+    const placementB = panelB.productPlacement?.trim() ?? "none";
+    const combinedPlacement =
+      placementA !== "none" && placementB !== "none" && placementA !== placementB
+        ? `${placementA}; ${placementB}`
+        : placementA !== "none"
+          ? placementA
+          : placementB;
+    const mergedStartSeconds = parseTimeSeconds(panelA.startTime);
+    const mergedEndTime = formatTimeSeconds(mergedStartSeconds + 15);
+
+    return {
+      ...panelA,
+      vo: combinedVo,
+      endTime: mergedEndTime,
+      bRollSuggestions: [...bRollA, ...bRollB],
+      characterAction: combinedAction,
+      productPlacement: combinedPlacement,
+      beatLabel: `${panelA.beatLabel} + ${panelB.beatLabel}`,
+    };
+  }
+
+  function mergeStoryboardPanels(panelIndex: number) {
+    if (panelIndex >= storyboardDraftPanels.length - 1) return;
+
+    const panelA = storyboardDraftPanels[panelIndex];
+    const panelB = storyboardDraftPanels[panelIndex + 1];
+
+    if (panelA.panelType !== panelB.panelType) {
+      toast.error("Cannot merge panels of different types.");
+      return;
+    }
+
+    const merged = mergeAdjacentPanels(panelA, panelB);
+    const newPanels = [
+      ...storyboardDraftPanels.slice(0, panelIndex),
+      merged,
+      ...storyboardDraftPanels.slice(panelIndex + 2),
+    ];
+
+    setStoryboardDraftPanels(lockStoryboardDraftEnvironmentToSceneOne(newPanels));
   }
 
   async function handleRegenerateStoryboardPanel(panelIndex: number) {
@@ -1671,9 +2323,28 @@ export default function CreativeStudioPage() {
     setStoryboardSaving(true);
     setStoryboardSaveError(null);
     try {
-      const payloadPanels = storyboardDraftPanels.map((panel, index) =>
-        normalizeStoryboardPanel(panel, index),
-      );
+      const payloadPanels = storyboardDraftPanels.map((panel, index) => {
+        const normalized = normalizeStoryboardPanel(panel, index);
+        return {
+          ...normalized,
+          beatLabel: `Beat ${index + 1}`,
+          startTime: normalizeSingleLineText(normalized.startTime ?? ""),
+          endTime: normalizeSingleLineText(normalized.endTime ?? ""),
+          vo: enforceBlankLineBetweenTextLines(normalized.vo ?? ""),
+          characterAction: normalized.characterAction
+            ? enforceBlankLineBetweenTextLines(normalized.characterAction)
+            : null,
+          environment: normalized.environment
+            ? enforceBlankLineBetweenTextLines(normalized.environment)
+            : null,
+          cameraDirection: enforceBlankLineBetweenTextLines(normalized.cameraDirection ?? ""),
+          productPlacement: enforceBlankLineBetweenTextLines(normalized.productPlacement ?? ""),
+          voiceoverOnly: Boolean(normalized.voiceoverOnly),
+          bRollSuggestions: (normalized.bRollSuggestions ?? [])
+            .map((entry) => enforceBlankLineBetweenTextLines(entry))
+            .filter(Boolean),
+        };
+      });
       const res = await fetch(`/api/storyboards/${activeStoryboardId}`, {
         method: "PATCH",
         headers: {
@@ -1691,15 +2362,12 @@ export default function CreativeStudioPage() {
       const normalizedPanels = Array.isArray(storyboard.panels)
         ? storyboard.panels.map((panel, index) => normalizeStoryboardPanel(panel, index))
         : [];
-      const validationReport = normalizeValidationReport(
-        (data?.storyboard as Record<string, unknown> | undefined)?.validationReport,
-      );
       setStoryboardPanelData({
         ...storyboard,
         panels: normalizedPanels,
-        validationReport,
       });
       setStoryboardDraftPanels(normalizedPanels);
+      setStoryboardBeatEditorDrafts(buildStoryboardBeatEditorDraftsFromPanels(normalizedPanels));
       setStoryboardEditMode(false);
       setStoryboardRegenerateError(null);
       toast.success("Storyboard updated.");
@@ -2004,17 +2672,18 @@ export default function CreativeStudioPage() {
     for (const jobType of PIPELINE_STEP_TYPES) {
       const activeRunJobs = sortJobsByRecency(jobsInActiveRun.filter((job) => job.type === jobType));
       const allJobs = sortJobsByRecency(jobs.filter((job) => job.type === jobType));
-      const effectiveJobs = activeRunJobs.length > 0 ? activeRunJobs : allJobs;
+      const useSelectedRunOnly = Boolean(selectedRunId);
+      const effectiveJobs = useSelectedRunOnly ? activeRunJobs : allJobs;
       diagnostics.set(jobType, {
         activeRunJobs,
         allJobs,
         effectiveJobs,
-        source: activeRunJobs.length > 0 ? "selected_run" : "all_runs",
+        source: useSelectedRunOnly || activeRunJobs.length > 0 ? "selected_run" : "all_runs",
         status: deriveStepStatus(effectiveJobs),
       });
     }
     return diagnostics;
-  }, [jobs, jobsInActiveRun]);
+  }, [jobs, jobsInActiveRun, selectedRunId]);
 
   useEffect(() => {
     for (const jobType of PIPELINE_STEP_TYPES) {
@@ -2062,14 +2731,22 @@ export default function CreativeStudioPage() {
 
   const imagePromptLastJob = getJobsForType("IMAGE_PROMPT_GENERATION" as JobType)[0];
   const isImagePromptJobStuck = isStaleRunningJob(imagePromptLastJob);
+  const latestStoryboardJob = getJobsForType(JobType.STORYBOARD_GENERATION)[0];
+  const latestStoryboardJobSignature = latestStoryboardJob
+    ? `${latestStoryboardJob.id}:${latestStoryboardJob.status}:${latestStoryboardJob.updatedAt}`
+    : "";
   const latestVideoImageJob = getJobsForType(JobType.VIDEO_IMAGE_GENERATION)[0];
   const latestVideoImageJobSignature = latestVideoImageJob
     ? `${latestVideoImageJob.id}:${latestVideoImageJob.status}:${latestVideoImageJob.updatedAt}`
     : "";
+  const latestVideoPromptJob = getJobsForType(JobType.VIDEO_PROMPT_GENERATION)[0];
+  const latestVideoPromptJobSignature = latestVideoPromptJob
+    ? `${latestVideoPromptJob.id}:${latestVideoPromptJob.status}:${latestVideoPromptJob.updatedAt}`
+    : "";
 
   const storyboardPanelsForSceneFlow = useMemo(() => {
     if (!latestCompletedStoryboardId) return [] as StoryboardPanel[];
-    if (!storyboardPanelData || storyboardPanelId !== latestCompletedStoryboardId) return [] as StoryboardPanel[];
+    if (!storyboardPanelData) return [] as StoryboardPanel[];
     return Array.isArray(storyboardPanelData.panels) ? storyboardPanelData.panels : [];
   }, [latestCompletedStoryboardId, storyboardPanelData, storyboardPanelId]);
 
@@ -2083,25 +2760,21 @@ export default function CreativeStudioPage() {
     return map;
   }, [storyboardPanelsForSceneFlow]);
 
-  const requiredSceneNumbers = [1, 2, 3, 4, 5, 6];
-  const requiredScenePanels = requiredSceneNumbers.map((sceneNumber) =>
-    sceneFlowPanelByNumber.get(sceneNumber) ?? null,
-  );
-  const allRequiredScenesApproved =
-    requiredScenePanels.length === requiredSceneNumbers.length &&
-    requiredScenePanels.every((panel) => Boolean(panel?.approved));
-  const anyRequiredSceneGenerated = requiredScenePanels.some((panel) => Boolean(getSceneLastFrameImageUrl(panel)));
-
   const videoImagesDerivedStatus: ProductionStep["status"] = (() => {
-    if (allRequiredScenesApproved) return "completed";
     const jobStatus = getStepStatus(JobType.VIDEO_IMAGE_GENERATION);
+    const sceneFlowPanels = Array.from(sceneFlowPanelByNumber.values());
+    const allSceneFramesGenerated =
+      sceneFlowPanels.length > 0 &&
+      sceneFlowPanels.every((panel) => Boolean(getSceneLastFrameImageUrl(panel)));
+    if (allSceneFramesGenerated) return "completed";
+    if (jobStatus === "completed") return "completed";
     if (sceneGeneratingNumber !== null || submitting === "video_images" || jobStatus === "running") {
       return "running";
     }
     if (jobStatus === "failed") return "failed";
-    if (anyRequiredSceneGenerated) return "running";
     return "not_started";
   })();
+  const storyboardCompleted = getStepStatus(JobType.STORYBOARD_GENERATION) === "completed";
 
   // Build production pipeline with dependencies
   const steps: ProductionStep[] = [
@@ -2138,18 +2811,22 @@ export default function CreativeStudioPage() {
     },
     {
       key: "video_images",
-      label: "Generate Images",
+      label: "Generate First Frames",
       jobType: JobType.VIDEO_IMAGE_GENERATION,
       status: videoImagesDerivedStatus,
       canRun:
-        hasCompletedJob("IMAGE_PROMPT_GENERATION" as JobType) &&
-        hasSelectedProductCreatorReference,
+        storyboardCompleted &&
+        hasSelectedProductReferenceImage &&
+        (runCharacters.length === 0 || Boolean(selectedStoryboardCharacterId)),
       locked:
-        !hasCompletedJob("IMAGE_PROMPT_GENERATION" as JobType) ||
-        !hasSelectedProductCreatorReference,
-      lockReason: !hasCompletedJob("IMAGE_PROMPT_GENERATION" as JobType)
-        ? "Generate image prompts first"
-        : "Set an active creator face in product settings first",
+        !storyboardCompleted ||
+        !hasSelectedProductReferenceImage ||
+        (runCharacters.length > 0 && !selectedStoryboardCharacterId),
+      lockReason: !storyboardCompleted
+        ? "Create storyboard first"
+        : !hasSelectedProductReferenceImage
+          ? "Upload product image in Product Setup first"
+          : "Select a character from Character Casting first",
       lastJob: latestVideoImageJob,
     },
     {
@@ -2157,9 +2834,9 @@ export default function CreativeStudioPage() {
       label: "Generate Video Prompts",
       jobType: JobType.VIDEO_PROMPT_GENERATION,
       status: getStepStatus(JobType.VIDEO_PROMPT_GENERATION),
-      canRun: allRequiredScenesApproved,
-      locked: !allRequiredScenesApproved,
-      lockReason: "Approve scenes 1-6 first",
+      canRun: getStepStatus(JobType.VIDEO_IMAGE_GENERATION) === "completed",
+      locked: getStepStatus(JobType.VIDEO_IMAGE_GENERATION) !== "completed",
+      lockReason: "Generate first frames first",
       lastJob: getJobsForType(JobType.VIDEO_PROMPT_GENERATION)[0],
     },
     {
@@ -2174,7 +2851,7 @@ export default function CreativeStudioPage() {
     },
     {
       key: "review",
-      label: "Review Video",
+      label: "Edit Video",
       jobType: JobType.VIDEO_REVIEW,
       status: getStepStatus(JobType.VIDEO_REVIEW),
       canRun: hasCompletedJob(JobType.VIDEO_GENERATION),
@@ -2182,21 +2859,9 @@ export default function CreativeStudioPage() {
       lockReason: "Generate video first",
       lastJob: getJobsForType(JobType.VIDEO_REVIEW)[0],
     },
-    {
-      key: "upscale",
-      label: "Upscale & Export",
-      jobType: JobType.VIDEO_UPSCALER,
-      status: getStepStatus(JobType.VIDEO_UPSCALER),
-      canRun: hasCompletedJob(JobType.VIDEO_GENERATION),
-      locked: !hasCompletedJob(JobType.VIDEO_GENERATION),
-      lockReason: "Generate video first",
-      lastJob: getJobsForType(JobType.VIDEO_UPSCALER)[0],
-    },
   ];
   // ARCHIVED: Image generation replaced by Sora 2 Character Cameos.
-  const visibleSteps = steps.filter(
-    (step) => step.key !== "image_prompts" && step.key !== "video_images",
-  );
+  const visibleSteps = steps.filter((step) => step.key !== "image_prompts");
 
   async function runStep(
     step: ProductionStep,
@@ -2207,9 +2872,9 @@ export default function CreativeStudioPage() {
       setError("Select or create a product first.");
       return false;
     }
-    if (step.key === "video_images" && !hasSelectedProductCreatorReference) {
+    if (step.key === "video_images" && !hasSelectedProductReferenceImage) {
       setError(
-        "Set an active creator face in product settings before generating images.",
+        "Upload product image in Product Setup before generating first frames.",
       );
       return false;
     }
@@ -2219,11 +2884,14 @@ export default function CreativeStudioPage() {
 
     try {
       const activeRunId = String(selectedRunId ?? "").trim();
+      const explicitRunIdFromPayload = String(extraPayload?.runId ?? "").trim();
+      const resolvedRunId = explicitRunIdFromPayload || activeRunId;
+      const activeStoryboardCharacterId = String(selectedStoryboardCharacterId ?? "").trim();
       let endpoint = "";
       let payload: any = {
         ...(extraPayload || {}),
-        // If a run is selected, pin jobs to it. If "No active run", omit runId so run-aware APIs create one.
-        ...(activeRunId ? { runId: activeRunId } : {}),
+        // If payload includes runId, respect it. Otherwise fall back to selected active run.
+        ...(resolvedRunId ? { runId: resolvedRunId } : {}),
         projectId,
         productId: selectedProductId,
       };
@@ -2237,7 +2905,6 @@ export default function CreativeStudioPage() {
         video_images: "/api/jobs/video-images",
         video: "/api/jobs/video-generation",
         review: "/api/jobs/video-reviewer",
-        upscale: "/api/jobs/video-upscaler",
       };
 
       endpoint = endpointMap[step.key];
@@ -2246,31 +2913,69 @@ export default function CreativeStudioPage() {
         throw new Error("Endpoint not configured for this step");
       }
 
+      if (step.key === "storyboard") {
+        if (activeRunId && runCharacters.length > 0 && !activeStoryboardCharacterId) {
+          throw new Error("Select a character from Character Casting before creating storyboard.");
+        }
+        if (activeStoryboardCharacterId) {
+          payload = {
+            ...payload,
+            characterId: activeStoryboardCharacterId,
+          };
+        }
+        payload = {
+          ...payload,
+          attemptKey: `storyboard-${Date.now()}`,
+        };
+      }
+
       if (
         step.key === "video_prompts" ||
         step.key === "video_images" ||
         step.key === "image_prompts"
       ) {
-        const latestCompletedStoryboardJob = [...jobs]
-          .filter(
-            (job) =>
-              job.type === JobType.STORYBOARD_GENERATION &&
-              job.status === JobStatus.COMPLETED,
-          )
-          .sort(
-            (a, b) =>
-              new Date(b.updatedAt ?? b.createdAt).getTime() -
-              new Date(a.updatedAt ?? a.createdAt).getTime(),
-          )[0];
-        const storyboardId = getStoryboardIdFromJob(latestCompletedStoryboardJob);
+        const storyboardId = String(latestCompletedStoryboardId ?? "").trim();
         if (!storyboardId) {
           throw new Error(
-            "No completed storyboard found for this project. Run Create Storyboard first.",
+            "No completed storyboard found for the selected run. Run Create Storyboard first.",
           );
         }
         payload = {
           ...payload,
           storyboardId,
+          ...(activeStoryboardCharacterId ? { characterId: activeStoryboardCharacterId } : {}),
+        };
+      }
+
+      if (step.key === "video") {
+        const storyboardId = String(latestCompletedStoryboardId ?? "").trim();
+        if (!storyboardId) {
+          throw new Error(
+            "No completed storyboard found for the selected run. Run Create Storyboard first.",
+          );
+        }
+        const sortByNewest = (a: Job, b: Job) =>
+          new Date(b.updatedAt ?? b.createdAt).getTime() - new Date(a.updatedAt ?? a.createdAt).getTime();
+        const latestScriptJob =
+          jobsInActiveRun
+            .filter((job) => job.type === JobType.SCRIPT_GENERATION && job.status === JobStatus.COMPLETED)
+            .sort(sortByNewest)[0] ??
+          jobs
+            .filter((job) => job.type === JobType.SCRIPT_GENERATION && job.status === JobStatus.COMPLETED)
+            .sort(sortByNewest)[0] ??
+          null;
+        const scriptId = getScriptIdFromJob(latestScriptJob);
+        if (!scriptId) {
+          throw new Error(
+            "No completed script found for the selected run. Run Generate Script first.",
+          );
+        }
+
+        payload = {
+          ...payload,
+          storyboardId,
+          scriptId,
+          forceNew: true,
         };
       }
 
@@ -2279,6 +2984,9 @@ export default function CreativeStudioPage() {
         endpoint,
         selectedRunId,
         activeRunId: activeRunId || null,
+        explicitRunIdFromPayload: explicitRunIdFromPayload || null,
+        resolvedRunId: resolvedRunId || null,
+        activeStoryboardCharacterId: activeStoryboardCharacterId || null,
         payloadRunId:
           typeof payload?.runId === "string" && payload.runId.trim()
             ? payload.runId
@@ -2298,15 +3006,47 @@ export default function CreativeStudioPage() {
       }
 
       const data = await res.json();
+      if (data?.ok === false) {
+        const apiError =
+          typeof data?.error === "string" && data.error.trim().length > 0
+            ? data.error
+            : "Script generation failed to produce output.";
+        throw new Error(apiError);
+      }
       console.log("[Creative] Job created:", data.jobId);
-      if (data?.runId) {
-        setSelectedRunId(String(data.runId));
+      const finalizedRunId =
+        typeof data?.runId === "string" && data.runId.trim().length > 0
+          ? String(data.runId)
+          : resolvedRunId || null;
+      if (finalizedRunId) {
+        setSelectedRunId(finalizedRunId);
+      }
+      if (typeof data?.jobId === "string" && data.jobId.trim().length > 0) {
+        const nowIso = new Date().toISOString();
+        const optimisticJob: Job = {
+          id: String(data.jobId),
+          type: step.jobType,
+          status: JobStatus.PENDING,
+          createdAt: nowIso,
+          updatedAt: nowIso,
+          runId: finalizedRunId,
+          payload: {
+            ...(payload || {}),
+            ...(finalizedRunId ? { runId: finalizedRunId } : {}),
+          } as Record<string, unknown>,
+        };
+        setJobs((prev) => {
+          if (prev.some((job) => job.id === optimisticJob.id)) {
+            return prev;
+          }
+          return [optimisticJob, ...prev];
+        });
       }
       void loadProjectRuns();
 
       // Reload jobs
       await loadJobs(selectedProductId);
-      toast.success("Job started successfully!");
+      toast.success("Job queued successfully.");
       return true;
     } catch (err: any) {
       setError(err.message);
@@ -2323,8 +3063,12 @@ export default function CreativeStudioPage() {
     setScriptResearchRuns([]);
     setScriptRunsLoading(false);
     setSelectedScriptResearchJobId("");
-    setScriptTargetDuration(30);
-    setScriptBeatCount(5);
+    setScriptGenerationStrategy("swipe_template");
+    setSelectedSwipeTemplateAdId("");
+    setManualSwipeTemplateTitle("");
+    setManualSwipeTemplateTranscript("");
+    setManualSwipeTemplateUploading(false);
+    setSwipeAnalysis(null);
     setScriptNoResearchAcknowledged(false);
     setScriptModalError(null);
     setScriptModalSubmitting(false);
@@ -2354,6 +3098,7 @@ export default function CreativeStudioPage() {
   async function refreshStoryboardForOutput(storyboardId: string) {
     const targetId = String(storyboardId || "").trim();
     if (!targetId) return;
+    const myRequestId = ++storyboardFetchRef.current;
     setStoryboardPanelId(targetId);
     setStoryboardPanelLoading(true);
     setStoryboardPanelError(null);
@@ -2361,6 +3106,7 @@ export default function CreativeStudioPage() {
       const res = await fetch(`/api/storyboards/${targetId}`, {
         cache: "no-store",
       });
+      if (myRequestId !== storyboardFetchRef.current) return;
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.storyboard) {
         throw new Error(data?.error || "Failed to load storyboard panels");
@@ -2369,13 +3115,9 @@ export default function CreativeStudioPage() {
       const normalizedPanels = Array.isArray(storyboard.panels)
         ? storyboard.panels.map((panel, index) => normalizeStoryboardPanel(panel, index))
         : [];
-      const validationReport = normalizeValidationReport(
-        (data?.storyboard as Record<string, unknown> | undefined)?.validationReport,
-      );
       setStoryboardPanelData({
         ...storyboard,
         panels: normalizedPanels,
-        validationReport,
       });
       if (normalizedPanels.length === 0) {
         setStoryboardPanelError("Storyboard generation failed to produce output.");
@@ -2383,20 +3125,31 @@ export default function CreativeStudioPage() {
         setStoryboardPanelError(null);
       }
     } catch (err: any) {
+      if (myRequestId !== storyboardFetchRef.current) return;
       setStoryboardPanelData(null);
       setStoryboardPanelError(err?.message || "Failed to load storyboard panels");
     } finally {
+      if (myRequestId !== storyboardFetchRef.current) return;
       setStoryboardPanelLoading(false);
     }
   }
 
   useEffect(() => {
     const activeStoryboardId = String(storyboardPanelId || latestCompletedStoryboardId || "").trim();
-    if (!activeStoryboardId || !latestVideoImageJobSignature) return;
+    if (!activeStoryboardId) return;
+    if (
+      !latestStoryboardJobSignature &&
+      !latestVideoImageJobSignature &&
+      !latestVideoPromptJobSignature
+    ) {
+      return;
+    }
     void refreshStoryboardForOutput(activeStoryboardId);
   }, [
     latestCompletedStoryboardId,
+    latestStoryboardJobSignature,
     latestVideoImageJobSignature,
+    latestVideoPromptJobSignature,
     storyboardPanelId,
   ]);
 
@@ -2406,8 +3159,14 @@ export default function CreativeStudioPage() {
       setShowScriptModal(true);
       return;
     }
+    if (step.key === "storyboard") {
+      setStoryboardModalError(null);
+      setStoryboardModalMode("choose");
+      setShowStoryboardModal(true);
+      return;
+    }
     if (isViewableCompletedStep(step) && !isCompletedStepOutputExpanded(step.key)) {
-      if (step.key === "image_prompts") {
+      if (step.key === "image_prompts" || step.key === "video_prompts") {
         const targetStoryboardId = String(storyboardPanelId || latestCompletedStoryboardId || "").trim();
         if (targetStoryboardId) {
           void refreshStoryboardForOutput(targetStoryboardId);
@@ -2416,7 +3175,127 @@ export default function CreativeStudioPage() {
       toggleCompletedStepOutput(step.key);
       return;
     }
+    if (step.key === "video" && step.canRun && !step.locked && !hasSelectedProductReferenceImage) {
+      setPendingVideoStep(step);
+      setShowMissingProductImageWarning(true);
+      return;
+    }
     void runStep(step);
+  }
+
+  function parseBeatDurationRange(durationValue: string | number | null): { startTime: string; endTime: string } {
+    const raw = String(durationValue ?? "").trim();
+    const match = raw.match(/(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)\s*s?/i);
+    if (!match) {
+      return { startTime: "", endTime: "" };
+    }
+    return {
+      startTime: `${match[1]}s`,
+      endTime: `${match[2]}s`,
+    };
+  }
+
+  async function openManualStoryboardBuilder() {
+    const sortByNewest = (a: Job, b: Job) =>
+      new Date(b.updatedAt ?? b.createdAt).getTime() - new Date(a.updatedAt ?? a.createdAt).getTime();
+    const latestScriptJob =
+      jobsInActiveRun
+        .filter((job) => job.type === JobType.SCRIPT_GENERATION && job.status === JobStatus.COMPLETED)
+        .sort(sortByNewest)[0] ??
+      jobs
+        .filter((job) => job.type === JobType.SCRIPT_GENERATION && job.status === JobStatus.COMPLETED)
+        .sort(sortByNewest)[0] ??
+      null;
+    const scriptId = getScriptIdFromJob(latestScriptJob);
+    if (!scriptId) {
+      setStoryboardModalError("No completed script found. Generate script first.");
+      return;
+    }
+
+    try {
+      setStoryboardModalSubmitting(true);
+      setStoryboardModalError(null);
+      const res = await fetch(`/api/projects/${projectId}/scripts/${scriptId}`, {
+        cache: "no-store",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.error || "Failed to load script for manual storyboard.");
+      }
+      const script = data as ScriptDetails;
+      const beats = extractScriptBeats(script.rawJson);
+      if (!beats.length) {
+        throw new Error("Selected script has no beats.");
+      }
+      const drafts: ManualStoryboardPanelDraft[] = beats.map((beat, index) => {
+        const timing = parseBeatDurationRange(beat.duration);
+        return {
+          beatLabel: `Beat ${index + 1}`,
+          startTime: timing.startTime,
+          endTime: timing.endTime,
+          vo: String(beat.vo ?? "").trim(),
+          creatorAction: "",
+          textOverlay: "",
+          visualDescription: "",
+          productPlacement: "",
+        };
+      });
+      setManualStoryboardPanels(drafts);
+      setStoryboardModalMode("manual");
+    } catch (err: any) {
+      setStoryboardModalError(err?.message || "Failed to prepare manual storyboard.");
+    } finally {
+      setStoryboardModalSubmitting(false);
+    }
+  }
+
+  function updateManualStoryboardPanel(
+    index: number,
+    key: "creatorAction" | "textOverlay" | "visualDescription" | "productPlacement",
+    value: string,
+  ) {
+    setManualStoryboardPanels((prev) =>
+      prev.map((panel, panelIndex) =>
+        panelIndex === index ? { ...panel, [key]: value } : panel,
+      ),
+    );
+  }
+
+  async function handleGenerateStoryboardWithMode(
+    mode: "ai" | "manual",
+    manualPanels?: ManualStoryboardPanelDraft[],
+  ) {
+    const storyboardStep = steps.find((step) => step.key === "storyboard");
+    if (!storyboardStep) return;
+
+    setStoryboardModalSubmitting(true);
+    setStoryboardModalError(null);
+    setShowStoryboardModal(false);
+    const ok = await runStep(storyboardStep, {
+      storyboardMode: mode,
+      ...(mode === "manual" && Array.isArray(manualPanels)
+        ? {
+            manualPanels: manualPanels.map((panel, index) => ({
+              beatLabel: `Beat ${index + 1}`,
+              startTime: normalizeSingleLineText(panel.startTime),
+              endTime: normalizeSingleLineText(panel.endTime),
+              vo: enforceBlankLineBetweenTextLines(panel.vo),
+              creatorAction: enforceBlankLineBetweenTextLines(panel.creatorAction),
+              textOverlay: normalizeSingleLineText(panel.textOverlay),
+              visualDescription: enforceBlankLineBetweenTextLines(panel.visualDescription),
+              productPlacement: enforceBlankLineBetweenTextLines(panel.productPlacement),
+            })),
+          }
+        : {}),
+    });
+    setStoryboardModalSubmitting(false);
+    if (!ok) {
+      setShowStoryboardModal(true);
+      setStoryboardModalError("Failed to start storyboard generation.");
+    } else {
+      setStoryboardModalMode("choose");
+      setManualStoryboardPanels([]);
+    }
   }
 
   function toggleSceneReview(sceneNumber: number) {
@@ -2426,26 +3305,105 @@ export default function CreativeStudioPage() {
     }));
   }
 
-  async function handleGenerateScene(sceneNumber: number) {
+  function toggleSceneVideoReview(sceneNumber: number) {
+    setSceneVideoReviewOpenByNumber((prev) => ({
+      ...prev,
+      [sceneNumber]: !prev[sceneNumber],
+    }));
+  }
+
+  async function handleGenerateScene(sceneNumber: number, additionalInstructions?: string) {
     const videoImagesStep = steps.find((step) => step.key === "video_images");
     if (!videoImagesStep) return;
     setSceneActionError(null);
+
+    // Warn only when Scene 1 has previously been generated in this run
+    // and there are downstream scenes generated from an older anchor.
+    if (sceneNumber === 1) {
+      const scene1LastGeneratedAt = latestFirstFrameGenerationBySceneInActiveRun.get(1) ?? 0;
+      const downstreamScenesImpacted = Array.from(latestFirstFrameGenerationBySceneInActiveRun.entries())
+        .filter(([n, ts]) => n > 1 && Number.isFinite(ts) && ts > 0)
+        .filter(([, ts]) => ts <= scene1LastGeneratedAt || scene1LastGeneratedAt > 0)
+        .map(([n]) => n)
+        .sort((a, b) => a - b);
+      if (scene1LastGeneratedAt > 0 && downstreamScenesImpacted.length > 0) {
+        const confirmed = window.confirm(
+          `Regenerating Scene 1 will change the identity anchor for this run.\n\nScenes ${downstreamScenesImpacted.join(", ")} have existing first-frame generations in this run and should be regenerated afterwards to maintain consistency.`,
+        );
+        if (!confirmed) return;
+      }
+    }
+
     setSceneGeneratingNumber(sceneNumber);
+    setSceneReviewOpenByNumber((prev) => ({
+      ...prev,
+      [sceneNumber]: false,
+    }));
+    setStoryboardPanelData((prev) => {
+      if (!prev || !Array.isArray(prev.panels)) return prev;
+      const nextPanels = prev.panels.map((panel) => {
+        const panelSceneNumber = Number(panel.sceneNumber);
+        if (!Number.isInteger(panelSceneNumber) || panelSceneNumber !== sceneNumber) {
+          return panel;
+        }
+        return {
+          ...panel,
+          approved: false,
+          firstFrameImageUrl: null,
+          lastFrameImageUrl: null,
+        };
+      });
+      return {
+        ...prev,
+        panels: nextPanels,
+      };
+    });
+    const resolvedAdditionalInstructions =
+      String(additionalInstructions ?? sceneAdditionalInstructionsByNumber[sceneNumber] ?? "").trim();
     const ok = await runStep(videoImagesStep, {
       sceneNumber,
+      ...(resolvedAdditionalInstructions
+        ? { additionalInstructions: resolvedAdditionalInstructions }
+        : {}),
       runNonce: `scene-${sceneNumber}-${Date.now()}`,
     });
     if (ok) {
-      setSceneReviewOpenByNumber((prev) => ({
-        ...prev,
-        [sceneNumber]: true,
-      }));
       const activeStoryboardId = String(storyboardPanelId || latestCompletedStoryboardId || "").trim();
       if (activeStoryboardId) {
         void refreshStoryboardForOutput(activeStoryboardId);
       }
     }
     setSceneGeneratingNumber(null);
+  }
+
+  async function handleGenerateSceneVideo(sceneNumber: number) {
+    const videoStep = steps.find((step) => step.key === "video");
+    if (!videoStep) return;
+    if (videoStep.locked || !videoStep.canRun) {
+      setSceneActionError(videoStep.lockReason || "Video generation is currently locked.");
+      return;
+    }
+    if (videoGeneratingNumber !== null) return;
+
+    setSceneActionError(null);
+    setVideoGeneratingNumber(sceneNumber);
+    setSceneVideoReviewOpenByNumber((prev) => ({
+      ...prev,
+      [sceneNumber]: false,
+    }));
+
+    const ok = await runStep(videoStep, {
+      sceneNumber,
+      forceNew: true,
+      runNonce: `scene-video-${sceneNumber}-${Date.now()}`,
+    });
+    if (ok) {
+      const activeStoryboardId = String(storyboardPanelId || latestCompletedStoryboardId || "").trim();
+      if (activeStoryboardId) {
+        void refreshStoryboardForOutput(activeStoryboardId);
+      }
+    }
+    setVideoGeneratingNumber(null);
   }
 
   async function handleApproveScene(sceneNumber: number) {
@@ -2530,7 +3488,10 @@ export default function CreativeStudioPage() {
     return data as ScriptRunSummary;
   }, [projectId]);
 
-  async function handleChooseGenerateWithAi() {
+  async function handleChooseGenerateWithAi(
+    preferredStrategy: "swipe_template" | "research_formula" | "upload_template" = "swipe_template"
+  ) {
+    setScriptGenerationStrategy(preferredStrategy);
     setScriptModalMode("ai");
     setScriptModalError(null);
     setScriptRunsLoading(true);
@@ -2538,11 +3499,18 @@ export default function CreativeStudioPage() {
     try {
       const runs = await loadScriptResearchRuns();
       setScriptResearchRuns(runs);
-      setSelectedScriptResearchJobId(runs[0]?.jobId || "");
+      const activeRunId = String(selectedRunId ?? "").trim();
+      const matchingRunJobId = activeRunId
+        ? (runs.find((run) => String(run.runId ?? "").trim() === activeRunId)?.jobId ?? "")
+        : "";
+      // Important: when there's no active run, do not auto-bind script generation to any historical run.
+      setSelectedScriptResearchJobId(matchingRunJobId);
+      setSelectedSwipeTemplateAdId("");
       setScriptNoResearchAcknowledged(false);
     } catch (err: any) {
       setScriptResearchRuns([]);
       setSelectedScriptResearchJobId("");
+      setSelectedSwipeTemplateAdId("");
       setScriptNoResearchAcknowledged(false);
       setScriptModalError(err?.message || "Failed to load research runs");
     } finally {
@@ -2595,6 +3563,60 @@ export default function CreativeStudioPage() {
     };
   }, [loadScriptRunSummary, scriptModalMode, scriptResearchRuns, selectedScriptResearchJobId]);
 
+  useEffect(() => {
+    if (scriptModalMode !== "ai") return;
+    const candidates =
+      scriptGenerationStrategy === "upload_template"
+        ? scriptSwipeFileCandidates
+        : scriptRunSummary?.swipeRecommendation?.candidates ?? [];
+    if (candidates.length === 0) {
+      setSelectedSwipeTemplateAdId("");
+      return;
+    }
+    const recommended = scriptRunSummary?.swipeRecommendation?.recommendedAdId ?? "";
+    setSelectedSwipeTemplateAdId((prev) => {
+      if (prev && candidates.some((candidate) => candidate.assetId === prev)) return prev;
+      if (
+        scriptGenerationStrategy === "swipe_template" &&
+        recommended &&
+        candidates.some((candidate) => candidate.assetId === recommended)
+      ) {
+        return recommended;
+      }
+      return candidates[0]?.assetId ?? "";
+    });
+  }, [scriptModalMode, scriptRunSummary, scriptGenerationStrategy, scriptSwipeFileCandidates]);
+
+  useEffect(() => {
+    if (
+      scriptModalMode !== "ai" ||
+      (scriptGenerationStrategy !== "swipe_template" && scriptGenerationStrategy !== "upload_template")
+    ) {
+      setSwipeAnalysis(null);
+      return;
+    }
+
+    if (!selectedSwipeTemplateAdId) {
+      setSwipeAnalysis(null);
+      return;
+    }
+
+    const candidate = scriptSwipeCandidates.find((c) => c.assetId === selectedSwipeTemplateAdId);
+    const transcript = candidate?.transcriptSnippet;
+    if (!transcript) {
+      setSwipeAnalysis(null);
+      return;
+    }
+
+    const analysis = analyzeSwipeTranscript(transcript);
+    setSwipeAnalysis(analysis);
+  }, [
+    scriptModalMode,
+    scriptGenerationStrategy,
+    selectedSwipeTemplateAdId,
+    scriptSwipeCandidates,
+  ]);
+
   async function handleGenerateScriptWithAi() {
     const scriptStep = steps.find((step) => step.key === "script");
     if (!scriptStep) return;
@@ -2607,31 +3629,100 @@ export default function CreativeStudioPage() {
       setScriptModalError("Please acknowledge the generic script warning before generating.");
       return;
     }
+    if (scriptGenerationStrategy === "swipe_template" || scriptGenerationStrategy === "upload_template") {
+      const hasCandidates =
+        scriptGenerationStrategy === "upload_template"
+          ? scriptSwipeFileCandidates.length > 0
+          : (scriptRunSummary?.swipeRecommendation?.candidates?.length ?? 0) > 0;
+      if (hasCandidates && !selectedSwipeTemplateAdId) {
+        setScriptModalError(
+          scriptGenerationStrategy === "upload_template"
+            ? "Upload/select a transcript template before generating."
+            : "Select a swipe template ad before generating.",
+        );
+        return;
+      }
+    }
 
     setScriptModalSubmitting(true);
     setScriptModalError(null);
+    const normalizedScriptStrategy =
+      scriptGenerationStrategy === "upload_template" ? "swipe_template" : scriptGenerationStrategy;
     const scriptGenerationPayload: Record<string, unknown> = {
       forceNew: true,
-      targetDuration: scriptTargetDuration,
-      beatCount: scriptBeatCount,
+      scriptStrategy: normalizedScriptStrategy,
+      ...(selectedScriptResearchRun?.runId
+        ? { runId: String(selectedScriptResearchRun.runId).trim() }
+        : {}),
+      ...(swipeAnalysis?.beatRatios
+        ? { beatRatios: swipeAnalysis.beatRatios }
+        : {}),
+      ...((scriptGenerationStrategy === "swipe_template" || scriptGenerationStrategy === "upload_template") &&
+      selectedSwipeTemplateAdId
+        ? { swipeTemplateAdId: selectedSwipeTemplateAdId }
+        : {}),
       ...(selectedScriptResearchJobId
         ? { customerAnalysisJobId: selectedScriptResearchJobId }
         : {}),
     };
-    const ok = await runStep(
-      scriptStep,
-      scriptGenerationPayload
-    );
+    setShowScriptModal(false);
+    const ok = await runStep(scriptStep, scriptGenerationPayload);
+    console.log("[ScriptModal] runStep returned:", ok);
     setScriptModalSubmitting(false);
 
     if (ok) {
-      setShowScriptModal(false);
       resetScriptModal();
     }
   }
 
+  async function handleUploadManualSwipeTemplateTranscript() {
+    const activeRunId = String(selectedScriptResearchRun?.runId ?? "").trim();
+    if (!activeRunId) {
+      setScriptModalError("Select a completed research run before uploading a template transcript.");
+      return;
+    }
+
+    const transcript = String(manualSwipeTemplateTranscript ?? "").trim();
+    if (!transcript || transcript.length < 100) {
+      setScriptModalError("Transcript must be at least 100 characters.");
+      return;
+    }
+
+    setManualSwipeTemplateUploading(true);
+    setScriptModalError(null);
+    try {
+      const res = await fetch("/api/jobs/script-template-upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          runId: activeRunId,
+          title: String(manualSwipeTemplateTitle ?? "").trim() || "Manual swipe template",
+          transcript,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.error || `Server returned ${res.status}`);
+      }
+
+      const refreshed = await loadScriptRunSummary(activeRunId);
+      setScriptRunSummary(refreshed);
+      if (typeof data?.adAssetId === "string" && data.adAssetId.trim().length > 0) {
+        setSelectedSwipeTemplateAdId(data.adAssetId);
+      }
+      setManualSwipeTemplateTitle("");
+      setManualSwipeTemplateTranscript("");
+      toast.success("Transcript template uploaded.");
+    } catch (err: any) {
+      setScriptModalError(err?.message || "Failed to upload transcript template");
+    } finally {
+      setManualSwipeTemplateUploading(false);
+    }
+  }
+
   async function handleUploadScript() {
-    const text = scriptUploadText.trim();
+    const text = String(scriptUploadText ?? "").trim();
     if (!text) {
       setScriptModalError("Please paste your script before uploading.");
       return;
@@ -2789,30 +3880,6 @@ export default function CreativeStudioPage() {
     );
   }
 
-  if (selectedProduct && !hasSelectedProductSoraCharacter) {
-    return (
-      <div className="px-6 py-6 space-y-6">
-        <section className="rounded-xl border border-slate-800 bg-slate-900/80 p-6">
-          <h1 className="text-2xl font-semibold text-slate-50">Creative Studio</h1>
-          <p className="text-sm text-slate-300 mt-1">
-            Character setup is required before generating videos.
-          </p>
-        </section>
-        <div className="rounded-lg bg-red-500/10 border border-red-500/50 p-4">
-          <p className="text-sm text-red-200">
-            Complete product setup to create your Sora character before using Creative Studio.
-          </p>
-          <Link
-            href={`/products/${selectedProduct.id}`}
-            className="mt-2 inline-flex items-center text-xs font-medium text-red-300 hover:text-red-200"
-          >
-            Go to Product Setup →
-          </Link>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="px-6 py-6 space-y-6 max-w-4xl">
       {/* Header */}
@@ -2877,6 +3944,14 @@ export default function CreativeStudioPage() {
               </div>
             )}
           </div>
+          <div className="ml-4">
+            <Link
+              href={`/projects/${projectId}/usage`}
+              className="inline-flex items-center gap-2 rounded bg-slate-800 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-700"
+            >
+              Usage & Costs
+            </Link>
+          </div>
         </div>
       </section>
 
@@ -2885,6 +3960,137 @@ export default function CreativeStudioPage() {
           <p className="text-sm text-red-300">{error}</p>
         </div>
       )}
+
+      {selectedProduct && !hasSelectedProductSoraCharacter && (
+        <div className="rounded-lg bg-amber-500/10 border border-amber-500/50 p-4">
+          <p className="text-sm text-amber-200">
+            Character setup is recommended for better on-camera consistency, but you can continue without it.
+          </p>
+          <Link
+            href={`/products/${selectedProduct.id}`}
+            className="mt-2 inline-flex items-center text-xs font-medium text-amber-300 hover:text-amber-200"
+          >
+            Open Product Setup →
+          </Link>
+        </div>
+      )}
+
+      <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-5">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-slate-100">Creative Runs</h2>
+          <span className="text-xs text-slate-500">
+            {sortedRuns.length} {sortedRuns.length === 1 ? "run" : "runs"}
+          </span>
+        </div>
+
+        <div className="flex flex-col gap-2 md:flex-row md:items-center">
+          <select
+            value={selectedRunId || "no-active"}
+            onChange={(e) => {
+              const value = e.target.value === "no-active" ? null : e.target.value;
+              console.log("[Creative] run dropdown change", {
+                selectedValue: e.target.value,
+                nextRunId: value,
+              });
+              setSelectedRunId(value);
+            }}
+            className="w-full md:w-auto px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-300"
+          >
+            <option value="no-active">No active run</option>
+            {sortedRuns.map((run) => (
+              <option key={run.runId} value={run.runId}>
+                {run.displayLabel} - {formatRunDate(run.createdAt)}
+              </option>
+            ))}
+          </select>
+          <div className="w-full md:w-auto" style={{ position: "relative" }}>
+            <button
+              type="button"
+              onClick={() => setShowRunManagerModal(true)}
+              className="w-full md:w-auto rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-200 hover:bg-slate-700"
+            >
+              Manage Runs
+            </button>
+            {selectedRunId ? (
+              <Link
+                href={`/projects/${projectId}/creative-studio/run-data/${selectedRunId}`}
+                className="mt-2 block w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-center text-sm text-slate-200 hover:bg-slate-700 md:w-auto"
+              >
+                View Run Data
+              </Link>
+            ) : (
+              <button
+                type="button"
+                disabled
+                className="mt-2 w-full rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-sm text-slate-500 md:w-auto"
+                style={{ cursor: "not-allowed" }}
+              >
+                View Run Data
+              </button>
+            )}
+            <RunManagementModal
+              projectId={projectId}
+              open={showRunManagerModal}
+              onClose={() => setShowRunManagerModal(false)}
+              onRunsChanged={handleRunsChanged}
+            />
+          </div>
+          {orphanedJobsCount > 0 && (
+            <button
+              type="button"
+              onClick={() => void handleCleanupOrphanedJobs()}
+              disabled={cleaningOrphanedJobs}
+              className="w-full md:w-auto rounded-lg border border-red-500/60 bg-red-900/40 px-3 py-2 text-sm text-red-200 hover:bg-red-900/60"
+              style={{
+                cursor: cleaningOrphanedJobs ? "not-allowed" : "pointer",
+                opacity: cleaningOrphanedJobs ? 0.7 : 1,
+              }}
+            >
+              {cleaningOrphanedJobs
+                ? "Cleaning Orphaned Jobs..."
+                : `Clean Up Orphaned Jobs (${orphanedJobsCount})`}
+            </button>
+          )}
+        </div>
+
+      </section>
+
+      <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-5">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-slate-100">Character Casting</h2>
+          <span className="text-xs text-slate-500">
+            {runCharacters.length} {runCharacters.length === 1 ? "character" : "characters"}
+          </span>
+        </div>
+        {!selectedRunId ? (
+          <p className="text-xs text-slate-400">
+            Select a creative run to load run-scoped characters for storyboard casting.
+          </p>
+        ) : runCharacters.length === 0 ? (
+          <p className="text-xs text-amber-300">
+            No characters found for this run and product. Generate a character in Product Setup first.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            <select
+              value={selectedStoryboardCharacterId ?? ""}
+              onChange={(event) => setSelectedStoryboardCharacterId(event.target.value || null)}
+              className="w-full md:w-auto px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-300"
+            >
+              {runCharacters.map((char) => (
+                <option key={char.id} value={char.id}>
+                  {(char.productName ? `${char.productName} - ` : "") + char.name}
+                </option>
+              ))}
+            </select>
+            {selectedStoryboardCharacterId && (
+              <p className="text-xs text-slate-500">
+                Selected character will be applied to Creator Present storyboard panels (ON_CAMERA) by default.
+              </p>
+            )}
+          </div>
+        )}
+      </section>
 
       {/* Production Pipeline */}
       <section
@@ -2937,24 +4143,18 @@ export default function CreativeStudioPage() {
               step.key === "script" && step.status === "completed" && step.lastJob
                 ? getScriptResearchSources(step.lastJob.resultSummary)
                 : null;
-            const stepValidationReport =
-              step.lastJob && step.status === "completed"
-                ? getValidationReportFromResultSummary(step.lastJob.resultSummary)
-                : null;
             const scriptId =
               step.key === "script" && step.status === "completed" && step.lastJob
-                ? getScriptIdFromResultSummary(step.lastJob.resultSummary)
+                ? getScriptIdFromJob(step.lastJob)
                 : null;
             const isScriptPanelOpen = Boolean(scriptId && scriptPanelOpenId === scriptId);
-            const scriptValidationReport =
-              step.key === "script" && isScriptPanelOpen && scriptPanelData
-                ? getScriptValidationReportFromRawJson(scriptPanelData.rawJson) ?? stepValidationReport
-                : stepValidationReport;
             const isStoryboardRelatedStep =
               step.key === "storyboard" ||
               step.key === "image_prompts" ||
               step.key === "video_prompts" ||
-              step.key === "video_images";
+              step.key === "video_images" ||
+              step.key === "video" ||
+              step.key === "review";
             const storyboardId = isStoryboardRelatedStep
               ? (step.key === "storyboard" && step.lastJob
                   ? getStoryboardIdFromJob(step.lastJob)
@@ -2966,12 +4166,6 @@ export default function CreativeStudioPage() {
               storyboardMatchesCurrentFetch && storyboardPanelData?.panels
                 ? storyboardPanelData.panels
                 : [];
-            const storyboardValidationReport =
-              step.key === "storyboard"
-                ? storyboardMatchesCurrentFetch
-                  ? storyboardPanelData?.validationReport ?? stepValidationReport
-                  : stepValidationReport
-                : stepValidationReport;
             const isViewableCompleted = isViewableCompletedStep(step);
             const isOutputExpanded = isViewableCompleted && isCompletedStepOutputExpanded(step.key);
             const imagePromptRows =
@@ -2994,45 +4188,56 @@ export default function CreativeStudioPage() {
                     }))
                 : [];
             const sceneFlowRows =
-              step.key === "video_images"
-                ? [1, 2, 3, 4, 5, 6].map((sceneNumber) => {
-                    const panel = storyboardPanels.find(
-                      (candidate, panelIndex) =>
-                        (Number(candidate.sceneNumber) || panelIndex + 1) === sceneNumber,
-                    );
-                    const previousPanel =
-                      sceneNumber > 1
-                        ? storyboardPanels.find(
-                            (candidate, panelIndex) =>
-                              (Number(candidate.sceneNumber) || panelIndex + 1) === sceneNumber - 1,
-                          ) ?? null
-                        : null;
-                    const isLockedByPreviousScene =
-                      sceneNumber > 1 && !Boolean(previousPanel?.approved);
-                    const firstFrameImageUrl = String(panel?.firstFrameImageUrl || "").trim();
-                    const lastFrameImageUrl = getSceneLastFrameImageUrl(panel);
-                    const hasImages = Boolean(firstFrameImageUrl && lastFrameImageUrl);
-                    return {
-                      sceneNumber,
-                      panel: panel ?? null,
-                      firstFrameImageUrl: firstFrameImageUrl || null,
-                      lastFrameImageUrl: lastFrameImageUrl || null,
-                      approved: Boolean(panel?.approved),
-                      hasImages,
-                      locked: step.locked || isLockedByPreviousScene || !panel,
-                      lockReason: !panel
-                        ? "Scene missing from storyboard."
-                        : step.locked
-                          ? step.lockReason || "Blocked by pipeline prerequisites."
-                          : isLockedByPreviousScene
-                            ? `Approve Scene ${sceneNumber - 1} first.`
+              step.key === "video_images" || step.key === "video" || step.key === "review"
+                ? [...storyboardPanels]
+                    .sort((a, b) => {
+                      const aNum = Number(a.sceneNumber) || 0;
+                      const bNum = Number(b.sceneNumber) || 0;
+                      return aNum - bNum;
+                    })
+                    .map((panel, index) => {
+                      const sceneNumber = Number(panel.sceneNumber) || index + 1;
+                      const firstFrameImageUrl = String(
+                        panel?.firstFrameImageUrl || (panel as any)?.firstFrameUrl || "",
+                      ).trim();
+                      const lastFrameImageUrl = String(
+                        panel?.lastFrameImageUrl || (panel as any)?.lastFrameUrl || "",
+                      ).trim();
+                      // Review should only unlock when this run has a completed
+                      // first-frame job for this specific scene and URLs exist.
+                      const imageJobForScene = jobsInActiveRun.find((job) => {
+                        if (job.type !== "VIDEO_IMAGE_GENERATION") return false;
+                        if (job.status !== "COMPLETED") return false;
+                        const payload = (job.payload as any) ?? {};
+                        const tasks = Array.isArray(payload.tasks) ? payload.tasks : [];
+                        return tasks.some((t: any) => Number(t.sceneNumber) === sceneNumber);
+                      });
+                      const hasImages = Boolean(imageJobForScene && (firstFrameImageUrl || lastFrameImageUrl));
+                      const videoUrl = getSceneVideoUrl(panel);
+                      const hasVideo = Boolean(videoUrl);
+                      return {
+                        sceneNumber,
+                        panel: panel ?? null,
+                        firstFrameImageUrl: firstFrameImageUrl || null,
+                        lastFrameImageUrl: (lastFrameImageUrl || firstFrameImageUrl) || null,
+                        approved: Boolean(panel?.approved),
+                        hasImages,
+                        hasVideo,
+                        videoUrl: videoUrl || null,
+                        locked: step.locked || !panel,
+                        lockReason: !panel
+                          ? "Scene missing from storyboard."
+                          : step.locked
+                            ? step.lockReason || "Blocked by pipeline prerequisites."
                             : undefined,
-                      isReviewOpen: Boolean(sceneReviewOpenByNumber[sceneNumber]),
-                    };
-                  })
+                        isReviewOpen: Boolean(sceneReviewOpenByNumber[sceneNumber]),
+                        isVideoReviewOpen: Boolean(sceneVideoReviewOpenByNumber[sceneNumber]),
+                      };
+                    })
                 : [];
             const isOutputViewMode = isViewableCompleted && !isOutputExpanded;
             const usesBottomOutputToggle = isViewableCompleted;
+            const isSceneControlStep = step.key === "video_images" || step.key === "video";
             const isVideoImagesStep = step.key === "video_images";
             const runningVideoImageJobId =
               isVideoImagesStep && step.lastJob?.status === JobStatus.RUNNING
@@ -3043,14 +4248,14 @@ export default function CreativeStudioPage() {
               resettingVideoImageJobId === runningVideoImageJobId;
             const isStuckImagePromptStep =
               step.key === "image_prompts" && isStaleRunningJob(step.lastJob);
-            const isPrimaryActionDisabled = isVideoImagesStep
+            const isPrimaryActionDisabled = isSceneControlStep
               ? true
               : usesBottomOutputToggle
               ? !step.canRun || step.locked || step.status === "running" || submitting === step.key
               : isOutputViewMode
                 ? submitting === step.key
                 : !step.canRun || step.locked || step.status === "running" || submitting === step.key;
-            const primaryActionLabel = isVideoImagesStep
+            const primaryActionLabel = isSceneControlStep
               ? "Scene Controls"
               : submitting === step.key
               ? "Starting..."
@@ -3120,45 +4325,87 @@ export default function CreativeStudioPage() {
                   {getStepBadge(step.status)}
                 </div>
                 <div style={{ minWidth: 130, display: "flex", justifyContent: "flex-end" }}>
-                  {!isVideoImagesStep ? (
-                    <button
-                      onClick={() => {
-                        if (usesBottomOutputToggle) {
-                          void runStep(step);
-                          return;
-                        }
-                        handleStepRunClick(step);
-                      }}
-                      disabled={isPrimaryActionDisabled}
-                      style={{
-                        padding: "8px 16px",
-                        borderRadius: 8,
-                        border: "none",
-                        backgroundColor:
-                          isPrimaryActionDisabled
-                            ? "#1e293b"
-                            : "#0ea5e9",
-                        color:
-                          isPrimaryActionDisabled
-                            ? "#64748b"
-                            : "#ffffff",
-                        cursor:
-                          isPrimaryActionDisabled
-                            ? "not-allowed"
-                            : "pointer",
-                        fontSize: 14,
-                        fontWeight: 600,
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 8,
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {submitting === step.key && <Spinner />}
-                      {primaryActionLabel}
-                    </button>
+                  {!isSceneControlStep ? (
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      {isCancelableJob(step.lastJob) && step.lastJob ? (
+                        <button
+                          type="button"
+                          onClick={() => void cancelJob(step.lastJob!.id)}
+                          disabled={Boolean(cancellingJobIds[step.lastJob.id])}
+                          style={{
+                            border: "1px solid rgba(248, 113, 113, 0.6)",
+                            backgroundColor: cancellingJobIds[step.lastJob.id]
+                              ? "#1e293b"
+                              : "rgba(127, 29, 29, 0.3)",
+                            color: cancellingJobIds[step.lastJob.id] ? "#64748b" : "#fecaca",
+                            borderRadius: 8,
+                            padding: "8px 10px",
+                            fontSize: 12,
+                            fontWeight: 600,
+                            cursor: cancellingJobIds[step.lastJob.id] ? "not-allowed" : "pointer",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {cancellingJobIds[step.lastJob.id] ? "Cancelling..." : "Cancel"}
+                        </button>
+                      ) : null}
+                      <button
+                        onClick={() => {
+                          handleStepRunClick(step);
+                        }}
+                        disabled={isPrimaryActionDisabled}
+                        style={{
+                          padding: "8px 16px",
+                          borderRadius: 8,
+                          border: "none",
+                          backgroundColor:
+                            isPrimaryActionDisabled
+                              ? "#1e293b"
+                              : "#0ea5e9",
+                          color:
+                            isPrimaryActionDisabled
+                              ? "#64748b"
+                              : "#ffffff",
+                          cursor:
+                            isPrimaryActionDisabled
+                              ? "not-allowed"
+                              : "pointer",
+                          fontSize: 14,
+                          fontWeight: 600,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 8,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {submitting === step.key && <Spinner />}
+                        {primaryActionLabel}
+                      </button>
+                    </div>
                   ) : (
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      {isCancelableJob(step.lastJob) && step.lastJob ? (
+                        <button
+                          type="button"
+                          onClick={() => void cancelJob(step.lastJob!.id)}
+                          disabled={Boolean(cancellingJobIds[step.lastJob.id])}
+                          style={{
+                            border: "1px solid rgba(248, 113, 113, 0.6)",
+                            backgroundColor: cancellingJobIds[step.lastJob.id]
+                              ? "#1e293b"
+                              : "rgba(127, 29, 29, 0.3)",
+                            color: cancellingJobIds[step.lastJob.id] ? "#64748b" : "#fecaca",
+                            borderRadius: 8,
+                            padding: "8px 10px",
+                            fontSize: 12,
+                            fontWeight: 600,
+                            cursor: cancellingJobIds[step.lastJob.id] ? "not-allowed" : "pointer",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {cancellingJobIds[step.lastJob.id] ? "Cancelling..." : "Cancel"}
+                        </button>
+                      ) : null}
                       <span style={{ color: "#94a3b8", fontSize: 12 }}>Use scene controls below</span>
                       {runningVideoImageJobId && (
                         <button
@@ -3200,30 +4447,6 @@ export default function CreativeStudioPage() {
                   {getSummaryText(step.lastJob.resultSummary)}
                 </p>
               )}
-
-              {step.status === "completed" &&
-                (stepValidationReport?.warnings?.length ?? 0) > 0 && (
-                  <div
-                    style={{
-                      marginTop: 10,
-                      border: "1px solid rgba(250, 204, 21, 0.4)",
-                      backgroundColor: "rgba(250, 204, 21, 0.08)",
-                      borderRadius: 8,
-                      padding: "8px 10px",
-                    }}
-                  >
-                    <div style={{ fontSize: 12, fontWeight: 700, color: "#fde68a" }}>
-                      Quality warnings (Score: {stepValidationReport?.qualityScore ?? 0}/100)
-                    </div>
-                    <div style={{ marginTop: 6, display: "grid", gap: 4 }}>
-                      {(stepValidationReport?.warnings ?? []).map((warning, warningIndex) => (
-                        <div key={`step-warning-${step.key}-${warningIndex}`} style={{ fontSize: 12, color: "#fde68a" }}>
-                          • {warning}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
 
               {usesBottomOutputToggle && (
                 <div style={{ marginTop: 10 }}>
@@ -3269,7 +4492,7 @@ export default function CreativeStudioPage() {
                   ) : (
                     <>
                       <p style={{ margin: "0 0 10px 0", color: "#94a3b8", fontSize: 12 }}>
-                        Scenes 1-6 unlock sequentially. Scene N requires Scene N-1 approval.
+                        Generate or re-generate first-frame output per scene.
                       </p>
                       {sceneActionError && (
                         <p style={{ margin: "0 0 10px 0", color: "#fca5a5", fontSize: 12 }}>
@@ -3279,11 +4502,12 @@ export default function CreativeStudioPage() {
                       <div style={{ display: "grid", gap: 10 }}>
                         {sceneFlowRows.map((row) => {
                           const isGenerating = sceneGeneratingNumber === row.sceneNumber;
-                          const isApproving = sceneApprovingNumber === row.sceneNumber;
-                          const canReview = row.hasImages && !row.locked;
-                          const canApprove = row.hasImages && !row.locked && !row.approved;
+                          const canReview = row.hasImages;
                           const firstFramePrompt = String(row.panel?.firstFramePrompt || "").trim();
-                          const lastFramePrompt = String(row.panel?.lastFramePrompt || "").trim();
+                          const showRegenerateLabel =
+                            Boolean(selectedRunId) &&
+                            generatedFirstFrameScenesInActiveRun.has(row.sceneNumber) &&
+                            row.hasImages;
                           return (
                             <div
                               key={`scene-flow-${row.sceneNumber}`}
@@ -3333,7 +4557,11 @@ export default function CreativeStudioPage() {
                               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                                 <button
                                   type="button"
-                                  onClick={() => void handleGenerateScene(row.sceneNumber)}
+                                  onClick={() =>
+                                    showRegenerateLabel
+                                      ? setRegenerateModalScene(row.sceneNumber)
+                                      : void handleGenerateScene(row.sceneNumber)
+                                  }
                                   disabled={row.locked || isGenerating || sceneGeneratingNumber !== null || submitting === step.key}
                                   style={{
                                     border: "none",
@@ -3348,7 +4576,7 @@ export default function CreativeStudioPage() {
                                 >
                                   {isGenerating
                                     ? "Generating..."
-                                    : row.hasImages
+                                    : showRegenerateLabel
                                       ? "Re-generate"
                                       : "Generate"}
                                 </button>
@@ -3369,28 +4597,6 @@ export default function CreativeStudioPage() {
                                 >
                                   {row.isReviewOpen ? "Hide Review" : "Review"}
                                 </button>
-                                <button
-                                  type="button"
-                                  onClick={() => void handleApproveScene(row.sceneNumber)}
-                                  disabled={!canApprove || isApproving}
-                                  style={{
-                                    border: "1px solid rgba(16, 185, 129, 0.5)",
-                                    backgroundColor:
-                                      row.approved
-                                        ? "rgba(16, 185, 129, 0.2)"
-                                        : canApprove && !isApproving
-                                          ? "rgba(16, 185, 129, 0.15)"
-                                          : "#0b1220",
-                                    color: row.approved ? "#6ee7b7" : canApprove ? "#a7f3d0" : "#64748b",
-                                    borderRadius: 7,
-                                    padding: "6px 10px",
-                                    fontSize: 12,
-                                    fontWeight: 600,
-                                    cursor: !canApprove || isApproving ? "not-allowed" : "pointer",
-                                  }}
-                                >
-                                  {row.approved ? "Approved" : isApproving ? "Approving..." : "Approve"}
-                                </button>
                               </div>
 
                               {row.isReviewOpen && row.hasImages && (
@@ -3398,7 +4604,7 @@ export default function CreativeStudioPage() {
                                   <div
                                     style={{
                                       display: "grid",
-                                      gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                                      gridTemplateColumns: "minmax(180px, 1fr)",
                                       gap: 8,
                                     }}
                                   >
@@ -3410,6 +4616,9 @@ export default function CreativeStudioPage() {
                                           alt={`Scene ${row.sceneNumber} first frame`}
                                           style={{
                                             width: "100%",
+                                            maxWidth: 540,
+                                            aspectRatio: "9 / 16",
+                                            objectFit: "cover",
                                             borderRadius: 8,
                                             border: "1px solid #334155",
                                             display: "block",
@@ -3419,31 +4628,10 @@ export default function CreativeStudioPage() {
                                         <div style={{ color: "#94a3b8", fontSize: 11 }}>No first frame image.</div>
                                       )}
                                     </div>
-                                    <div>
-                                      <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>Last Frame</div>
-                                      {row.lastFrameImageUrl ? (
-                                        <img
-                                          src={row.lastFrameImageUrl}
-                                          alt={`Scene ${row.sceneNumber} last frame`}
-                                          style={{
-                                            width: "100%",
-                                            borderRadius: 8,
-                                            border: "1px solid #334155",
-                                            display: "block",
-                                          }}
-                                        />
-                                      ) : (
-                                        <div style={{ color: "#94a3b8", fontSize: 11 }}>No last frame image.</div>
-                                      )}
-                                    </div>
                                   </div>
                                   <div style={{ color: "#94a3b8", fontSize: 11 }}>First Frame Prompt</div>
                                   <div style={{ color: "#e2e8f0", fontSize: 12 }}>
                                     {firstFramePrompt || "No first-frame prompt."}
-                                  </div>
-                                  <div style={{ color: "#94a3b8", fontSize: 11 }}>Last Frame Prompt</div>
-                                  <div style={{ color: "#e2e8f0", fontSize: 12 }}>
-                                    {lastFramePrompt || "No last-frame prompt."}
                                   </div>
                                 </div>
                               )}
@@ -3451,7 +4639,263 @@ export default function CreativeStudioPage() {
                           );
                         })}
                       </div>
+                      {regenerateModalScene !== null && (
+                        <div
+                          style={{
+                            position: "fixed", inset: 0, zIndex: 1000,
+                            background: "rgba(0,0,0,0.7)",
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                          }}
+                          onClick={() => setRegenerateModalScene(null)}
+                        >
+                          <div
+                            style={{
+                              background: "#1e293b", border: "1px solid #334155",
+                              borderRadius: 12, padding: 24, width: 480, maxWidth: "90vw",
+                              display: "grid", gap: 16,
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <div style={{ color: "#f1f5f9", fontWeight: 600, fontSize: 15 }}>
+                              Re-generate Scene {regenerateModalScene}
+                            </div>
+                            <div>
+                              <div style={{ color: "#94a3b8", fontSize: 12, marginBottom: 6 }}>
+                                Additional instructions (optional)
+                              </div>
+                              <textarea
+                                autoFocus
+                                placeholder="e.g. only one laptop on the desk"
+                                value={sceneAdditionalInstructionsByNumber[regenerateModalScene] ?? ""}
+                                onChange={(e) =>
+                                  setSceneAdditionalInstructionsByNumber((prev) => ({
+                                    ...prev,
+                                    [regenerateModalScene]: e.target.value,
+                                  }))
+                                }
+                                rows={3}
+                                style={{
+                                  width: "100%", background: "#0f172a",
+                                  border: "1px solid #334155", borderRadius: 6,
+                                  color: "#e2e8f0", fontSize: 13,
+                                  padding: "8px 10px", resize: "vertical", boxSizing: "border-box",
+                                }}
+                              />
+                            </div>
+                            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                              <button
+                                type="button"
+                                onClick={() => setRegenerateModalScene(null)}
+                                style={{
+                                  background: "transparent", border: "1px solid #334155",
+                                  color: "#94a3b8", borderRadius: 6, padding: "8px 16px", cursor: "pointer",
+                                }}
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const sceneNumber = regenerateModalScene;
+                                  if (sceneNumber === null) return;
+                                  setRegenerateModalScene(null);
+                                  void handleGenerateScene(sceneNumber);
+                                }}
+                                style={{
+                                  background: "#0ea5e9", border: "none",
+                                  color: "#fff", borderRadius: 6, padding: "8px 16px",
+                                  cursor: "pointer", fontWeight: 600,
+                                }}
+                              >
+                                Re-generate
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </>
+                  )}
+                </div>
+              )}
+
+              {step.key === "video" && (
+                <div
+                  style={{
+                    marginTop: 12,
+                    borderRadius: 10,
+                    border: "1px solid #334155",
+                    backgroundColor: "#020617",
+                    padding: 12,
+                  }}
+                >
+                  {!storyboardId ? (
+                    <p style={{ margin: 0, color: "#fca5a5", fontSize: 13 }}>
+                      No storyboard found for this run.
+                    </p>
+                  ) : storyboardPanelLoading && storyboardMatchesCurrentFetch ? (
+                    <p style={{ margin: 0, color: "#94a3b8", fontSize: 13 }}>
+                      Loading scene flow...
+                    </p>
+                  ) : storyboardPanelError && storyboardMatchesCurrentFetch ? (
+                    <p style={{ margin: 0, color: "#fca5a5", fontSize: 13 }}>{storyboardPanelError}</p>
+                  ) : (
+                    <>
+                      <p style={{ margin: "0 0 10px 0", color: "#94a3b8", fontSize: 12 }}>
+                        Generate or re-generate video per scene.
+                      </p>
+                      {sceneActionError && (
+                        <p style={{ margin: "0 0 10px 0", color: "#fca5a5", fontSize: 12 }}>
+                          {sceneActionError}
+                        </p>
+                      )}
+                      <div style={{ display: "grid", gap: 10 }}>
+                        {sceneFlowRows.map((row) => {
+                          const isGenerating = videoGeneratingNumber === row.sceneNumber;
+                          const hasVideo = row.hasVideo;
+                          const videoUrl = String(row.videoUrl || "").trim();
+                          const isReviewOpen = row.isVideoReviewOpen;
+                          return (
+                            <div
+                              key={`scene-video-${row.sceneNumber}`}
+                              style={{
+                                border: row.locked
+                                  ? "1px solid #334155"
+                                  : hasVideo
+                                    ? "1px solid rgba(16, 185, 129, 0.55)"
+                                    : "1px solid rgba(14, 165, 233, 0.45)",
+                                borderRadius: 8,
+                                backgroundColor: "#0b1220",
+                                padding: 10,
+                                display: "grid",
+                                gap: 8,
+                              }}
+                            >
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                <div style={{ color: "#e2e8f0", fontSize: 13, fontWeight: 600 }}>
+                                  Scene {row.sceneNumber}
+                                </div>
+                                <div
+                                  style={{
+                                    fontSize: 11,
+                                    color: row.locked
+                                      ? "#94a3b8"
+                                      : isGenerating
+                                        ? "#7dd3fc"
+                                        : hasVideo
+                                          ? "#6ee7b7"
+                                          : "#94a3b8",
+                                  }}
+                                >
+                                  {isGenerating ? "Generating..." : hasVideo ? "Ready" : "Awaiting Generation"}
+                                </div>
+                              </div>
+
+                              {row.lockReason && (
+                                <div style={{ color: "#94a3b8", fontSize: 11 }}>🔒 {row.lockReason}</div>
+                              )}
+
+                              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                                <button
+                                  type="button"
+                                  onClick={() => void handleGenerateSceneVideo(row.sceneNumber)}
+                                  disabled={row.locked || isGenerating || videoGeneratingNumber !== null || submitting === step.key}
+                                  style={{
+                                    border: "none",
+                                    backgroundColor: row.locked || isGenerating ? "#1e293b" : "#0ea5e9",
+                                    color: row.locked || isGenerating ? "#64748b" : "#ffffff",
+                                    borderRadius: 7,
+                                    padding: "6px 10px",
+                                    fontSize: 12,
+                                    fontWeight: 600,
+                                    cursor: row.locked || isGenerating ? "not-allowed" : "pointer",
+                                  }}
+                                >
+                                  {isGenerating
+                                    ? "Generating..."
+                                    : hasVideo
+                                      ? "Re-generate"
+                                      : "Generate"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleSceneVideoReview(row.sceneNumber)}
+                                  disabled={!hasVideo}
+                                  style={{
+                                    border: "1px solid #334155",
+                                    backgroundColor: "#0b1220",
+                                    color: hasVideo ? "#cbd5e1" : "#64748b",
+                                    borderRadius: 7,
+                                    padding: "6px 10px",
+                                    fontSize: 12,
+                                    fontWeight: 600,
+                                    cursor: hasVideo ? "pointer" : "not-allowed",
+                                  }}
+                                >
+                                  {isReviewOpen ? "Hide Review" : "Review"}
+                                </button>
+                              </div>
+
+                              {isReviewOpen && hasVideo && (
+                                <video
+                                  src={videoUrl}
+                                  controls
+                                  style={{
+                                    width: "100%",
+                                    maxWidth: 360,
+                                    aspectRatio: "9 / 16",
+                                    borderRadius: 8,
+                                    border: "1px solid #334155",
+                                    display: "block",
+                                  }}
+                                />
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {step.key === "review" && (
+                <div
+                  style={{
+                    marginTop: 12,
+                    borderRadius: 10,
+                    border: "1px solid #334155",
+                    backgroundColor: "#020617",
+                    padding: 12,
+                  }}
+                >
+                  {!storyboardId ? (
+                    <p style={{ margin: 0, color: "#fca5a5", fontSize: 13 }}>
+                      No storyboard found for this run.
+                    </p>
+                  ) : storyboardPanelLoading && storyboardMatchesCurrentFetch ? (
+                    <p style={{ margin: 0, color: "#94a3b8", fontSize: 13 }}>
+                      Loading scene flow...
+                    </p>
+                  ) : storyboardPanelError && storyboardMatchesCurrentFetch ? (
+                    <p style={{ margin: 0, color: "#fca5a5", fontSize: 13 }}>{storyboardPanelError}</p>
+                  ) : (
+                    <VideoEditorStep
+                      storyboardId={storyboardId}
+                      projectId={projectId}
+                      scenes={storyboardPanels
+                        .filter((p) => Boolean(p.videoUrl))
+                        .map((p) => ({
+                          sceneId: String((p as any).sceneId ?? p.id ?? p.sceneNumber ?? ""),
+                          sceneNumber: Number(p.sceneNumber) || 0,
+                          videoUrl: p.videoUrl,
+                          beatLabel: String(p.beatLabel ?? ""),
+                          vo: String(p.vo ?? ""),
+                          durationSec: typeof p.clipDurationSeconds === "number" ? p.clipDurationSeconds : undefined,
+                        }))}
+                      onComplete={(nextMergedVideoUrl) => {
+                        setMergedVideoUrl(nextMergedVideoUrl);
+                      }}
+                    />
                   )}
                 </div>
               )}
@@ -3499,37 +4943,6 @@ export default function CreativeStudioPage() {
                     <p style={{ margin: 0, color: "#fca5a5", fontSize: 13 }}>{scriptPanelError}</p>
                   ) : scriptPanelData ? (
                     <>
-                      {scriptValidationReport && (
-                        <div
-                          style={{
-                            marginBottom: 10,
-                            borderRadius: 8,
-                            border: "1px solid #334155",
-                            backgroundColor: "#0b1220",
-                            padding: "8px 10px",
-                          }}
-                        >
-                          <div style={{ fontSize: 12, fontWeight: 700, color: "#cbd5e1" }}>
-                            Validation score: {scriptValidationReport.qualityScore}/100
-                          </div>
-                          {scriptValidationReport.warnings.length > 0 ? (
-                            <div style={{ marginTop: 6, display: "grid", gap: 4 }}>
-                              {scriptValidationReport.warnings.map((warning, warningIndex) => (
-                                <div
-                                  key={`script-validation-warning-${warningIndex}`}
-                                  style={{ fontSize: 12, color: "#fde68a" }}
-                                >
-                                  • {warning}
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <div style={{ marginTop: 6, fontSize: 12, color: "#6ee7b7" }}>
-                              All quality gates passed.
-                            </div>
-                          )}
-                        </div>
-                      )}
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
                         <div style={{ color: "#94a3b8", fontSize: 12 }}>
                           <div>Script ID: {scriptPanelData.id}</div>
@@ -3548,7 +4961,9 @@ export default function CreativeStudioPage() {
                           <button
                             type="button"
                             onClick={() => {
-                              setScriptPanelDraftBeats(extractScriptBeats(scriptPanelData.rawJson));
+                              const beats = extractScriptBeats(scriptPanelData.rawJson);
+                              setScriptPanelDraftBeats(beats);
+                              setScriptPanelCombinedVoDraft(buildCombinedVoDraftFromBeats(beats));
                               setScriptPanelEditMode(true);
                               setScriptPanelError(null);
                             }}
@@ -3570,7 +4985,9 @@ export default function CreativeStudioPage() {
                             <button
                               type="button"
                               onClick={() => {
-                                setScriptPanelDraftBeats(extractScriptBeats(scriptPanelData.rawJson));
+                                const beats = extractScriptBeats(scriptPanelData.rawJson);
+                                setScriptPanelDraftBeats(beats);
+                                setScriptPanelCombinedVoDraft(buildCombinedVoDraftFromBeats(beats));
                                 setScriptPanelEditMode(false);
                                 setScriptPanelError(null);
                               }}
@@ -3610,203 +5027,63 @@ export default function CreativeStudioPage() {
                       </div>
 
                       <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-                        {(scriptPanelEditMode ? scriptPanelDraftBeats : extractScriptBeats(scriptPanelData.rawJson)).map(
-                          (scene, sceneIndex) => (
-                            <div key={`${sceneIndex}-${scene.beat}`}>
-                              <div
-                                style={{
-                                  border: "1px solid #334155",
-                                  borderRadius: 8,
-                                  backgroundColor: "#0b1220",
-                                  padding: 10,
-                                }}
-                              >
-                                <div
-                                  style={{
-                                    display: "flex",
-                                    justifyContent: "space-between",
-                                    alignItems: "center",
-                                    marginBottom: 8,
-                                    gap: 10,
-                                  }}
-                                >
-                                  {scriptPanelEditMode ? (
-                                    <input
-                                      type="text"
-                                      value={scene.beat}
-                                      onChange={(e) =>
-                                        setScriptPanelDraftBeats((prev) =>
-                                          prev.map((beat, idx) =>
-                                            idx === sceneIndex ? { ...beat, beat: e.target.value } : beat
-                                          )
-                                        )
-                                      }
-                                      style={{
-                                        flex: 1,
-                                        minWidth: 140,
-                                        borderRadius: 8,
-                                        border: "1px solid #334155",
-                                        backgroundColor: "#0f172a",
-                                        color: "#e2e8f0",
-                                        padding: "6px 8px",
-                                        fontSize: 13,
-                                        fontWeight: 600,
-                                      }}
-                                      placeholder={`Beat ${sceneIndex + 1}`}
-                                    />
-                                  ) : (
-                                    <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "#e2e8f0" }}>
-                                      {scene.beat}
-                                    </p>
-                                  )}
-                                  <span style={{ fontSize: 12, color: "#94a3b8", whiteSpace: "nowrap" }}>
-                                    {formatSceneDuration(scene.duration)}
-                                  </span>
-                                  {scene.aiDataQuality === "partial" && (
-                                    <span
-                                      style={{
-                                        fontSize: 11,
-                                        color: "#fef08a",
-                                        border: "1px solid rgba(234, 179, 8, 0.55)",
-                                        backgroundColor: "rgba(234, 179, 8, 0.12)",
-                                        borderRadius: 999,
-                                        padding: "2px 8px",
-                                        whiteSpace: "nowrap",
-                                      }}
-                                    >
-                                      Limited research data.
-                                    </span>
-                                  )}
-                                  {scene.aiDataQuality === "minimal" && (
-                                    <span
-                                      style={{
-                                        fontSize: 11,
-                                        color: "#fdba74",
-                                        border: "1px solid rgba(249, 115, 22, 0.55)",
-                                        backgroundColor: "rgba(249, 115, 22, 0.12)",
-                                        borderRadius: 999,
-                                        padding: "2px 8px",
-                                        whiteSpace: "nowrap",
-                                      }}
-                                    >
-                                      No research data — review carefully.
-                                    </span>
-                                  )}
-                                  {scriptPanelEditMode && (
-                                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleMoveBeat(sceneIndex, "up")}
-                                        disabled={sceneIndex === 0 || scriptPanelSaving}
-                                        style={{
-                                          border: "1px solid #334155",
-                                          backgroundColor: "#0f172a",
-                                          color: sceneIndex === 0 || scriptPanelSaving ? "#64748b" : "#cbd5e1",
-                                          padding: "4px 8px",
-                                          borderRadius: 6,
-                                          fontSize: 12,
-                                          cursor:
-                                            sceneIndex === 0 || scriptPanelSaving ? "not-allowed" : "pointer",
-                                        }}
-                                      >
-                                        ↑
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleMoveBeat(sceneIndex, "down")}
-                                        disabled={sceneIndex === scriptPanelDraftBeats.length - 1 || scriptPanelSaving}
-                                        style={{
-                                          border: "1px solid #334155",
-                                          backgroundColor: "#0f172a",
-                                          color:
-                                            sceneIndex === scriptPanelDraftBeats.length - 1 || scriptPanelSaving
-                                              ? "#64748b"
-                                              : "#cbd5e1",
-                                          padding: "4px 8px",
-                                          borderRadius: 6,
-                                          fontSize: 12,
-                                          cursor:
-                                            sceneIndex === scriptPanelDraftBeats.length - 1 || scriptPanelSaving
-                                              ? "not-allowed"
-                                              : "pointer",
-                                        }}
-                                      >
-                                        ↓
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleDeleteBeat(sceneIndex)}
-                                        disabled={scriptPanelDraftBeats.length <= 1 || scriptPanelSaving}
-                                        style={{
-                                          border: "1px solid rgba(239, 68, 68, 0.5)",
-                                          backgroundColor: "rgba(239, 68, 68, 0.12)",
-                                          color:
-                                            scriptPanelDraftBeats.length <= 1 || scriptPanelSaving
-                                              ? "#64748b"
-                                              : "#fecaca",
-                                          padding: "4px 8px",
-                                          borderRadius: 6,
-                                          fontSize: 12,
-                                          cursor:
-                                            scriptPanelDraftBeats.length <= 1 || scriptPanelSaving
-                                              ? "not-allowed"
-                                              : "pointer",
-                                        }}
-                                      >
-                                        Delete
-                                      </button>
-                                    </div>
-                                  )}
-                                </div>
-                                {scriptPanelEditMode ? (
-                                  <textarea
-                                    value={scene.vo}
-                                    onChange={(e) =>
-                                      setScriptPanelDraftBeats((prev) =>
-                                        prev.map((beat, idx) =>
-                                          idx === sceneIndex ? { ...beat, vo: e.target.value } : beat
-                                        )
-                                      )
-                                    }
-                                    rows={4}
-                                    style={{
-                                      width: "100%",
-                                      boxSizing: "border-box",
-                                      borderRadius: 8,
-                                      border: "1px solid #334155",
-                                      backgroundColor: "#0f172a",
-                                      color: "#e2e8f0",
-                                      padding: 10,
-                                      fontSize: 13,
-                                      resize: "vertical",
-                                    }}
-                                  />
-                                ) : (
-                                  <p
-                                    style={{
-                                      margin: 0,
-                                      fontSize: 13,
-                                      lineHeight: 1.5,
-                                      color: "#cbd5e1",
-                                      whiteSpace: "pre-wrap",
-                                    }}
-                                  >
-                                    {scene.vo || "No spoken words"}
-                                  </p>
-                                )}
-                              </div>
-                              {scriptPanelEditMode && (
-                                <div style={{ marginTop: 8 }}>
-                                  <AddBeatExpansion
-                                    afterIndex={sceneIndex}
-                                    disabled={scriptPanelSaving}
-                                    onWriteYourself={handleInsertBeatWriteYourself}
-                                    onGenerateWithAi={handleInsertBeatGenerateWithAi}
-                                  />
-                                </div>
-                              )}
+                        {scriptPanelEditMode ? (
+                          <div
+                            style={{
+                              border: "1px solid #334155",
+                              borderRadius: 8,
+                              backgroundColor: "#0b1220",
+                              padding: 10,
+                              display: "grid",
+                              gap: 10,
+                            }}
+                          >
+                            <div style={{ color: "#94a3b8", fontSize: 12 }}>
+                              Beats are locked. Keep one `Beat N:` header per section and write VO directly under it.
                             </div>
-                          )
+                            <div style={{ color: "#94a3b8", fontSize: 12 }}>
+                              Expected sections: {scriptPanelDraftBeats.length}
+                            </div>
+                            <textarea
+                              value={scriptPanelCombinedVoDraft}
+                              onChange={(e) => setScriptPanelCombinedVoDraft(e.target.value)}
+                              onBlur={(e) => setScriptPanelCombinedVoDraft(e.target.value)}
+                              rows={14}
+                              style={{
+                                width: "100%",
+                                boxSizing: "border-box",
+                                borderRadius: 8,
+                                border: "1px solid #334155",
+                                backgroundColor: "#0f172a",
+                                color: "#e2e8f0",
+                                padding: 10,
+                                fontSize: 13,
+                                resize: "vertical",
+                                lineHeight: 1.5,
+                              }}
+                            />
+                          </div>
+                        ) : (
+                          <div
+                            style={{
+                              border: "1px solid #334155",
+                              borderRadius: 8,
+                              backgroundColor: "#0b1220",
+                              padding: 10,
+                            }}
+                          >
+                            <p
+                              style={{
+                                margin: 0,
+                                fontSize: 13,
+                                lineHeight: 1.6,
+                                color: "#cbd5e1",
+                                whiteSpace: "pre-wrap",
+                              }}
+                            >
+                              {buildCombinedVoDraftFromBeats(extractScriptBeats(scriptPanelData.rawJson)) || "No spoken words"}
+                            </p>
+                          </div>
                         )}
                       </div>
                     </>
@@ -3878,37 +5155,6 @@ export default function CreativeStudioPage() {
                     </p>
                   ) : (
                     <>
-                      {storyboardValidationReport && (
-                        <div
-                          style={{
-                            marginBottom: 10,
-                            borderRadius: 8,
-                            border: "1px solid #334155",
-                            backgroundColor: "#0b1220",
-                            padding: "8px 10px",
-                          }}
-                        >
-                          <div style={{ fontSize: 12, fontWeight: 700, color: "#cbd5e1" }}>
-                            Validation score: {storyboardValidationReport.qualityScore}/100
-                          </div>
-                          {storyboardValidationReport.warnings.length > 0 ? (
-                            <div style={{ marginTop: 6, display: "grid", gap: 4 }}>
-                              {storyboardValidationReport.warnings.map((warning, warningIndex) => (
-                                <div
-                                  key={`storyboard-validation-warning-${warningIndex}`}
-                                  style={{ fontSize: 12, color: "#fde68a" }}
-                                >
-                                  • {warning}
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <div style={{ marginTop: 6, fontSize: 12, color: "#6ee7b7" }}>
-                              All quality gates passed.
-                            </div>
-                          )}
-                        </div>
-                      )}
                       <div style={{ marginBottom: 10, color: "#94a3b8", fontSize: 12 }}>
                         {storyboardEditMode
                           ? `${storyboardDraftPanels.length} panel(s) in edit mode`
@@ -3993,6 +5239,26 @@ export default function CreativeStudioPage() {
                                     >
                                       ↓
                                     </button>
+                                    {panelIndex < storyboardDraftPanels.length - 1 &&
+                                      storyboardDraftPanels[panelIndex].panelType ===
+                                        storyboardDraftPanels[panelIndex + 1]?.panelType && (
+                                        <button
+                                          type="button"
+                                          onClick={() => mergeStoryboardPanels(panelIndex)}
+                                          disabled={storyboardSaving}
+                                          style={{
+                                            border: "1px solid rgba(168, 85, 247, 0.5)",
+                                            backgroundColor: "rgba(168, 85, 247, 0.15)",
+                                            color: "#d8b4fe",
+                                            padding: "2px 8px",
+                                            borderRadius: 6,
+                                            fontSize: 12,
+                                            cursor: storyboardSaving ? "not-allowed" : "pointer",
+                                          }}
+                                        >
+                                          Merge ↓
+                                        </button>
+                                      )}
                                     <button
                                       type="button"
                                       onClick={() => handleDeleteStoryboardPanel(panelIndex)}
@@ -4047,7 +5313,9 @@ export default function CreativeStudioPage() {
                                     onChange={(e) =>
                                       updateStoryboardDraftPanel(panelIndex, (prev) => ({
                                         ...prev,
-                                        panelType: e.target.value === "B_ROLL_ONLY" ? "B_ROLL_ONLY" : "ON_CAMERA",
+                                        panelType: e.target.value === "B_ROLL_ONLY" ? "B_ROLL_ONLY"
+                                          : e.target.value === "PRODUCT_ONLY" ? "PRODUCT_ONLY"
+                                          : "ON_CAMERA",
                                       }))
                                     }
                                     style={{
@@ -4061,28 +5329,42 @@ export default function CreativeStudioPage() {
                                       fontSize: 12,
                                     }}
                                   >
-                                    <option value="ON_CAMERA">On Camera</option>
+                                    <option value="ON_CAMERA">Creator Present</option>
+                                    <option value="PRODUCT_ONLY">Product Demo (hand/arm only)</option>
                                     <option value="B_ROLL_ONLY">B-roll Only</option>
                                   </select>
                                 </div>
                                 <div>
-                                  <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>Beat Label</div>
+                                  <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>Voice Mode</div>
+                                  <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                                    <input
+                                      type="checkbox"
+                                      checked={Boolean(panel.voiceoverOnly)}
+                                      onChange={(e) =>
+                                        updateStoryboardDraftPanel(panelIndex, (prev) => ({
+                                          ...prev,
+                                          voiceoverOnly: e.target.checked,
+                                        }))
+                                      }
+                                    />
+                                    <span style={{ color: "#e2e8f0", fontSize: 12 }}>
+                                      Voiceover only (creator present, no lip sync)
+                                    </span>
+                                  </label>
+                                </div>
+                                <div>
+                                  <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>Beat</div>
                                   <textarea
-                                    value={panel.beatLabel}
-                                    onChange={(e) =>
-                                      updateStoryboardDraftPanel(panelIndex, (prev) => ({
-                                        ...prev,
-                                        beatLabel: e.target.value,
-                                      }))
-                                    }
+                                    value={`Beat ${panelIndex + 1}`}
+                                    readOnly
                                     rows={2}
                                     style={{
                                       width: "100%",
                                       boxSizing: "border-box",
                                       borderRadius: 8,
-                                      border: "1px solid #334155",
-                                      backgroundColor: "#0f172a",
-                                      color: "#e2e8f0",
+                                      border: "1px solid #1e293b",
+                                      backgroundColor: "#020617",
+                                      color: "#94a3b8",
                                       padding: 8,
                                       fontSize: 12,
                                       resize: "vertical",
@@ -4094,7 +5376,7 @@ export default function CreativeStudioPage() {
                                 </div>
                                 <div style={{ color: "#94a3b8", fontSize: 11 }}>VO</div>
                                 <textarea
-                                  value={panel.vo}
+                                  value={panel.vo ?? ""}
                                   readOnly
                                   rows={2}
                                   style={{
@@ -4109,165 +5391,54 @@ export default function CreativeStudioPage() {
                                     resize: "vertical",
                                   }}
                                 />
-
-                                {panel.panelType !== "B_ROLL_ONLY" && (
-                                  <div>
-                                    <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>Character Action</div>
-                                    <textarea
-                                      value={panel.characterAction ?? ""}
-                                      onChange={(e) =>
-                                        updateStoryboardDraftPanel(panelIndex, (prev) => ({
-                                          ...prev,
-                                          characterAction: e.target.value.trim() ? e.target.value : null,
-                                        }))
-                                      }
-                                      rows={2}
-                                      style={{
-                                        width: "100%",
-                                        boxSizing: "border-box",
-                                        borderRadius: 8,
-                                        border: "1px solid #334155",
-                                        backgroundColor: "#0f172a",
-                                        color: "#e2e8f0",
-                                        padding: 8,
-                                        fontSize: 12,
-                                        resize: "vertical",
-                                      }}
-                                    />
-                                  </div>
-                                )}
-
-                                <div>
-                                  <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>Environment</div>
-                                  <textarea
-                                    value={panel.environment ?? ""}
-                                    onChange={(e) =>
-                                      updateStoryboardDraftPanel(panelIndex, (prev) => ({
-                                        ...prev,
-                                        environment: e.target.value.trim() ? e.target.value : null,
-                                      }))
-                                    }
-                                    rows={2}
-                                    style={{
-                                      width: "100%",
-                                      boxSizing: "border-box",
-                                      borderRadius: 8,
-                                      border: "1px solid #334155",
-                                      backgroundColor: "#0f172a",
-                                      color: "#e2e8f0",
-                                      padding: 8,
-                                      fontSize: 12,
-                                      resize: "vertical",
-                                    }}
-                                  />
+                                <div style={{ color: "#94a3b8", fontSize: 11 }}>
+                                  Edit this beat as one block. Keep the labels and write under each one.
                                 </div>
-
-                                <div>
-                                  <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>Camera Direction</div>
-                                  <textarea
-                                    value={panel.cameraDirection}
-                                    onChange={(e) =>
-                                      updateStoryboardDraftPanel(panelIndex, (prev) => ({
-                                        ...prev,
-                                        cameraDirection: e.target.value,
-                                      }))
-                                    }
-                                    rows={2}
-                                    style={{
-                                      width: "100%",
-                                      boxSizing: "border-box",
-                                      borderRadius: 8,
-                                      border: "1px solid #334155",
-                                      backgroundColor: "#0f172a",
-                                      color: "#e2e8f0",
-                                      padding: 8,
-                                      fontSize: 12,
-                                      resize: "vertical",
-                                    }}
-                                  />
-                                </div>
-
-                                <div>
-                                  <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>Product Placement</div>
-                                  <textarea
-                                    value={panel.productPlacement}
-                                    onChange={(e) =>
-                                      updateStoryboardDraftPanel(panelIndex, (prev) => ({
-                                        ...prev,
-                                        productPlacement: e.target.value,
-                                      }))
-                                    }
-                                    rows={2}
-                                    style={{
-                                      width: "100%",
-                                      boxSizing: "border-box",
-                                      borderRadius: 8,
-                                      border: "1px solid #334155",
-                                      backgroundColor: "#0f172a",
-                                      color: "#e2e8f0",
-                                      padding: 8,
-                                      fontSize: 12,
-                                      resize: "vertical",
-                                    }}
-                                  />
-                                </div>
-
-                                <div>
-                                  <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>Transition Type</div>
-                                  <textarea
-                                    value={panel.transitionType}
-                                    onChange={(e) =>
-                                      updateStoryboardDraftPanel(panelIndex, (prev) => ({
-                                        ...prev,
-                                        transitionType: e.target.value,
-                                      }))
-                                    }
-                                    rows={2}
-                                    style={{
-                                      width: "100%",
-                                      boxSizing: "border-box",
-                                      borderRadius: 8,
-                                      border: "1px solid #334155",
-                                      backgroundColor: "#0f172a",
-                                      color: "#e2e8f0",
-                                      padding: 8,
-                                      fontSize: 12,
-                                      resize: "vertical",
-                                    }}
-                                  />
-                                </div>
-
-                                <div>
-                                  <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>
-                                    {panel.panelType === "B_ROLL_ONLY"
-                                      ? "B-roll Shot Breakdown (one per line)"
-                                      : "B-roll Suggestions (one per line)"}
-                                  </div>
-                                  <textarea
-                                    value={bRollSuggestionsToTextarea(panel.bRollSuggestions)}
-                                    onChange={(e) =>
-                                      updateStoryboardDraftPanel(panelIndex, (prev) => ({
-                                        ...prev,
-                                        bRollSuggestions: parseBrollSuggestionsTextarea(e.target.value),
-                                      }))
-                                    }
-                                    rows={panel.panelType === "B_ROLL_ONLY" ? 8 : 3}
-                                    style={{
-                                      width: "100%",
-                                      boxSizing: "border-box",
-                                      borderRadius: 8,
-                                      border:
-                                        panel.panelType === "B_ROLL_ONLY"
-                                          ? "1px solid rgba(14, 165, 233, 0.6)"
-                                          : "1px solid #334155",
-                                      backgroundColor: "#0f172a",
-                                      color: "#e2e8f0",
-                                      padding: 8,
-                                      fontSize: 12,
-                                      resize: "vertical",
-                                    }}
-                                  />
-                                </div>
+                                <textarea
+                                  value={
+                                    storyboardBeatEditorDrafts[panelIndex] ??
+                                    buildStoryboardBeatEditorText(panel)
+                                  }
+                                  onChange={(e) => {
+                                    const nextValue = e.target.value;
+                                    setStoryboardBeatEditorDrafts((prev) =>
+                                      storyboardDraftPanels.map((draftPanel, index) =>
+                                        index === panelIndex
+                                          ? nextValue
+                                          : typeof prev[index] === "string"
+                                            ? prev[index]
+                                            : buildStoryboardBeatEditorText(draftPanel),
+                                      ),
+                                    );
+                                    const parsed = parseStoryboardBeatEditorText(nextValue, panel);
+                                    updateStoryboardDraftPanel(panelIndex, (prev) => ({
+                                      ...prev,
+                                      characterName: parsed.characterName,
+                                      characterDescription: parsed.characterDescription,
+                                      characterAction: parsed.characterAction,
+                                      environment: parsed.environment,
+                                      cameraDirection: parsed.cameraDirection,
+                                      productPlacement: parsed.productPlacement,
+                                      bRollSuggestions: parsed.bRollSuggestions,
+                                    }));
+                                  }}
+                                  rows={panel.panelType === "B_ROLL_ONLY" ? 14 : 16}
+                                  style={{
+                                    width: "100%",
+                                    boxSizing: "border-box",
+                                    borderRadius: 8,
+                                    border:
+                                      panel.panelType === "B_ROLL_ONLY"
+                                        ? "1px solid rgba(14, 165, 233, 0.6)"
+                                        : "1px solid #334155",
+                                    backgroundColor: "#0f172a",
+                                    color: "#e2e8f0",
+                                    padding: 8,
+                                    fontSize: 12,
+                                    resize: "vertical",
+                                    lineHeight: 1.5,
+                                  }}
+                                />
 
                                 <div style={{ marginTop: 2 }}>
                                   <button
@@ -4292,11 +5463,13 @@ export default function CreativeStudioPage() {
                               <div style={{ display: "grid", gap: 6, fontSize: 12, color: "#cbd5e1" }}>
                                 {panel.panelType === "B_ROLL_ONLY" ? (
                                   <>
+                                    <div><strong style={{ color: "#f1f5f9" }}>Character Name:</strong> {panel.characterName || "Not provided"}</div>
+                                    <div><strong style={{ color: "#f1f5f9" }}>Character Description:</strong> {panel.characterDescription || "Not provided"}</div>
                                     <div>
                                       <strong style={{ color: "#f1f5f9" }}>B-roll Suggestions:</strong>
-                                      {panel.bRollSuggestions.length > 0 ? (
+                                      {(panel.bRollSuggestions ?? []).length > 0 ? (
                                         <div style={{ marginTop: 4, display: "grid", gap: 4 }}>
-                                          {panel.bRollSuggestions.map((suggestion, suggestionIndex) => (
+                                          {(panel.bRollSuggestions ?? []).map((suggestion, suggestionIndex) => (
                                             <div key={`broll-${panelIndex}-${suggestionIndex}`}>• {suggestion}</div>
                                           ))}
                                         </div>
@@ -4306,21 +5479,21 @@ export default function CreativeStudioPage() {
                                     </div>
                                     <div><strong style={{ color: "#f1f5f9" }}>Camera Direction:</strong> {panel.cameraDirection || "Not provided"}</div>
                                     <div><strong style={{ color: "#f1f5f9" }}>Product Placement:</strong> {panel.productPlacement || "Not provided"}</div>
-                                    <div><strong style={{ color: "#f1f5f9" }}>Transition Type:</strong> {panel.transitionType || "Not provided"}</div>
                                   </>
                                 ) : (
                                   <>
+                                    <div><strong style={{ color: "#f1f5f9" }}>Character Name:</strong> {panel.characterName || "Not provided"}</div>
+                                    <div><strong style={{ color: "#f1f5f9" }}>Character Description:</strong> {panel.characterDescription || "Not provided"}</div>
                                     <div><strong style={{ color: "#f1f5f9" }}>Character Action:</strong> {panel.characterAction || "Not provided"}</div>
                                     <div><strong style={{ color: "#f1f5f9" }}>Environment:</strong> {panel.environment || "Not provided"}</div>
                                     <div><strong style={{ color: "#f1f5f9" }}>Camera Direction:</strong> {panel.cameraDirection || "Not provided"}</div>
                                     <div><strong style={{ color: "#f1f5f9" }}>Product Placement:</strong> {panel.productPlacement || "Not provided"}</div>
                                     <div>
                                       <strong style={{ color: "#f1f5f9" }}>B-roll Suggestions:</strong>{" "}
-                                      {panel.bRollSuggestions.length > 0
-                                        ? panel.bRollSuggestions.join(", ")
+                                      {(panel.bRollSuggestions ?? []).length > 0
+                                        ? (panel.bRollSuggestions ?? []).join(", ")
                                         : "Not provided"}
                                     </div>
-                                    <div><strong style={{ color: "#f1f5f9" }}>Transition Type:</strong> {panel.transitionType || "Not provided"}</div>
                                   </>
                                 )}
                               </div>
@@ -4711,7 +5884,7 @@ export default function CreativeStudioPage() {
                             >
                               <div style={{ color: "#94a3b8", fontSize: 11 }}>
                                 Scene {row.panelIndex + 1} •{" "}
-                                {row.panelType === "B_ROLL_ONLY" ? "B-roll" : "On camera"}
+                                {row.panelType === "B_ROLL_ONLY" ? "B-roll" : "Creator present"}
                               </div>
                               {videoPromptEditMode ? (
                                 <>
@@ -4761,7 +5934,15 @@ export default function CreativeStudioPage() {
                                   </div>
                                 </>
                               ) : (
-                                <p style={{ margin: 0, color: "#e2e8f0", fontSize: 13, lineHeight: 1.5 }}>
+                                <p
+                                  style={{
+                                    margin: 0,
+                                    color: "#e2e8f0",
+                                    fontSize: 13,
+                                    lineHeight: 1.5,
+                                    whiteSpace: "pre-wrap",
+                                  }}
+                                >
                                   {promptValue || "No prompt generated yet."}
                                 </p>
                               )}
@@ -4871,103 +6052,6 @@ export default function CreativeStudioPage() {
         )}
       </section>
 
-      <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-5">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-slate-100">Creative Runs</h2>
-          <span className="text-xs text-slate-500">
-            {sortedRuns.length} {sortedRuns.length === 1 ? "run" : "runs"}
-          </span>
-        </div>
-
-        <div className="flex flex-col gap-2 md:flex-row md:items-center">
-          <select
-            value={selectedRunId || "no-active"}
-            onChange={(e) => {
-              const value = e.target.value === "no-active" ? null : e.target.value;
-              console.log("[Creative] run dropdown change", {
-                selectedValue: e.target.value,
-                nextRunId: value,
-              });
-              setSelectedRunId(value);
-            }}
-            className="w-full md:w-auto px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-300"
-          >
-            <option value="no-active">No active run</option>
-            {sortedRuns.map((run) => (
-              <option key={run.runId} value={run.runId}>
-                {run.displayLabel} - {formatRunDate(run.createdAt)}
-              </option>
-            ))}
-          </select>
-          <div className="w-full md:w-auto" style={{ position: "relative" }}>
-            <button
-              type="button"
-              onClick={() => setShowRunManagerModal(true)}
-              className="w-full md:w-auto rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-200 hover:bg-slate-700"
-            >
-              Manage Runs
-            </button>
-            <RunManagementModal
-              projectId={projectId}
-              open={showRunManagerModal}
-              onClose={() => setShowRunManagerModal(false)}
-              onRunsChanged={handleRunsChanged}
-            />
-          </div>
-          {orphanedJobsCount > 0 && (
-            <button
-              type="button"
-              onClick={() => void handleCleanupOrphanedJobs()}
-              disabled={cleaningOrphanedJobs}
-              className="w-full md:w-auto rounded-lg border border-red-500/60 bg-red-900/40 px-3 py-2 text-sm text-red-200 hover:bg-red-900/60"
-              style={{
-                cursor: cleaningOrphanedJobs ? "not-allowed" : "pointer",
-                opacity: cleaningOrphanedJobs ? 0.7 : 1,
-              }}
-            >
-              {cleaningOrphanedJobs
-                ? "Cleaning Orphaned Jobs..."
-                : `Clean Up Orphaned Jobs (${orphanedJobsCount})`}
-            </button>
-          )}
-        </div>
-
-        {selectedRun && (
-          <div className="mt-3 text-sm text-slate-400">
-            <div className="text-slate-400">Jobs in this run:</div>
-            <div className="mt-2 space-y-1">
-              {selectedRun.jobs
-                .slice()
-                .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
-                .map((job) => {
-                  const statusIcon =
-                    job.status === JobStatus.COMPLETED
-                      ? "✓"
-                      : job.status === JobStatus.FAILED
-                        ? "✕"
-                        : job.status === JobStatus.RUNNING
-                          ? "●"
-                          : "○";
-                  return (
-                    <div key={job.id} className="flex items-center gap-2">
-                      <span className="text-slate-300">{statusIcon}</span>
-                      <span>{getRunJobName(job)}</span>
-                      <span className="text-xs text-slate-500">
-                        {job.status === JobStatus.COMPLETED
-                          ? new Date(job.createdAt).toLocaleTimeString("en-US", {
-                              hour: "numeric",
-                              minute: "2-digit",
-                            })
-                          : String(job.status).toLowerCase()}
-                      </span>
-                    </div>
-                  );
-                })}
-            </div>
-          </div>
-        )}
-      </section>
-
       {showScriptModal && (
         <div
           style={{
@@ -5016,12 +6100,12 @@ export default function CreativeStudioPage() {
             {scriptModalMode === "choose" ? (
               <div>
                 <p style={{ margin: "0 0 16px 0", color: "#cbd5e1", fontSize: 14 }}>
-                  Choose how you want to create this script.
+                  Choose a script path.
                 </p>
                 <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                   <button
                     type="button"
-                    onClick={handleChooseGenerateWithAi}
+                    onClick={() => void handleChooseGenerateWithAi("swipe_template")}
                     disabled={scriptModalSubmitting}
                     style={{
                       width: "100%",
@@ -5036,7 +6120,45 @@ export default function CreativeStudioPage() {
                       cursor: scriptModalSubmitting ? "not-allowed" : "pointer",
                     }}
                   >
-                    Generate with AI
+                    Select ad template from swipe
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleChooseGenerateWithAi("research_formula")}
+                    disabled={scriptModalSubmitting}
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "12px 14px",
+                      borderRadius: 10,
+                      border: "1px solid #334155",
+                      backgroundColor: "#1e293b",
+                      color: "#f8fafc",
+                      fontSize: 14,
+                      fontWeight: 600,
+                      cursor: scriptModalSubmitting ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    Use formula from research
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleChooseGenerateWithAi("upload_template")}
+                    disabled={scriptModalSubmitting}
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "12px 14px",
+                      borderRadius: 10,
+                      border: "1px solid #334155",
+                      backgroundColor: "#1e293b",
+                      color: "#f8fafc",
+                      fontSize: 14,
+                      fontWeight: 600,
+                      cursor: scriptModalSubmitting ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    Upload transcript as template
                   </button>
                   <button
                     type="button"
@@ -5058,7 +6180,7 @@ export default function CreativeStudioPage() {
                       cursor: scriptModalSubmitting ? "not-allowed" : "pointer",
                     }}
                   >
-                    Upload My Own Script
+                    Manually create script
                   </button>
                 </div>
               </div>
@@ -5224,67 +6346,432 @@ export default function CreativeStudioPage() {
                             ) : null}
                           </div>
                         )}
+
+                        <div
+                          style={{
+                            marginTop: 10,
+                            border: "1px solid #334155",
+                            borderRadius: 10,
+                            backgroundColor: "#0b1220",
+                            padding: "10px 12px",
+                          }}
+                        >
+                          <p style={{ margin: "0 0 8px 0", color: "#cbd5e1", fontSize: 12, fontWeight: 600 }}>
+                            Script Strategy
+                          </p>
+                          <label
+                            style={{ display: "flex", alignItems: "center", gap: 8, color: "#e2e8f0", fontSize: 13 }}
+                          >
+                            <input
+                              type="radio"
+                              name="script-strategy"
+                              value="swipe_template"
+                              checked={scriptGenerationStrategy === "swipe_template"}
+                              onChange={() => setScriptGenerationStrategy("swipe_template")}
+                              disabled={scriptModalSubmitting}
+                            />
+                            Select ad template from swipe
+                          </label>
+                          <label
+                            style={{ display: "flex", alignItems: "center", gap: 8, color: "#e2e8f0", fontSize: 13, marginTop: 6 }}
+                          >
+                            <input
+                              type="radio"
+                              name="script-strategy"
+                              value="research_formula"
+                              checked={scriptGenerationStrategy === "research_formula"}
+                              onChange={() => setScriptGenerationStrategy("research_formula")}
+                              disabled={scriptModalSubmitting}
+                            />
+                            Use formula from research
+                          </label>
+                          <label
+                            style={{ display: "flex", alignItems: "center", gap: 8, color: "#e2e8f0", fontSize: 13, marginTop: 6 }}
+                          >
+                            <input
+                              type="radio"
+                              name="script-strategy"
+                              value="upload_template"
+                              checked={scriptGenerationStrategy === "upload_template"}
+                              onChange={() => setScriptGenerationStrategy("upload_template")}
+                              disabled={scriptModalSubmitting}
+                            />
+                            Upload transcript as template
+                          </label>
+                          <label
+                            style={{ display: "flex", alignItems: "center", gap: 8, color: "#e2e8f0", fontSize: 13, marginTop: 6 }}
+                          >
+                            <input
+                              type="radio"
+                              name="script-strategy"
+                              value="manual_create"
+                              checked={false}
+                              onChange={() => {
+                                if (scriptModalSubmitting) return;
+                                setScriptModalMode("upload");
+                                setScriptModalError(null);
+                              }}
+                              disabled={scriptModalSubmitting}
+                            />
+                            Manually create script
+                          </label>
+
+                          {(scriptGenerationStrategy === "swipe_template" ||
+                            scriptGenerationStrategy === "upload_template") && (
+                            <div style={{ marginTop: 10 }}>
+                              {(() => {
+                                const recommendation = scriptRunSummary?.swipeRecommendation;
+                                const candidates =
+                                  scriptGenerationStrategy === "upload_template"
+                                    ? scriptSwipeFileCandidates
+                                    : recommendation?.candidates ?? [];
+                                if (candidates.length === 0) {
+                                  return (
+                                    <p style={{ margin: 0, color: "#fde68a", fontSize: 12 }}>
+                                      {scriptGenerationStrategy === "upload_template"
+                                        ? "No uploaded transcript templates in this run yet. Upload one below."
+                                        : "No swipe-eligible ads found. Ads need a transcript to use as a script template."}
+                                    </p>
+                                  );
+                                }
+                                return (
+                                  <>
+                                    {scriptGenerationStrategy === "swipe_template" ? (
+                                      <>
+                                        <p style={{ margin: "0 0 6px 0", color: "#94a3b8", fontSize: 12 }}>
+                                          Recommended by engagement metrics. Only ads that passed quality assessment are shown.
+                                        </p>
+                                        {recommendation?.sourceMode === "run_ad" ? (
+                                          <p style={{ margin: "0 0 8px 0", color: "#fde68a", fontSize: 12 }}>
+                                            No explicit swipe-file templates were found in this run. Showing top quality-passed ads from this run as template candidates.
+                                          </p>
+                                        ) : null}
+                                      </>
+                                    ) : (
+                                      <p style={{ margin: "0 0 6px 0", color: "#94a3b8", fontSize: 12 }}>
+                                        Uploaded transcript templates for this run.
+                                      </p>
+                                    )}
+                                    <select
+                                      value={selectedSwipeTemplateAdId}
+                                      onChange={(e) => setSelectedSwipeTemplateAdId(e.target.value)}
+                                      disabled={scriptModalSubmitting}
+                                      style={{
+                                        width: "100%",
+                                        borderRadius: 8,
+                                        border: "1px solid #334155",
+                                        backgroundColor: "#020617",
+                                        color: "#e2e8f0",
+                                        padding: "8px 10px",
+                                        fontSize: 12,
+                                        boxSizing: "border-box",
+                                      }}
+                                    >
+                                      {candidates.map((candidate) => {
+                                        const labelTitle = (candidate.title || "Untitled ad").slice(0, 80);
+                                        return (
+                                          <option key={candidate.assetId} value={candidate.assetId}>
+                                            {scriptGenerationStrategy === "swipe_template" &&
+                                            recommendation?.recommendedAdId === candidate.assetId
+                                              ? "★ "
+                                              : ""}
+                                            {labelTitle} · score {candidate.score.toFixed(3)}
+                                          </option>
+                                        );
+                                      })}
+                                    </select>
+                                    {(() => {
+                                      const active =
+                                        scriptGenerationStrategy === "upload_template"
+                                          ? selectedSwipeFileCandidate
+                                          : selectedSwipeCandidate;
+                                      if (!active) return null;
+                                      return (
+                                        <div
+                                          style={{
+                                            marginTop: 8,
+                                            border: "1px solid #334155",
+                                            borderRadius: 10,
+                                            backgroundColor: "#020617",
+                                            padding: "10px 12px",
+                                          }}
+                                        >
+                                          <p style={{ margin: 0, color: "#cbd5e1", fontSize: 12, fontWeight: 700 }}>
+                                            Selected Swipe Preview
+                                          </p>
+                                          <p style={{ margin: "6px 0 0 0", color: "#94a3b8", fontSize: 12 }}>
+                                            {active.reasons.join(" · ")}
+                                          </p>
+                                          <div
+                                            style={{
+                                              marginTop: 8,
+                                              display: "grid",
+                                              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                                              gap: 8,
+                                            }}
+                                          >
+                                            <div style={{ color: "#e2e8f0", fontSize: 12 }}>
+                                              <span style={{ color: "#94a3b8" }}>Score:</span>{" "}
+                                              {formatSwipeMetricNumber(active.score, 4)}
+                                            </div>
+                                            <div style={{ color: "#e2e8f0", fontSize: 12 }}>
+                                              <span style={{ color: "#94a3b8" }}>Engagement:</span>{" "}
+                                              {formatSwipeMetricNumber(active.metrics.engagementScore)}
+                                            </div>
+                                            <div style={{ color: "#e2e8f0", fontSize: 12 }}>
+                                              <span style={{ color: "#94a3b8" }}>3s retention:</span>{" "}
+                                              {formatSwipeMetricPercent(active.metrics.retention3s)}
+                                            </div>
+                                            <div style={{ color: "#e2e8f0", fontSize: 12 }}>
+                                              <span style={{ color: "#94a3b8" }}>10s retention:</span>{" "}
+                                              {formatSwipeMetricPercent(active.metrics.retention10s)}
+                                            </div>
+                                            <div style={{ color: "#e2e8f0", fontSize: 12 }}>
+                                              <span style={{ color: "#94a3b8" }}>CTR:</span>{" "}
+                                              {formatSwipeMetricPercent(active.metrics.ctr, 2)}
+                                            </div>
+                                            <div style={{ color: "#e2e8f0", fontSize: 12 }}>
+                                              <span style={{ color: "#94a3b8" }}>Views:</span>{" "}
+                                              {active.metrics.views !== null
+                                                ? Math.round(active.metrics.views).toLocaleString()
+                                                : "—"}
+                                            </div>
+                                          </div>
+                                          {active.transcriptSnippet ? (
+                                            <div style={{ marginTop: 8 }}>
+                                              <p
+                                                style={{
+                                                  margin: "0 0 4px 0",
+                                                  color: "#94a3b8",
+                                                  fontSize: 11,
+                                                  fontWeight: 600,
+                                                }}
+                                              >
+                                                Transcript
+                                              </p>
+                                              <p style={{ margin: 0, color: "#e2e8f0", fontSize: 12, lineHeight: 1.4 }}>
+                                                {active.transcriptSnippet}
+                                              </p>
+                                            </div>
+                                          ) : null}
+                                          <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", gap: 8 }}>
+                                            <span style={{ color: "#64748b", fontSize: 11 }}>
+                                              Asset ID: {active.assetId.slice(0, 8)}...
+                                            </span>
+                                            {active.sourceUrl ? (
+                                              <a
+                                                href={active.sourceUrl}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                style={{ color: "#38bdf8", fontSize: 11, textDecoration: "none" }}
+                                              >
+                                                Open source video
+                                              </a>
+                                            ) : null}
+                                          </div>
+                                        </div>
+                                      );
+                                    })()}
+                                  </>
+                                );
+                              })()}
+                              <div
+                                style={{
+                                  marginTop: 10,
+                                  border: "1px solid #334155",
+                                  borderRadius: 10,
+                                  backgroundColor: "#020617",
+                                  padding: "10px 12px",
+                                }}
+                              >
+                                <p style={{ margin: 0, color: "#cbd5e1", fontSize: 12, fontWeight: 700 }}>
+                                  Upload Transcript as Template
+                                </p>
+                                <p style={{ margin: "6px 0 8px 0", color: "#94a3b8", fontSize: 12 }}>
+                                  Add your own transcript and use it as a swipe template candidate for this run.
+                                </p>
+                                <input
+                                  type="text"
+                                  value={manualSwipeTemplateTitle}
+                                  onChange={(e) => setManualSwipeTemplateTitle(e.target.value)}
+                                  placeholder="Template title (optional)"
+                                  disabled={scriptModalSubmitting || manualSwipeTemplateUploading}
+                                  style={{
+                                    width: "100%",
+                                    borderRadius: 8,
+                                    border: "1px solid #334155",
+                                    backgroundColor: "#0b1220",
+                                    color: "#e2e8f0",
+                                    padding: "8px 10px",
+                                    fontSize: 12,
+                                    boxSizing: "border-box",
+                                  }}
+                                />
+                                <textarea
+                                  value={manualSwipeTemplateTranscript}
+                                  onChange={(e) => setManualSwipeTemplateTranscript(e.target.value)}
+                                  placeholder="Paste transcript (minimum 100 characters)"
+                                  rows={4}
+                                  disabled={scriptModalSubmitting || manualSwipeTemplateUploading}
+                                  style={{
+                                    marginTop: 8,
+                                    width: "100%",
+                                    borderRadius: 8,
+                                    border: "1px solid #334155",
+                                    backgroundColor: "#0b1220",
+                                    color: "#e2e8f0",
+                                    padding: "8px 10px",
+                                    fontSize: 12,
+                                    boxSizing: "border-box",
+                                    resize: "vertical",
+                                  }}
+                                />
+                                <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", gap: 8 }}>
+                                  <span style={{ color: "#64748b", fontSize: 11 }}>
+                                    {manualSwipeTemplateTranscript.trim().length} chars
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleUploadManualSwipeTemplateTranscript()}
+                                    disabled={
+                                      scriptModalSubmitting ||
+                                      manualSwipeTemplateUploading ||
+                                      manualSwipeTemplateTranscript.trim().length < 100 ||
+                                      !selectedScriptResearchRun?.runId
+                                    }
+                                    style={{
+                                      border: "none",
+                                      backgroundColor:
+                                        scriptModalSubmitting ||
+                                        manualSwipeTemplateUploading ||
+                                        manualSwipeTemplateTranscript.trim().length < 100 ||
+                                        !selectedScriptResearchRun?.runId
+                                          ? "#1e293b"
+                                          : "#0ea5e9",
+                                      color:
+                                        scriptModalSubmitting ||
+                                        manualSwipeTemplateUploading ||
+                                        manualSwipeTemplateTranscript.trim().length < 100 ||
+                                        !selectedScriptResearchRun?.runId
+                                          ? "#64748b"
+                                          : "#ffffff",
+                                      padding: "6px 10px",
+                                      borderRadius: 8,
+                                      fontSize: 12,
+                                      fontWeight: 600,
+                                      cursor:
+                                        scriptModalSubmitting ||
+                                        manualSwipeTemplateUploading ||
+                                        manualSwipeTemplateTranscript.trim().length < 100 ||
+                                        !selectedScriptResearchRun?.runId
+                                          ? "not-allowed"
+                                          : "pointer",
+                                    }}
+                                  >
+                                    {manualSwipeTemplateUploading ? "Uploading..." : "Add Template"}
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {scriptGenerationStrategy === "research_formula" && (
+                            <div
+                              style={{
+                                marginTop: 10,
+                                border: "1px solid #334155",
+                                borderRadius: 10,
+                                backgroundColor: "#020617",
+                                padding: "10px 12px",
+                              }}
+                            >
+                              <p style={{ margin: 0, color: "#cbd5e1", fontSize: 12, fontWeight: 700 }}>
+                                Formula Preview
+                              </p>
+                              {scriptRunSummary?.patternAnalysis?.formulaSummary ? (
+                                <div style={{ marginTop: 8 }}>
+                                  <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: 11, fontWeight: 600 }}>
+                                    Transfer Formula
+                                  </p>
+                                  <p style={{ margin: 0, color: "#e2e8f0", fontSize: 12, lineHeight: 1.45 }}>
+                                    {scriptRunSummary.patternAnalysis.formulaSummary}
+                                  </p>
+                                </div>
+                              ) : null}
+                              {scriptRunSummary?.patternAnalysis?.formulaDetails ? (
+                                <div style={{ marginTop: 8 }}>
+                                  <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: 11, fontWeight: 600 }}>
+                                    Formula Label
+                                  </p>
+                                  <p style={{ margin: 0, color: "#e2e8f0", fontSize: 12, lineHeight: 1.45 }}>
+                                    {scriptRunSummary.patternAnalysis.formulaDetails.label || "Not provided"}
+                                  </p>
+                                  {scriptRunSummary.patternAnalysis.formulaDetails.components.length > 0 ? (
+                                    <div style={{ marginTop: 6, display: "grid", gap: 6 }}>
+                                      {scriptRunSummary.patternAnalysis.formulaDetails.components.map((component, idx) => (
+                                        <div key={`${component.name}-${idx}`} style={{ fontSize: 12, color: "#cbd5e1" }}>
+                                          <p style={{ margin: 0, color: "#e2e8f0", fontWeight: 600 }}>
+                                            {component.name || `Component ${idx + 1}`}
+                                          </p>
+                                          <p style={{ margin: "2px 0 0 0", color: "#cbd5e1", lineHeight: 1.4 }}>
+                                            {component.executionBrief || "No execution brief provided."}
+                                          </p>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : null}
+                                </div>
+                              ) : null}
+                              {scriptRunSummary?.patternAnalysis?.psychologicalMechanism ? (
+                                <div style={{ marginTop: 8 }}>
+                                  <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: 11, fontWeight: 600 }}>
+                                    Psychological Mechanism
+                                  </p>
+                                  <p style={{ margin: 0, color: "#e2e8f0", fontSize: 12, lineHeight: 1.45 }}>
+                                    {scriptRunSummary.patternAnalysis.psychologicalMechanism}
+                                  </p>
+                                </div>
+                              ) : null}
+                              {scriptRunSummary?.patternAnalysis?.psychologicalMechanismDetails ? (
+                                <div style={{ marginTop: 8 }}>
+                                  <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: 11, fontWeight: 600 }}>
+                                    Mechanism Label
+                                  </p>
+                                  <p style={{ margin: 0, color: "#e2e8f0", fontSize: 12, lineHeight: 1.45 }}>
+                                    {scriptRunSummary.patternAnalysis.psychologicalMechanismDetails.label || "Not provided"}
+                                  </p>
+                                  <p style={{ margin: "4px 0 0 0", color: "#cbd5e1", fontSize: 12, lineHeight: 1.45 }}>
+                                    {scriptRunSummary.patternAnalysis.psychologicalMechanismDetails.executionBrief ||
+                                      "No execution brief provided."}
+                                  </p>
+                                </div>
+                              ) : null}
+                              {scriptRunSummary?.patternAnalysis?.summary ? (
+                                <div style={{ marginTop: 8 }}>
+                                  <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: 11, fontWeight: 600 }}>
+                                    Pattern Summary
+                                  </p>
+                                  <p style={{ margin: 0, color: "#cbd5e1", fontSize: 12, lineHeight: 1.45 }}>
+                                    {scriptRunSummary.patternAnalysis.summary}
+                                  </p>
+                                </div>
+                              ) : null}
+                              {!scriptRunSummary?.patternAnalysis?.formulaSummary &&
+                              !scriptRunSummary?.patternAnalysis?.formulaDetails &&
+                              !scriptRunSummary?.patternAnalysis?.psychologicalMechanism &&
+                              !scriptRunSummary?.patternAnalysis?.psychologicalMechanismDetails &&
+                              !scriptRunSummary?.patternAnalysis?.summary ? (
+                                <p style={{ margin: "8px 0 0 0", color: "#fde68a", fontSize: 12 }}>
+                                  No formula details were found for this run. Pattern Analysis may need to be rerun.
+                                </p>
+                              ) : null}
+                            </div>
+                          )}
+                        </div>
                       </>
                     )}
                   </div>
                 )}
-                <div
-                  style={{
-                    marginTop: 12,
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: 10,
-                  }}
-                >
-                  <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                    <span style={{ color: "#cbd5e1", fontSize: 12, fontWeight: 600 }}>Duration</span>
-                    <select
-                      value={String(scriptTargetDuration)}
-                      onChange={(e) => setScriptTargetDuration(Number(e.target.value))}
-                      disabled={scriptModalSubmitting}
-                      style={{
-                        width: "100%",
-                        borderRadius: 10,
-                        border: "1px solid #334155",
-                        backgroundColor: "#020617",
-                        color: "#e2e8f0",
-                        padding: "8px 10px",
-                        fontSize: 13,
-                        boxSizing: "border-box",
-                      }}
-                    >
-                      {[15, 30, 45, 60].map((seconds) => (
-                        <option key={seconds} value={String(seconds)}>
-                          {seconds}s
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                    <span style={{ color: "#cbd5e1", fontSize: 12, fontWeight: 600 }}>Beats</span>
-                    <select
-                      value={String(scriptBeatCount)}
-                      onChange={(e) => setScriptBeatCount(Number(e.target.value))}
-                      disabled={scriptModalSubmitting}
-                      style={{
-                        width: "100%",
-                        borderRadius: 10,
-                        border: "1px solid #334155",
-                        backgroundColor: "#020617",
-                        color: "#e2e8f0",
-                        padding: "8px 10px",
-                        fontSize: 13,
-                        boxSizing: "border-box",
-                      }}
-                    >
-                      {[3, 4, 5, 6].map((count) => (
-                        <option key={count} value={String(count)}>
-                          {count}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
                 <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12 }}>
                   <button
                     type="button"
@@ -5307,56 +6794,115 @@ export default function CreativeStudioPage() {
                   <button
                     type="button"
                     onClick={handleGenerateScriptWithAi}
-                    disabled={
-                      scriptModalSubmitting ||
-                      scriptRunsLoading ||
-                      (scriptResearchRuns.length > 0
-                        ? !selectedScriptResearchJobId
-                        : !scriptNoResearchAcknowledged)
-                    }
+                    disabled={scriptGenerateDisabled}
                     style={{
                       border: "none",
-                      backgroundColor:
-                        scriptModalSubmitting ||
-                        scriptRunsLoading ||
-                        (scriptResearchRuns.length > 0
-                          ? !selectedScriptResearchJobId
-                          : !scriptNoResearchAcknowledged)
-                          ? "#1e293b"
-                          : "#0ea5e9",
-                      color:
-                        scriptModalSubmitting ||
-                        scriptRunsLoading ||
-                        (scriptResearchRuns.length > 0
-                          ? !selectedScriptResearchJobId
-                          : !scriptNoResearchAcknowledged)
-                          ? "#64748b"
-                          : "#ffffff",
+                      backgroundColor: scriptGenerateDisabled ? "#1e293b" : "#0ea5e9",
+                      color: scriptGenerateDisabled ? "#64748b" : "#ffffff",
                       padding: "8px 14px",
                       borderRadius: 8,
                       fontWeight: 600,
-                      cursor:
-                        scriptModalSubmitting ||
-                        scriptRunsLoading ||
-                        (scriptResearchRuns.length > 0
-                          ? !selectedScriptResearchJobId
-                          : !scriptNoResearchAcknowledged)
-                          ? "not-allowed"
-                          : "pointer",
+                      cursor: scriptGenerateDisabled ? "not-allowed" : "pointer",
                     }}
                   >
-                    {scriptModalSubmitting ? "Starting AI generation..." : "Generate with AI"}
+                    {scriptModalSubmitting
+                      ? "Starting AI generation..."
+                      : scriptGenerationStrategy === "upload_template"
+                        ? "Generate from Uploaded Template"
+                        : scriptGenerationStrategy === "swipe_template"
+                        ? "Generate from Swipe Template"
+                        : "Generate from Research Formula"}
                   </button>
                 </div>
               </div>
             ) : (
               <div>
+                <div
+                  style={{
+                    marginBottom: 12,
+                    border: "1px solid #334155",
+                    borderRadius: 10,
+                    backgroundColor: "#0b1220",
+                    padding: "10px 12px",
+                  }}
+                >
+                  <p style={{ margin: "0 0 8px 0", color: "#cbd5e1", fontSize: 12, fontWeight: 600 }}>
+                    Script Strategy
+                  </p>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, color: "#e2e8f0", fontSize: 13 }}>
+                    <input
+                      type="radio"
+                      name="script-strategy-upload-mode"
+                      checked={false}
+                      onChange={() => void handleChooseGenerateWithAi("swipe_template")}
+                      disabled={scriptModalSubmitting}
+                    />
+                    Select ad template from swipe
+                  </label>
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      color: "#e2e8f0",
+                      fontSize: 13,
+                      marginTop: 6,
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="script-strategy-upload-mode"
+                      checked={false}
+                      onChange={() => void handleChooseGenerateWithAi("research_formula")}
+                      disabled={scriptModalSubmitting}
+                    />
+                    Use formula from research
+                  </label>
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      color: "#e2e8f0",
+                      fontSize: 13,
+                      marginTop: 6,
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="script-strategy-upload-mode"
+                      checked={false}
+                      onChange={() => void handleChooseGenerateWithAi("upload_template")}
+                      disabled={scriptModalSubmitting}
+                    />
+                    Upload transcript as template
+                  </label>
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      color: "#e2e8f0",
+                      fontSize: 13,
+                      marginTop: 6,
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="script-strategy-upload-mode"
+                      checked
+                      readOnly
+                    />
+                    Manually create script
+                  </label>
+                </div>
                 <p style={{ margin: "0 0 12px 0", color: "#cbd5e1", fontSize: 14 }}>
                   Paste your script below. This bypasses AI generation and saves your text directly.
                 </p>
                 <textarea
                   value={scriptUploadText}
                   onChange={(e) => setScriptUploadText(e.target.value)}
+                  onBlur={(e) => setScriptUploadText(e.target.value)}
                   disabled={scriptModalSubmitting}
                   placeholder="Paste your script text here..."
                   rows={10}
@@ -5417,6 +6963,432 @@ export default function CreativeStudioPage() {
           </div>
         </div>
       )}
+
+      {showStoryboardModal && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            backgroundColor: "rgba(2, 6, 23, 0.75)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+            padding: 16,
+          }}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 560,
+              backgroundColor: "#0f172a",
+              border: "1px solid #334155",
+              borderRadius: 12,
+              padding: 20,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: "#f8fafc" }}>Create Storyboard</h3>
+              <button
+                type="button"
+                onClick={() => {
+                  if (storyboardModalSubmitting) return;
+                  setShowStoryboardModal(false);
+                  setStoryboardModalMode("choose");
+                  setManualStoryboardPanels([]);
+                  setStoryboardModalError(null);
+                }}
+                style={{
+                  border: "none",
+                  background: "transparent",
+                  color: "#94a3b8",
+                  cursor: storyboardModalSubmitting ? "not-allowed" : "pointer",
+                  fontSize: 18,
+                  lineHeight: 1,
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            {storyboardModalMode === "choose" ? (
+              <>
+                <p style={{ margin: "0 0 16px 0", color: "#cbd5e1", fontSize: 14 }}>
+                  Choose how you want to create this storyboard.
+                </p>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  <button
+                    type="button"
+                    onClick={() => void handleGenerateStoryboardWithMode("ai")}
+                    disabled={storyboardModalSubmitting}
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "12px 14px",
+                      borderRadius: 10,
+                      border: "1px solid #334155",
+                      backgroundColor: "#1e293b",
+                      color: "#f8fafc",
+                      fontSize: 14,
+                      fontWeight: 600,
+                      cursor: storyboardModalSubmitting ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    Generate Storyboard (AI)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void openManualStoryboardBuilder()}
+                    disabled={storyboardModalSubmitting}
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "12px 14px",
+                      borderRadius: 10,
+                      border: "1px solid #334155",
+                      backgroundColor: "#0b1220",
+                      color: "#e2e8f0",
+                      fontSize: 14,
+                      fontWeight: 600,
+                      cursor: storyboardModalSubmitting ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    Manual Storyboard
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p style={{ margin: "0 0 12px 0", color: "#cbd5e1", fontSize: 14 }}>
+                  Fill each panel manually using the script VO as fixed reference.
+                </p>
+                <div style={{ maxHeight: "55vh", overflowY: "auto", display: "grid", gap: 10, paddingRight: 2 }}>
+                  {manualStoryboardPanels.map((panel, index) => (
+                    <div
+                      key={`manual-storyboard-panel-${index}`}
+                      style={{
+                        borderRadius: 10,
+                        border: "1px solid #334155",
+                        backgroundColor: "#0b1220",
+                        padding: 10,
+                        display: "grid",
+                        gap: 8,
+                      }}
+                    >
+                      <div style={{ color: "#e2e8f0", fontSize: 13, fontWeight: 700 }}>
+                        {panel.beatLabel} {panel.startTime || panel.endTime ? `(${panel.startTime}-${panel.endTime})` : ""}
+                      </div>
+                      <div>
+                          <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>VO (from script)</div>
+                          <textarea
+                            readOnly
+                            value={panel.vo ?? ""}
+                            rows={2}
+                            style={{
+                              width: "100%",
+                              boxSizing: "border-box",
+                              borderRadius: 8,
+                              border: "1px solid #1e293b",
+                              backgroundColor: "#020617",
+                              color: "#94a3b8",
+                              padding: 8,
+                              fontSize: 12,
+                              resize: "vertical",
+                            }}
+                          />
+                      </div>
+                      <div>
+                        <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>creatorAction</div>
+                        <textarea
+                          value={panel.creatorAction}
+                          onChange={(e) =>
+                            updateManualStoryboardPanel(
+                              index,
+                              "creatorAction",
+                              e.target.value,
+                            )
+                          }
+                          onBlur={(e) =>
+                            updateManualStoryboardPanel(
+                              index,
+                              "creatorAction",
+                              enforceBlankLineBetweenTextLines(e.target.value),
+                            )
+                          }
+                          rows={2}
+                          style={{
+                            width: "100%",
+                            boxSizing: "border-box",
+                            borderRadius: 8,
+                            border: "1px solid #334155",
+                            backgroundColor: "#0f172a",
+                            color: "#e2e8f0",
+                            padding: 8,
+                            fontSize: 12,
+                            resize: "vertical",
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>textOverlay</div>
+                        <input
+                          value={panel.textOverlay}
+                          onChange={(e) => updateManualStoryboardPanel(index, "textOverlay", e.target.value)}
+                          onBlur={(e) =>
+                            updateManualStoryboardPanel(
+                              index,
+                              "textOverlay",
+                              normalizeSingleLineText(e.target.value),
+                            )
+                          }
+                          placeholder='COPY (0s-3s)'
+                          style={{
+                            width: "100%",
+                            boxSizing: "border-box",
+                            borderRadius: 8,
+                            border: "1px solid #334155",
+                            backgroundColor: "#0f172a",
+                            color: "#e2e8f0",
+                            padding: 8,
+                            fontSize: 12,
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>visualDescription</div>
+                        <textarea
+                          value={panel.visualDescription}
+                          onChange={(e) =>
+                            updateManualStoryboardPanel(
+                              index,
+                              "visualDescription",
+                              e.target.value,
+                            )
+                          }
+                          onBlur={(e) =>
+                            updateManualStoryboardPanel(
+                              index,
+                              "visualDescription",
+                              enforceBlankLineBetweenTextLines(e.target.value),
+                            )
+                          }
+                          rows={2}
+                          style={{
+                            width: "100%",
+                            boxSizing: "border-box",
+                            borderRadius: 8,
+                            border: "1px solid #334155",
+                            backgroundColor: "#0f172a",
+                            color: "#e2e8f0",
+                            padding: 8,
+                            fontSize: 12,
+                            resize: "vertical",
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>productPlacement</div>
+                        <textarea
+                          value={panel.productPlacement}
+                          onChange={(e) =>
+                            updateManualStoryboardPanel(
+                              index,
+                              "productPlacement",
+                              e.target.value,
+                            )
+                          }
+                          onBlur={(e) =>
+                            updateManualStoryboardPanel(
+                              index,
+                              "productPlacement",
+                              enforceBlankLineBetweenTextLines(e.target.value),
+                            )
+                          }
+                          rows={2}
+                          style={{
+                            width: "100%",
+                            boxSizing: "border-box",
+                            borderRadius: 8,
+                            border: "1px solid #334155",
+                            backgroundColor: "#0f172a",
+                            color: "#e2e8f0",
+                            padding: 8,
+                            fontSize: 12,
+                            resize: "vertical",
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12 }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (storyboardModalSubmitting) return;
+                      setStoryboardModalMode("choose");
+                      setStoryboardModalError(null);
+                    }}
+                    style={{
+                      border: "1px solid #334155",
+                      backgroundColor: "#0b1220",
+                      color: "#cbd5e1",
+                      padding: "8px 12px",
+                      borderRadius: 8,
+                      cursor: storyboardModalSubmitting ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    Back
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleGenerateStoryboardWithMode("manual", manualStoryboardPanels)}
+                    disabled={storyboardModalSubmitting}
+                    style={{
+                      border: "none",
+                      backgroundColor: storyboardModalSubmitting ? "#1e293b" : "#0ea5e9",
+                      color: storyboardModalSubmitting ? "#64748b" : "#ffffff",
+                      padding: "8px 14px",
+                      borderRadius: 8,
+                      fontWeight: 600,
+                      cursor: storyboardModalSubmitting ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    {storyboardModalSubmitting ? "Starting Manual Storyboard..." : "Create Manual Storyboard"}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {storyboardModalError && (
+              <p style={{ margin: "12px 0 0 0", color: "#fca5a5", fontSize: 13 }}>{storyboardModalError}</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {showMissingProductImageWarning && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            backgroundColor: "rgba(2, 6, 23, 0.75)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+            padding: 16,
+          }}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 560,
+              backgroundColor: "#0f172a",
+              border: "1px solid #334155",
+              borderRadius: 12,
+              padding: 20,
+            }}
+          >
+            <h3 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: "#f8fafc" }}>
+              Product Image Missing
+            </h3>
+            <p style={{ margin: "10px 0 0 0", color: "#cbd5e1", fontSize: 14 }}>
+              No product image has been uploaded for this product. Video generation can continue, but quality may be lower without a product reference image.
+            </p>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 16 }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMissingProductImageWarning(false);
+                  setPendingVideoStep(null);
+                  void router.push(`/projects/${projectId}/products`);
+                }}
+                style={{
+                  border: "1px solid #334155",
+                  backgroundColor: "#0b1220",
+                  color: "#cbd5e1",
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Go to product setup page
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const step = pendingVideoStep;
+                  setShowMissingProductImageWarning(false);
+                  setPendingVideoStep(null);
+                  if (step) {
+                    void runStep(step);
+                  }
+                }}
+                style={{
+                  border: "none",
+                  backgroundColor: "#0ea5e9",
+                  color: "#ffffff",
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Generate anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="mt-8 border-t border-slate-800 pt-6">
+        <h2 className="text-lg font-semibold text-slate-200 mb-4">Recent Jobs</h2>
+        <div className="space-y-2">
+          {recentCreativeJobs.map((job) => (
+            <div
+              key={job.id}
+              className="flex items-start justify-between gap-4 p-3 rounded-lg bg-slate-900/50 border border-slate-800"
+            >
+              <div className="flex-1">
+                <div className="text-sm font-medium text-slate-200">{getRunJobName(job)}</div>
+                <div className="text-xs text-slate-500">
+                  {new Date(job.updatedAt ?? job.createdAt).toLocaleString()}
+                </div>
+                {isCancelableJob(job) ? (
+                  <div className="mt-2">
+                    <button
+                      type="button"
+                      onClick={() => void cancelJob(job.id)}
+                      disabled={Boolean(cancellingJobIds[job.id])}
+                      className="px-2 py-1 text-xs text-red-300 border border-red-500/40 rounded hover:bg-red-500/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {cancellingJobIds[job.id] ? "Cancelling..." : "Cancel"}
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+              <div
+                className={`px-2 py-1 rounded text-xs ${
+                  job.status === JobStatus.COMPLETED
+                    ? "bg-emerald-500/10 text-emerald-400"
+                    : job.status === JobStatus.FAILED
+                      ? "bg-red-500/10 text-red-400"
+                      : job.status === JobStatus.RUNNING
+                        ? "bg-sky-500/10 text-sky-400"
+                        : "bg-slate-500/10 text-slate-400"
+                }`}
+              >
+                {job.status}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
 
       <div style={{ display: "flex", justifyContent: "flex-start" }}>
         <Link

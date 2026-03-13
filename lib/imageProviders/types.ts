@@ -1,6 +1,8 @@
 export type ImageProviderId =
+  | "kie:nano-banana-2"
   | "kie:nano-banana-pro"
-  | "kie:seedream-4.5-edit";
+  | "kie:veo3-fast"
+  | "kie:veo3-quality";
 
 export type CreateVideoImagesInput = {
   storyboardId: string;
@@ -13,6 +15,7 @@ export type CreateVideoImagesInput = {
     prompt: string;
     negativePrompt?: string;
     inputImageUrl?: string | null; // optional init image
+    referenceImageUrls?: string[]; // optional extra references (e.g. product image)
     previousSceneLastFrameImageUrl?: string | null; // optional continuity reference
     maskImageUrl?: string | null;  // optional mask
     width?: number;

@@ -40,8 +40,23 @@ export async function POST(req: Request) {
     );
   }
 
+  const script = await prisma.script.findFirst({
+    where: {
+      id: scriptId,
+      project: {
+        userId,
+      },
+    },
+    select: {
+      id: true,
+    },
+  });
+  if (!script) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   const updated = await prisma.script.update({
-    where: { id: scriptId },
+    where: { id: script.id },
     data: { [field]: key },
     select: {
       id: true,

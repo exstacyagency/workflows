@@ -4,15 +4,112 @@ import { pollMultiFrameVideoImages } from "./videoImageOrchestrator";
 import type { ImageProviderId } from "./imageProviders/types";
 import { JobStatus } from "@prisma/client";
 import { updateJobStatus } from "@/lib/jobs/updateJobStatus";
+import { uploadVideoFrameObject } from "@/lib/s3Service";
+import { settleJobCost } from "@/lib/billing/settleJobCost";
 
 const KIE_HTTP_TIMEOUT_MS = Number(cfg.raw("KIE_HTTP_TIMEOUT_MS") ?? 20_000);
 const KIE_POLL_INTERVAL_MS = Number(cfg.raw("KIE_POLL_INTERVAL_MS") ?? 2_000);
 const JOB_MAX_RUNTIME_MS = Number(cfg.raw("WORKER_JOB_MAX_RUNTIME_MS") ?? 20 * 60_000);
+const VIDEO_FRAMES_REQUIRE_S3 = String(cfg.raw("VIDEO_FRAMES_REQUIRE_S3") ?? "1") !== "0";
 
 type RunArgs = {
   jobId: string;
   providerId?: ImageProviderId;
 };
+
+function inferImageExtension(args: { contentType: string | null; url: string }): string {
+  const contentType = String(args.contentType ?? "").toLowerCase();
+  if (contentType.includes("image/jpeg") || contentType.includes("image/jpg")) return "jpg";
+  if (contentType.includes("image/webp")) return "webp";
+  if (contentType.includes("image/avif")) return "avif";
+  if (contentType.includes("image/gif")) return "gif";
+  if (contentType.includes("image/png")) return "png";
+  const cleanUrl = String(args.url ?? "").split("?")[0].toLowerCase();
+  if (cleanUrl.endsWith(".jpg") || cleanUrl.endsWith(".jpeg")) return "jpg";
+  if (cleanUrl.endsWith(".webp")) return "webp";
+  if (cleanUrl.endsWith(".avif")) return "avif";
+  if (cleanUrl.endsWith(".gif")) return "gif";
+  return "png";
+}
+
+async function persistFrameImageToS3(args: {
+  projectId: string;
+  storyboardId: string;
+  sceneNumber: number;
+  frameType: "first" | "last";
+  version: number;
+  sourceUrl: string;
+}): Promise<string | null> {
+  const sourceUrl = String(args.sourceUrl ?? "").trim();
+  if (!sourceUrl) return null;
+  try {
+    const res = await fetch(sourceUrl);
+    if (!res.ok) {
+      const message = `Failed to download generated frame for S3 upload (status=${res.status})`;
+      if (VIDEO_FRAMES_REQUIRE_S3) {
+        throw new Error(message);
+      }
+      console.warn("[VIG-SERVICE] " + message, { sourceUrl });
+      return null;
+    }
+    const arrayBuffer = await res.arrayBuffer();
+    const body = new Uint8Array(arrayBuffer);
+    const contentTypeHeader = res.headers.get("content-type");
+    const ext = inferImageExtension({ contentType: contentTypeHeader, url: sourceUrl });
+    const contentType =
+      contentTypeHeader && contentTypeHeader.toLowerCase().startsWith("image/")
+        ? contentTypeHeader
+        : ext === "jpg"
+          ? "image/jpeg"
+          : ext === "webp"
+            ? "image/webp"
+            : ext === "avif"
+              ? "image/avif"
+              : ext === "gif"
+                ? "image/gif"
+                : "image/png";
+    const key = [
+      "projects",
+      args.projectId,
+      "storyboards",
+      args.storyboardId,
+      "scenes",
+      String(args.sceneNumber),
+      args.frameType,
+      `v${args.version}.${ext}`,
+    ].join("/");
+    const uploadedUrl = await uploadVideoFrameObject({
+      key,
+      body,
+      contentType,
+      cacheControl: "public,max-age=31536000,immutable",
+    });
+    if (!uploadedUrl) {
+      const message = "S3 upload returned null (bucket/config unavailable or upload failed)";
+      if (VIDEO_FRAMES_REQUIRE_S3) {
+        throw new Error(message);
+      }
+      console.warn("[VIG-SERVICE] " + message, { key, sourceUrl });
+      return null;
+    }
+    console.log("[VIG-SERVICE] Frame persisted to S3", {
+      key,
+      uploadedUrl,
+      sceneNumber: args.sceneNumber,
+      frameType: args.frameType,
+    });
+    return uploadedUrl;
+  } catch (error: any) {
+    if (VIDEO_FRAMES_REQUIRE_S3) {
+      throw new Error(`S3 persistence failed: ${String(error?.message ?? error)}`);
+    }
+    console.warn("[VIG-SERVICE] S3 persistence failed, using source URL", {
+      sourceUrl,
+      error: String(error?.message ?? error),
+    });
+    return null;
+  }
+}
 
 async function runWithTimeout<T>(
   label: string,
@@ -72,7 +169,7 @@ export async function runVideoImageGenerationJob(args: RunArgs): Promise<void> {
   console.log("[VIG-SERVICE] About to poll KIE tasks");
   const result = await runWithTimeout(
     "VIDEO_IMAGE_GENERATION poll",
-    KIE_HTTP_TIMEOUT_MS,
+    Math.max(JOB_MAX_RUNTIME_MS, KIE_HTTP_TIMEOUT_MS),
     () => pollMultiFrameVideoImages({ providerId, tasks })
   );
   console.log("[VIG-SERVICE] KIE polling returned, result:", result);
@@ -95,6 +192,24 @@ export async function runVideoImageGenerationJob(args: RunArgs): Promise<void> {
     normalizedPollStatus === "SUCCEEDED" ||
     normalizedPollStatus === "SUCCESS" ||
     (allTasksHaveUrls && !hasAnyFailedTask);
+  const resolvedImages =
+    polled.images.length > 0
+      ? polled.images
+      : polled.tasks
+          .filter((task) => Boolean(String(task.url ?? "").trim()))
+          .map((task) => ({
+            frameIndex: Number(task.frameIndex),
+            sceneId: String(task.sceneId ?? "").trim() || null,
+            sceneNumber: Number.isFinite(Number(task.sceneNumber))
+              ? Number(task.sceneNumber)
+              : Number(task.frameIndex),
+            frameType:
+              task.frameType === "last" || task.promptKind === "last" ? ("last" as const) : ("first" as const),
+            promptKind:
+              task.frameType === "last" || task.promptKind === "last" ? ("last" as const) : ("first" as const),
+            url: String(task.url ?? "").trim(),
+          }))
+          .filter((image) => Boolean(image.url));
   const taskStatusSnapshot = polled.tasks.map((task) => ({
     taskId: task.taskId,
     sceneNumber: task.sceneNumber,
@@ -165,16 +280,41 @@ export async function runVideoImageGenerationJob(args: RunArgs): Promise<void> {
       data: {
         error: null,
         payload: updatedPayload as any,
-        resultSummary: `Video frames saved: ${polled.images.length}`,
+        resultSummary: `Video frames saved: ${resolvedImages.length}`,
       } as any,
     });
+    try {
+      await settleJobCost({
+        jobId: job.id,
+        userId: job.userId,
+        projectId: job.projectId,
+        usageEntries: [
+          {
+            metric: "imageJobs",
+            provider: "kie",
+            model: String(polled.providerId ?? payload?.providerId ?? "nano-banana-2"),
+            units: Math.max(1, resolvedImages.length),
+            costCents: 0,
+            metadata: {
+              taskCount: Array.isArray(polled.tasks) ? polled.tasks.length : 0,
+            },
+          },
+        ],
+      });
+    } catch (error) {
+      console.error("[VIG-SERVICE] Failed to settle video image job usage", {
+        jobId: job.id,
+        error: String((error as any)?.message ?? error),
+      });
+    }
     console.log("[VIG-SERVICE] DB update complete: completed-branch", {
       jobId: completedUpdateResult.id,
       status: completedUpdateResult.status,
     });
 
     const storyboardId = payload?.storyboardId;
-    if (storyboardId && polled.images.length > 0) {
+    if (storyboardId && resolvedImages.length > 0) {
+      const s3Version = Date.now();
       const safePolledRaw = polled.raw && typeof polled.raw === "object" ? polled.raw : { value: polled.raw };
       const sceneRows = await prisma.storyboardScene.findMany({
         where: { storyboardId },
@@ -198,10 +338,17 @@ export async function runVideoImageGenerationJob(args: RunArgs): Promise<void> {
           sceneNumber: number;
           firstFrameUrl: string | null;
           lastFrameUrl: string | null;
-          images: typeof polled.images;
+          images: Array<{
+            frameIndex: number;
+            sceneId: string | null;
+            sceneNumber: number;
+            frameType: "first" | "last";
+            promptKind?: "first" | "last";
+            url: string;
+          }>;
         }
       >();
-      for (const image of polled.images) {
+      for (const image of resolvedImages) {
         const sceneId = String((image as any).sceneId ?? "").trim() || null;
         const sceneNumber = Number.isFinite(Number(image.sceneNumber))
           ? Number(image.sceneNumber)
@@ -211,6 +358,15 @@ export async function runVideoImageGenerationJob(args: RunArgs): Promise<void> {
             ? "last"
             : "first";
         if (!sceneId && !Number.isFinite(sceneNumber)) continue;
+        const persistedUrl = await persistFrameImageToS3({
+          projectId: String(job.projectId),
+          storyboardId: String(storyboardId),
+          sceneNumber: Number(sceneNumber),
+          frameType,
+          version: s3Version,
+          sourceUrl: String(image.url),
+        });
+        const effectiveImageUrl = persistedUrl || String(image.url);
         const sceneKey = sceneId ? `id:${sceneId}` : `sceneNumber:${sceneNumber}`;
         const entry = sceneImages.get(sceneKey) ?? {
           sceneId,
@@ -219,11 +375,15 @@ export async function runVideoImageGenerationJob(args: RunArgs): Promise<void> {
           lastFrameUrl: null,
           images: [],
         };
-        entry.images.push(image);
+        entry.images.push({
+          ...image,
+          url: effectiveImageUrl,
+          sourceUrl: String(image.url),
+        } as any);
         if (frameType === "last") {
-          entry.lastFrameUrl = image.url;
+          entry.lastFrameUrl = effectiveImageUrl;
         } else {
-          entry.firstFrameUrl = image.url;
+          entry.firstFrameUrl = effectiveImageUrl;
         }
         sceneImages.set(sceneKey, entry);
       }
@@ -257,6 +417,9 @@ export async function runVideoImageGenerationJob(args: RunArgs): Promise<void> {
                 images: sortedImages,
                 firstFrameImageUrl: firstFrameUrl,
                 lastFrameImageUrl: lastFrameUrl,
+                firstFrameS3Url: firstFrameUrl,
+                lastFrameS3Url: lastFrameUrl,
+                frameStorageVersion: s3Version,
               } as any,
               status: "completed" as any,
             } as any,

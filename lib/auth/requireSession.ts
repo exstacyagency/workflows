@@ -24,7 +24,8 @@ function extractCookie(request?: any): string {
 }
 
 export async function requireSession(request?: any) {
-  if (cfg.isDev || cfg.MODE === "beta" || cfg.MODE === "test") {
+  if (cfg.isDev || cfg.MODE === "test") {
+    // TODO(low): if beta environments truly need test-session auth, re-enable it only behind a dedicated explicit flag.
     const token = extractCookie(request);
     if (token) {
       // Lazy load testStore only in non-prod

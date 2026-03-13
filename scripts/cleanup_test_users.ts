@@ -4,7 +4,14 @@ const prisma = new PrismaClient();
 
 const TEST_EMAILS = ["a@test.local", "b@test.local"];
 
+function assertSafeRuntime() {
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("Refusing to run cleanup_test_users in production.");
+  }
+}
+
 async function main() {
+  assertSafeRuntime();
   for (const email of TEST_EMAILS) {
     const users = await prisma.user.findMany({ where: { email: { mode: "insensitive", equals: email } } });
     for (const user of users) {

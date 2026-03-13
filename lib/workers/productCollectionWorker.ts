@@ -23,6 +23,7 @@ export async function runProductCollectionWorker(args: ProductCollectionWorkerAr
   console.log("[Product Collection] Starting for URL:", mainProductUrl);
   console.log("[Product Collection] Job:", { projectId, jobId });
   const extracted = await extractProductIntel(mainProductUrl);
+  // TODO(low): avoid logging full third-party product metadata in routine worker logs once extraction is stable.
   console.log("[Product Collection] Extraction complete:", {
     product_name: extracted.product_name,
     tagline: extracted.tagline,

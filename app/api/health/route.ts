@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { assertRuntimeMode } from "@/src/runtime/assertMode";
+import { assertRuntimeMode } from "@/lib/jobRuntimeMode";
 
 // Keep this endpoint intentionally dependency-light and unauthenticated.
 // CI/E2E uses it as the single readiness gate.

@@ -72,17 +72,18 @@ export async function kieRequest<T>(
   path: string,
   body?: unknown,
   extraHeaders?: Record<string, string>,
-): Promise<{ status: number; json: T | null; text: string }> {
+): Promise<{ status: number; json: T | null; text: string; requestId: string }> {
   const cfg = kieConfigFromEnv();
   const url = `${cfg.baseUrl}${path.startsWith("/") ? "" : "/"}${path}`;
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), cfg.timeoutMs ?? 60_000);
 
+  const requestId = crypto.randomUUID();
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     Authorization: `Bearer ${cfg.apiKey}`,
-    "X-Request-Id": crypto.randomUUID(),
+    "X-Request-Id": requestId,
     ...(extraHeaders ?? {}),
   };
   const loggedHeaders = {
@@ -124,7 +125,7 @@ export async function kieRequest<T>(
       );
     }
 
-    return { status: res.status, json, text };
+    return { status: res.status, json, text, requestId };
   } catch (e: any) {
     if (e?.name === "AbortError") {
       throw new Error(`KIE request timeout after ${cfg.timeoutMs}ms: ${method} ${path}`);

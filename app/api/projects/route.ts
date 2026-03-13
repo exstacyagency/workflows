@@ -54,6 +54,7 @@ export async function POST(req: NextRequest) {
     
     while (attempt < maxAttempts) {
       try {
+        // TODO(low): remove these user-existence debug logs once project-creation diagnostics are stable.
         console.log('[POST /api/projects] userId:', userId);
         const userExists = await db.user.findUnique({ where: { id: userId } });
         console.log('[POST /api/projects] user exists:', !!userExists);

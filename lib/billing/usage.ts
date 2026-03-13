@@ -1,18 +1,28 @@
-// lib/billing/usage.ts
 import { prisma } from "@/lib/prisma";
+import { getPlanLimits } from "@/lib/billing/quotas";
+import type { PlanId } from "@/lib/billing/plans";
+
+export type QuotaMetric = "researchQueries" | "videoJobs" | "imageJobs";
+
+type IncomingMetric =
+  | QuotaMetric
+  | "patternAnalysisJobs"
+  | "adCollectionJobs"
+  | (string & {});
 
 export type QuotaReservation = {
+  reservationId: string;
   periodKey: string;
-  metric: string;
+  metric: QuotaMetric;
   amount: number;
 };
 
 export class QuotaExceededError extends Error {
-  metric: string;
+  metric: QuotaMetric;
   limit: number;
   used: number;
 
-  constructor(metric: string, limit: number, used: number) {
+  constructor(metric: QuotaMetric, limit: number, used: number) {
     super(`Quota exceeded for ${metric}: ${used}/${limit}`);
     this.name = "QuotaExceededError";
     this.metric = metric;
@@ -38,6 +48,23 @@ function periodKeyToUtcDate(periodKey: string) {
   return new Date(Date.UTC(year, month - 1, 1, 0, 0, 0, 0));
 }
 
+function normalizeMetric(metric: IncomingMetric): QuotaMetric {
+  const normalized = String(metric ?? "").trim();
+  if (normalized === "videoJobs") return "videoJobs";
+  if (normalized === "imageJobs") return "imageJobs";
+  if (normalized === "researchQueries") return "researchQueries";
+
+  // Legacy/non-canonical metrics roll into research quota.
+  if (normalized === "patternAnalysisJobs") return "researchQueries";
+  if (normalized === "adCollectionJobs") return "researchQueries";
+
+  return "researchQueries";
+}
+
+function usageFieldForMetric(metric: QuotaMetric): "researchQueries" | "videoJobs" | "imageJobs" {
+  return metric;
+}
+
 export function getCurrentPeriodKey(now: Date = new Date()) {
   return `${now.getUTCFullYear()}-${to2(now.getUTCMonth() + 1)}`;
 }
@@ -51,25 +78,138 @@ export async function getOrCreateUsage(userId: string, periodKey: string) {
   });
 }
 
-// Stub functions - always succeed
 export async function reserveQuota(
   userId: string,
-  planId: string,
-  metric: string,
+  planId: PlanId,
+  metric: IncomingMetric,
   amount: number
-) {
-  return {
-    periodKey: getCurrentPeriodKey(),
-    metric,
-    amount,
-  } satisfies QuotaReservation;
+): Promise<QuotaReservation> {
+  const normalizedMetric = normalizeMetric(metric);
+  const usageField = usageFieldForMetric(normalizedMetric);
+  const incrementBy = Math.max(0, Math.trunc(Number(amount) || 0));
+  if (incrementBy <= 0) {
+    throw new Error(`Invalid quota reservation amount: ${amount}`);
+  }
+
+  const periodKey = getCurrentPeriodKey();
+  const period = periodKeyToUtcDate(periodKey);
+  const limits = getPlanLimits(planId);
+  const metricLimit = Number(limits[normalizedMetric] ?? 0);
+
+  return prisma.$transaction(async (tx) => {
+    const usage = await tx.usage.upsert({
+      where: { userId_period: { userId, period } },
+      update: {},
+      create: { userId, period },
+    });
+
+    const lockedRows = await tx.$queryRaw<Array<Record<string, unknown>>>`
+      SELECT "id", "researchQueries", "videoJobs", "imageJobs"
+      FROM "usage"
+      WHERE "id" = ${usage.id}
+      FOR UPDATE
+    `;
+    const lockedUsage = lockedRows[0] ?? {};
+    const used = Number(lockedUsage[usageField] ?? 0);
+
+    // If limit is <= 0, treat as uncapped to avoid blocking legacy plans while still tracking usage.
+    if (metricLimit > 0 && used + incrementBy > metricLimit) {
+      throw new QuotaExceededError(normalizedMetric, metricLimit, used + incrementBy);
+    }
+
+    await tx.usage.update({
+      where: { id: usage.id },
+      data: {
+        jobsUsed: { increment: incrementBy },
+        [usageField]: { increment: incrementBy },
+      },
+    });
+
+    const reservation = await tx.quotaReservation.create({
+      data: {
+        userId,
+        period,
+        metric: normalizedMetric,
+        amount: incrementBy,
+      },
+    });
+
+    return {
+      reservationId: reservation.id,
+      periodKey,
+      metric: normalizedMetric,
+      amount: incrementBy,
+    } satisfies QuotaReservation;
+  });
 }
 
 export async function rollbackQuota(
   userId: string,
   periodKey: string,
-  metric: string,
-  amount: number
+  metric: IncomingMetric,
+  amount: number,
+  reservationId?: string | null
 ) {
-  return null;
+  const normalizedMetric = normalizeMetric(metric);
+  const usageField = usageFieldForMetric(normalizedMetric);
+  const decrementBy = Math.max(0, Math.trunc(Number(amount) || 0));
+  if (decrementBy <= 0) return null;
+
+  const period = periodKeyToUtcDate(periodKey);
+
+  return prisma.$transaction(async (tx) => {
+    if (!reservationId) {
+      return null;
+    }
+
+    const reservation = reservationId
+      ? await tx.quotaReservation.findFirst({
+          where: {
+            id: reservationId,
+            userId,
+            metric: normalizedMetric,
+            period,
+            releasedAt: null,
+          },
+          select: { id: true, amount: true },
+        })
+      : null;
+
+    if (!reservation) {
+      return null;
+    }
+
+    const reservedAmount = Math.max(1, Math.trunc(Number(reservation.amount) || decrementBy));
+
+    const usage = await tx.usage.findUnique({
+      where: { userId_period: { userId, period } },
+      select: { id: true, jobsUsed: true, researchQueries: true, videoJobs: true, imageJobs: true },
+    });
+
+    if (usage) {
+      const metricCurrent = Number((usage as any)[usageField] ?? 0);
+      const nextMetric = Math.max(0, metricCurrent - reservedAmount);
+      const nextJobsUsed = Math.max(0, Number(usage.jobsUsed ?? 0) - reservedAmount);
+
+      await tx.usage.update({
+        where: { id: usage.id },
+        data: {
+          jobsUsed: nextJobsUsed,
+          [usageField]: nextMetric,
+        },
+      });
+    }
+
+    await tx.quotaReservation.update({
+      where: { id: reservation.id },
+      data: { releasedAt: new Date() },
+    });
+
+    return {
+      reservationId: reservation.id,
+      metric: normalizedMetric,
+      amount: reservedAmount,
+      periodKey,
+    };
+  });
 }

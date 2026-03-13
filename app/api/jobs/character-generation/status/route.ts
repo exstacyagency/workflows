@@ -15,18 +15,15 @@ type PipelineJobRow = {
 
 const CREATOR_AVATAR_JOB_TYPE = "CREATOR_AVATAR_GENERATION" as JobType;
 const CHARACTER_SEED_VIDEO_JOB_TYPE = "CHARACTER_SEED_VIDEO" as JobType;
-const CHARACTER_REFERENCE_VIDEO_JOB_TYPE = "CHARACTER_REFERENCE_VIDEO" as JobType;
 
 const STAGE_ORDER: JobType[] = [
   CREATOR_AVATAR_JOB_TYPE,
   CHARACTER_SEED_VIDEO_JOB_TYPE,
-  CHARACTER_REFERENCE_VIDEO_JOB_TYPE,
 ];
 
 const STAGE_LABELS: Record<string, string> = {
   [CREATOR_AVATAR_JOB_TYPE]: "Creator Avatar Generation",
-  [CHARACTER_SEED_VIDEO_JOB_TYPE]: "Character Seed Video",
-  [CHARACTER_REFERENCE_VIDEO_JOB_TYPE]: "Character Reference Video",
+  [CHARACTER_SEED_VIDEO_JOB_TYPE]: "Character Avatar Image",
 };
 
 function toErrorString(error: unknown): string | null {
@@ -50,6 +47,7 @@ export async function GET(req: NextRequest) {
     }
 
     const productId = req.nextUrl.searchParams.get("productId")?.trim();
+    const runId = req.nextUrl.searchParams.get("runId")?.trim() || null;
     if (!productId) {
       return NextResponse.json({ error: "productId is required" }, { status: 400 });
     }
@@ -59,6 +57,37 @@ export async function GET(req: NextRequest) {
     const product = await findOwnedProductById(productId, userId);
     if (!product) {
       return NextResponse.json({ error: "Product not found" }, { status: 404 });
+    }
+
+    if (!runId) {
+      const stages = STAGE_ORDER.map((type) => ({
+        type,
+        label: STAGE_LABELS[String(type)] ?? type,
+        jobId: null,
+        status: "PENDING" as const,
+        error: null,
+        createdAt: null,
+        updatedAt: null,
+      }));
+
+      return NextResponse.json(
+        {
+          productId: product.id,
+          projectId: product.projectId,
+          runId: null,
+          isComplete: false,
+          activeStage: null,
+          stages,
+          character: {
+            soraCharacterId: null,
+            characterUserName: null,
+            characterReferenceVideoUrl: null,
+            characterAvatarImageUrl: product.characterAvatarImageUrl ?? null,
+            characterCameoCreatedAt: null,
+          },
+        },
+        { status: 200 },
+      );
     }
 
     const jobs = await prisma.$queryRaw<PipelineJobRow[]>`
@@ -72,10 +101,10 @@ export async function GET(req: NextRequest) {
       FROM "job" j
       WHERE j."projectId" = ${product.projectId}
         AND j."userId" = ${userId}
+        AND j."runId" = ${runId}
         AND j."type" IN (
           CAST('CREATOR_AVATAR_GENERATION' AS "JobType"),
-          CAST('CHARACTER_SEED_VIDEO' AS "JobType"),
-          CAST('CHARACTER_REFERENCE_VIDEO' AS "JobType")
+          CAST('CHARACTER_SEED_VIDEO' AS "JobType")
         )
         AND COALESCE(j."payload"->>'productId', '') = ${productId}
       ORDER BY j."createdAt" DESC
@@ -105,18 +134,34 @@ export async function GET(req: NextRequest) {
       stages.find((stage) => stage.status === JobStatus.RUNNING) ??
       stages.find((stage) => stage.status === JobStatus.PENDING && stage.jobId);
 
+    const runCharacter = await prisma.character.findFirst({
+      where: {
+        productId: product.id,
+        runId,
+      },
+      orderBy: { createdAt: "desc" },
+      select: {
+        soraCharacterId: true,
+        characterUserName: true,
+        seedVideoUrl: true,
+        createdAt: true,
+      },
+    });
+
     return NextResponse.json(
       {
         productId: product.id,
         projectId: product.projectId,
-        isComplete: Boolean(product.soraCharacterId),
+        runId,
+        isComplete: stages.every((s) => s.status === "COMPLETED"),
         activeStage: activeStage?.type ?? null,
         stages,
         character: {
-          soraCharacterId: product.soraCharacterId,
-          characterUserName: product.characterUserName,
-          characterReferenceVideoUrl: product.characterReferenceVideoUrl,
-          characterCameoCreatedAt: product.characterCameoCreatedAt,
+          soraCharacterId: runCharacter?.soraCharacterId ?? null,
+          characterUserName: runCharacter?.characterUserName ?? null,
+          characterReferenceVideoUrl: runCharacter?.seedVideoUrl ?? null,
+          characterAvatarImageUrl: product.characterAvatarImageUrl ?? null,
+          characterCameoCreatedAt: runCharacter?.createdAt ?? null,
         },
       },
       { status: 200 },

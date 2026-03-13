@@ -13,6 +13,7 @@ import { JobStatus, JobType, Prisma } from '@prisma/client';
 import { assertMinPlan, UpgradeRequiredError } from '../../../../lib/billing/requirePlan';
 import { reserveQuota, rollbackQuota, QuotaExceededError } from '../../../../lib/billing/usage';
 import { updateJobStatus } from "../../../../lib/jobs/updateJobStatus";
+import { settleJobCost } from "@/lib/billing/settleJobCost";
 
 export async function POST(req: NextRequest) {
   const userId = await getSessionUserId();
@@ -198,6 +199,31 @@ export async function POST(req: NextRequest) {
     await updateJobStatus(job.id, JobStatus.RUNNING);
 
     const result = await runVideoUpscalerBatch();
+
+    // Build usage entries from per-script cost metadata returned by batch
+    const upscaleUsageEntries = result.results
+      .filter((r) => r.success && r.costCents != null)
+      .map((r) => ({
+        metric: "videoUpscale",
+        provider: "fal",
+        model: "fal-ai/video-upscaler",
+        units: Math.round((r.outputSeconds ?? 8) * 100) / 100,
+        costCents: r.costCents!,
+        metadata: {
+          scriptId: r.scriptId,
+          tier: r.tier ?? "above1080p",
+          outputSeconds: r.outputSeconds ?? 8,
+        },
+      }));
+
+    if (upscaleUsageEntries.length > 0) {
+      await settleJobCost({
+        jobId: job.id,
+        userId,
+        projectId: projectId!,
+        usageEntries: upscaleUsageEntries,
+      });
+    }
 
     await updateJobStatus(job.id, JobStatus.COMPLETED);
     await prisma.job.update({

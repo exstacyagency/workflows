@@ -2,7 +2,14 @@ import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
+function assertSafeRuntime() {
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("Refusing to run cleanup_user_email_duplicates in production.");
+  }
+}
+
 async function main() {
+  assertSafeRuntime();
   // Find all lowercased emails with duplicates
   const duplicates = await prisma.$queryRawUnsafe<any[]>(`
     SELECT LOWER(email) as lower_email, COUNT(*)

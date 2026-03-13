@@ -8,17 +8,17 @@ import {
   parseJson,
 } from '@/lib/validation/projects';
 
-type Params = {
-  params: { projectId: string; avatarId: string };
-};
-
-export async function PATCH(req: NextRequest, { params }: Params) {
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ projectId: string; avatarId: string }> }
+) {
+  const awaitedParams = await params;
   const userId = await getSessionUserId();
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { projectId, avatarId } = params;
+  const { projectId, avatarId } = awaitedParams;
   if (!projectId || !avatarId) {
     return NextResponse.json({ error: 'projectId and avatarId are required' }, { status: 400 });
   }
@@ -45,6 +45,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     persona.archivedAt = new Date().toISOString();
     await prisma.customerAvatar.update({ where: { id: avatarId }, data: { persona } as any });
   } else {
+    // TODO(low): perform the archive/restore fan-out in a transaction if multiple clients may update the active avatar concurrently.
     const others = await prisma.customerAvatar.findMany({ where: { projectId } });
     const now = new Date().toISOString();
     await Promise.all(
@@ -65,13 +66,17 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   return NextResponse.json({ success: true });
 }
 
-export async function DELETE(_req: NextRequest, { params }: Params) {
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ projectId: string; avatarId: string }> }
+) {
+  const awaitedParams = await params;
   const userId = await getSessionUserId();
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { projectId, avatarId } = params;
+  const { projectId, avatarId } = awaitedParams;
   if (!projectId || !avatarId) {
     return NextResponse.json({ error: 'projectId and avatarId are required' }, { status: 400 });
   }

@@ -5,8 +5,9 @@ import { prisma } from "@/lib/db";
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { jobId: string } }
+  { params }: { params: Promise<{ jobId: string }> }
 ) {
+  const awaitedParams = await params;
   const session = await requireSession(req);
 
   if (!session || !session.user) {
@@ -19,7 +20,7 @@ export async function POST(
   const job = await prisma.job.findUnique({
     where: {
       id_userId: {
-        id: params.jobId,
+        id: awaitedParams.jobId,
         userId: session.user.id,
       },
     },
@@ -33,8 +34,7 @@ export async function POST(
     );
   }
 
-  // enqueue retry here
-  // await enqueueJob(job)
+  // TODO(medium): this route currently returns success without actually re-enqueueing the job.
 
   return NextResponse.json({ ok: true });
 }

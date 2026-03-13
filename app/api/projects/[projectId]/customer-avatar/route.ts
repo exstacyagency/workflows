@@ -5,10 +5,6 @@ import { getSessionUserId } from '@/lib/getSessionUserId';
 import { requireProjectOwner404 } from '@/lib/auth/requireProjectOwner404';
 import { JobStatus, JobType } from '@prisma/client';
 
-type Params = {
-  params: { projectId: string };
-};
-
 function serializeAvatar(record: any) {
   const { persona, ...safe } = record;
   return { ...safe, hasPersona: Boolean(persona) };
@@ -202,13 +198,17 @@ function buildCreatorDescriptionFromAvatar(persona: unknown): {
   };
 }
 
-export async function GET(req: NextRequest, { params }: Params) {
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ projectId: string }> }
+) {
+  const awaitedParams = await params;
   const userId = await getSessionUserId();
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { projectId } = params;
+  const { projectId } = awaitedParams;
   if (!projectId) {
     return NextResponse.json({ error: 'projectId is required' }, { status: 400 });
   }
@@ -316,6 +316,7 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   const download = req.nextUrl.searchParams.get('download');
   if (download === '1') {
+    // TODO(low): sanitize the download filename if project IDs ever become user-controlled strings with special characters.
     const payload = avatar.persona ?? avatar;
     return new NextResponse(JSON.stringify(payload, null, 2), {
       status: 200,

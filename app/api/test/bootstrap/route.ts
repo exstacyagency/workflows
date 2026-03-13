@@ -9,6 +9,7 @@ export async function POST() {
   if (!cfg.isDev && cfg.MODE !== "beta" && cfg.MODE !== "test") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
+  // TODO(medium): avoid returning the shared test password in the response body once the E2E harness can read it from fixtures instead.
   
   const { id, email, token } = await createTestUser();
   
@@ -47,6 +48,7 @@ export async function POST() {
   res.cookies.set("test_session", token, {
     httpOnly: true,
     secure: false,
+    // TODO(low): tighten this cookie to secure=true automatically when these test helpers are used over HTTPS.
     sameSite: "lax",
     maxAge: 3600,
   });

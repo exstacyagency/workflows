@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionUserId } from "@/lib/getSessionUserId";
+import { assertProductSetupReferenceUrl } from "@/lib/productSetupReferencePolicy";
 import { prisma } from "@/lib/prisma";
 import { randomUUID } from "crypto";
 
@@ -18,6 +19,13 @@ type ProductRow = {
   characterSeedVideoTaskId: string | null;
   characterSeedVideoUrl: string | null;
   characterUserName: string | null;
+  characters?: Array<{
+    id: string;
+    name: string;
+    characterUserName: string | null;
+    soraCharacterId: string | null;
+    createdAt: Date;
+  }>;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -78,6 +86,7 @@ async function assertProjectOwner(projectId: string, userId: string) {
 }
 
 async function ensureProductsTable() {
+  // TODO(medium): move these schema mutations into managed migrations; mutating tables at runtime can deadlock or fail under restricted DB roles.
   await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS "product" (
       "id" text PRIMARY KEY,
@@ -138,19 +147,40 @@ async function ensureProductsTable() {
     ALTER TABLE "product"
     ADD COLUMN IF NOT EXISTS "character_user_name" text;
   `);
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "character" (
+      "id" text PRIMARY KEY,
+      "projectId" text,
+      "productId" text,
+      "jobId" text,
+      "name" text NOT NULL,
+      "metadata" jsonb,
+      "soraCharacterId" text,
+      "characterUserName" text,
+      "seedVideoTaskId" text,
+      "seedVideoUrl" text,
+      "creatorVisualPrompt" text,
+      "createdAt" timestamptz NOT NULL DEFAULT now(),
+      "updatedAt" timestamptz NOT NULL DEFAULT now()
+    );
+  `);
+  await prisma.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "character_productId_idx" ON "character" ("productId");
+  `);
 }
 
 export async function GET(
   _req: NextRequest,
-  { params }: { params: { projectId: string } }
+  { params }: { params: Promise<{ projectId: string }> }
 ) {
+  const awaitedParams = await params;
   try {
     const userId = await getSessionUserId();
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const projectId = params.projectId;
+    const projectId = awaitedParams.projectId;
     const ownsProject = await assertProjectOwner(projectId, userId);
     if (!ownsProject) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -179,7 +209,50 @@ export async function GET(
       ORDER BY "created_at" DESC
     `;
 
-    return NextResponse.json({ success: true, products }, { status: 200 });
+    const productIds = products.map((p) => p.id).filter(Boolean);
+    const characters = productIds.length
+      ? await prisma.character.findMany({
+          where: { productId: { in: productIds } },
+          select: {
+            id: true,
+            productId: true,
+            name: true,
+            characterUserName: true,
+            soraCharacterId: true,
+            createdAt: true,
+          },
+          orderBy: { createdAt: "asc" },
+        })
+      : [];
+
+    const charactersByProductId = new Map<
+      string,
+      Array<{
+        id: string;
+        name: string;
+        characterUserName: string | null;
+        soraCharacterId: string | null;
+        createdAt: Date;
+      }>
+    >();
+    for (const c of characters) {
+      const list = charactersByProductId.get(String(c.productId ?? "")) ?? [];
+      list.push({
+        id: c.id,
+        name: c.name,
+        characterUserName: c.characterUserName ?? null,
+        soraCharacterId: c.soraCharacterId ?? null,
+        createdAt: c.createdAt,
+      });
+      charactersByProductId.set(String(c.productId ?? ""), list);
+    }
+
+    const productsWithCharacters = products.map((product) => ({
+      ...product,
+      characters: charactersByProductId.get(product.id) ?? [],
+    }));
+
+    return NextResponse.json({ success: true, products: productsWithCharacters }, { status: 200 });
   } catch (error) {
     console.error("Failed to fetch products", error);
     return NextResponse.json({ error: "Failed to fetch products" }, { status: 500 });
@@ -188,15 +261,16 @@ export async function GET(
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { projectId: string } }
+  { params }: { params: Promise<{ projectId: string }> }
 ) {
+  const awaitedParams = await params;
   try {
     const userId = await getSessionUserId();
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const projectId = params.projectId;
+    const projectId = awaitedParams.projectId;
     const ownsProject = await assertProjectOwner(projectId, userId);
     if (!ownsProject) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -270,15 +344,16 @@ export async function POST(
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { projectId: string } }
+  { params }: { params: Promise<{ projectId: string }> }
 ) {
+  const awaitedParams = await params;
   try {
     const userId = await getSessionUserId();
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const projectId = params.projectId;
+    const projectId = awaitedParams.projectId;
     const ownsProject = await assertProjectOwner(projectId, userId);
     if (!ownsProject) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -343,6 +418,19 @@ export async function PATCH(
         ? normalizedProductReferenceImageUrl
         : existing.productReferenceImageUrl;
 
+    if (normalizedCreatorReferenceImageUrl !== undefined && nextCreatorReferenceImageUrl) {
+      assertProductSetupReferenceUrl(
+        nextCreatorReferenceImageUrl,
+        "creatorReferenceImageUrl",
+      );
+    }
+    if (normalizedProductReferenceImageUrl !== undefined && nextProductReferenceImageUrl) {
+      assertProductSetupReferenceUrl(
+        nextProductReferenceImageUrl,
+        "productReferenceImageUrl",
+      );
+    }
+
     if (nextName !== existing.name) {
       const nameConflict = await prisma.$queryRaw<Array<{ id: string }>>`
         SELECT "id"
@@ -396,21 +484,28 @@ export async function PATCH(
     return NextResponse.json({ success: true, product: updated }, { status: 200 });
   } catch (error) {
     console.error("Failed to update product", error);
-    return NextResponse.json({ error: "Failed to update product" }, { status: 500 });
+    const message =
+      error instanceof Error && error.message
+        ? error.message
+        : "Failed to update product";
+    const status =
+      message.includes("must be hosted in AWS_S3_BUCKET_PRODUCT_SETUP") ? 400 : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }
 
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { projectId: string } }
+  { params }: { params: Promise<{ projectId: string }> }
 ) {
+  const awaitedParams = await params;
   try {
     const userId = await getSessionUserId();
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const projectId = params.projectId;
+    const projectId = awaitedParams.projectId;
     const ownsProject = await assertProjectOwner(projectId, userId);
     if (!ownsProject) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });

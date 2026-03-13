@@ -57,7 +57,18 @@ export async function POST(req: NextRequest) {
     if (deny) return deny;
 
     let effectiveRunId = runId;
-    if (!effectiveRunId) {
+    if (effectiveRunId) {
+      const existingRun = await prisma.researchRun.findUnique({
+        where: { id: effectiveRunId },
+        select: { id: true, projectId: true },
+      });
+      if (!existingRun || existingRun.projectId !== projectId) {
+        return NextResponse.json(
+          { error: "runId not found for this project" },
+          { status: 400 }
+        );
+      }
+    } else {
       const run = await prisma.researchRun.create({
         data: {
           projectId,
@@ -66,6 +77,7 @@ export async function POST(req: NextRequest) {
       });
       effectiveRunId = run.id;
     }
+    // TODO(low): decide whether product data collection should always create a fresh run instead of attaching to an existing one.
 
     const job = await prisma.job.create({
       data: {

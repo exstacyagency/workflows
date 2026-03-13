@@ -4,6 +4,17 @@ import { cfg } from "@/lib/config";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import type { NextAuthOptions } from "next-auth";
+import { checkRateLimit } from "@/lib/rateLimiter";
+import { normalizeEmail } from "@/lib/normalizeEmail";
+
+function readHeaderValue(
+  headers: Record<string, string | string[] | undefined> | undefined,
+  key: string,
+): string {
+  const value = headers?.[key];
+  if (Array.isArray(value)) return String(value[0] ?? "").trim();
+  return String(value ?? "").trim();
+}
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -13,17 +24,31 @@ export const authOptions: NextAuthOptions = {
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
       },
-      async authorize(credentials) {
+      async authorize(credentials, req) {
         try {
+          // TODO(low): gate these auth attempt logs behind a debug flag to avoid leaking login metadata into routine logs.
           console.log("[auth] authorize attempt for:", credentials?.email);
           
           if (!credentials?.email || !credentials?.password) {
             console.log("[auth] missing credentials");
             return null;
           }
+
+          const email = normalizeEmail(credentials.email) ?? credentials.email;
+          const forwarded = readHeaderValue(req?.headers, "x-forwarded-for");
+          const realIp = readHeaderValue(req?.headers, "x-real-ip");
+          const ip = (forwarded || realIp).split(",")[0]?.trim() || "unknown";
+          const rateCheck = await checkRateLimit(`auth:signin:${ip}:${email}`, {
+            limit: 10,
+            windowMs: 15 * 60 * 1000,
+          });
+          if (!rateCheck.allowed) {
+            console.warn("[auth] rate limited sign-in attempt for:", email);
+            return null;
+          }
           
           const user = await db.user.findUnique({
-            where: { email: credentials.email }
+            where: { email }
           });
           
           console.log("[auth] user found:", !!user, "has password:", !!user?.passwordHash);
@@ -61,7 +86,8 @@ export const authOptions: NextAuthOptions = {
       },
       async authorize(credentials, req) {
         try {
-          if (cfg.isDev || cfg.MODE === "beta" || cfg.MODE === "test") {
+          if (cfg.isDev || cfg.MODE === "test") {
+            // TODO(low): if beta environments truly need test-session auth, re-enable it only behind a dedicated explicit flag.
             let token = credentials?.token;
             if (!token && req.headers?.cookie) {
               const match = req.headers.cookie.match(/test_session=([^;]+)/);
