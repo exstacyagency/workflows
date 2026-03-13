@@ -10,7 +10,7 @@ import { reserveQuota, rollbackQuota, QuotaExceededError } from "../../../../lib
 import { JobStatus, JobType, Prisma } from "@prisma/client";
 import { getRequestId } from "../../../../lib/observability";
 import { checkRateLimit } from "../../../../lib/rateLimiter";
-import { assertRuntimeMode } from "@/src/runtime/assertMode";
+import { assertRuntimeMode } from "@/lib/jobRuntimeMode";
 import { computeKieVideoCostCents } from "@/lib/billing/pricing";
 
 const BodySchema = z.object({
