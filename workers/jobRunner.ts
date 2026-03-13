@@ -9,10 +9,10 @@ const env = path.join(cwd, ".env");
 if (fs.existsSync(envLocal)) dotenv.config({ path: envLocal });
 if (fs.existsSync(env)) dotenv.config({ path: env });
 
-import { assertRuntimeMode } from "../lib/jobRuntimeMode";
+import { assertRuntimeMode } from "../lib/jobRuntimeMode.js";
 import { logError } from "@/lib/logger";
 import { JobStatus, JobType, Prisma, RunStatus } from "@prisma/client";
-import type { RuntimeMode } from "@/lib/jobRuntimeMode";
+import type { RuntimeMode } from "../lib/jobRuntimeMode.js";
 import { cfg } from "@/lib/config";
 // ...existing code...
 // ...existing code...
