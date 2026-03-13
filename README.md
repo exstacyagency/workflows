@@ -406,6 +406,24 @@ Plan limits are defined in `lib/billing/quotas.ts`. Spend caps can be set per ac
 
 ---
 
+## Roadmap / Growth Opportunities
+
+**OpenClaw Integration** presents an opportunity to position the platform as an autonomous operating layer for creative production, not just a workflow tool. By integrating an agent framework with persistent brand memory across research runs, teams could compound insight quality over time and reduce manual orchestration between stages.
+
+**Social Listening & Trend Detection** creates a path to move from reactive research into proactive market intelligence. Real-time monitoring of emerging conversations and trends could help brands identify creative angles early and publish into demand before competitors adjust.
+
+**Image Ad + Commercial Ad Integration** expands the addressable use case beyond short-form video into broader campaign execution. Supporting static image ads and longer-form commercial formats would open the platform to more budget types, more channels, and more full-funnel creative programs.
+
+**Automatic Product Data** is a strong opportunity to reduce onboarding friction and increase throughput for teams managing many products. Pulling product details, pricing, and positioning directly from Shopify, Amazon, or product URLs would make the system easier to adopt and more valuable as a scalable intake layer.
+
+**Performance Feedback Loop** would turn the platform into a learning system rather than a one-way generator. Connecting Meta and TikTok performance data back into the research layer could improve future creative decisions and create a measurable optimization story tied to business outcomes.
+
+**Competitive Monitoring Agent** offers a recurring intelligence layer that can keep strategy current without manual review. A scheduled agent watching competitor ad libraries for new patterns, hooks, and messaging shifts would increase the platform's value between campaign launches, not only during active production.
+
+**Multi-Brand Orchestration** opens a clear expansion path for agencies, aggregators, and multi-brand operators. Coordinating research and creative pipelines across multiple brands and product lines through agents would increase operational leverage and support higher-value enterprise workflows.
+
+---
+
 ## License
 
 See `LICENSE` file.
