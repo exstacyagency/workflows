@@ -1,266 +1,411 @@
-# FrameForge AI Studio
+# Ad Intelligence & Creative Automation Platform
 
-An AI-powered video production platform for creating cinematic advertisements. This system orchestrates a complete 7-phase workflow from market research to final video delivery.
+A production-ready Next.js SaaS platform that runs a full AI-powered advertising pipeline: market research → customer analysis → script generation → storyboard → image/video generation → editing → delivery.
 
-## Codebase Structure
+Built for DTC brands and performance marketing teams. Connects Amazon reviews, Reddit sentiment, competitor ad patterns, and product intelligence into a unified research layer, then generates complete video ad creatives end-to-end.
 
-### Main Directories
+---
 
-- **`/app`** - Next.js App Router with pages and API routes
-  - `page.tsx` - Studio Command Center (home page with project overview)
-  - `projects/` - Projects management pages
-  - `customer-profile/` - Customer profile related pages
-  - `api/` - RESTful API endpoints organized by domain:
-    - `api/projects/` - Project CRUD operations
-    - `api/jobs/` - Job management (status tracking, results)
-    - `api/jobs/[id]/` - Individual job details with linked data
+## What It Does
 
-- **`/lib`** - Core business logic services (11 service files)
-  - `prisma.ts` - Singleton Prisma client with connection pooling
-  - Service files implementing the 7-phase production pipeline:
-    1. `customerAnalysisService.ts` - Customer research and avatar analysis
-    2. `adPatternAnalysisService.ts` - Pattern brain analysis
-    3. `adRawCollectionService.ts` - Ad asset collection
-    4. `adTranscriptCollectionService.ts` - Ad transcription
-    5. `scriptGenerationService.ts` - Script generation with pattern stacking
-    6. `characterGenerationService.ts` - Character/persona generation
-    7. `videoImageGenerationService.ts`, `videoPromptGenerationService.ts`, `videoReviewerService.ts`, `videoUpscalerService.ts` - Video generation pipeline
+**Research Pipeline**
+- Scrapes and aggregates Amazon reviews across main product + up to 3 competitors
+- Collects Reddit posts and comments targeting problem-aware subreddits
+- Ingests competitor ad creatives via Apify (copy, transcripts, OCR)
+- Runs pattern analysis across collected ad data
+- Generates structured customer avatar analysis via Anthropic
 
-- **`/components`** - Reusable React components
-  - `Sidebar.tsx` - Fixed navigation sidebar with FrameForge AI branding
-  - `TopBar.tsx` - Header component for pages
+**Creative Pipeline**
+- Generates video ad scripts from multiple strategy types (swipe template, research formula, etc.)
+- Generates storyboards with scene-by-scene panel layouts
+- Creates video prompts and first/last frame image references per scene
+- Generates scene videos via KIE.ai
+- Merges and optionally upscales final video output via Fal.ai
+- Supports trim/merge editing in the UI before final export
 
-- **`/services`** - Standalone service utilities
-  - `customerResearchService.ts` - Phase 1A research job logic (Reddit + Amazon scraping via Apify)
+**Platform Infrastructure**
+- Full job queue with worker-based async execution
+- Per-job cost tracking and billing settlement
+- Subscription plan gating and quota enforcement
+- Stripe billing with webhook handling
+- Usage ledger with spend caps
+- Dead-letter queue with admin retry/dismiss
+- Audit logging on key operations
 
-- **`/prisma`** - Database schema and migrations
-  - `schema.prisma` - Complete data models (13 models)
-  - `migrations/` - Schema evolution tracking (11 migration files)
+---
 
-## Technology Stack
+## Tech Stack
 
-### Frontend
-- **Next.js 14** (App Router) - React framework with file-based routing
-- **React 18.3** - UI library with hooks
-- **TypeScript 5.6** - Type safety
-- **Tailwind CSS 3.4** - Utility-first styling (dark theme with slate palette)
-- **PostCSS + Autoprefixer** - CSS processing
+| Layer | Technology |
+|---|---|
+| Frontend | Next.js 15 (App Router), React, Tailwind CSS |
+| Backend | Next.js API routes |
+| Database | PostgreSQL via Prisma ORM |
+| Job Worker | Node.js background worker (polling-based) |
+| Auth | NextAuth.js (credentials + JWT) |
+| Billing | Stripe (Checkout, Customer Portal, Webhooks) |
+| Storage | AWS S3 (multiple buckets) |
+| AI | Anthropic Claude (analysis, scripts, prompts) |
+| Video | KIE.ai (generation), Fal.ai (merge, upscale) |
+| Research | Apify (ad collection, scraping), AssemblyAI (transcripts), Google Vision (OCR) |
+| Video Processing | ffmpeg (trimming) |
 
-### Backend
-- **Node.js** (via Next.js API Routes)
-- **Prisma 5.22** - ORM with migrations
+---
 
-### Database
-- **PostgreSQL** - Primary relational database
-
-### External APIs
-- **Apify API** - Web scraping actor platform for Reddit/Amazon data
-- **Reddit JSON API** - Direct Reddit search access
-- **Amazon Product API** - Review scraping (via Apify)
-
-## 7-Phase Production Pipeline
-
-The system models a complete video production workflow:
-
-1. **Phase 1A: Customer Research** - Reddit + Amazon review scraping via Apify
-2. **Phase 1B: Analysis** - Customer avatar and product intelligence extraction
-3. **Phase 2: Pattern Analysis** - Ad pattern brain analysis
-4. **Phase 3: Script Generation** - Script generation with character creation
-5. **Phase 4: Video Generation** - Image generation, video prompts, and review
-6. **Phase 5: Upscaling** - Video upscaling for final delivery
-7. **Phase 7: Export** - Final export and delivery
-
-## Architecture
+## Architecture Overview
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│              Next.js 14 (Frontend + Backend)             │
-├─────────────────────────────────────────────────────────┤
-│  Pages (React Components) | API Routes (Node.js)        │
-│  - page.tsx              | - /api/projects              │
-│  - projects/page.tsx     | - /api/jobs/*               │
-│  - customer-profile/     | - /api/projects/[id]/*      │
-└─────────────────────────────────────────────────────────┘
-         ↓
-┌─────────────────────────────────────────────────────────┐
-│          Service Layer (Business Logic)                 │
-├─────────────────────────────────────────────────────────┤
-│  • customerResearchService.ts (Phase 1A)               │
-│  • customerAnalysisService.ts (Phase 1B)               │
-│  • adPatternAnalysisService.ts (Phase 2)               │
-│  • scriptGenerationService.ts (Phase 3)                │
-│  • characterGenerationService.ts (Phase 3)             │
-│  • videoImageGenerationService.ts (Phase 4)            │
-│  • videoPromptGenerationService.ts (Phase 4)           │
-│  • videoReviewerService.ts (Phase 4)                   │
-│  • videoUpscalerService.ts (Phase 5)                   │
-└─────────────────────────────────────────────────────────┘
-         ↓
-┌─────────────────────────────────────────────────────────┐
-│      Prisma ORM (Data Access Layer)                     │
-├─────────────────────────────────────────────────────────┤
-│  - Singleton client (lib/prisma.ts)                     │
-│  - Type-safe queries                                    │
-└─────────────────────────────────────────────────────────┘
-         ↓
-┌─────────────────────────────────────────────────────────┐
-│          PostgreSQL Database                            │
-├─────────────────────────────────────────────────────────┤
-│  13 Models: Project, Job, ResearchRow, AdAsset,        │
-│  AdPattern*, Customer*, Character, Script, Storyboard  │
-└─────────────────────────────────────────────────────────┘
+Browser (Next.js App Router)
+        │
+        ▼
+API Routes (app/api/**)
+        │
+        ├── Creates Job rows (PENDING) in Postgres
+        ├── Enforces auth, ownership, plan gates, quota
+        └── Returns job ID to client
+
+Background Worker (workers/jobRunner.ts)
+        │
+        ├── Polls Postgres for PENDING jobs every 2s
+        ├── Claims job atomically → RUNNING
+        ├── Executes job handler by type
+        ├── Calls external providers (Anthropic, KIE, Apify, etc.)
+        ├── Writes results to DB + S3
+        └── Settles cost → UsageEvent + job.actualCost
+
+Billing Layer (lib/billing/*)
+        ├── Quota reservation at job start
+        ├── Spend cap check before provider calls
+        └── Cost settlement at job completion
 ```
 
-## Database Schema
+The worker runs as a **separate process** from the Next.js app. In production, both must be running simultaneously.
 
-### Key Models
+---
 
-| Model | Purpose | Relations |
-|-------|---------|-----------|
-| **Project** | Brand/product container | 1:N to Jobs, ResearchRows, AdAssets, Characters, Scripts |
-| **Job** | Workflow execution tracking | 1:N to ResearchRows, AdAssets, Characters, Scripts |
-| **ResearchRow** | Individual Reddit/Amazon insight | N:1 to Project, Job |
-| **AdAsset** | Ad creative (video/image) | N:1 to Project, Job |
-| **CustomerAvatar** | Customer persona snapshot | N:1 to Project, Job |
-| **ProductIntelligence** | Product analysis | N:1 to Project, Job |
-| **Character** | Video character/actor | N:1 to Project, Job |
-| **Script** | Generated video script | 1:N to Storyboards |
-| **Storyboard** | Visual breakdown | 1:N to StoryboardScenes |
-| **StoryboardScene** | Individual scene | Image/video prompts |
-| **AdPatternResult** | Pattern analysis results | 1:N to PatternReferences |
-| **AdPatternReference** | Individual pattern found | N:1 to AdPatternResult |
+## External Services Required
 
-### Enums
-- **JobType**: CUSTOMER_RESEARCH, AD_PERFORMANCE, PATTERN_ANALYSIS, SCRIPT_GENERATION, STORYBOARD_GENERATION, CUSTOMER_ANALYSIS, CHARACTER_GENERATION, VIDEO_IMAGE_GENERATION, VIDEO_PROMPT_GENERATION, VIDEO_REVIEW
-- **JobStatus**: PENDING, RUNNING, COMPLETED, FAILED
-- **ResearchSource**: REDDIT_PRODUCT, REDDIT_PROBLEM, AMAZON_PRODUCT_5_STAR, AMAZON_PRODUCT_4_STAR, AMAZON_COMPETITOR_1, AMAZON_COMPETITOR_2
-- **AdPlatform**: TIKTOK, META
+### Required
+| Service | Purpose | Env Var |
+|---|---|---|
+| PostgreSQL | Primary database | `DATABASE_URL` |
+| Anthropic | Analysis, script, prompt generation | `ANTHROPIC_API_KEY` |
+| AWS S3 | Media storage (videos, images, frames) | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` |
+| KIE.ai | Video generation | `KIE_API_KEY`, `KIE_API_BASE_URL` |
+| Fal.ai | Video merge and upscaling | `FAL_API_KEY` |
+| Stripe | Billing and subscriptions | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` |
+| NextAuth | Authentication | `NEXTAUTH_SECRET` |
 
-## API Routes
+### Required for Research Features
+| Service | Purpose | Env Var |
+|---|---|---|
+| Apify | Ad collection, Amazon review scraping | `APIFY_API_TOKEN` |
+| AssemblyAI | Ad video transcript extraction | `ASSEMBLYAI_API_KEY` |
+| Google Cloud Vision | Ad image OCR | `GOOGLE_CLOUD_VISION_API_KEY` |
 
-### Projects
-- `GET /api/projects` - Fetch all projects
-- `POST /api/projects` - Create project
-- `GET /api/projects/[projectId]/research` - Fetch research rows
+### Optional
+| Service | Purpose | Env Var |
+|---|---|---|
+| Redis | Alternative job queue backend | `REDIS_URL` |
+| Reddit Scraper | Targeted subreddit scraping (self-hosted service) | `REDDIT_SCRAPER_URL` |
+| ElevenLabs | Character voice generation | `ELEVENLABS_API_KEY` |
+| ffmpeg | Video trimming before merge | `FFMPEG_PATH` |
 
-### Jobs
-- `POST /api/jobs/customer-research` - Start research job
-- `POST /api/jobs/customer-analysis` - Customer analysis
-- `POST /api/jobs/ad-performance` - Ad performance analysis
-- `POST /api/jobs/ad-transcripts` - Ad transcript collection
-- `POST /api/jobs/pattern-analysis` - Pattern brain analysis
-- `POST /api/jobs/script-generation` - Script generation
-- `POST /api/jobs/character-generation` - Character generation
-- `POST /api/jobs/video-images` - Video frame generation
-- `POST /api/jobs/video-prompts` - Video prompt generation
-- `POST /api/jobs/video-reviewer` - Video review
-- `POST /api/jobs/video-upscaler` - Video upscaling
-- `GET /api/jobs/[id]` - Fetch job status + results
+> **Note on Reddit scraping:** The platform supports a self-hosted Reddit scraper service for targeted subreddit data collection (`REDDIT_SCRAPER_URL`). Without it, Reddit research falls back to sitewide search via Apify. For production use, deploying a Reddit scraper service at this endpoint significantly improves research quality by targeting problem-specific subreddits.
 
-## Running Locally
+---
 
-1. **Prerequisites**: Node 20+ and PostgreSQL
+## Prerequisites
 
-2. **Environment Setup**: Copy `.env.example` to `.env` and configure:
-   ```
-   DATABASE_URL="postgresql://USER:PASSWORD@HOST:PORT/DBNAME"
-   APIFY_TOKEN="your-apify-token"
-   ```
+- Node.js 18+
+- PostgreSQL 14+ (or Neon, Supabase, Railway)
+- npm or yarn
+- ffmpeg installed and on PATH (for video trimming)
+- All required API keys from the services table above
 
-3. **Install Dependencies**:
-   ```bash
-   npm install
-   ```
+---
 
-4. **Database Setup**:
-   ```bash
-   npx prisma generate
-   npx prisma migrate dev
-   ```
+## Setup
 
-5. **Start the Application Services** (run each command in a separate terminal):
-   ```bash
-   npm run dev
-   npm run worker
-   cd services/reddit-scraper && python3 flask_api.py
-   ```
-
-### Worker Runtime Note (TODO before go-live)
-
-- OCR extraction (`ad_ocr_collection`) requires `ffmpeg` in the worker runtime.
-- Local developer workers need `ffmpeg` installed in PATH.
-- Production should run the worker in Docker/Railway/Render (or equivalent) with `ffmpeg` preinstalled so end users do not need local setup.
-- Transcript extraction (`ad_transcript_collection`) uses AssemblyAI and requires:
-  - `ASSEMBLYAI_API_KEY`
-
-6. **Access the Application**: Open http://localhost:3000
-
-## Frontend Entry Points
-
-- `/` - Studio Command Center (project overview with pipeline milestones)
-- `/projects` - Create and manage projects
-- `/projects/[projectId]` - Individual project dashboard
-- `/customer-profile` - Customer insights
-
-## Key Files
-
-| File | Purpose |
-|------|---------|
-| `package.json` | Dependencies and scripts |
-| `tsconfig.json` | TypeScript configuration with path aliases |
-| `prisma/schema.prisma` | Database schema definition |
-| `next.config.mjs` | Next.js configuration |
-| `tailwind.config.cjs` | Tailwind CSS configuration |
-| `.env.example` | Environment variable template |
-
-## Development Guidelines
-
-The codebase follows a **service-oriented architecture** with clear separation of concerns:
-- **UI Components** - Reusable React components for presentation
-- **API Routes** - Thin adapters that delegate to service layer
-- **Service Layer** - Core business logic for each pipeline phase
-- **Data Access** - Type-safe Prisma ORM queries
-
-Each phase of the production pipeline is modular and can be extended independently.
-
-ci smoke 2026-01-02T20:10:01Z
-ci smoke 2026-01-02T20:59:58Z
-
-## Entitlement Gate – Verification Instructions
-
-### Mandatory Test Execution
-
-Linting and builds are insufficient to validate entitlement enforcement. Always run the entitlement bypass test suite.
-
-#### Run the entitlement bypass test
+### 1. Clone and install
 
 ```bash
-npm test
-# or
-npx jest tests/entitlements.bypass.test.ts
+git clone <repo>
+cd workflows
+npm install
 ```
 
-#### Expected success output
+### 2. Configure environment
 
-```
-PASS tests/entitlements.bypass.test.ts
-Test Suites: 1 passed, 1 total
-Tests:       1 passed, 1 total
+```bash
+cp .env.example .env
 ```
 
-#### One-time validation (do NOT commit)
+Fill in all required values in `.env`. See the [Environment Variables](#environment-variables) section below.
 
-1. Temporarily modify the entitlement gate to always return `{ allowed: true }`.
-2. Re-run `npx jest tests/entitlements.bypass.test.ts` and confirm it fails.
-3. Immediately revert the change.
+### 3. Set up the database
 
-#### CI requirement
+```bash
+npx prisma migrate deploy
+```
 
-- CI must execute Jest for entitlement coverage. A green build without tests is invalid.
+### 4. (Optional) Seed baseline data
 
-#### Definition of done
+```bash
+npx tsx prisma/seed.ts
+```
 
-- Entitlement test runs locally.
-- Tampered gate fails the test.
-- Correct logic passes the test.
-- CI runs the Jest suite.
+> Seed scripts refuse to run in production. Set `NODE_ENV` to something other than `production` for local setup.
+
+### 5. Start the app
+
+```bash
+npm run dev
+```
+
+### 6. Start the worker (separate terminal)
+
+```bash
+npx dotenv -e .env -- npx tsx workers/jobRunner.ts
+```
+
+The worker must run alongside the app. It polls the database every 2 seconds for pending jobs and executes them.
+
+---
+
+## Production Deployment
+
+### App (Vercel recommended)
+
+Deploy the Next.js app normally. Set all environment variables in your Vercel project settings.
+
+Required additional production env vars:
+```
+NODE_ENV=production
+MODE=beta
+NEXTAUTH_URL=https://yourdomain.com
+APP_URL=https://yourdomain.com
+AUTH_TRUST_HOST=true
+```
+
+### Worker
+
+The worker is a long-running Node.js process. Deploy it separately from the Next.js app — on a VPS, Railway, Fly.io, or any service that supports persistent processes.
+
+```bash
+npx dotenv -e .env -- npx tsx workers/jobRunner.ts
+```
+
+Both the app and worker connect to the same `DATABASE_URL`. The worker does not need to be publicly accessible.
+
+### Stripe Webhooks
+
+Point your Stripe webhook to:
+```
+https://yourdomain.com/api/stripe/webhook
+```
+
+Required events: `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`
+
+---
+
+## Environment Variables
+
+### Core
+
+| Variable | Required | Description |
+|---|---|---|
+| `DATABASE_URL` | ✅ | PostgreSQL connection string |
+| `NEXTAUTH_SECRET` | ✅ | NextAuth session signing secret (min 32 chars) |
+| `NEXTAUTH_URL` | ✅ | Full public URL of the app (e.g. `https://app.yourdomain.com`) |
+| `APP_URL` | ✅ | Same as NEXTAUTH_URL |
+| `MODE` | ✅ | Runtime mode — set to `beta` for production |
+| `NODE_ENV` | ✅ | Set to `production` in production |
+| `JWT_SECRET` | ✅ | JWT signing secret |
+
+### Anthropic
+
+| Variable | Required | Description |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | ✅ | Anthropic API key |
+| `ANTHROPIC_MODEL` | ❌ | Default model (e.g. `claude-3-5-sonnet-20241022`) |
+| `ANTHROPIC_HAIKU_MODEL` | ❌ | Fast model for lighter tasks |
+| `ANTHROPIC_QUALITY_MODEL` | ❌ | High-quality model for analysis |
+| `ANTHROPIC_TIMEOUT_MS` | ❌ | Request timeout (default: 90000) |
+| `ANTHROPIC_RETRIES` | ❌ | Retry attempts (default: 3) |
+
+### AWS S3
+
+| Variable | Required | Description |
+|---|---|---|
+| `AWS_ACCESS_KEY_ID` | ✅ | AWS access key |
+| `AWS_SECRET_ACCESS_KEY` | ✅ | AWS secret key |
+| `AWS_REGION` | ✅ | S3 region (e.g. `us-east-1`) |
+| `AWS_S3_BUCKET` | ✅ | Main media bucket name |
+| `AWS_S3_BUCKET_PRODUCT_SETUP` | ✅ | Product setup references bucket |
+| `AWS_S3_ENDPOINT` | ❌ | Custom S3 endpoint (for non-AWS providers) |
+
+### KIE.ai (Video Generation)
+
+| Variable | Required | Description |
+|---|---|---|
+| `KIE_API_KEY` | ✅ | KIE.ai API key |
+| `KIE_API_BASE_URL` | ✅ | KIE.ai API base URL |
+| `KIE_CREATE_PATH` | ✅ | Path for video creation endpoint |
+| `KIE_STATUS_PATH` | ✅ | Path for video status polling endpoint |
+| `KIE_LIVE_MODE` | ❌ | Set to `true` to enable real video generation |
+| `KIE_POLL_INTERVAL_MS` | ❌ | Polling interval (default: 5000) |
+| `KIE_HTTP_TIMEOUT_MS` | ❌ | Request timeout |
+
+### Fal.ai (Merge + Upscale)
+
+| Variable | Required | Description |
+|---|---|---|
+| `FAL_API_KEY` | ✅ | Fal.ai API key |
+
+### Stripe
+
+| Variable | Required | Description |
+|---|---|---|
+| `STRIPE_SECRET_KEY` | ✅ | Stripe secret key |
+| `STRIPE_WEBHOOK_SECRET` | ✅ | Stripe webhook signing secret |
+| `STRIPE_PRICE_GROWTH` | ✅ | Stripe price ID for Growth plan |
+| `STRIPE_PRICE_SCALE` | ✅ | Stripe price ID for Scale plan |
+| `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | ✅ | Stripe publishable key (frontend) |
+
+### Apify (Research)
+
+| Variable | Required | Description |
+|---|---|---|
+| `APIFY_API_TOKEN` | ✅ | Apify API token |
+| `APIFY_DATASET_ID` | ❌ | Default dataset ID |
+| `APIFY_DEFAULT_INDUSTRY_CODE` | ❌ | Default industry for ad collection |
+
+### AssemblyAI (Transcripts)
+
+| Variable | Required | Description |
+|---|---|---|
+| `ASSEMBLYAI_API_KEY` | ✅ | AssemblyAI API key |
+
+### Google Vision (OCR)
+
+| Variable | Required | Description |
+|---|---|---|
+| `GOOGLE_CLOUD_VISION_API_KEY` | ✅ | Google Cloud Vision API key |
+
+### Reddit Scraper (Optional)
+
+| Variable | Required | Description |
+|---|---|---|
+| `REDDIT_SCRAPER_URL` | ❌ | URL of self-hosted Reddit scraper service (e.g. `http://localhost:5001`) |
+| `REDDIT_USER_AGENT` | ❌ | User agent string for Reddit requests |
+
+### Worker Tuning (Optional)
+
+| Variable | Default | Description |
+|---|---|---|
+| `WORKER_JOB_MAX_RUNTIME_MS` | `300000` | Max job runtime before timeout |
+| `JOB_RUNNING_STALE_MS` | `600000` | Time before a RUNNING job is considered stale |
+| `MAX_JOB_ATTEMPTS` | `3` | Max retry attempts per job |
+| `QUEUE_BACKEND` | `db` | Queue backend: `db` (default) or `redis` |
+
+### Auth Tuning (Optional)
+
+| Variable | Default | Description |
+|---|---|---|
+| `AUTH_MAX_ATTEMPTS` | `5` | Max failed login attempts before lockout |
+| `AUTH_WINDOW_MS` | `900000` | Lockout window (15 min) |
+| `AUTH_LOCKOUT_MS` | `1800000` | Lockout duration (30 min) |
+
+---
+
+## Job Types
+
+The platform executes the following job types asynchronously via the worker:
+
+| Job Type | Description |
+|---|---|
+| `CUSTOMER_RESEARCH` | Scrapes Reddit + Amazon reviews for a product |
+| `CUSTOMER_ANALYSIS` | Generates customer avatar analysis from research |
+| `PATTERN_ANALYSIS` | Analyzes collected ad patterns |
+| `AD_PERFORMANCE` | Ad collection, OCR, and transcript extraction |
+| `AD_QUALITY_GATE` | Quality scoring on collected ad data |
+| `PRODUCT_DATA_COLLECTION` | Fetches product intelligence from a URL |
+| `PRODUCT_ANALYSIS` | Structures product intel into findings |
+| `SCRIPT_GENERATION` | Generates video ad scripts |
+| `STORYBOARD_GENERATION` | Generates storyboard scenes from a script |
+| `VIDEO_PROMPT_GENERATION` | Generates video prompts per scene |
+| `VIDEO_IMAGE_GENERATION` | Generates first/last frame images |
+| `VIDEO_GENERATION` | Generates scene videos via KIE.ai |
+| `VIDEO_UPSCALER` | Upscales generated videos via Fal.ai |
+| `VIDEO_REVIEW` | Post-processing review pass on clips |
+| `CREATOR_AVATAR_GENERATION` | Generates creator avatar assets |
+| `CHARACTER_SEED_VIDEO` | Generates character seed video |
+
+---
+
+## Database
+
+The schema is managed via Prisma. Two migrations are included:
+
+- `20260302000000_baseline` — full initial schema
+- `20260302183000_usage_billing_pipeline` — usage and billing tables
+
+```bash
+# Check migration status
+npx prisma migrate status
+
+# Apply migrations
+npx prisma migrate deploy
+
+# Open Prisma Studio (local inspection)
+npm run db:studio
+```
+
+---
+
+## Scripts
+
+Useful maintenance scripts in `scripts/`:
+
+| Script | Purpose |
+|---|---|
+| `npm run env:db` | Print active database URL (redacted) |
+| `npm run db:studio` | Open Prisma Studio |
+| `npm run routes:manifest` | Generate API route inventory |
+| `npx tsx scripts/prod_guardrails.ts` | Verify production safety checks |
+| `npx tsx scripts/set-spend-cap.ts` | Set spend cap for a user account |
+| `npx tsx scripts/set_password.ts` | Reset a user password directly |
+
+---
+
+## Security Notes
+
+- All API routes enforce session authentication and project ownership checks
+- Admin-only routes require a valid `DEBUG_ADMIN_TOKEN` header
+- JWT secret is required at startup — will throw if missing
+- Stripe webhook signature is verified on every webhook event
+- Rate limiting is applied to auth routes (register, sign-in)
+- Seeds and destructive scripts refuse to run in production
+- Apify tokens are passed via `Authorization` header, not URL parameters
+- S3 config is resolved dynamically at call time, not cached at import
+
+---
+
+## Plan Gating
+
+Three subscription tiers are supported:
+
+| Plan | Stripe Price Var | Features |
+|---|---|---|
+| Free | — | Limited research and generation quotas |
+| Growth | `STRIPE_PRICE_GROWTH` | Increased quotas, full pipeline access |
+| Scale | `STRIPE_PRICE_SCALE` | Highest quotas, all features |
+
+Plan limits are defined in `lib/billing/quotas.ts`. Spend caps can be set per account via `scripts/set-spend-cap.ts`.
+
+---
+
+## License
+
+See `LICENSE` file.
