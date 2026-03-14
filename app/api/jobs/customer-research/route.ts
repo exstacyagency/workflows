@@ -96,24 +96,7 @@ export async function POST(req: NextRequest) {
         resolvedCompetitor2Asin ||
         resolvedCompetitor3Asin
     );
-    const hasRedditParams =
-      Boolean(productProblemSolved?.trim()) ||
-      Boolean(redditKeywords?.length) ||
-      Boolean(searchIntent?.length) ||
-      Boolean(solutionKeywords?.length) ||
-      Boolean(additionalProblems?.length) ||
-      Boolean(redditSubreddits?.length) ||
-      typeof maxPosts === "number" ||
-      typeof maxCommentsPerPost === "number" ||
-      Boolean(timeRange) ||
-      typeof scrapeComments === "boolean";
     const hasRedditData = Boolean(productProblemSolved?.trim());
-    if (hasRedditParams && !productProblemSolved?.trim()) {
-      return NextResponse.json(
-        { error: "Problem to Research is required for Reddit scraping" },
-        { status: 400 }
-      );
-    }
     if (!hasAmazonAsin && !hasRedditData) {
       return NextResponse.json(
         { error: "Provide either Amazon ASIN or Problem to Research for Reddit scraping" },

@@ -895,9 +895,9 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
         normalizedCompetitor2Asin ||
         normalizedCompetitor3Asin
     );
-    const hasRedditData = Boolean(normalizedProductProblem);
+    const shouldFetchReddit = normalizedProductProblem.length > 0;
 
-    if (!hasAmazonAsin && !hasRedditData) {
+    if (!hasAmazonAsin && !shouldFetchReddit) {
       throw new Error('Must provide either Amazon ASIN or Problem to Research');
     }
 
@@ -909,7 +909,7 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
     let filteredProductComments: RedditPost[] = [];
     let filteredProblemComments: ReturnType<typeof filterProblemComments> = [];
 
-    if (hasRedditData) {
+    if (shouldFetchReddit) {
       redditResponse = await fetchLocalReddit(
         normalizedProductProblem,
         redditKeywords ?? [],
@@ -1186,7 +1186,6 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
       competitor2ReviewCount +
       competitor3ReviewCount;
 
-    await updateJobStatus(jobId, JobStatus.COMPLETED);
     await prisma.job.update({
       where: { id: jobId },
       data: {
