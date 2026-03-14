@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { Prisma } from "@prisma/client";
+import { computeAnthropicCostCents } from "@/lib/billing/pricing";
 import { cfg } from "@/lib/config";
 import { prisma } from "@/lib/prisma";
 import { extractSwipePatterns } from "@/lib/swipePatternExtractor";
@@ -710,6 +711,14 @@ export async function runPatternAnalysis(args: {
   completeness: AdCompleteness;
   patterns: ReturnType<typeof normalizePatternOutput>;
   summary: string;
+  usageEntries: Array<{
+    metric: string;
+    provider: string;
+    model: string;
+    units: number;
+    costCents: number;
+    metadata: Record<string, unknown>;
+  }>;
 }> {
   const { projectId, runId, jobId } = args;
   if (!cfg.raw("ANTHROPIC_API_KEY")) {
@@ -729,12 +738,16 @@ export async function runPatternAnalysis(args: {
   }
 
   const analysisPrompt = buildAnalysisPrompt(completeAds);
+  const model = "claude-sonnet-4-6";
   const response: any = await anthropic.messages.create({
-    model: "claude-sonnet-4-6",
+    model,
     max_tokens: 4000,
     system: PATTERN_ANALYSIS_SYSTEM_PROMPT,
     messages: [{ role: "user", content: analysisPrompt }],
   });
+  const inputTokens = Math.max(0, Math.trunc(Number(response?.usage?.input_tokens ?? 0)));
+  const outputTokens = Math.max(0, Math.trunc(Number(response?.usage?.output_tokens ?? 0)));
+  const totalTokens = inputTokens + outputTokens;
 
   const textBlocks = Array.isArray(response?.content)
     ? response.content.filter((block: any) => block?.type === "text")
@@ -881,5 +894,21 @@ export async function runPatternAnalysis(args: {
     completeness,
     patterns,
     summary,
+    usageEntries:
+      totalTokens > 0
+        ? [
+            {
+              metric: "tokens",
+              provider: "anthropic",
+              model,
+              units: totalTokens,
+              costCents: computeAnthropicCostCents(model, inputTokens, outputTokens),
+              metadata: {
+                inputTokens,
+                outputTokens,
+              },
+            },
+          ]
+        : [],
   };
 }

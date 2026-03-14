@@ -234,18 +234,22 @@ export default function AllResearchDataPage() {
     [rows]
   );
 
-  const filteredRows = rows.filter((row) => {
-    if (sourceFilter !== 'all') {
-      if (sourceFilter === 'reddit' && !isRedditSource(row)) return false;
-      if (sourceFilter === 'amazon' && !isAmazonSource(row)) return false;
-      if (sourceFilter === 'product-intel' && !isProductIntelSource(row)) return false;
-      if (sourceFilter === 'uploaded-user' && !isUploadedUserSource(row)) return false;
-      if (sourceFilter === 'tiktok-ad' && !isTikTokAdSource(row)) return false;
-    }
-    if (typeFilter !== 'all' && row.type !== typeFilter) return false;
-    if (searchQuery && !row.content.toLowerCase().includes(searchQuery.toLowerCase())) return false;
-    return true;
-  });
+  const filteredRows = useMemo(
+    () =>
+      rows.filter((row) => {
+        if (sourceFilter !== 'all') {
+          if (sourceFilter === 'reddit' && !isRedditSource(row)) return false;
+          if (sourceFilter === 'amazon' && !isAmazonSource(row)) return false;
+          if (sourceFilter === 'product-intel' && !isProductIntelSource(row)) return false;
+          if (sourceFilter === 'uploaded-user' && !isUploadedUserSource(row)) return false;
+          if (sourceFilter === 'tiktok-ad' && !isTikTokAdSource(row)) return false;
+        }
+        if (typeFilter !== 'all' && row.type !== typeFilter) return false;
+        if (searchQuery && !row.content.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+        return true;
+      }),
+    [rows, searchQuery, sourceFilter, typeFilter]
+  );
 
   const filteredRowIds = useMemo(() => filteredRows.map((row) => row.id), [filteredRows]);
   const allFilteredSelected =
@@ -253,7 +257,11 @@ export default function AllResearchDataPage() {
   const selectedCount = selectedRowIds.length;
 
   useEffect(() => {
-    setSelectedRowIds((prev) => prev.filter((id) => filteredRowIds.includes(id)));
+    const filteredSet = new Set(filteredRowIds);
+    setSelectedRowIds((prev) => {
+      const next = prev.filter((id) => filteredSet.has(id));
+      return next.length === prev.length ? prev : next;
+    });
   }, [filteredRowIds]);
 
   async function handleExport() {

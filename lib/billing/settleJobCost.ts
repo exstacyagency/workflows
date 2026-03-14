@@ -1,7 +1,12 @@
 import { JobType, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getCurrentPeriodKey } from "@/lib/billing/usage";
-import { computeAssemblyAICostCents, computeGoogleVisionCostCents } from "@/lib/billing/pricing";
+import {
+  computeAmazonReviewsCostCents,
+  computeApifyCostCents,
+  computeAssemblyAICostCents,
+  computeGoogleVisionCostCents,
+} from "@/lib/billing/pricing";
 
 export type UsageEntryInput = {
   metric: string;
@@ -391,7 +396,7 @@ export function buildUsageEntriesForJob(args: {
         provider: "apify",
         model: "tiktok-creative-center-top-ads",
         units: adCount,
-        costCents: 0,
+        costCents: computeApifyCostCents(adCount),
         metadata: {
           actorId: asString(apify.actorId) || null,
           datasetId: asString(apify.datasetId) || null,
@@ -403,7 +408,11 @@ export function buildUsageEntriesForJob(args: {
 
   if (args.jobType === JobType.CUSTOMER_RESEARCH) {
     const totalAmazonReviews = toSafeInt(
-      (result as any).totalAmazonReviews ?? 0,
+      (result as any).totalAmazonReviews ??
+        (toSafeInt((result as any).mainProductReviews, 0) +
+          toSafeInt((result as any).competitor1Reviews, 0) +
+          toSafeInt((result as any).competitor2Reviews, 0) +
+          toSafeInt((result as any).competitor3Reviews, 0)),
       0,
     );
     const apify = asObject((result as any).apify);
@@ -420,7 +429,7 @@ export function buildUsageEntriesForJob(args: {
         provider: "amazon",
         model: "amazon_reviews",
         units: totalAmazonReviews,
-        costCents: 0,
+        costCents: computeAmazonReviewsCostCents(totalAmazonReviews),
         metadata: {
           mainProductReviews: toSafeInt((result as any).mainProductReviews, 0),
           competitor1Reviews: toSafeInt((result as any).competitor1Reviews, 0),
@@ -437,7 +446,7 @@ export function buildUsageEntriesForJob(args: {
         provider: "apify",
         model: "tiktok-creative-center-top-ads",
         units: apifyAdCount,
-        costCents: 0,
+        costCents: computeApifyCostCents(apifyAdCount),
         metadata: {
           actorId: asString(apify.actorId) || null,
           datasetId: asString(apify.datasetId) || null,

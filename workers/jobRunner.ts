@@ -989,6 +989,7 @@ async function runJob(
               scriptId,
               panelCount: result.panelCount,
               targetDuration: result.targetDuration,
+              usageEntries: result.usageEntries ?? [],
               ...(validationReport && { validationReport }),
             },
             summary: {
