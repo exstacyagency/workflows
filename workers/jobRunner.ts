@@ -645,10 +645,6 @@ async function runJob(
     throw error;
   }
 
-  console.log("[BEFORE SWITCH] About to enter switch statement");
-  console.log("[BEFORE SWITCH] job.type:", job.type);
-  console.log("[BEFORE SWITCH] JobType enum:", JobType);
-
   try {
     switch (job.type) {
       case JobType.CUSTOMER_RESEARCH: {
@@ -747,21 +743,26 @@ async function runJob(
           scrapeComments,
           additionalProblems,
         }));
+        const mainProductReviews = (result as any)?.mainProductReviews ?? 0;
+        const competitor1Reviews = (result as any)?.competitor1Reviews ?? 0;
+        const competitor2Reviews = (result as any)?.competitor2Reviews ?? 0;
+        const competitor3Reviews = (result as any)?.competitor3Reviews ?? 0;
+        const totalAmazonReviews =
+          mainProductReviews +
+          competitor1Reviews +
+          competitor2Reviews +
+          competitor3Reviews;
 
         await markCompleted({
           jobId,
           result: {
             ok: true,
             rowsCollected: (result as any)?.rowsCollected ?? 0,
-            mainProductReviews: (result as any)?.mainProductReviews ?? 0,
-            competitor1Reviews: (result as any)?.competitor1Reviews ?? 0,
-            competitor2Reviews: (result as any)?.competitor2Reviews ?? 0,
-            competitor3Reviews: (result as any)?.competitor3Reviews ?? 0,
-            totalAmazonReviews:
-              ((result as any)?.mainProductReviews ?? 0) +
-              ((result as any)?.competitor1Reviews ?? 0) +
-              ((result as any)?.competitor2Reviews ?? 0) +
-              ((result as any)?.competitor3Reviews ?? 0),
+            mainProductReviews,
+            competitor1Reviews,
+            competitor2Reviews,
+            competitor3Reviews,
+            totalAmazonReviews,
           },
         });
         return;
