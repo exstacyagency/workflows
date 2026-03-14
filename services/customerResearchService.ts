@@ -198,13 +198,30 @@ async function fetchWithRetry(url: string, init: RequestInit | undefined, label:
   }, label);
 }
 
-async function runApifyActor<T>(actorId: string, input: any) {
+async function runApifyActor<T>(actorId: string, input: any): Promise<{
+  items: T[];
+  actorId: string;
+  datasetId: string | null;
+}> {
   const runData = await apifyClient.actor(actorId).call({ input });
   if (Array.isArray(runData)) {
-    return runData as T[];
+    return {
+      items: runData as T[],
+      actorId,
+      datasetId: null,
+    };
   }
   if (Array.isArray((runData as any)?.items)) {
-    return (runData as any).items as T[];
+    return {
+      items: (runData as any).items as T[],
+      actorId,
+      datasetId:
+        typeof (runData as any)?.defaultDatasetId === "string"
+          ? (runData as any).defaultDatasetId
+          : typeof (runData as any)?.data?.defaultDatasetId === "string"
+            ? (runData as any).data.defaultDatasetId
+            : null,
+    };
   }
 
   const datasetId: string | undefined =
@@ -224,7 +241,11 @@ async function runApifyActor<T>(actorId: string, input: any) {
     `apify-dataset-${datasetId}`
   );
 
-  return (await datasetRes.json()) as T[];
+  return {
+    items: (await datasetRes.json()) as T[],
+    actorId,
+    datasetId,
+  };
 }
 
 async function searchReddit(keyword: string) {
@@ -368,8 +389,7 @@ async function fetchApifyAmazonReviews(inputs: AmazonInput[]) {
   if (!Array.isArray(apifyInput.input)) {
     throw new Error("Apify Amazon input must be array");
   }
-  const amazonData = await runApifyActor<AmazonReview>('ZebkvH3nVOrafqr5T', apifyInput);
-  return amazonData;
+  return runApifyActor<AmazonReview>('ZebkvH3nVOrafqr5T', apifyInput);
 }
 
 function extractProblemKeywords(problemSolved: string): string[] {
@@ -973,12 +993,19 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
       [ProductType.COMPETITOR_2]: normalizedCompetitor2Asin || null,
       [ProductType.COMPETITOR_3]: normalizedCompetitor3Asin || null,
     };
+    let amazonApifyItemCount = 0;
+    let amazonApifyActorId: string | null = null;
+    let amazonApifyDatasetId: string | null = null;
 
     for (const product of productsToScrape) {
       const starFilters = getStarFiltersForProduct(product.asin, normalizedMainProductAsin);
       for (const starFilter of starFilters) {
-        const reviews = await fetchApifyAmazonReviews([buildAmazonInput(product.asin, starFilter)]);
+        const apifyResult = await fetchApifyAmazonReviews([buildAmazonInput(product.asin, starFilter)]);
+        const reviews = apifyResult.items;
         amazonReviewsByType[product.type].push(...reviews);
+        amazonApifyItemCount += reviews.length;
+        amazonApifyActorId = apifyResult.actorId;
+        amazonApifyDatasetId = apifyResult.datasetId;
         if (!productNameByType[product.type]) {
           const detectedName = reviews.map(extractAmazonProductName).find(Boolean) || null;
           productNameByType[product.type] = detectedName;
@@ -1141,10 +1168,23 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
       meta: redditMeta,
     };
 
-    const mainProductReviewCount = amazonReviewsByType[ProductType.MAIN_PRODUCT].length;
-    const competitor1ReviewCount = amazonReviewsByType[ProductType.COMPETITOR_1].length;
-    const competitor2ReviewCount = amazonReviewsByType[ProductType.COMPETITOR_2].length;
-    const competitor3ReviewCount = amazonReviewsByType[ProductType.COMPETITOR_3].length;
+    const mainProductReviewCount = amazonReviewRows.filter(
+      (row) => row.productType === ProductType.MAIN_PRODUCT
+    ).length;
+    const competitor1ReviewCount = amazonReviewRows.filter(
+      (row) => row.productType === ProductType.COMPETITOR_1
+    ).length;
+    const competitor2ReviewCount = amazonReviewRows.filter(
+      (row) => row.productType === ProductType.COMPETITOR_2
+    ).length;
+    const competitor3ReviewCount = amazonReviewRows.filter(
+      (row) => row.productType === ProductType.COMPETITOR_3
+    ).length;
+    const totalAmazonReviews =
+      mainProductReviewCount +
+      competitor1ReviewCount +
+      competitor2ReviewCount +
+      competitor3ReviewCount;
 
     await updateJobStatus(jobId, JobStatus.COMPLETED);
     await prisma.job.update({
@@ -1158,6 +1198,12 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
           competitor1Reviews: competitor1ReviewCount,
           competitor2Reviews: competitor2ReviewCount,
           competitor3Reviews: competitor3ReviewCount,
+          totalAmazonReviews,
+          apify: {
+            itemCount: amazonApifyItemCount,
+            actorId: amazonApifyActorId,
+            datasetId: amazonApifyDatasetId,
+          },
           productTypeBreakdown: {
             MAIN_PRODUCT: mainProductReviewCount,
             COMPETITOR_1: competitor1ReviewCount,
@@ -1176,6 +1222,12 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
       competitor1Reviews: competitor1ReviewCount,
       competitor2Reviews: competitor2ReviewCount,
       competitor3Reviews: competitor3ReviewCount,
+      totalAmazonReviews,
+      apify: {
+        itemCount: amazonApifyItemCount,
+        actorId: amazonApifyActorId,
+        datasetId: amazonApifyDatasetId,
+      },
     };
   } catch (error) {
     await updateJobStatus(jobId, JobStatus.FAILED);

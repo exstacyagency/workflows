@@ -752,18 +752,20 @@ async function runJob(
           competitor1Reviews +
           competitor2Reviews +
           competitor3Reviews;
+        const completedResult = {
+          ok: true,
+          rowsCollected: (result as any)?.rowsCollected ?? 0,
+          mainProductReviews,
+          competitor1Reviews,
+          competitor2Reviews,
+          competitor3Reviews,
+          totalAmazonReviews,
+          apify: (result as any)?.apify ?? null,
+        };
 
         await markCompleted({
           jobId,
-          result: {
-            ok: true,
-            rowsCollected: (result as any)?.rowsCollected ?? 0,
-            mainProductReviews,
-            competitor1Reviews,
-            competitor2Reviews,
-            competitor3Reviews,
-            totalAmazonReviews,
-          },
+          result: completedResult,
         });
         return;
       }
