@@ -257,225 +257,261 @@ export default function ProjectProductsPage() {
     }
   }
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-bg text-white px-8 py-8">
+        <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
+          <div className="w-8 h-8 border-2 border-accent/20 border-t-accent rounded-full animate-spin" />
+          <p className="text-[10px] font-mono text-muted uppercase tracking-[0.3em] animate-pulse">Syncing_Inventory...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="px-6 py-6 space-y-6">
-      <section className="rounded-xl border border-slate-800 bg-slate-900/80 p-5">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-[11px] uppercase tracking-widest text-slate-500">Project</p>
-            <h1 className="text-2xl font-semibold text-slate-50">All Products</h1>
-            <p className="text-sm text-slate-400 mt-1">
-              Manage product references and Sora character setup.
+    <div className="min-h-screen bg-bg text-white pb-20">
+      <div className="border-b border-line bg-panel/50 backdrop-blur-md px-8 py-6 sticky top-0 z-30">
+        <div className="flex items-center justify-between gap-6">
+          <div className="space-y-4">
+            <Link
+              href={`/projects/${projectId}`}
+              className="text-[11px] font-mono text-muted hover:text-white uppercase tracking-widest transition-colors inline-block"
+            >
+              ← Back to Project
+            </Link>
+            <div className="flex items-center gap-4">
+              <h1 className="text-4xl font-bold tracking-tight text-white">Product Library</h1>
+              <div className="status-chip subtle uppercase tracking-widest text-[9px]">
+                {sortedProducts.length} Products
+              </div>
+            </div>
+            <p className="text-xs text-muted font-mono uppercase tracking-widest opacity-60">
+              View: <span className="text-accent-2">Product Management</span> 
+              <span className="mx-3 opacity-20">|</span> 
+              Project: <span className="text-white">{projectId.substring(0, 8)}</span>
             </p>
           </div>
-          <Link
-            href={`/projects/${projectId}`}
-            className="inline-flex items-center rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-medium text-slate-200 hover:bg-slate-800"
+          
+          <button
+            onClick={() => void loadProducts()}
+            className="btn btn-secondary !min-h-[40px] px-6 text-[10px] font-bold uppercase tracking-widest"
           >
-            Back to Project
-          </Link>
+            Refresh Products
+          </button>
         </div>
-      </section>
+      </div>
 
-      {error && (
-        <div className="rounded-lg border border-red-500/50 bg-red-500/10 p-4">
-          <p className="text-sm text-red-300">{error}</p>
-        </div>
-      )}
+      <div className="px-8 py-10 max-w-[1200px] mx-auto space-y-12">
+        {error && (
+          <div className="rounded-card border border-danger/20 bg-danger/5 p-4 flex items-center justify-between gap-4 animate-in fade-in slide-in-from-top-2">
+            <p className="text-[11px] font-mono text-danger uppercase tracking-widest">{error}</p>
+            <button onClick={() => setError(null)} className="text-white/20 hover:text-white transition-colors">✕</button>
+          </div>
+        )}
 
-      <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-5">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-sm font-semibold text-slate-100">Products</h2>
-          <span className="text-xs text-slate-500">
-            {sortedProducts.length} {sortedProducts.length === 1 ? "product" : "products"}
-          </span>
-        </div>
-
-        {loading ? (
-          <p className="text-sm text-slate-400">Loading products...</p>
-        ) : sortedProducts.length === 0 ? (
-          <p className="text-sm text-slate-400">No products created yet.</p>
+        {sortedProducts.length === 0 ? (
+          <div className="rounded-card border border-line bg-panel p-20 text-center shadow-panel backdrop-blur-panel">
+            <p className="text-[10px] font-mono text-muted uppercase tracking-widest opacity-40 italic">No products have been added to this project yet.</p>
+          </div>
         ) : (
-          <div className="space-y-4">
-            {sortedProducts.map((product) => {
-              return (
-                <div
-                  key={product.id}
-                  className="rounded-lg border border-slate-800 bg-slate-950/70 p-4 space-y-4"
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="space-y-1">
-                      <div className="text-xs text-slate-500">
-                        ID: <span className="font-mono">{product.id}</span>
+          <div className="grid gap-8">
+            {sortedProducts.map((product) => (
+              <div
+                key={product.id}
+                className={`rounded-card border transition-all duration-300 ${
+                  editingProductId === product.id 
+                    ? "border-accent/40 bg-panel shadow-panel" 
+                    : "border-line bg-panel/50 hover:bg-panel/70 hover:border-line/60"
+                }`}
+              >
+                <div className="px-6 py-4 border-b border-line/50 bg-bg-elevated/30 flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <span className="text-[9px] font-mono text-white/30 uppercase tracking-[0.2em] font-bold">Product Record</span>
+                    <div className="h-3 w-px bg-line/50" />
+                    <span className="text-[9px] font-mono text-accent-2/60 uppercase tracking-widest">{product.id}</span>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <span className="text-[9px] font-mono text-muted uppercase tracking-widest">
+                       Added: {product.createdAt ? dateFormatter.format(new Date(product.createdAt)) : "N/A"}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="p-8">
+                  <div className="flex flex-col lg:flex-row justify-between gap-8">
+                    <div className="space-y-6 flex-1">
+                      <div className="space-y-1">
+                        <h2 className="text-3xl font-black text-white tracking-tight leading-none">
+                          {product.name}
+                        </h2>
+                        <p className="text-[10px] font-mono text-muted uppercase tracking-[0.33em] pt-1 opacity-60">
+                          {product.amazonAsin ? `ASIN: ${product.amazonAsin}` : "ASIN: NOT ADDED"}
+                        </p>
                       </div>
-                      <div className="text-sm font-semibold text-slate-100">{product.name}</div>
-                      <div className="text-xs text-slate-500">
-                        Created{" "}
-                        {product.createdAt
-                          ? dateFormatter.format(new Date(product.createdAt))
-                          : "Unknown"}
+
+                      {product.productProblemSolved && (
+                        <div className="p-4 rounded border border-line/30 bg-bg/40">
+                          <p className="text-[9px] font-mono text-accent uppercase tracking-widest mb-1 opacity-70">Primary Problem</p>
+                          <p className="text-[13px] text-muted leading-relaxed line-clamp-2 italic">"{product.productProblemSolved}"</p>
+                        </div>
+                      )}
+
+                      <div className="flex flex-wrap gap-3 pt-2">
+                        <button
+                          onClick={() => editingProductId === product.id ? cancelEditProduct() : beginEditProduct(product)}
+                          className={`btn ${editingProductId === product.id ? 'btn-primary' : 'btn-secondary'} !min-h-[36px] px-6 text-[9px] uppercase font-bold tracking-widest`}
+                        >
+                          {editingProductId === product.id ? "Close Editor" : "Edit Product"}
+                        </button>
+                        
+                        <div className="h-9 w-px bg-line/50 mx-2 hidden sm:block"></div>
+
+                        <Link
+                          href={`/products/${product.id}`}
+                          className="btn btn-secondary !min-h-[36px] px-6 text-[9px] uppercase font-bold tracking-widest hover:border-accent-2/50"
+                        >
+                          Product Setup
+                        </Link>
+                        <Link
+                          href={`/projects/${projectId}/research-hub?productId=${product.id}`}
+                          className="btn btn-secondary !min-h-[36px] px-6 text-[9px] uppercase font-bold tracking-widest hover:border-accent/50"
+                        >
+                          Research Hub
+                        </Link>
+                        <Link
+                          href={`/projects/${projectId}/creative-studio?productId=${product.id}`}
+                          className="btn btn-secondary !min-h-[36px] px-6 text-[9px] uppercase font-bold tracking-widest hover:border-accent-2/50"
+                        >
+                          Creative Studio
+                        </Link>
+
+                        <button
+                          onClick={() => void handleDeleteProduct(product.id)}
+                          disabled={deletingProductId === product.id}
+                          className="btn btn-danger !min-h-[36px] px-6 text-[9px] uppercase font-bold tracking-widest ml-auto"
+                        >
+                          {deletingProductId === product.id ? "Wiping..." : "Purge_Asset"}
+                        </button>
                       </div>
                     </div>
 
-                    <div className="flex gap-2 flex-wrap justify-end">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          editingProductId === product.id
-                            ? cancelEditProduct()
-                            : beginEditProduct(product)
-                        }
-                        className="inline-flex items-center rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-medium text-slate-200 hover:bg-slate-800"
-                      >
-                        {editingProductId === product.id ? "Close Edit" : "Edit"}
-                      </button>
-                      <Link
-                        href={`/products/${product.id}`}
-                        className="inline-flex items-center rounded-md bg-emerald-500 hover:bg-emerald-400 px-3 py-2 text-xs font-medium text-white"
-                      >
-                        Product Setup
-                      </Link>
-                      <Link
-                        href={`/projects/${projectId}/research-hub?productId=${product.id}`}
-                        className="inline-flex items-center rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-medium text-slate-200 hover:bg-slate-800"
-                      >
-                        Research Hub
-                      </Link>
-                      <Link
-                        href={`/projects/${projectId}/creative-studio?productId=${product.id}`}
-                        className="inline-flex items-center rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-medium text-slate-200 hover:bg-slate-800"
-                      >
-                        Creative Studio
-                      </Link>
-                      <button
-                        type="button"
-                        onClick={() => void handleDeleteProduct(product.id)}
-                        disabled={deletingProductId === product.id}
-                        className={`inline-flex items-center rounded-md border px-3 py-2 text-xs font-medium ${
-                          deletingProductId === product.id
-                            ? "border-slate-700 bg-slate-900 text-slate-500 cursor-not-allowed"
-                            : "border-red-500/50 bg-red-500/10 text-red-300 hover:bg-red-500/20"
-                        }`}
-                      >
-                        {deletingProductId === product.id ? "Deleting..." : "Delete"}
-                      </button>
+                    <div className="w-full lg:w-48 aspect-square rounded-card border border-line bg-bg overflow-hidden group/thumb relative">
+                      {product.productReferenceImageUrl ? (
+                        <>
+                          <img 
+                            src={product.productReferenceImageUrl} 
+                            alt={product.name}
+                            className="w-full h-full object-cover opacity-60 grayscale group-hover:grayscale-0 group-hover:opacity-100 transition-all duration-700 scale-100 group-hover:scale-110"
+                          />
+                          <div className="absolute inset-0 bg-accent-2/10 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+                        </>
+                      ) : (
+                        <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center space-y-3 opacity-30">
+                          <div className="w-10 h-10 border border-line rounded flex items-center justify-center text-xl">🖼️</div>
+                          <span className="text-[9px] font-mono uppercase tracking-[0.2em] leading-tight">Thumbnail_Missing</span>
+                        </div>
+                      )}
                     </div>
                   </div>
 
                   {editingProductId === product.id && editingDraft && (
-                    <div className="rounded-lg border border-slate-700 bg-slate-900/60 p-3 space-y-3">
-                      <div className="grid gap-3 md:grid-cols-1">
-                        <div className="space-y-1">
-                          <label className="block text-xs font-medium text-slate-300">Name</label>
-                          <input
-                            value={editingDraft.name}
-                            onChange={(event) =>
-                              setEditingDraft((prev) =>
-                                prev ? { ...prev, name: event.target.value } : prev,
-                              )
-                            }
-                            className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="grid gap-3 md:grid-cols-1">
-                        <div className="space-y-1">
-                          <label className="block text-xs font-medium text-slate-300">
-                            Product Reference Image
-                          </label>
-                          <div className="pt-1">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const input = document.getElementById(
-                                  `product-ref-upload-${product.id}`,
-                                ) as HTMLInputElement | null;
-                                input?.click();
-                              }}
-                              disabled={uploadingReferenceProductId === product.id}
-                              className="inline-flex cursor-pointer items-center rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-medium text-slate-200 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              {uploadingReferenceProductId === product.id
-                                ? "Uploading..."
-                                : "Upload Product Image"}
-                            </button>
-                            <input
-                              id={`product-ref-upload-${product.id}`}
-                              type="file"
-                              accept="image/jpeg,image/png,image/webp"
-                              style={{
-                                position: "absolute",
-                                width: 1,
-                                height: 1,
-                                padding: 0,
-                                margin: -1,
-                                overflow: "hidden",
-                                clip: "rect(0, 0, 0, 0)",
-                                whiteSpace: "nowrap",
-                                border: 0,
-                              }}
-                              tabIndex={-1}
-                              aria-hidden="true"
-                              disabled={uploadingReferenceProductId === product.id}
-                              onChange={(event) => {
-                                const file = event.target.files?.[0];
-                                if (file) {
-                                  void handleUploadProductReferenceImage(product.id, file);
-                                }
-                                event.currentTarget.value = "";
-                              }}
-                            />
-                          </div>
-                          <p className="text-[11px] text-amber-300">
-                            Accepted types: image/jpeg, image/png, image/webp; Max size: 10.0MB
-                          </p>
-                          {editingDraft.productReferenceImageUrl ? (
+                    <div className="mt-8 pt-8 border-t border-line/50 animate-in fade-in slide-in-from-top-4 duration-500">
+                      <div className="rounded-card border border-accent/20 bg-accent/5 p-8 space-y-8">
+                        <div className="grid gap-8 lg:grid-cols-2">
+                          <div className="space-y-6">
                             <div className="space-y-2">
-                              <p className="text-[11px] text-slate-400 break-all">
-                                Uploaded URL: {editingDraft.productReferenceImageUrl}
-                              </p>
-                              <button
-                                type="button"
-                                onClick={() => void handleDeleteProductReferenceImage(product.id)}
-                                disabled={deletingReferenceProductId === product.id}
-                                className="inline-flex items-center rounded-md border border-red-500/40 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-300 hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-60"
-                              >
-                                {deletingReferenceProductId === product.id
-                                  ? "Deleting..."
-                                  : "Delete Product Image URL"}
-                              </button>
+                              <label className="text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Catalogue_Label</label>
+                              <input
+                                value={editingDraft.name}
+                                onChange={(event) => setEditingDraft((prev) => prev ? { ...prev, name: event.target.value } : prev)}
+                                className="w-full h-12 bg-black/40 border-line rounded-card px-4 text-sm font-medium text-white focus:border-accent/60 focus:ring-1 focus:ring-accent/60 outline-none transition-all"
+                                placeholder="Universal Identity..."
+                              />
                             </div>
-                          ) : null}
-                        </div>
-                      </div>
+                            
+                            <div className="space-y-3">
+                              <label className="text-[10px] font-mono text-muted uppercase tracking-widest font-bold block">Visual_Reference_Vector</label>
+                              <div className="flex flex-wrap gap-3">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const input = document.getElementById(`product-ref-upload-${product.id}`) as HTMLInputElement | null;
+                                    input?.click();
+                                  }}
+                                  disabled={uploadingReferenceProductId === product.id}
+                                  className="px-6 h-10 rounded-pill border border-line bg-bg-elevated/50 text-[10px] font-mono text-white uppercase tracking-widest hover:bg-panel transition-all hover:text-bg font-bold disabled:opacity-40"
+                                >
+                                  {uploadingReferenceProductId === product.id ? "Transferring_Data..." : "Upload_Source_Frame"}
+                                </button>
+                                
+                                {editingDraft.productReferenceImageUrl && (
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleDeleteProductReferenceImage(product.id)}
+                                    disabled={deletingReferenceProductId === product.id}
+                                    className="px-6 h-10 rounded-pill border border-danger/40 bg-danger/5 text-[10px] font-mono text-danger uppercase tracking-widest hover:bg-danger/20 transition-all font-bold"
+                                  >
+                                    Clear_Frame
+                                  </button>
+                                )}
+                                
+                                <input
+                                  id={`product-ref-upload-${product.id}`}
+                                  type="file"
+                                  accept="image/jpeg,image/png,image/webp"
+                                  className="hidden"
+                                  disabled={uploadingReferenceProductId === product.id}
+                                  onChange={(event) => {
+                                    const file = event.target.files?.[0];
+                                    if (file) void handleUploadProductReferenceImage(product.id, file);
+                                    event.currentTarget.value = "";
+                                  }}
+                                />
+                              </div>
+                              <p className="text-[9px] font-mono text-muted/40 uppercase tracking-widest">Supports: JPG, PNG, WEBP [Max 10MB]</p>
+                            </div>
+                          </div>
 
-                      <div className="flex justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={cancelEditProduct}
-                          disabled={savingProductId === product.id}
-                          className="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-slate-300 hover:bg-slate-800"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void saveEditedProduct(product.id)}
-                          disabled={savingProductId === product.id}
-                          className="rounded-md bg-sky-500 px-3 py-2 text-xs font-medium text-white hover:bg-sky-400 disabled:opacity-60"
-                        >
-                          {savingProductId === product.id ? "Saving..." : "Save Product"}
-                        </button>
+                          <div className="rounded-card border border-line bg-bg p-4 flex flex-col items-center justify-center text-center space-y-4">
+                            {editingDraft.productReferenceImageUrl ? (
+                              <img 
+                                src={editingDraft.productReferenceImageUrl} 
+                                className="max-h-48 rounded border border-line shadow-2xl" 
+                                alt="Preview"
+                              />
+                            ) : (
+                              <div className="py-12 opacity-20">
+                                <span className="text-[10px] font-mono uppercase tracking-[0.3em]">No_Image_Cached</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex justify-end gap-3 pt-4 border-t border-line/50">
+                          <button
+                            onClick={cancelEditProduct}
+                            disabled={savingProductId === product.id}
+                            className="btn btn-secondary !min-h-[40px] px-8 text-[10px] font-bold uppercase tracking-widest"
+                          >
+                            Abort_Changes
+                          </button>
+                          <button
+                            onClick={() => void saveEditedProduct(product.id)}
+                            disabled={savingProductId === product.id}
+                            className="btn btn-primary !min-h-[40px] px-10 text-[10px] font-bold uppercase tracking-widest"
+                          >
+                            {savingProductId === product.id ? "Encrypting..." : "Commit_Overrides"}
+                          </button>
+                        </div>
                       </div>
                     </div>
                   )}
                 </div>
-              );
-            })}
+              </div>
+            ))}
           </div>
         )}
-      </section>
+      </div>
     </div>
   );
 }

@@ -259,80 +259,121 @@ export default function InputParametersPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-950 text-slate-200 px-6 py-6">
-        <p className="text-sm text-slate-400">Loading input parameters...</p>
+      <div className="min-h-screen bg-bg text-white px-8 py-8">
+        <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
+          <div className="w-8 h-8 border-2 border-accent/20 border-t-accent rounded-full animate-spin" />
+          <p className="text-[10px] font-mono text-muted uppercase tracking-[0.3em] animate-pulse">Trace_Initialising...</p>
+        </div>
       </div>
     );
   }
 
   if (error || !job) {
     return (
-      <div className="min-h-screen bg-slate-950 text-slate-200 px-6 py-6">
+      <div className="min-h-screen bg-bg text-white px-8 py-8 space-y-6">
         <Link
           href={`/projects/${projectId}/research/data/${jobId}${runId ? `?runId=${runId}` : ''}`}
-          className="text-sm text-sky-400 hover:text-sky-300"
+          className="text-[11px] font-mono text-muted hover:text-white uppercase tracking-widest transition-colors inline-block"
         >
-          ← Back to Raw Research Data
+          ← Back to Research Export
         </Link>
-        <p className="mt-4 text-sm text-red-400">{error || 'Unable to load job details'}</p>
+        <div className="rounded-card border border-danger/20 bg-danger/5 p-6 space-y-2">
+          <p className="text-[10px] font-mono text-danger uppercase tracking-widest font-bold">Input load failed</p>
+          <p className="text-sm text-muted leading-relaxed">{error || 'Unable to load input details'}</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-200">
-      <div className="border-b border-slate-800 bg-slate-900/50 px-6 py-4">
-        <Link
-          href={`/projects/${projectId}/research/data/${jobId}${runId ? `?runId=${runId}` : ''}`}
-          className="text-sm text-sky-400 hover:text-sky-300 inline-block mb-2"
-        >
-          ← Back to Raw Research Data
-        </Link>
-        <h1 className="text-2xl font-bold">Input Parameters</h1>
-        <p className="text-sm text-slate-400 mt-1">
-          Job {job.id.substring(0, 8)} · {job.type} · {job.status}
-        </p>
+    <div className="min-h-screen bg-bg text-white">
+      <div className="border-b border-line bg-panel/50 backdrop-blur-md px-8 py-6">
+        <div className="space-y-4">
+          <Link
+            href={`/projects/${projectId}/research/data/${jobId}${runId ? `?runId=${runId}` : ''}`}
+            className="text-[11px] font-mono text-muted hover:text-white uppercase tracking-widest transition-colors inline-block"
+          >
+            ← Back to Research Export
+          </Link>
+          <div className="flex items-center gap-4">
+            <h1 className="text-4xl font-bold tracking-tight text-white">Input Parameters</h1>
+            <div className="status-chip subtle uppercase tracking-widest text-[9px]">
+              {jobId.substring(0, 8)}
+            </div>
+          </div>
+          <p className="text-xs text-muted font-mono uppercase tracking-widest opacity-60">
+            Job Type: <span className="text-accent">{job.type}</span> 
+            <span className="mx-3 opacity-20">|</span> 
+            Status: <span className="text-accent-2">{job.status}</span>
+          </p>
+        </div>
       </div>
 
-      <div className="px-6 py-6 space-y-6">
-        <section className="rounded-lg border border-slate-800 bg-slate-900/50 p-4">
-          <h2 className="text-lg font-semibold text-white mb-3">Job Payload</h2>
-          <pre className="text-xs text-slate-300 whitespace-pre-wrap break-words">
-            {JSON.stringify(payload, null, 2)}
-          </pre>
+      <div className="px-8 py-10 space-y-10 max-w-[1400px]">
+        <section className="rounded-card border border-line bg-panel overflow-hidden shadow-panel">
+          <div className="border-b border-line bg-bg-elevated/50 px-6 py-3 flex items-center justify-between">
+            <h2 className="text-[10px] font-mono text-white uppercase tracking-[0.2em] font-bold">Request Payload</h2>
+            <div className="text-[9px] font-mono text-muted uppercase opacity-40">JSON</div>
+          </div>
+          <div className="p-6 bg-bg/40">
+            <pre className="text-[11px] font-mono text-muted/80 leading-relaxed whitespace-pre-wrap break-words scrollbar-thin scrollbar-thumb-line">
+              {JSON.stringify(payload, null, 2)}
+            </pre>
+          </div>
         </section>
 
         {redditInputs && (
-          <section className="rounded-lg border border-slate-800 bg-slate-900/50 p-4">
-            <h2 className="text-lg font-semibold text-white mb-3">Reddit Scraper Inputs</h2>
-            <pre className="text-xs text-slate-300 whitespace-pre-wrap break-words">
-              {JSON.stringify(redditInputs, null, 2)}
-            </pre>
+          <section className="rounded-card border border-line bg-panel overflow-hidden shadow-panel">
+            <div className="border-b border-line bg-bg-elevated/50 px-6 py-3 flex items-center justify-between">
+              <h2 className="text-[10px] font-mono text-accent uppercase tracking-[0.2em] font-bold">Reddit Research Settings</h2>
+              <div className="text-[9px] font-mono text-muted uppercase opacity-40">Configuration</div>
+            </div>
+            <div className="p-6 bg-bg/40">
+              <pre className="text-[11px] font-mono text-muted/80 leading-relaxed whitespace-pre-wrap break-words scrollbar-thin scrollbar-thumb-line">
+                {JSON.stringify(redditInputs, null, 2)}
+              </pre>
+            </div>
           </section>
         )}
 
         {amazonInputs.requests.length > 0 && (
-          <section className="rounded-lg border border-slate-800 bg-slate-900/50 p-4">
-            <h2 className="text-lg font-semibold text-white mb-3">Amazon Scraper Inputs</h2>
-            <pre className="text-xs text-slate-300 whitespace-pre-wrap break-words">
-              {JSON.stringify(amazonInputs, null, 2)}
-            </pre>
+          <section className="rounded-card border border-line bg-panel overflow-hidden shadow-panel">
+            <div className="border-b border-line bg-bg-elevated/50 px-6 py-3 flex items-center justify-between">
+              <h2 className="text-[10px] font-mono text-success uppercase tracking-[0.2em] font-bold">Amazon Research Settings</h2>
+              <div className="text-[9px] font-mono text-muted uppercase opacity-40">Batch Requests</div>
+            </div>
+            <div className="p-6 bg-bg/40">
+              <pre className="text-[11px] font-mono text-muted/80 leading-relaxed whitespace-pre-wrap break-words scrollbar-thin scrollbar-thumb-line">
+                {JSON.stringify(amazonInputs, null, 2)}
+              </pre>
+            </div>
           </section>
         )}
 
-        <section className="rounded-lg border border-slate-800 bg-slate-900/50 p-4">
-          <h2 className="text-lg font-semibold text-white mb-3">Observed Reddit Queries</h2>
-          {observedQueries.length === 0 ? (
-            <p className="text-sm text-slate-400">No query metadata found in loaded rows.</p>
-          ) : (
-            <pre className="text-xs text-slate-300 whitespace-pre-wrap break-words">
-              {JSON.stringify(observedQueries, null, 2)}
-            </pre>
-          )}
-          <p className="text-xs text-slate-500 mt-2">
-            Query metadata is derived from stored row metadata (`query_type`, `query_used`,
-            `search_problem`, `subreddit`).
-          </p>
+        <section className="rounded-card border border-line bg-panel overflow-hidden shadow-panel">
+          <div className="border-b border-line bg-bg-elevated/50 px-6 py-3 flex items-center justify-between">
+            <h2 className="text-[10px] font-mono text-accent-2 uppercase tracking-[0.2em] font-bold">Observed Search Queries</h2>
+            <div className="text-[9px] font-mono text-muted uppercase opacity-40">Reddit Queries</div>
+          </div>
+          <div className="px-6 py-6 pb-2 bg-bg/20">
+             {observedQueries.length === 0 ? (
+                <div className="flex flex-col items-center justify-center p-12 space-y-2 border border-dashed border-line/20 rounded">
+                  <p className="text-[10px] font-mono text-muted uppercase tracking-widest opacity-40">No search query data found</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <pre className="text-[11px] font-mono text-muted/80 leading-relaxed whitespace-pre-wrap break-words scrollbar-thin scrollbar-thumb-line">
+                    {JSON.stringify(observedQueries, null, 2)}
+                  </pre>
+                  <div className="pt-4 border-t border-line/20">
+                    <p className="text-[9px] font-mono text-muted/40 uppercase tracking-widest leading-relaxed">
+                      Tracing derived from row-level metadata schemas: <br/>
+                      [query_type] • [query_used] • [search_problem] • [subreddit]
+                    </p>
+                  </div>
+                </div>
+              )}
+          </div>
         </section>
       </div>
     </div>

@@ -76,12 +76,12 @@ export function ProjectProductsPanel({ projectId, initialProducts }: Props) {
   }
 
   return (
-    <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-5 space-y-4">
+    <section className="rounded-card border border-line bg-panel p-5 space-y-4 shadow-panel backdrop-blur-panel">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-slate-100">Products</h2>
-          <p className="text-xs text-slate-400">
-            Create/select a product before opening Research Hub or Creative Studio.
+          <h2 className="text-sm font-semibold text-white tracking-tight">Products</h2>
+          <p className="text-xs text-muted italic">
+            Create or select a product to begin research and creative workflows.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -90,7 +90,7 @@ export function ProjectProductsPanel({ projectId, initialProducts }: Props) {
               value={selectedProductId}
               onChange={(e) => setSelectedProductId(e.target.value)}
               disabled={!hasProducts}
-              className="rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-200 disabled:text-slate-500"
+              className="rounded-pill border border-line bg-[rgba(255,255,255,0.03)] px-3 py-1 text-xs text-text disabled:opacity-50 outline-none focus:border-accent/40 transition-colors"
             >
               {!hasProducts && <option value="">No products yet</option>}
               {sortedProducts.map((product) => (
@@ -106,10 +106,10 @@ export function ProjectProductsPanel({ projectId, initialProducts }: Props) {
                     ? `/projects/${projectId}/research-hub?productId=${selectedProductId}`
                     : "#"
                 }
-                className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ${
+                className={`inline-flex items-center rounded-pill px-3 py-1 text-xs font-medium transition-all ${
                   selectedProductId
-                    ? "bg-slate-800 text-slate-100 hover:bg-slate-700"
-                    : "bg-slate-900 text-slate-500 cursor-not-allowed pointer-events-none"
+                    ? "border border-accent/30 bg-accent/5 text-accent hover:bg-accent/10"
+                    : "bg-panel text-muted cursor-not-allowed pointer-events-none opacity-50"
                 }`}
                 aria-disabled={!selectedProductId}
               >
@@ -121,10 +121,10 @@ export function ProjectProductsPanel({ projectId, initialProducts }: Props) {
                     ? `/projects/${projectId}/creative-studio?productId=${selectedProductId}`
                     : "#"
                 }
-                className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ${
+                className={`inline-flex items-center rounded-pill px-3 py-1 text-xs font-medium transition-all ${
                   selectedProductId
-                    ? "border border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800"
-                    : "border border-slate-800 bg-slate-900 text-slate-500 cursor-not-allowed pointer-events-none"
+                    ? "border border-accent/30 bg-accent/5 text-accent hover:bg-accent/10"
+                    : "border border-line bg-panel text-muted cursor-not-allowed pointer-events-none opacity-50"
                 }`}
                 aria-disabled={!selectedProductId}
               >
@@ -135,7 +135,7 @@ export function ProjectProductsPanel({ projectId, initialProducts }: Props) {
           <div className="flex items-center gap-2">
             <Link
               href={`/projects/${projectId}/products`}
-              className="inline-flex items-center rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-xs font-medium text-slate-200 hover:bg-slate-800"
+              className="inline-flex items-center rounded-pill border border-line bg-bg-elevated px-4 py-1.5 text-xs font-medium text-muted hover:text-white hover:bg-panel-strong transition-all"
             >
               View All Products
             </Link>
@@ -144,44 +144,44 @@ export function ProjectProductsPanel({ projectId, initialProducts }: Props) {
       </div>
 
       {!hasProducts ? (
-        <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-6 text-center">
-          <p className="text-sm text-slate-300 mb-2">No products created yet.</p>
-          <p className="text-xs text-slate-500 mb-4">
+        <div className="rounded-card border border-line bg-[rgba(255,255,255,0.03)] p-6 text-center">
+          <p className="text-sm text-text mb-2">No products created yet.</p>
+          <p className="text-xs text-muted mb-4 italic">
             Add your first product to start research and creative workflows.
           </p>
         </div>
       ) : (
-        <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-4">
-          <p className="text-xs text-slate-400">
-            Click <span className="text-slate-200 font-medium">View All Products</span> to manage and delete products.
+        <div className="rounded-card border border-line bg-[rgba(255,255,255,0.03)] p-4">
+          <p className="text-xs text-muted italic">
+            Click <span className="text-accent-2 font-mono">View All Products</span> to manage and delete products.
           </p>
         </div>
       )}
 
       <details
         ref={createDetailsRef}
-        className="rounded-xl border border-slate-700 bg-slate-900/80"
+        className="rounded-card border border-line bg-[rgba(255,255,255,0.03)] overflow-hidden"
       >
-        <summary className="list-none select-none px-4 py-3">
-          <span className="inline-flex items-center justify-center rounded-md bg-sky-500 hover:bg-sky-400 px-3 py-2 text-xs font-medium text-white">
-            Create New Product
+        <summary className="list-none select-none px-4 py-3 cursor-pointer hover:bg-panel/[0.02] transition-colors">
+          <span className="inline-flex items-center justify-center rounded-pill bg-accent hover:bg-accent/90 px-4 py-2 text-xs font-bold text-bg shadow-[0_0_15px_rgba(232,209,122,0.15)] transition-all">
+            + Create New Product
           </span>
         </summary>
-        <div className="border-t border-slate-800 p-4">
-          <form onSubmit={handleCreateProduct} className="space-y-3">
+        <div className="border-t border-line p-5">
+          <form onSubmit={handleCreateProduct} className="space-y-4">
             <div>
-              <label className="block text-sm text-slate-300 mb-1">Product Name</label>
+              <label className="block text-[11px] font-mono text-muted uppercase tracking-wider mb-2">Product Name</label>
               <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+                className="w-full rounded-pill border border-line bg-[rgba(255,255,255,0.03)] px-4 py-2 text-sm text-white placeholder:text-muted/40 outline-none focus:border-accent/40 transition-colors"
                 placeholder="e.g., ClearGlow Serum"
                 required
               />
             </div>
-            {error && <p className="text-xs text-red-400">{error}</p>}
-            <div className="flex justify-end gap-2 pt-2">
+            {error && <p className="text-xs text-accent">{error}</p>}
+            <div className="flex justify-end gap-3 pt-2">
               <button
                 type="button"
                 onClick={() => {
@@ -190,14 +190,14 @@ export function ProjectProductsPanel({ projectId, initialProducts }: Props) {
                     setError(null);
                   }
                 }}
-                className="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-300 hover:bg-slate-800"
+                className="rounded-pill border border-line bg-transparent px-4 py-2 text-xs font-medium text-muted hover:text-white hover:bg-panel/5 transition-all"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={submitting}
-                className="rounded-md bg-sky-500 px-3 py-2 text-sm font-medium text-white hover:bg-sky-400 disabled:opacity-60"
+                className="rounded-pill bg-accent px-5 py-2 text-xs font-bold text-bg hover:bg-accent/90 disabled:opacity-50 shadow-[0_0_15px_rgba(232,209,122,0.15)] transition-all"
               >
                 {submitting ? "Creating..." : "Create Product"}
               </button>

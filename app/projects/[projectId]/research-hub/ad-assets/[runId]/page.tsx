@@ -283,216 +283,251 @@ export default function AdAssetsViewerPage() {
   }
 
   return (
-    <div className="px-6 py-6 max-w-7xl mx-auto">
-      <div className="mb-6 flex items-start justify-between gap-4">
-        <div>
-          <Link
-            href={`/projects/${projectId}/research-hub`}
-            className="text-sm text-slate-400 hover:text-slate-300 mb-2 inline-block"
-          >
-            ← Back to Research Hub
-          </Link>
-          <h1 className="text-2xl font-bold text-white">Ad Assets</h1>
-          <p className="text-sm text-slate-400 mt-1">Run: {runId}</p>
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-bg text-white px-8 py-8">
+        <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
+          <div className="w-8 h-8 border-2 border-accent-2/20 border-t-accent-2 rounded-full animate-spin" />
+          <p className="text-[10px] font-mono text-muted uppercase tracking-[0.3em] animate-pulse">Scanning_Assets...</p>
         </div>
-        <button
-          onClick={handleExportCsv}
-          disabled={loading || !!error || rows.length === 0}
-          className={`px-3 py-2 text-sm rounded border ${
-            loading || !!error || rows.length === 0
-              ? "border-slate-700 text-slate-500 cursor-not-allowed"
-              : "border-slate-600 text-slate-200 hover:border-slate-500 hover:text-white"
-          }`}
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-bg text-white px-8 py-8 space-y-6">
+        <Link
+          href={`/projects/${projectId}/research-hub`}
+          className="text-[11px] font-mono text-muted hover:text-white uppercase tracking-widest transition-colors inline-block"
         >
-          Export CSV
-        </button>
+          ← Back to Research Hub
+        </Link>
+        <div className="rounded-card border border-danger/20 bg-danger/5 p-6 space-y-2">
+          <p className="text-[10px] font-mono text-danger uppercase tracking-widest font-bold">Asset load failed</p>
+          <p className="text-sm text-muted leading-relaxed">{error}</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-bg text-white">
+      <div className="border-b border-line bg-panel/50 backdrop-blur-md px-8 py-6">
+        <div className="flex items-center justify-between gap-6">
+          <div className="space-y-4">
+            <Link
+              href={`/projects/${projectId}/research-hub`}
+              className="text-[11px] font-mono text-muted hover:text-white uppercase tracking-widest transition-colors inline-block"
+            >
+              ← Back to Research Hub
+            </Link>
+            <div className="flex items-center gap-4">
+              <h1 className="text-4xl font-bold tracking-tight text-white">Asset Inventory</h1>
+              <div className="status-chip subtle uppercase tracking-widest text-[9px]">
+                RUN_{runId.substring(0, 8)}
+              </div>
+            </div>
+            <p className="text-xs text-muted font-mono uppercase tracking-widest opacity-60">
+              View: <span className="text-accent-2">Ad Asset Library</span> 
+              <span className="mx-3 opacity-20">|</span> 
+              Assets: <span className="text-white">{rows.length}</span>
+            </p>
+          </div>
+          
+          <button
+            onClick={handleExportCsv}
+            disabled={rows.length === 0}
+            className="btn btn-primary !min-h-[40px] px-8 text-[10px] font-bold uppercase tracking-widest"
+          >
+            Export CSV
+          </button>
+        </div>
       </div>
 
-      {loading && <div className="text-slate-400 text-sm">Loading ad assets...</div>}
-
-      {!loading && error && (
-        <div className="rounded border border-red-500/40 bg-red-500/10 p-4 text-red-300 text-sm">
-          {error}
-        </div>
-      )}
-
-      {!loading && !error && rows.length === 0 && (
-        <div className="rounded border border-slate-700 bg-slate-900/60 p-4 text-slate-300 text-sm">
-          No ad assets found for this run.
-        </div>
-      )}
-
-      {!loading && !error && rows.length > 0 && (
-        <div className="rounded-lg border border-slate-800 bg-slate-900/50 overflow-hidden">
-          <div className="px-4 py-3 border-b border-slate-800 text-sm text-slate-300">
-            {rows.length} ads
+      <div className="px-8 py-10">
+        <div className="rounded-card border border-line bg-panel overflow-hidden shadow-panel">
+          <div className="px-6 py-4 border-b border-line bg-bg-elevated/30 flex items-center justify-between">
+            <h2 className="text-[10px] font-mono text-white/50 uppercase tracking-[0.2em] font-bold">Ad Assets</h2>
             {highlightOcr && (
-              <span className="ml-3 text-xs text-slate-400">
-                OCR highlighted: <span className="text-emerald-400">with OCR</span> /{" "}
-                <span className="text-rose-400">missing OCR</span>
-              </span>
+              <div className="flex items-center gap-4 text-[9px] font-mono uppercase tracking-widest">
+                <span className="flex items-center gap-2">
+                  <div className="w-1.5 h-1.5 rounded-full bg-success"></div>
+                  <span className="text-success">OCR Ready</span>
+                </span>
+                <span className="flex items-center gap-2">
+                  <div className="w-1.5 h-1.5 rounded-full bg-danger"></div>
+                  <span className="text-danger">Needs Review</span>
+                </span>
+              </div>
             )}
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1650px]">
-              <thead className="bg-slate-800/50">
+            <table className="w-full text-left border-collapse min-w-[1650px]">
+              <thead className="bg-bg-elevated/10 border-b border-line">
                 <tr>
-                  <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Created</th>
-                  <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Asset ID</th>
-                  <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Swipe</th>
-                  <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Job ID</th>
-                  <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Video URL</th>
-                  <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">OCR Status</th>
-                  <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Retention 3s</th>
-                  <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Retention 10s</th>
-                  <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Retain CTR 3s</th>
-                  <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Retain CTR 10s</th>
-                  <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Retain CVR 3s</th>
-                  <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Retain CVR 10s</th>
-                  <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Duration</th>
-                  <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">CTR</th>
-                  <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Cost</th>
-                  <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Likes</th>
-                  <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Engagement</th>
-                  <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Source</th>
-                  <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Industry</th>
-                  <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Spikes</th>
-                  <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">OCR Details</th>
-                  <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Raw</th>
+                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-40">Timestamp</th>
+                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-32">Asset_ID</th>
+                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-32">Classification</th>
+                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-24">Linkage</th>
+                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em]">Source_URI</th>
+                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-32 text-center">OCR_State</th>
+                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-24 text-right">R_3s</th>
+                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-24 text-right">R_10s</th>
+                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-24 text-right">CTR_3s</th>
+                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-24 text-right">CTR_10s</th>
+                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-24 text-right">CVR_3s</th>
+                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-24 text-right">CVR_10s</th>
+                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-20 text-right">Dur</th>
+                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-24 text-right">CTR</th>
+                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-24 text-right">Cost</th>
+                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-24 text-right">Like</th>
+                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-20 text-center">Engage</th>
+                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-28">Source</th>
+                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-28">Industry</th>
+                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-28">Spikes</th>
+                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-48">Frame_Analysis</th>
+                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-24 text-center">Raw</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800">
+              <tbody className="divide-y divide-line/30">
                 {rows.map((row) => (
                   <tr
                     key={row.asset.id}
-                    className={`align-top ${
+                    className={`align-top hover:bg-panel/[0.02] transition-colors group ${
                       highlightOcr
                         ? row.hasOcr
-                          ? "bg-emerald-500/5"
-                          : "bg-rose-500/5"
+                          ? "bg-success/5"
+                          : "bg-danger/5"
                         : ""
                     }`}
                   >
-                    <td className="px-3 py-2 text-xs text-slate-300">
-                      {new Date(row.asset.createdAt).toLocaleString()}
+                    <td className="px-5 py-4 text-[10px] font-mono text-muted/80">
+                      {new Date(row.asset.createdAt).toLocaleDateString()}
+                      <br />
+                      {new Date(row.asset.createdAt).toLocaleTimeString()}
                     </td>
-                    <td className="px-3 py-2 text-xs text-slate-300 font-mono">{row.asset.id}</td>
-                    <td className="px-3 py-2 text-xs text-slate-300">
+                    <td className="px-5 py-4 text-[10px] font-mono text-white/90">{row.asset.id.substring(0, 8)}</td>
+                    <td className="px-5 py-4">
                       {row.isSwipeFile ? (
-                        <div className="space-y-1">
-                          <span className="inline-flex rounded bg-amber-500/20 px-2 py-0.5 text-[11px] text-amber-300">
-                            Swipe File
+                        <div className="flex flex-col gap-1.5">
+                          <span className="status-chip warning !text-[8.5px] uppercase font-bold tracking-widest !py-0.5">
+                            Swipe_File
                           </span>
-                          <div className="text-[11px] text-slate-400">
-                            {typeof row.swipeViews === "number"
-                              ? `${Math.round(row.swipeViews).toLocaleString()} views`
-                              : "views unavailable"}
-                          </div>
-                          <div className="text-[11px] text-slate-400">
-                            {row.hasSwipeMetadata ? "template extracted" : "template pending"}
-                          </div>
+                          {row.swipeViews !== null && (
+                            <span className="text-[10px] font-mono text-accent/60 uppercase tracking-widest whitespace-nowrap">
+                              {Math.round(row.swipeViews).toLocaleString()} VIEWS
+                            </span>
+                          )}
+                          <span className={`text-[9px] font-mono uppercase tracking-widest ${row.hasSwipeMetadata ? 'text-success/60' : 'text-muted/40'}`}>
+                            {row.hasSwipeMetadata ? "✓ EXTRACTED" : "PENDING"}
+                          </span>
                         </div>
                       ) : (
-                        <span className="text-slate-500">—</span>
+                        <span className="text-[10px] font-mono text-muted/20 uppercase tracking-widest">Standard</span>
                       )}
                     </td>
-                    <td className="px-3 py-2 text-xs text-slate-400 font-mono">{row.asset.jobId ?? "—"}</td>
-                    <td className="px-3 py-2 text-xs">
+                    <td className="px-5 py-4 text-[10px] font-mono text-muted/60">{row.asset.jobId?.substring(0, 8) ?? "—"}</td>
+                    <td className="px-5 py-4 text-[11px]">
                       {row.videoUrl ? (
                         <a
                           href={row.videoUrl}
                           target="_blank"
                           rel="noreferrer"
-                          className="text-sky-400 hover:text-sky-300 underline break-all"
+                          className="text-accent-2/60 hover:text-accent-2 hover:underline break-all transition-colors font-mono"
                         >
                           {row.videoUrl}
                         </a>
                       ) : (
-                        <span className="text-slate-500">—</span>
+                        <span className="text-muted/20">—</span>
                       )}
                     </td>
-                    <td className="px-3 py-2 text-xs">
+                    <td className="px-5 py-4 text-center">
                       {row.hasOcr ? (
-                        <span className="text-emerald-400">✓ OCR</span>
+                        <span className="status-chip success !text-[8.5px] uppercase font-bold tracking-widest !py-0.5 inline-block">OCR_OK</span>
                       ) : (
-                        <span className="text-rose-400">✕ Missing</span>
+                        <span className="status-chip danger !text-[8.5px] uppercase font-bold tracking-widest !py-0.5 inline-block">NO_OCR</span>
                       )}
                     </td>
-                    <td className="px-3 py-2 text-xs text-slate-300">{formatMetric(row.retention3s)}</td>
-                    <td className="px-3 py-2 text-xs text-slate-300">{formatMetric(row.retention10s)}</td>
-                    <td className="px-3 py-2 text-xs text-slate-300">{formatMetric(row.retention3sCtr)}</td>
-                    <td className="px-3 py-2 text-xs text-slate-300">{formatMetric(row.retention10sCtr)}</td>
-                    <td className="px-3 py-2 text-xs text-slate-300">{formatMetric(row.retention3sCvr)}</td>
-                    <td className="px-3 py-2 text-xs text-slate-300">{formatMetric(row.retention10sCvr)}</td>
-                    <td className="px-3 py-2 text-xs text-slate-300">{formatMetric(row.duration)}</td>
-                    <td className="px-3 py-2 text-xs text-slate-300">{formatMetric(row.ctr)}</td>
-                    <td className="px-3 py-2 text-xs text-slate-300">{formatMetric(row.cost)}</td>
-                    <td className="px-3 py-2 text-xs text-slate-300">{formatMetric(row.like)}</td>
-                    <td className="px-3 py-2 text-xs text-slate-300">{formatMetric(row.engagementScore)}</td>
-                    <td className="px-3 py-2 text-xs text-slate-300">{row.sourceType ?? "—"}</td>
-                    <td className="px-3 py-2 text-xs text-slate-300">{row.industryCode ?? "—"}</td>
-                    <td className="px-3 py-2 text-xs text-slate-300">
-                      {row.spikeSeconds.length ? row.spikeSeconds.join(", ") : "—"}
+                    <td className="px-5 py-4 text-[10px] font-mono text-white/90 text-right">{formatMetric(row.retention3s)}</td>
+                    <td className="px-5 py-4 text-[10px] font-mono text-white/90 text-right">{formatMetric(row.retention10s)}</td>
+                    <td className="px-5 py-4 text-[10px] font-mono text-white/90 text-right">{formatMetric(row.retention3sCtr)}</td>
+                    <td className="px-5 py-4 text-[10px] font-mono text-white/90 text-right">{formatMetric(row.retention10sCtr)}</td>
+                    <td className="px-5 py-4 text-[10px] font-mono text-white/90 text-right">{formatMetric(row.retention3sCvr)}</td>
+                    <td className="px-5 py-4 text-[10px] font-mono text-white/90 text-right">{formatMetric(row.retention10sCvr)}</td>
+                    <td className="px-5 py-4 text-[10px] font-mono text-white/90 text-right">{formatMetric(row.duration)}</td>
+                    <td className="px-5 py-4 text-[10px] font-mono text-white/90 text-right">{formatMetric(row.ctr)}</td>
+                    <td className="px-5 py-4 text-[10px] font-mono text-white/90 text-right">{formatMetric(row.cost)}</td>
+                    <td className="px-5 py-4 text-[10px] font-mono text-white/90 text-right">{formatMetric(row.like)}</td>
+                    <td className="px-5 py-4 text-center">
+                      <span className="text-[11px] font-mono font-bold text-accent-2">
+                        {formatMetric(row.engagementScore)}
+                      </span>
                     </td>
-                    <td className="px-3 py-2 text-xs text-slate-300">
+                    <td className="px-5 py-4 text-[10px] font-mono text-muted/60 uppercase">{row.sourceType ?? "—"}</td>
+                    <td className="px-5 py-4 text-[10px] font-mono text-muted/60 uppercase">{row.industryCode ?? "—"}</td>
+                    <td className="px-5 py-4 text-[10px] font-mono text-accent/60">
+                      {row.spikeSeconds.length ? row.spikeSeconds.map(s => `${s}s`).join(", ") : "—"}
+                    </td>
+                    <td className="px-5 py-4">
                       {row.ocrFrames.length === 0 ? (
-                        <span className="text-slate-500">No OCR frames</span>
+                        <span className="text-[10px] font-mono text-muted/20 uppercase tracking-widest">No_Frames</span>
                       ) : (
-                        <details>
-                          <summary className="cursor-pointer text-sky-400 hover:text-sky-300">
-                            OCR Frames ({row.ocrFrames.length})
+                        <details className="group/details">
+                          <summary className="cursor-pointer text-[10px] font-mono text-accent-2/60 hover:text-accent-2 uppercase tracking-widest list-none flex items-center gap-2">
+                            <span className="transition-transform group-open/details:rotate-90">▶</span>
+                            Frames_{row.ocrFrames.length}
                           </summary>
-                          <div className="mt-2 space-y-2">
+                          <div className="mt-4 space-y-4 max-h-[400px] overflow-y-auto pr-2 scrollbar-thin">
                             {row.ocrFrames.map((frame, idx) => {
                               const isSpike = row.spikeSeconds.includes(Math.round(frame.second));
                               return (
                                 <div
                                   key={`${row.asset.id}-ocr-${idx}`}
-                                  className={`rounded border p-2 ${
+                                  className={`rounded-card border p-3 flex flex-col gap-3 ${
                                     isSpike
-                                      ? "border-amber-500/50 bg-amber-500/10"
-                                      : "border-slate-700 bg-slate-900/40"
+                                      ? "border-warning/30 bg-warning/5"
+                                      : "border-line bg-bg-elevated/40"
                                   }`}
                                 >
-                                  <div className="text-[11px] text-slate-400">
-                                    Frame {idx + 1} at {formatSeconds(frame.second)}
-                                    {isSpike ? " (conversion spike)" : ""}
+                                  <div className="flex items-center justify-between border-b border-line/50 pb-2">
+                                    <div className="text-[9px] font-mono text-muted uppercase tracking-widest">
+                                      Frame_{idx + 1} @ {formatSeconds(frame.second)}
+                                      {isSpike && <span className="text-warning ml-2">[CONVERSION_SPIKE]</span>}
+                                    </div>
+                                    <div className="text-[9px] font-mono text-muted/60 uppercase">
+                                      {formatConfidence(frame.confidence)} CONF
+                                    </div>
                                   </div>
-                                  <div className="mt-1 text-[11px] text-slate-300">
-                                    Confidence: {formatConfidence(frame.confidence)}
+
+                                  {frame.imageUrl && (
+                                    <a
+                                      href={frame.imageUrl}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="relative aspect-video w-full rounded border border-line overflow-hidden bg-black/40 group/img"
+                                    >
+                                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                                      <img
+                                        src={frame.imageUrl}
+                                        alt={`OCR frame ${idx + 1} @ ${formatSeconds(frame.second)}`}
+                                        className="object-contain w-full h-full"
+                                      />
+                                      <div className="absolute inset-0 bg-accent-2/0 group-hover/img:bg-accent-2/10 transition-colors flex items-center justify-center">
+                                        <span className="text-white text-[10px] font-mono font-black uppercase tracking-widest opacity-0 group-hover/img:opacity-100 transition-opacity">Expand_View</span>
+                                      </div>
+                                    </a>
+                                  )}
+
+                                  <div className="text-[11px] font-mono text-white/80 whitespace-pre-wrap leading-relaxed">
+                                    {frame.text || <span className="text-muted/20">[DATA_VOID]</span>}
                                   </div>
-                                  <div className="mt-1 text-[11px] text-slate-200 whitespace-pre-wrap break-words">
-                                    Text: {frame.text || "—"}
-                                  </div>
+                                  
                                   {!frame.textFound && (
-                                    <div className="mt-1 text-[11px] text-slate-500">
-                                      No readable text detected in this sampled frame
+                                    <div className="text-[9px] font-mono text-danger/60 uppercase tracking-widest italic border-t border-line pt-2">
+                                      Anomaly: No sequence detected in sampled vector
                                     </div>
                                   )}
-                                  {frame.imageUrl ? (
-                                    <div className="mt-2">
-                                      <a
-                                        href={frame.imageUrl}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="inline-block"
-                                      >
-                                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                                        <img
-                                          src={frame.imageUrl}
-                                          alt={`OCR frame ${idx + 1} at ${formatSeconds(frame.second)}`}
-                                          className="h-20 w-auto rounded border border-slate-700"
-                                        />
-                                      </a>
-                                    </div>
-                                  ) : (
-                                    <div className="mt-2 text-[11px] text-slate-500">
-                                      No frame image URL
-                                    </div>
-                                  )}
-                                  <div className="mt-1 text-[11px] text-slate-400 whitespace-pre-wrap break-words">
-                                    Preview: {frame.text ? frame.text.slice(0, 200) : "—"}
-                                  </div>
                                 </div>
                               );
                             })}
@@ -500,12 +535,26 @@ export default function AdAssetsViewerPage() {
                         </details>
                       )}
                     </td>
-                    <td className="px-3 py-2 text-xs text-slate-300">
-                      <details>
-                        <summary className="cursor-pointer text-slate-400 hover:text-slate-300">JSON</summary>
-                        <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap break-words text-[11px] text-slate-300">
-                          {JSON.stringify(row.raw, null, 2)}
-                        </pre>
+                    <td className="px-5 py-4 text-center">
+                      <details className="group/json">
+                        <summary className="cursor-pointer text-[10px] font-mono text-muted/40 hover:text-white uppercase tracking-widest list-none">JSON</summary>
+                        <div className="fixed inset-0 z-[100] flex items-center justify-center p-8 bg-bg/90 backdrop-blur-xl group-open/json:flex hidden" onClick={(e) => {
+                          if (e.target === e.currentTarget) {
+                            (e.currentTarget.parentElement as any).removeAttribute('open');
+                          }
+                        }}>
+                          <div className="bg-panel border border-line rounded-card w-full max-w-4xl max-h-full overflow-hidden flex flex-col shadow-2xl">
+                            <div className="p-4 border-b border-line flex items-center justify-between bg-bg-elevated/50">
+                              <span className="text-[10px] font-mono text-white uppercase tracking-[0.2em] font-bold">Raw_Packet_Data</span>
+                              <button onClick={(e) => {
+                                (e.currentTarget.closest('details') as any).removeAttribute('open');
+                              }} className="text-muted hover:text-white font-mono text-[10px] uppercase">Close [ESC]</button>
+                            </div>
+                            <pre className="p-6 overflow-auto text-[11px] font-mono text-muted/80 leading-relaxed scrollbar-thin">
+                              {JSON.stringify(row.raw, null, 2)}
+                            </pre>
+                          </div>
+                        </div>
                       </details>
                     </td>
                   </tr>
@@ -514,7 +563,7 @@ export default function AdAssetsViewerPage() {
             </table>
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }

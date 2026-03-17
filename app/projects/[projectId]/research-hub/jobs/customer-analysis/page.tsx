@@ -114,12 +114,12 @@ export default function CustomerAnalysisJobsPage() {
     .reverse();
 
   const colors = [
-    "bg-emerald-500/10 border-emerald-500/30",
-    "bg-sky-500/10 border-sky-500/30",
-    "bg-violet-500/10 border-violet-500/30",
-    "bg-amber-500/10 border-amber-500/30",
-    "bg-rose-500/10 border-rose-500/30",
-    "bg-cyan-500/10 border-cyan-500/30",
+    "bg-success/10 border-success/30",
+    "bg-accent/10 border-accent-2/30",
+    "bg-accent/10 border-accent/30",
+    "bg-accent/10 border-accent/30",
+    "bg-accent/10 border-accent/30",
+    "bg-accent-2/10 border-accent-2/30",
   ];
 
   const groupedJobs: JobGroup[] = sortedRuns.map((run, index) => ({
@@ -128,19 +128,14 @@ export default function CustomerAnalysisJobsPage() {
     color: colors[index % colors.length],
     jobs: run.jobs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
     runNumber: run.runNumber,
-  }));
-
-  const StatusBadge = ({ status }: { status: JobStatus }) => {
-    const colors = {
-      NOT_STARTED: "bg-slate-500/20 text-slate-400",
-      PENDING: "bg-yellow-500/20 text-yellow-400",
-      RUNNING: "bg-sky-500/20 text-sky-400",
-      COMPLETED: "bg-emerald-500/20 text-emerald-400",
-      FAILED: "bg-red-500/20 text-red-400",
-    };
-
+  }));  const StatusBadge = ({ status }: { status: JobStatus }) => {
     return (
-      <span className={`px-2 py-1 rounded text-xs font-medium ${colors[status]}`}>
+      <span className={`status-chip ${
+        status === 'COMPLETED' ? 'success' :
+        status === 'FAILED' ? 'danger' :
+        status === 'RUNNING' ? 'info' :
+        'subtle'
+      }`}>
         {status.replace("_", " ")}
       </span>
     );
@@ -148,122 +143,156 @@ export default function CustomerAnalysisJobsPage() {
 
   if (loading) {
     return (
-      <div className="px-6 py-6 flex items-center justify-center min-h-screen">
-        <p className="text-sm text-slate-400">Loading jobs...</p>
+      <div className="px-6 py-12 flex flex-col items-center justify-center min-h-[60vh] space-y-4">
+        <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+        <p className="text-xs font-mono text-muted uppercase tracking-widest">Loading analysis runs...</p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="px-6 py-6 max-w-7xl mx-auto">
+      <div className="px-6 py-6 max-w-7xl mx-auto space-y-6">
         <div className="mb-6">
           <Link
             href={`/projects/${projectId}/research-hub`}
-            className="text-sm text-slate-400 hover:text-slate-300"
+            className="text-[11px] font-mono text-muted hover:text-white uppercase tracking-wider transition-colors"
           >
             ← Back to Research Hub
           </Link>
         </div>
-        <div className="rounded-lg border border-red-500/50 bg-red-500/10 p-6">
-          <h2 className="text-xl font-bold text-red-400 mb-2">Error Loading Jobs</h2>
-          <p className="text-sm text-red-300">{error}</p>
+        <div className="rounded-card border border-danger/20 bg-danger/5 p-8 text-center space-y-4">
+          <h2 className="text-xl font-bold text-danger tracking-tight">Error Loading Jobs</h2>
+          <p className="text-sm text-muted font-mono">{error}</p>
+          <button onClick={loadJobs} className="btn btn-secondary">Retry Connection</button>
+        </div>
+      </div>
+    );
+   if (loading) {
+    return (
+      <div className="min-h-screen bg-bg text-white px-8 py-8">
+        <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
+          <div className="w-8 h-8 border-2 border-accent/20 border-t-accent rounded-full animate-spin" />
+          <p className="text-[10px] font-mono text-muted uppercase tracking-[0.3em] animate-pulse">Fetching analysis history...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-bg text-white px-8 py-8 space-y-6">
+        <Link
+          href={`/projects/${projectId}/research-hub`}
+          className="text-[11px] font-mono text-muted hover:text-white uppercase tracking-widest transition-colors inline-block"
+        >
+          ← Back to Research Hub
+        </Link>
+        <div className="rounded-card border border-danger/20 bg-danger/5 p-6 space-y-2">
+          <p className="text-[10px] font-mono text-danger uppercase tracking-widest font-bold">Analysis load failed</p>
+          <p className="text-sm text-muted leading-relaxed">{error}</p>
+          <button onClick={loadJobs} className="btn btn-secondary mt-4">Retry</button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="px-6 py-6 max-w-7xl mx-auto">
-      <div className="mb-8">
-        <Link
-          href={`/projects/${projectId}/research-hub`}
-          className="text-sm text-slate-400 hover:text-slate-300 mb-4 inline-block"
-        >
-          ← Back to Research Hub
-        </Link>
-        <div className="flex items-start justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-white mb-2">{getJobTypeLabel(jobType)} Jobs</h1>
-            <p className="text-slate-400">
-              {jobs.length} {jobs.length === 1 ? "job" : "jobs"} found
+    <div className="min-h-screen bg-bg text-white">
+      <div className="border-b border-line bg-panel/50 backdrop-blur-md px-8 py-6 sticky top-0 z-30">
+        <div className="flex items-center justify-between gap-6">
+          <div className="space-y-4">
+            <Link
+              href={`/projects/${projectId}/research-hub`}
+              className="text-[11px] font-mono text-muted hover:text-white uppercase tracking-widest transition-colors inline-block"
+            >
+              ← Back to Research Hub
+            </Link>
+            <div className="flex items-center gap-4">
+              <h1 className="text-4xl font-bold tracking-tight text-white">Analysis History</h1>
+              <div className="status-chip success uppercase tracking-widest text-[9px]">
+                {jobType}
+              </div>
+            </div>
+            <p className="text-xs text-muted font-mono uppercase tracking-widest opacity-60">
+              Analysis Type: <span className="text-accent">Audience Insights</span> 
+              <span className="mx-3 opacity-20">|</span> 
+              Runs: <span className="text-white">{jobs.length} Entries</span>
             </p>
           </div>
         </div>
       </div>
 
-      {groupedJobs.length === 0 ? (
-        <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-12 text-center">
-          <p className="text-slate-400">No jobs found for this type</p>
-        </div>
-      ) : (
-        <div className="space-y-6">
-          {groupedJobs.map((group) => (
-            <div key={group.runId || "no-run"} className="space-y-3">
-              <div className={`rounded-lg border ${group.color} px-4 py-2`}>
-                <h2 className="text-sm font-semibold text-white">{group.runLabel}</h2>
-                <p className="text-xs text-slate-400">
-                  {group.jobs.length} {group.jobs.length === 1 ? "job" : "jobs"}
-                </p>
-              </div>
+      <div className="px-8 py-10 space-y-12 max-w-[1400px]">
+        {groupedJobs.length === 0 ? (
+          <div className="rounded-card border border-line bg-panel p-20 text-center shadow-panel backdrop-blur-panel">
+            <p className="text-[10px] font-mono text-muted uppercase tracking-widest opacity-40 italic">No analysis runs found for this project.</p>
+          </div>
+        ) : (
+          <div className="space-y-12">
+            {groupedJobs.map((group) => (
+              <div key={group.runId || "no-run"} className="space-y-6">
+                <div className="flex items-center gap-4">
+                  <div className="h-px w-8 bg-accent/30" />
+                  <h2 className="text-[10px] font-mono text-accent uppercase tracking-[0.4em] font-bold">
+                    {group.runLabel}
+                  </h2>
+                  <div className="h-px flex-1 bg-line/30" />
+                </div>
 
-              <div className="rounded-lg border border-slate-800 bg-slate-900/50 overflow-hidden">
-                <table className="w-full">
-                  <thead className="bg-slate-800/50">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
-                        Created
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
-                        Status
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
-                        Duration
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
-                        Summary
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800">
-                    {group.jobs.map((job) => (
-                      <tr key={job.id} className="hover:bg-slate-800/50 transition-colors">
-                        <td className="px-4 py-3 text-sm text-slate-300">
-                          {formatDate(job.createdAt)}
-                        </td>
-                        <td className="px-4 py-3">
-                          <StatusBadge status={job.status} />
-                        </td>
-                        <td className="px-4 py-3 text-sm text-slate-400">
-                          {formatDuration(job.createdAt, job.updatedAt)}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-slate-400">
-                          {formatSummary(job.resultSummary)}
-                        </td>
-                        <td className="px-4 py-3 text-sm">
-                          {job.status === "COMPLETED" ? (
-                            <Link
-                              href={`/projects/${projectId}/research-hub/analysis/data/${job.id}`}
-                              className="text-sky-400 hover:text-sky-300 text-sm underline"
-                            >
-                              View Data →
-                            </Link>
-                          ) : (
-                            <span className="text-slate-500">—</span>
-                          )}
-                        </td>
+                <div className="rounded-card border border-line bg-panel overflow-hidden shadow-panel backdrop-blur-panel">
+                  <div className="px-6 py-3 border-b border-line bg-bg-elevated/30">
+                    <h3 className="text-[9px] font-mono text-accent uppercase tracking-[0.2em] font-bold">Synthesis_Cycle_Log</h3>
+                  </div>
+                  <table className="w-full text-left border-collapse">
+                    <thead className="bg-bg-elevated/10 border-b border-line">
+                      <tr>
+                        <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-48">Timestamp</th>
+                        <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-32">State_Vector</th>
+                        <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-32">Process_Time</th>
+                        <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em]">Context_Summary</th>
+                        <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-32 text-right">Actions</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-line/30">
+                      {group.jobs.map((job) => (
+                        <tr key={job.id} className="hover:bg-panel/[0.02] transition-colors group">
+                          <td className="px-5 py-4 font-mono text-[11px] text-muted uppercase">
+                            {formatDate(job.createdAt)}
+                          </td>
+                          <td className="px-5 py-4">
+                            <StatusBadge status={job.status} />
+                          </td>
+                          <td className="px-5 py-4 text-[11px] font-mono text-accent-2/60 uppercase">
+                            {formatDuration(job.createdAt, job.updatedAt)}
+                          </td>
+                          <td className="px-5 py-4">
+                            <div className="rounded-inner border border-line/40 bg-[rgba(255,255,255,0.025)] px-4 py-3 text-[13px] font-medium leading-relaxed text-white/80">
+                              {formatSummary(job.resultSummary)}
+                            </div>
+                          </td>
+                          <td className="px-5 py-4 text-right">
+                            {job.status === "COMPLETED" ? (
+                              <Link
+                                href={`/projects/${projectId}/research-hub/analysis/data/${job.id}`}
+                                className="btn btn-secondary !min-h-[32px] px-4 text-[9px] font-bold uppercase tracking-widest"
+                              >
+                                Exploration_Node ↗
+                              </Link>
+                            ) : (
+                              <span className="text-[9px] font-mono text-muted/20 uppercase tracking-widest">—</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
-      )}
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

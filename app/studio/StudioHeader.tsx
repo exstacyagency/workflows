@@ -11,34 +11,21 @@ export default function StudioHeader() {
 
   if (!session?.user) {
     return (
-      <div style={{ padding: "12px", borderBottom: "1px solid #eee" }}>
-        <span>Not signed in</span>
+      <div className="sticky top-0 z-20 flex items-center justify-between border-b border-white/10 bg-[rgba(9,9,11,0.66)] px-4 py-3 backdrop-blur-panel">
+        <span className="text-sm text-muted">Not signed in</span>
       </div>
     );
   }
 
   return (
-    <div
-      style={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        padding: "12px 16px",
-        borderBottom: "1px solid #eee",
-      }}
-    >
-      <div>
-        <strong>Signed in as:</strong> {session.user.email}
+    <div className="sticky top-0 z-20 flex items-center justify-between border-b border-white/10 bg-[rgba(9,9,11,0.66)] px-4 py-3 backdrop-blur-panel">
+      <div className="text-sm text-muted">
+        <strong className="text-white">Signed in as:</strong> {session.user.email}
       </div>
 
       <button
         onClick={() => signOut({ callbackUrl: "/" })}
-        style={{
-          padding: "6px 12px",
-          border: "1px solid #ccc",
-          borderRadius: "4px",
-          cursor: "pointer",
-        }}
+        className="inline-flex items-center rounded-pill border border-line bg-transparent px-4 py-2 text-xs font-medium text-muted transition-all hover:bg-bg-elevated hover:text-white"
       >
         Log out
       </button>

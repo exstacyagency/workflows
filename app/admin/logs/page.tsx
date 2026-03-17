@@ -32,22 +32,22 @@ export default function LogsPage() {
       <div
         style={{
           width: "400px",
-          borderRight: "1px solid #ddd",
+          borderRight: "1px solid rgb(221, 221, 221)",
           overflow: "auto",
-          background: "#f9f9f9",
+          background: "rgb(249, 249, 249)",
         }}
       >
         <div
           style={{
             padding: "16px",
-            borderBottom: "1px solid #ddd",
-            background: "#fff",
+            borderBottom: "1px solid rgb(221, 221, 221)",
+            background: "rgb(255, 255, 255)",
             position: "sticky",
             top: 0,
           }}
         >
           <h2 style={{ margin: 0 }}>Anthropic Logs</h2>
-          <p style={{ margin: "4px 0 0", color: "#666", fontSize: "11px" }}>
+          <p style={{ margin: "4px 0 0", color: "rgb(102, 102, 102)", fontSize: "11px" }}>
             {files.length} files
           </p>
         </div>
@@ -58,8 +58,8 @@ export default function LogsPage() {
             style={{
               padding: "12px 16px",
               cursor: "pointer",
-              background: selected === f ? "#e3f2fd" : "transparent",
-              borderBottom: "1px solid #eee",
+              background: selected === f ? "rgb(227, 242, 253)" : "transparent",
+              borderBottom: "1px solid rgb(238, 238, 238)",
               wordBreak: "break-all",
             }}
           >
@@ -74,8 +74,8 @@ export default function LogsPage() {
         style={{
           flex: 1,
           overflow: "auto",
-          background: "#1e1e1e",
-          color: "#d4d4d4",
+          background: "rgb(30, 30, 30)",
+          color: "rgb(212, 212, 212)",
           padding: "20px",
         }}
       >
@@ -84,7 +84,7 @@ export default function LogsPage() {
             {content}
           </pre>
         ) : (
-          <div style={{ color: "#888", textAlign: "center", marginTop: "100px" }}>
+          <div style={{ color: "rgb(136, 136, 136)", textAlign: "center", marginTop: "100px" }}>
             ← Select a log file to view
           </div>
         )}

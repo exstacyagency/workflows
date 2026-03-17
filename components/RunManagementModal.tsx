@@ -205,104 +205,46 @@ export default function RunManagementModal({
   return createPortal(
     <div
       onClick={onClose}
-      style={{
-        position: "fixed",
-        top: 0,
-        left: 0,
-        width: "100%",
-        height: "100%",
-        backgroundColor: "rgba(0,0,0,0.7)",
-        zIndex: 9999,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "24px",
-        boxSizing: "border-box",
-      }}
+      className="fixed inset-0 bg-black/80 z-[9999] flex items-center justify-center p-6 backdrop-blur-sm"
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        style={{
-          width: "100%",
-          maxWidth: "600px",
-          maxHeight: "85vh",
-          overflow: "hidden",
-          borderRadius: "12px",
-          border: "1px solid #334155",
-          backgroundColor: "#0f172a",
-          color: "#e2e8f0",
-          boxShadow: "0 24px 48px rgba(0, 0, 0, 0.45)",
-          display: "flex",
-          flexDirection: "column",
-        }}
+        className="w-full max-w-2xl max-h-[85vh] overflow-hidden rounded-card border border-line bg-panel text-white shadow-panel flex flex-col backdrop-blur-panel"
       >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "flex-start",
-            justifyContent: "space-between",
-            gap: "16px",
-            padding: "20px",
-            borderBottom: "1px solid #334155",
-          }}
-        >
+        <div className="flex items-start justify-between gap-4 p-5 border-b border-line">
           <div>
-            <h3 style={{ margin: 0, fontSize: "18px", fontWeight: 600 }}>Manage Runs</h3>
-            <p style={{ margin: "6px 0 0", fontSize: "14px", color: "#94a3b8" }}>
-              Rename runs or delete a run and all jobs in that run.
+            <h3 className="text-lg font-bold tracking-tight">Manage Runs</h3>
+            <p className="text-xs font-mono text-muted uppercase tracking-wider mt-1 opacity-70">
+              Rename or delete campaign runs.
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            style={{
-              border: "1px solid #475569",
-              backgroundColor: "#1e293b",
-              color: "#e2e8f0",
-              borderRadius: "6px",
-              padding: "6px 12px",
-              fontSize: "14px",
-              cursor: "pointer",
-            }}
+            className="btn btn-secondary !min-h-[32px] px-4 text-[11px] font-bold uppercase tracking-wider"
           >
             Close
           </button>
         </div>
 
-        <div style={{ padding: "16px 20px 20px" }}>
+        <div className="p-5 overflow-hidden flex flex-col">
           {error && (
-            <div
-              style={{
-                marginBottom: "12px",
-                border: "1px solid rgba(239, 68, 68, 0.45)",
-                backgroundColor: "rgba(239, 68, 68, 0.12)",
-                color: "#fecaca",
-                borderRadius: "8px",
-                padding: "10px 12px",
-                fontSize: "14px",
-              }}
-            >
+            <div className="mb-4 rounded-card border border-accent/30 bg-accent/10 p-3 text-xs text-accent font-mono">
               {error}
             </div>
           )}
 
           {loading ? (
-            <p style={{ margin: 0, fontSize: "14px", color: "#94a3b8" }}>Loading runs...</p>
+            <div className="py-12 flex flex-col items-center justify-center space-y-4">
+              <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+              <p className="text-[10px] font-mono text-muted uppercase tracking-widest">Loading campaign runs...</p>
+            </div>
           ) : sortedRuns.length === 0 ? (
-            <p style={{ margin: 0, fontSize: "14px", color: "#94a3b8" }}>
-              No runs found for this project.
-            </p>
+            <div className="py-12 text-center border border-dashed border-line rounded-card">
+              <p className="text-xs text-muted italic">No campaign runs found for this project.</p>
+            </div>
           ) : (
-            <div
-              style={{
-                maxHeight: "55vh",
-                overflowY: "auto",
-                paddingRight: "4px",
-                display: "flex",
-                flexDirection: "column",
-                gap: "12px",
-              }}
-            >
+            <div className="overflow-y-auto pr-2 space-y-3 custom-scrollbar">
               {sortedRuns.map((run) => {
                 const draftName = String(draftNames[run.id] ?? "");
                 const normalizedDraft = draftName.trim();
@@ -315,149 +257,78 @@ export default function RunManagementModal({
                 return (
                   <div
                     key={run.id}
-                    style={{
-                      border: "1px solid #334155",
-                      borderRadius: "10px",
-                      padding: "12px",
-                      backgroundColor: "rgba(2, 6, 23, 0.55)",
-                    }}
+                    className="rounded-card border border-line bg-bg-elevated/40 p-4 hover:bg-bg-elevated/60 transition-colors"
                   >
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: "12px",
-                        marginBottom: "10px",
-                      }}
-                    >
-                      <div>
-                        <p style={{ margin: 0, fontSize: "14px", fontWeight: 600, color: "#f8fafc" }}>
+                    <div className="flex items-start justify-between gap-4 mb-4">
+                      <div className="space-y-1">
+                        <p className="text-[13px] font-bold text-white tracking-tight">
                           {getJobTypeLabel(run.latestJobType, run.latestJobSubtype)}
                         </p>
-                        <div style={{ marginTop: "6px", fontSize: "12px", color: "#94a3b8" }}>
-                          <span style={{ fontWeight: 600, color: "#cbd5e1" }}>Run #{run.runNumber}</span>
-                          <span style={{ margin: "0 8px" }}>•</span>
-                          <span>{run.name?.trim() || "Unnamed run"}</span>
-                          <span style={{ margin: "0 8px" }}>•</span>
-                          <span style={{ fontFamily: "monospace" }}>{run.id}</span>
-                          <span style={{ margin: "0 8px" }}>•</span>
-                          <span>
-                            {run.jobCount} job{run.jobCount === 1 ? "" : "s"}
-                          </span>
-                          <span style={{ margin: "0 8px" }}>•</span>
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-mono text-muted uppercase tracking-wider opacity-60">
+                          <span className="text-accent font-bold">Run #{run.runNumber}</span>
+                          <span className="opacity-30">•</span>
+                          <span className="text-white/80">{run.name?.trim() || "UNNAMED"}</span>
+                          <span className="opacity-30">•</span>
+                          <span className="text-accent-2">{run.id.slice(0, 8)}</span>
+                          <span className="opacity-30">•</span>
+                          <span>{run.jobCount} {run.jobCount === 1 ? "JOB" : "JOBS"}</span>
+                          <span className="opacity-30">•</span>
                           <span>{formatRunDate(run.createdAt)}</span>
                         </div>
                       </div>
-                      <span
-                        style={{
-                          borderRadius: "999px",
-                          backgroundColor: "#1e293b",
-                          color: "#cbd5e1",
-                          padding: "3px 10px",
-                          fontSize: "11px",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
+                      <span className="status-chip info opacity-80">
                         {run.latestJobStatus ?? "NOT_STARTED"}
                       </span>
                     </div>
 
-                    <div
-                      style={{
-                        display: "flex",
-                        flexWrap: "wrap",
-                        gap: "8px",
-                        alignItems: "center",
-                      }}
-                    >
+                    <div className="flex flex-wrap gap-2 items-center">
                       <input
                         type="text"
                         value={draftName}
                         onChange={(e) =>
                           setDraftNames((prev) => ({ ...prev, [run.id]: e.target.value }))
                         }
-                        placeholder="Run name"
+                        placeholder="Assign Name..."
                         maxLength={120}
-                        style={{
-                          flex: "1 1 260px",
-                          minWidth: "220px",
-                          border: "1px solid #475569",
-                          backgroundColor: "#0f172a",
-                          color: "#e2e8f0",
-                          borderRadius: "8px",
-                          padding: "8px 10px",
-                          fontSize: "14px",
-                        }}
+                        className="flex-1 min-w-[200px] rounded-pill border border-line bg-black/40 px-4 py-2 text-xs text-white placeholder:text-muted/30 outline-none focus:border-accent/40 transition-colors"
                       />
                       <button
                         type="button"
                         disabled={renameDisabled}
                         onClick={() => void handleRename(run.id)}
-                        style={{
-                          border: "1px solid #0284c7",
-                          backgroundColor: "rgba(2, 132, 199, 0.2)",
-                          color: "#bae6fd",
-                          borderRadius: "8px",
-                          padding: "8px 12px",
-                          fontSize: "14px",
-                          cursor: renameDisabled ? "not-allowed" : "pointer",
-                          opacity: renameDisabled ? 0.55 : 1,
-                        }}
+                        className={`btn px-4 py-2 text-[10px] font-bold uppercase tracking-widest transition-all ${
+                          renameDisabled 
+                            ? "bg-panel/5 text-muted/30 cursor-not-allowed" 
+                            : "bg-accent-2/10 border border-accent-2/30 text-accent-2 hover:bg-accent-2/20"
+                        }`}
                       >
                         {savingRunId === run.id ? "Saving..." : "Rename"}
                       </button>
 
                       {confirmDeleteRunId === run.id ? (
-                        <>
+                        <div className="flex items-center gap-2">
                           <button
                             type="button"
                             disabled={deletingRunId === run.id}
                             onClick={() => void handleDelete(run.id)}
-                            style={{
-                              border: "1px solid #dc2626",
-                              backgroundColor: "rgba(220, 38, 38, 0.2)",
-                              color: "#fecaca",
-                              borderRadius: "8px",
-                              padding: "8px 12px",
-                              fontSize: "14px",
-                              cursor: deletingRunId === run.id ? "not-allowed" : "pointer",
-                              opacity: deletingRunId === run.id ? 0.55 : 1,
-                            }}
+                            className="bg-accent/10 border border-accent/30 text-accent px-4 py-2 rounded-pill text-[10px] font-bold uppercase tracking-widest hover:bg-accent/20 transition-all"
                           >
-                            {deletingRunId === run.id ? "Deleting..." : "Confirm Delete"}
+                            {deletingRunId === run.id ? "Wiping..." : "Confirm Wipe"}
                           </button>
                           <button
                             type="button"
                             disabled={deletingRunId === run.id}
                             onClick={() => setConfirmDeleteRunId(null)}
-                            style={{
-                              border: "1px solid #475569",
-                              backgroundColor: "#1e293b",
-                              color: "#e2e8f0",
-                              borderRadius: "8px",
-                              padding: "8px 12px",
-                              fontSize: "14px",
-                              cursor: deletingRunId === run.id ? "not-allowed" : "pointer",
-                              opacity: deletingRunId === run.id ? 0.55 : 1,
-                            }}
+                            className="text-[10px] font-bold text-muted hover:text-white uppercase tracking-widest transition-colors px-2"
                           >
                             Cancel
                           </button>
-                        </>
+                        </div>
                       ) : (
                         <button
                           type="button"
                           onClick={() => setConfirmDeleteRunId(run.id)}
-                          style={{
-                            border: "1px solid #b91c1c",
-                            backgroundColor: "rgba(185, 28, 28, 0.15)",
-                            color: "#fca5a5",
-                            borderRadius: "8px",
-                            padding: "8px 12px",
-                            fontSize: "14px",
-                            cursor: "pointer",
-                          }}
+                          className="px-4 py-2 rounded-pill text-[10px] font-bold text-accent/60 hover:text-accent uppercase tracking-widest transition-colors border border-accent/20 hover:border-accent/30 bg-accent/10"
                         >
                           Delete
                         </button>
@@ -465,8 +336,8 @@ export default function RunManagementModal({
                     </div>
 
                     {confirmDeleteRunId === run.id && (
-                      <p style={{ margin: "10px 0 0", fontSize: "12px", color: "#fca5a5" }}>
-                        Deleting this run will permanently remove all jobs and derived data in this run.
+                      <p className="mt-3 text-[10px] font-mono text-accent/80 uppercase tracking-tight italic">
+                        Caution: This action will purge all associated dataset entries.
                       </p>
                     )}
                   </div>

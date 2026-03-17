@@ -11,23 +11,23 @@ export default function BillingCancelPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6">
-      <div className="max-w-lg w-full rounded-2xl border border-white/10 bg-black/30 p-6">
-        <h1 className="text-2xl font-semibold">Checkout canceled</h1>
-        <p className="mt-2 text-sm text-white/70">
+    <div className="min-h-screen bg-bg flex items-center justify-center p-6 transition-all duration-500">
+      <div className="max-w-lg w-full rounded-card border border-line bg-panel p-8 space-y-6 shadow-panel backdrop-blur-panel">
+        <h1 className="text-2xl font-semibold tracking-tight text-white">Checkout canceled</h1>
+        <p className="text-[15px] text-muted leading-relaxed">
           No worries — you weren’t charged. You can try again anytime.
         </p>
 
-        <div className="mt-6 flex gap-3">
+        <div className="flex gap-3">
           <a
             href="/studio"
-            className="inline-flex items-center justify-center rounded-xl bg-white text-black px-4 py-2 text-sm font-medium"
+            className="btn btn-primary flex-1"
           >
             Back to Studio
           </a>
           <a
             href="/billing"
-            className="inline-flex items-center justify-center rounded-xl border border-white/20 px-4 py-2 text-sm font-medium"
+            className="btn btn-secondary flex-1"
           >
             Billing
           </a>

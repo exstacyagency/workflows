@@ -115,12 +115,12 @@ export default function JobListPage() {
 
   // Generate colors for each run
   const colors = [
-    "bg-emerald-500/10 border-emerald-500/30",
-    "bg-sky-500/10 border-sky-500/30",
-    "bg-violet-500/10 border-violet-500/30",
-    "bg-amber-500/10 border-amber-500/30",
-    "bg-rose-500/10 border-rose-500/30",
-    "bg-cyan-500/10 border-cyan-500/30",
+    "bg-success/10 border-success/30",
+    "bg-accent/10 border-accent-2/30",
+    "bg-accent/10 border-accent/30",
+    "bg-accent/10 border-accent/30",
+    "bg-accent/10 border-accent/30",
+    "bg-accent-2/10 border-accent-2/30",
   ];
 
   const groupedJobs: JobGroup[] = sortedRuns.map((run, index) => ({
@@ -132,16 +132,16 @@ export default function JobListPage() {
   }));
 
   const StatusBadge = ({ status }: { status: JobStatus }) => {
-    const colors = {
-      NOT_STARTED: "bg-slate-500/20 text-slate-400",
-      PENDING: "bg-yellow-500/20 text-yellow-400",
-      RUNNING: "bg-sky-500/20 text-sky-400",
-      COMPLETED: "bg-emerald-500/20 text-emerald-400",
-      FAILED: "bg-red-500/20 text-red-400",
+    const classes = {
+      NOT_STARTED: "status-chip info opacity-40",
+      PENDING: "status-chip info opacity-60",
+      RUNNING: "status-chip info",
+      COMPLETED: "status-chip success",
+      FAILED: "status-chip danger",
     };
 
     return (
-      <span className={`px-2 py-1 rounded text-xs font-medium ${colors[status]}`}>
+      <span className={classes[status]}>
         {status.replace("_", " ")}
       </span>
     );
@@ -149,46 +149,47 @@ export default function JobListPage() {
 
   if (loading) {
     return (
-      <div className="px-6 py-6 flex items-center justify-center min-h-screen">
-        <p className="text-sm text-slate-400">Loading jobs...</p>
+      <div className="px-6 py-6 flex flex-col items-center justify-center min-h-[60vh] space-y-4">
+        <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+        <p className="text-xs font-mono text-muted uppercase tracking-widest">Initialising Logs...</p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="px-6 py-6 max-w-7xl mx-auto">
-        <div className="mb-6">
+      <div className="px-6 py-6 max-w-7xl mx-auto space-y-6">
+        <div>
           <Link
             href={`/projects/${projectId}/research-hub`}
-            className="text-sm text-slate-400 hover:text-slate-300"
+            className="text-[11px] font-mono text-muted hover:text-white uppercase tracking-wider transition-colors"
           >
             ← Back to Research Hub
           </Link>
         </div>
-        <div className="rounded-lg border border-red-500/50 bg-red-500/10 p-6">
-          <h2 className="text-xl font-bold text-red-400 mb-2">Error Loading Jobs</h2>
-          <p className="text-sm text-red-300">{error}</p>
+        <div className="rounded-card border border-accent/30 bg-accent/10 p-6 backdrop-blur-panel">
+          <h2 className="text-sm font-bold text-accent mb-2 uppercase tracking-wide">Error Loading Jobs</h2>
+          <p className="text-xs text-accent font-mono">{error}</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="px-6 py-6 max-w-7xl mx-auto">
+    <div className="px-8 py-8 max-w-7xl mx-auto space-y-8">
       {/* Header */}
-      <div className="mb-8">
+      <div>
         <Link
           href={`/projects/${projectId}/research-hub`}
-          className="text-sm text-slate-400 hover:text-slate-300 mb-4 inline-block"
+          className="text-[11px] font-mono text-muted hover:text-white mb-6 inline-block uppercase tracking-wider transition-colors"
         >
           ← Back to Research Hub
         </Link>
-        <div className="flex items-start justify-between">
+        <div className="flex items-end justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-white mb-2">{getJobTypeLabel(jobType)} Jobs</h1>
-            <p className="text-slate-400">
-              {jobs.length} {jobs.length === 1 ? 'job' : 'jobs'} found
+            <h1 className="text-3xl font-bold text-white tracking-tight mb-2">{getJobTypeLabel(jobType)} Logs</h1>
+            <p className="text-[11px] font-mono text-muted uppercase tracking-widest opacity-60">
+              {jobs.length} {jobs.length === 1 ? 'ENTRY' : 'ENTRIES'} RECORDED
             </p>
           </div>
         </div>
@@ -196,65 +197,65 @@ export default function JobListPage() {
 
       {/* Job Groups */}
       {groupedJobs.length === 0 ? (
-        <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-12 text-center">
-          <p className="text-slate-400">No jobs found for this type</p>
+        <div className="rounded-card border border-line bg-panel p-16 text-center shadow-panel backdrop-blur-panel">
+          <p className="text-sm text-muted italic">No job logs found for this type.</p>
         </div>
       ) : (
         <div className="space-y-6">
           {groupedJobs.map((group) => (
-            <div key={group.runId || 'no-run'} className="space-y-3">
+            <div key={group.runId || 'no-run'} className="space-y-4">
               {/* Group Header */}
-              <div className={`rounded-lg border ${group.color} px-4 py-2`}>
-                <h2 className="text-sm font-semibold text-white">{group.runLabel}</h2>
-                <p className="text-xs text-slate-400">{group.jobs.length} {group.jobs.length === 1 ? 'job' : 'jobs'}</p>
+              <div className={`rounded-card border ${group.color} px-5 py-3 shadow-panel backdrop-blur-panel flex items-center justify-between`}>
+                <h2 className="text-sm font-bold text-white uppercase tracking-tight">{group.runLabel}</h2>
+                <p className="text-[10px] font-mono text-muted uppercase opacity-70">{group.jobs.length} {group.jobs.length === 1 ? 'job' : 'jobs'}</p>
               </div>
 
               {/* Jobs Table */}
-              <div className="rounded-lg border border-slate-800 bg-slate-900/50 overflow-hidden">
+              <div className="rounded-card border border-line bg-panel overflow-hidden shadow-panel backdrop-blur-panel">
                 <table className="w-full">
-                  <thead className="bg-slate-800/50">
+                  <thead className="bg-bg-elevated/50 border-b border-line">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
+                      <th className="px-5 py-3 text-left text-[10px] font-mono text-muted uppercase tracking-widest">
                         Created
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
+                      <th className="px-5 py-3 text-left text-[10px] font-mono text-muted uppercase tracking-widest">
                         Status
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
+                      <th className="px-5 py-3 text-left text-[10px] font-mono text-muted uppercase tracking-widest">
                         Duration
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
+                      <th className="px-5 py-3 text-right text-[10px] font-mono text-muted uppercase tracking-widest">
                         Actions
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-800">
+                  <tbody className="divide-y divide-line">
                     {group.jobs.map((job) => (
                       <tr
                         key={job.id}
-                        className="hover:bg-slate-800/50 transition-colors"
+                        className="hover:bg-bg-elevated/40 transition-colors group"
                       >
-                        <td className="px-4 py-3 text-sm text-slate-300">
+                        <td className="px-5 py-4 text-xs text-text font-mono">
                           {formatDate(job.createdAt)}
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-5 py-4">
                           <StatusBadge status={job.status} />
                         </td>
-                        <td className="px-4 py-3 text-sm text-slate-400">
+                        <td className="px-5 py-4 text-xs text-muted font-mono">
                           {formatDuration(job.createdAt, job.updatedAt)}
                         </td>
-                        <td className="px-4 py-3 text-sm">
+                        <td className="px-5 py-4 text-right">
                           {job.status === "COMPLETED" ? (
                             <Link
                               href={`/projects/${projectId}/research/data/${job.id}${
                                 job.runId ? `?runId=${job.runId}` : ""
                               }`}
-                              className="text-sky-400 hover:text-sky-300 text-sm underline"
+                              className="text-accent-2 hover:text-white text-[11px] font-mono uppercase tracking-wider underline underline-offset-4 decoration-accent-2/30 hover:decoration-white transition-all"
                             >
                               View Data →
                             </Link>
                           ) : (
-                            <span className="text-slate-500">—</span>
+                            <span className="text-muted opacity-30">—</span>
                           )}
                         </td>
                       </tr>

@@ -208,224 +208,293 @@ export default function ResearchDataPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-200">
-      <div className="border-b border-slate-800 bg-slate-900/50 px-6 py-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <Link href={`/projects/${projectId}/research-hub`} className="text-sm text-sky-400 hover:text-sky-300 mb-2 inline-block">
+    <div className="min-h-screen bg-bg text-white">
+      <div className="border-b border-line bg-panel/50 backdrop-blur-md px-8 py-6">
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+          <div className="space-y-4">
+            <Link
+              href={`/projects/${projectId}/research-hub`}
+              className="text-[11px] font-mono text-muted hover:text-white uppercase tracking-widest transition-colors inline-block"
+            >
               ← Back to Research Hub
             </Link>
-            <h1 className="text-2xl font-bold">Raw Research Data</h1>
-            <p className="text-sm text-slate-400 mt-1">
-              Job: {jobId.substring(0, 8)}
-              {runId ? ` | Run: ${runId.substring(0, 8)}` : ''}
-              {` | ${totalCount} total rows`}
+            <div className="flex items-center gap-4">
+              <h1 className="text-4xl font-bold tracking-tight text-white">Raw Research Export</h1>
+              <div className="status-chip subtle uppercase tracking-widest text-[9px]">
+                {jobId.substring(0, 8)}
+              </div>
+            </div>
+            <p className="text-sm text-muted max-w-xl font-mono uppercase tracking-widest opacity-60">
+              {runId ? (
+                <>
+                  Active Run: <span className="text-accent-2">{runId.substring(0, 8)}</span>
+                </>
+              ) : "Loading research..."}
+              <span className="mx-3 opacity-20">|</span>
+              <span className="text-white/40">{totalCount} rows captured</span>
             </p>
           </div>
-          <div className="flex items-center gap-2">
+
+          <div className="flex items-center gap-3">
             <Link
               href={`/projects/${projectId}/research/data/${jobId}/inputs${runId ? `?runId=${runId}` : ''}`}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded text-sm font-medium"
+              className="btn btn-secondary !min-h-[36px] px-4 text-[10px] font-bold uppercase tracking-widest"
             >
-              View Input Parameters
+              Input Parameters
             </Link>
-            <button onClick={handleExport} className="px-4 py-2 bg-sky-600 hover:bg-sky-500 rounded text-sm font-medium">
+            <button
+              onClick={handleExport}
+              className="btn btn-primary !min-h-[36px] px-4 text-[10px] font-bold uppercase tracking-widest"
+            >
               Export CSV
             </button>
           </div>
         </div>
       </div>
 
-      <div className="border-b border-slate-800 bg-slate-900/30 px-6 py-4">
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
-          <div className="rounded border border-slate-800 bg-slate-900/70 p-4">
-            <div className="text-2xl font-semibold">{stats.totalRows}</div>
-            <p className="mt-1 text-sm text-slate-400">Total data points</p>
+      <div className="px-8 py-10 space-y-10 max-w-[1600px] mx-auto">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <div className="rounded-card border border-line bg-panel p-6 space-y-2 shadow-panel backdrop-blur-panel">
+            <p className="text-[10px] font-mono text-muted uppercase tracking-widest opacity-40">Capture Count</p>
+            <div className="text-3xl font-bold text-white">{stats.totalRows}</div>
           </div>
-          <div className="rounded border border-slate-800 bg-slate-900/70 p-4">
-            <div className="text-2xl font-semibold">{stats.uniqueSubreddits}</div>
-            <p className="mt-1 text-sm text-slate-400">Subreddits</p>
+          <div className="rounded-card border border-line bg-panel p-6 space-y-2 shadow-panel backdrop-blur-panel">
+            <p className="text-[10px] font-mono text-muted uppercase tracking-widest opacity-40">Communities</p>
+            <div className="text-3xl font-bold text-accent-2">{stats.uniqueSubreddits}</div>
           </div>
-          <div className="rounded border border-slate-800 bg-slate-900/70 p-4">
-            <div className="text-2xl font-semibold">{stats.avgScore.toFixed(1)}</div>
-            <p className="mt-1 text-sm text-slate-400">Avg upvotes</p>
+          <div className="rounded-card border border-line bg-panel p-6 space-y-2 shadow-panel backdrop-blur-panel">
+            <p className="text-[10px] font-mono text-muted uppercase tracking-widest opacity-40">Average Score</p>
+            <div className="flex items-end gap-2">
+              <div className="text-3xl font-bold text-white">{stats.avgScore.toFixed(1)}</div>
+              <div className="text-[10px] font-mono text-muted/60 mb-1.5 uppercase tracking-widest">Score</div>
+            </div>
           </div>
-          <div className="rounded border border-slate-800 bg-slate-900/70 p-4">
-            <div className="text-2xl font-semibold">{stats.topKeyword}</div>
-            <p className="mt-1 text-sm text-slate-400">Top keyword</p>
-            <p className="text-xs text-slate-500">{stats.topKeywordCount} rows</p>
+          <div className="rounded-card border border-line bg-panel p-6 space-y-2 shadow-panel backdrop-blur-panel border-accent/20">
+            <p className="text-[10px] font-mono text-accent uppercase tracking-widest opacity-60">Primary Keyword</p>
+            <div className="text-xl font-bold text-white truncate">{stats.topKeyword}</div>
+            <p className="text-[9px] font-mono text-muted/40 uppercase tracking-widest">{stats.topKeywordCount} matched rows</p>
           </div>
         </div>
 
         {keywordStats.length > 0 && (
-          <div className="mt-4 rounded border border-slate-800 bg-slate-900/60 p-4">
-            <h2 className="text-sm font-semibold text-slate-200">Keyword Performance</h2>
-            <div className="mt-3 space-y-2">
+          <div className="rounded-card border border-line bg-panel p-6 space-y-4 shadow-panel backdrop-blur-panel">
+            <p className="card-label font-bold">Keyword Persistence</p>
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
               {keywordStats.map((stat) => (
-                <div key={stat.keyword} className="flex items-center justify-between rounded border border-slate-800 px-3 py-2">
-                  <div className="flex items-center gap-2">
-                    <span className="rounded bg-slate-700 px-2 py-1 text-xs">{stat.keyword}</span>
-                    <span className="text-sm text-slate-400">{stat.count} rows</span>
+                <div key={stat.keyword} className="flex flex-col gap-1 p-3 rounded bg-bg-elevated/40 border border-line/20 hover:border-accent/30 transition-colors group">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-mono text-accent uppercase tracking-widest">{stat.keyword}</span>
+                    <span className="text-[9px] font-mono text-muted/40 uppercase font-bold">{stat.count} Rows</span>
                   </div>
-                  <div className="font-mono text-sm text-slate-300">{stat.avgScore.toFixed(1)} avg</div>
+                  <div className="text-sm font-bold text-white group-hover:text-accent transition-colors">
+                    {stat.avgScore.toFixed(1)} <span className="text-[9px] font-mono text-muted/60 font-normal uppercase tracking-widest ml-1">Avg_Score</span>
+                  </div>
                 </div>
               ))}
             </div>
           </div>
         )}
 
-        <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-6">
-          <select
-            value={sourceFilter}
-            onChange={(e) => setSourceFilter(e.target.value)}
-            className="px-3 py-2 bg-slate-800 border border-slate-700 rounded text-sm"
-          >
-            <option value="all">All Sources</option>
-            <option value="reddit">Reddit</option>
-            <option value="amazon">Amazon</option>
-            <option value="uploaded">Uploaded</option>
-            <option value="REDDIT_PRODUCT">Reddit Product</option>
-            <option value="REDDIT_PROBLEM">Reddit Problem</option>
-          </select>
+        <div className="rounded-card border border-line bg-panel p-6 space-y-6 shadow-panel backdrop-blur-panel">
+          <div className="flex items-center justify-between">
+            <p className="card-label font-bold">Research Filters</p>
+            <div className="text-[9px] font-mono text-muted/40 uppercase tracking-[0.2em]">
+               Showing {filteredRows.length} of {rows.length} loaded
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            <div className="space-y-1.5 text-[9px] font-mono text-muted/60 uppercase tracking-widest ml-1">Source_Type</div>
+            <div className="space-y-1.5 text-[9px] font-mono text-muted/60 uppercase tracking-widest ml-1">Entity_Type</div>
+            <div className="space-y-1.5 text-[9px] font-mono text-muted/60 uppercase tracking-widest ml-1">Subreddit_Node</div>
+            <div className="space-y-1.5 text-[9px] font-mono text-muted/60 uppercase tracking-widest ml-1">Solution_Vector</div>
+            <div className="space-y-1.5 text-[9px] font-mono text-muted/60 uppercase tracking-widest ml-1">Min_Intensity</div>
+            <div className="space-y-1.5 text-[9px] font-mono text-muted/60 uppercase tracking-widest ml-1">Content_Search</div>
+          </div>
 
-          <select
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value)}
-            className="px-3 py-2 bg-slate-800 border border-slate-700 rounded text-sm"
-          >
-            <option value="all">All Types</option>
-            <option value="post">Posts</option>
-            <option value="comment">Comments</option>
-            <option value="review">Reviews</option>
-            <option value="UPLOADED">Uploaded</option>
-          </select>
+          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 -mt-4">
+            <select
+              value={sourceFilter}
+              onChange={(e) => setSourceFilter(e.target.value)}
+              className="w-full bg-bg-elevated border border-line rounded px-3 py-2 text-[11px] font-mono text-white focus:border-accent/40 outline-none transition-colors"
+            >
+              <option value="all">ALL_SOURCES</option>
+              <option value="reddit">REDDIT</option>
+              <option value="amazon">AMAZON</option>
+              <option value="uploaded">UPLOADED</option>
+            </select>
 
-          <select
-            value={subredditFilter}
-            onChange={(e) => {
-              setSubredditFilter(e.target.value);
-              setPage(1);
-            }}
-            className="px-3 py-2 bg-slate-800 border border-slate-700 rounded text-sm"
-          >
-            <option value="">All subreddits</option>
-            {uniqueSubreddits.map((subreddit) => (
-              <option key={subreddit} value={subreddit}>
-                {subreddit}
-              </option>
-            ))}
-          </select>
+            <select
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value)}
+              className="w-full bg-bg-elevated border border-line rounded px-3 py-2 text-[11px] font-mono text-white focus:border-accent/40 outline-none transition-colors"
+            >
+              <option value="all">ALL_TYPES</option>
+              <option value="post">POSTS</option>
+              <option value="comment">COMMENTS</option>
+              <option value="review">REVIEWS</option>
+              <option value="UPLOADED">UPLOADED</option>
+            </select>
 
-          <select
-            value={solutionKeywordFilter}
-            onChange={(e) => {
-              setSolutionKeywordFilter(e.target.value);
-              setPage(1);
-            }}
-            className="px-3 py-2 bg-slate-800 border border-slate-700 rounded text-sm"
-          >
-            <option value="">All solution keywords</option>
-            {uniqueKeywords.map((keyword) => (
-              <option key={keyword} value={keyword}>
-                {keyword}
-              </option>
-            ))}
-          </select>
+            <select
+              value={subredditFilter}
+              onChange={(e) => {
+                setSubredditFilter(e.target.value);
+                setPage(1);
+              }}
+              className="w-full bg-bg-elevated border border-line rounded px-3 py-2 text-[11px] font-mono text-white focus:border-accent/40 outline-none transition-colors"
+            >
+              <option value="">ALL_SUBREDDITS</option>
+              {uniqueSubreddits.map((s) => (
+                <option key={s} value={s}>{s.toUpperCase()}</option>
+              ))}
+            </select>
 
-          <input
-            type="number"
-            min={0}
-            value={minScoreFilter}
-            onChange={(e) => {
-              const parsed = Number.parseInt(e.target.value, 10);
-              setMinScoreFilter(Number.isFinite(parsed) && parsed > 0 ? parsed : 0);
-              setPage(1);
-            }}
-            className="px-3 py-2 bg-slate-800 border border-slate-700 rounded text-sm"
-            placeholder="Min score"
-          />
+            <select
+              value={solutionKeywordFilter}
+              onChange={(e) => {
+                setSolutionKeywordFilter(e.target.value);
+                setPage(1);
+              }}
+              className="w-full bg-bg-elevated border border-line rounded px-3 py-2 text-[11px] font-mono text-white focus:border-accent/40 outline-none transition-colors"
+            >
+              <option value="">ALL_KEYWORDS</option>
+              {uniqueKeywords.map((k) => (
+                <option key={k} value={k}>{k.toUpperCase()}</option>
+              ))}
+            </select>
 
-          <input
-            type="text"
-            placeholder="Search content..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="px-3 py-2 bg-slate-800 border border-slate-700 rounded text-sm"
-          />
+            <input
+              type="number"
+              min={0}
+              value={minScoreFilter}
+              onChange={(e) => {
+                const parsed = parseInt(e.target.value, 10);
+                setMinScoreFilter(Number.isFinite(parsed) && parsed > 0 ? parsed : 0);
+                setPage(1);
+              }}
+              className="w-full bg-bg-elevated border border-line rounded px-3 py-2 text-[11px] font-mono text-white focus:border-accent/40 outline-none transition-colors"
+              placeholder="0"
+            />
+
+            <input
+              type="text"
+              placeholder="SEARCH_STREAM..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-bg-elevated border border-line rounded px-3 py-2 text-[11px] font-mono text-white focus:border-accent/40 outline-none transition-colors placeholder:text-muted/20"
+            />
+          </div>
         </div>
 
-        <div className="mt-3 text-sm text-slate-400">
-          Showing {filteredRows.length} of {rows.length} loaded
-          {filtersActive && ` (${totalCount} total in database)`}
-        </div>
-      </div>
-
-      <div className="px-6 py-4">
         {filtersActive && (
-          <div className="bg-amber-500/10 border border-amber-500/50 rounded p-3 mb-4">
-            <p className="text-sm text-amber-300">
-              Filters apply to server query (subreddit/keyword/min score) and client view (source/type/search) for this page.
-            </p>
+          <div className="rounded border border-accent/20 bg-accent/5 p-4 flex items-center gap-3">
+             <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
+             <p className="text-[10px] font-mono text-accent uppercase tracking-widest font-bold">
+               Active_Filter_Protocol: <span className="text-white opacity-60">Server-side query + Client-side stream refinement enabled.</span>
+             </p>
           </div>
         )}
+
         {loading ? (
-          <div className="text-center py-12 text-slate-400">Loading...</div>
+          <div className="rounded-card border border-line bg-panel p-20 flex flex-col items-center justify-center space-y-4">
+             <div className="w-8 h-8 border-2 border-accent/20 border-t-accent rounded-full animate-spin" />
+             <p className="text-[10px] font-mono text-muted uppercase tracking-[0.3em] animate-pulse">Loading research rows...</p>
+          </div>
         ) : (
-          <>
+          <div className="rounded-card border border-line bg-panel overflow-hidden shadow-panel backdrop-blur-panel">
             <div className="overflow-x-auto">
-              <table className="w-full text-sm border border-slate-800">
-                <thead className="bg-slate-900 border-b border-slate-700">
-                  <tr>
-                    <th className="text-left p-3 font-medium w-24">Type</th>
-                    <th className="text-left p-3 font-medium w-44">Source</th>
-                    <th className="text-left p-3 font-medium w-40">Subreddit</th>
-                    <th className="text-left p-3 font-medium w-32">Solution</th>
-                    <th className="text-left p-3 font-medium w-40">Problem</th>
-                    <th className="text-left p-3 font-medium w-40">Query</th>
-                    <th className="text-left p-3 font-medium">Content</th>
-                    <th className="text-left p-3 font-medium w-20">Score</th>
-                    <th className="text-left p-3 font-medium w-32">Reddit ID</th>
-                    <th className="text-left p-3 font-medium w-32">Parent ID</th>
-                    <th className="text-left p-3 font-medium w-32">Posted</th>
-                    <th className="text-left p-3 font-medium w-40">Scraped</th>
+              <table className="w-full text-[11px] border-collapse">
+                <thead>
+                  <tr className="bg-bg-elevated/50 border-b border-line">
+                    <th className="text-left p-4 font-mono text-muted uppercase tracking-widest font-bold">Type</th>
+                    <th className="text-left p-4 font-mono text-muted uppercase tracking-widest font-bold whitespace-nowrap">Source_Node</th>
+                    <th className="text-left p-4 font-mono text-muted uppercase tracking-widest font-bold">Subreddit</th>
+                    <th className="text-left p-4 font-mono text-muted uppercase tracking-widest font-bold">Keyword</th>
+                    <th className="text-left p-4 font-mono text-muted uppercase tracking-widest font-bold">Content</th>
+                    <th className="text-left p-4 font-mono text-muted uppercase tracking-widest font-bold">Intensity</th>
+                    <th className="text-left p-4 font-mono text-muted uppercase tracking-widest font-bold">Trace_ID</th>
+                    <th className="text-left p-4 font-mono text-muted uppercase tracking-widest font-bold">Posted</th>
+                    <th className="text-left p-4 font-mono text-muted uppercase tracking-widest font-bold whitespace-nowrap">Capture_Time</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-line/30">
                   {filteredRows.map((row) => (
-                    <tr key={row.id} className="border-b border-slate-800 hover:bg-slate-900/50">
-                      <td className="p-3">
-                        <span className="px-2 py-1 bg-slate-700 rounded text-xs">{getDisplayType(row)}</span>
+                    <tr key={row.id} className="hover:bg-accent/5 transition-colors group align-top">
+                      <td className="p-4">
+                        <div className={`status-chip !text-[8px] !px-1.5 !py-0 !h-4 uppercase tracking-widest ${
+                          getDisplayType(row) === 'review' ? 'success' : 
+                          getDisplayType(row) === 'post' ? 'info' : 
+                          getDisplayType(row) === 'comment' ? 'subtle' : 'subtle'
+                        }`}>
+                          {getDisplayType(row)}
+                        </div>
                       </td>
-                      <td className="p-3 text-slate-400 text-xs">{getDisplaySource(row)}</td>
-                      <td className="p-3 text-slate-400 text-xs">{row.subreddit || '-'}</td>
-                      <td className="p-3 text-slate-300 text-xs">{row.solutionKeyword || '-'}</td>
-                      <td className="p-3 text-slate-300 text-xs">{row.problemKeyword || '-'}</td>
-                      <td className="p-3 text-slate-300 text-xs font-mono">{row.searchQueryUsed || '-'}</td>
-                      <td className="p-3">
-                        {row.content.substring(0, 220)}
-                        {row.content.length > 220 && '...'}
+                      <td className="p-4">
+                         <div className="font-mono text-muted/60 uppercase group-hover:text-accent-2 transition-colors">
+                           {getDisplaySource(row)}
+                         </div>
                       </td>
-                      <td className="p-3 text-slate-400">{getDisplayScore(row)}</td>
-                      <td className="p-3 text-slate-300 text-xs font-mono">{row.redditId || '-'}</td>
-                      <td className="p-3 text-slate-300 text-xs font-mono">{row.redditParentId || '-'}</td>
-                      <td className="p-3 text-slate-400 text-xs">{getPostedTime(row)}</td>
-                      <td className="p-3 text-slate-400 text-xs">{formatDateTime(row.createdAt)}</td>
+                      <td className="p-4">
+                        <div className="font-mono text-accent-2 uppercase group-hover:text-white transition-colors">
+                          {row.subreddit ? `r/${row.subreddit}` : '—'}
+                        </div>
+                      </td>
+                      <td className="p-4">
+                        <div className="space-y-1">
+                          {row.solutionKeyword && (
+                            <div className="text-[10px] font-mono text-accent uppercase tracking-tight">{row.solutionKeyword}</div>
+                          )}
+                          {row.problemKeyword && (
+                            <div className="text-[9px] font-mono text-muted uppercase tracking-tight opacity-40">{row.problemKeyword}</div>
+                          )}
+                        </div>
+                      </td>
+                      <td className="p-4 max-w-md">
+                        <p className="text-muted leading-relaxed group-hover:text-white transition-colors">
+                          {row.content.substring(0, 180)}
+                          {row.content.length > 180 && '...'}
+                        </p>
+                      </td>
+                      <td className="p-4">
+                        <div className="font-mono font-bold text-white">
+                          {getDisplayScore(row)}
+                        </div>
+                      </td>
+                      <td className="p-4">
+                        <div className="font-mono text-muted uppercase opacity-40 hover:opacity-100 transition-opacity">
+                          {row.redditId || '—'}
+                        </div>
+                      </td>
+                      <td className="p-4 whitespace-nowrap">
+                        <div className="font-mono text-muted/60 uppercase">
+                          {getPostedTime(row)}
+                        </div>
+                      </td>
+                      <td className="p-4 whitespace-nowrap">
+                        <div className="font-mono text-muted/40 uppercase">
+                          {new Date(row.createdAt).toLocaleDateString([], { month: '2-digit', day: '2-digit' })}<br/>
+                          {new Date(row.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
 
-            <div className="flex items-center justify-between py-6 border-t border-slate-800 mt-4">
-              <div className="text-sm text-slate-400">
-                Page {page} of {totalPages} ({totalCount} total rows)
+            <div className="flex flex-col md:flex-row items-center justify-between gap-4 p-6 border-t border-line bg-bg-elevated/20">
+              <div className="text-[10px] font-mono text-muted uppercase tracking-[0.2em]">
+                Page <span className="text-white">{page}</span> OF <span className="text-white">{totalPages}</span> 
+                <span className="mx-3 opacity-20">|</span> 
+                <span className="text-white">{totalCount}</span> NODES_IN_STORAGE
               </div>
 
-              <div className="flex gap-2">
+              <div className="flex items-center gap-2">
                 <button
                   onClick={() => setPage(1)}
                   disabled={page === 1}
-                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed rounded text-sm"
+                  className="btn btn-secondary !min-h-[32px] px-3 !text-[9px] uppercase tracking-widest disabled:opacity-20"
                 >
                   First
                 </button>
@@ -433,28 +502,30 @@ export default function ResearchDataPage() {
                 <button
                   onClick={() => setPage((p) => p - 1)}
                   disabled={page === 1}
-                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed rounded text-sm"
+                  className="btn btn-secondary !min-h-[32px] px-3 !text-[9px] uppercase tracking-widest disabled:opacity-20"
                 >
-                  Previous
+                  Prev
                 </button>
 
-                <input
-                  type="number"
-                  min={1}
-                  max={totalPages}
-                  value={page}
-                  onChange={(e) => {
-                    const newPage = parseInt(e.target.value, 10);
-                    if (Number.isNaN(newPage)) return;
-                    if (newPage >= 1 && newPage <= totalPages) setPage(newPage);
-                  }}
-                  className="w-20 px-2 py-1.5 bg-slate-800 border border-slate-700 rounded text-sm text-center"
-                />
+                <div className="flex items-center bg-bg border border-line rounded p-1">
+                  <input
+                    type="number"
+                    min={1}
+                    max={totalPages}
+                    value={page}
+                    onChange={(e) => {
+                      const newPage = parseInt(e.target.value, 10);
+                      if (Number.isNaN(newPage)) return;
+                      if (newPage >= 1 && newPage <= totalPages) setPage(newPage);
+                    }}
+                    className="w-12 bg-transparent text-center font-mono text-[11px] text-white outline-none"
+                  />
+                </div>
 
                 <button
                   onClick={() => setPage((p) => p + 1)}
                   disabled={page >= totalPages}
-                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed rounded text-sm"
+                  className="btn btn-secondary !min-h-[32px] px-3 !text-[9px] uppercase tracking-widest disabled:opacity-20"
                 >
                   Next
                 </button>
@@ -462,13 +533,13 @@ export default function ResearchDataPage() {
                 <button
                   onClick={() => setPage(totalPages)}
                   disabled={page >= totalPages}
-                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed rounded text-sm"
+                  className="btn btn-secondary !min-h-[32px] px-3 !text-[9px] uppercase tracking-widest disabled:opacity-20"
                 >
                   Last
                 </button>
               </div>
             </div>
-          </>
+          </div>
         )}
       </div>
     </div>

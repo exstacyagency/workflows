@@ -177,13 +177,13 @@ export default function CreativeRunDataPage() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100 p-6">
+    <main className="min-h-screen bg-bg text-white p-6">
       <div className="mx-auto w-full max-w-6xl space-y-4">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h1 className="text-xl font-semibold">Creative Run Data</h1>
-            <p className="text-sm text-slate-400">
-              Run ID: <span className="text-slate-200">{runId || "N/A"}</span>
+            <h1 className="text-xl font-semibold">Creative Production Run</h1>
+            <p className="text-sm text-muted/80">
+              Run ID: <span className="text-white/90">{runId || "N/A"}</span>
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -191,26 +191,26 @@ export default function CreativeRunDataPage() {
               type="button"
               onClick={() => void loadJobs()}
               disabled={loading || deleting}
-              className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-white/90 hover:bg-bg-elevated disabled:cursor-not-allowed disabled:opacity-60"
             >
               Refresh
             </button>
             <Link
               href={`/projects/${projectId}/creative-studio`}
-              className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800"
+              className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-white/90 hover:bg-bg-elevated"
             >
               Back to Creative Studio
             </Link>
           </div>
         </div>
 
-        <div className="rounded-lg border border-slate-800 bg-slate-900/80 p-4">
+        <div className="rounded-lg border border-line bg-panel p-4">
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={toggleAll}
               disabled={loading || deleting || jobs.length === 0}
-              className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-200 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-lg border border-line bg-bg-elevated px-3 py-2 text-sm text-white/90 hover:bg-panel-strong disabled:cursor-not-allowed disabled:opacity-60"
             >
               {allSelected ? "Clear Selection" : "Select All"}
             </button>
@@ -218,7 +218,7 @@ export default function CreativeRunDataPage() {
               type="button"
               onClick={() => void deleteJobs("selected")}
               disabled={loading || deleting || selectedIds.length === 0}
-              className="rounded-lg border border-red-500/60 bg-red-900/40 px-3 py-2 text-sm text-red-200 hover:bg-red-900/60 disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-lg border border-accent/30 bg-accent/10 px-3 py-2 text-sm text-accent hover:bg-accent/20 disabled:cursor-not-allowed disabled:opacity-60"
             >
               Delete Selected ({selectedIds.length})
             </button>
@@ -226,41 +226,41 @@ export default function CreativeRunDataPage() {
               type="button"
               onClick={() => void deleteJobs("all")}
               disabled={loading || deleting || jobs.length === 0}
-              className="rounded-lg border border-red-500/80 bg-red-900/50 px-3 py-2 text-sm text-red-100 hover:bg-red-900/70 disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-lg border border-accent/30 bg-accent/10 px-3 py-2 text-sm text-accent hover:bg-accent/20 disabled:cursor-not-allowed disabled:opacity-60"
             >
               Delete All Creative Jobs
             </button>
-            <span className="ml-auto text-xs text-slate-400">
+            <span className="ml-auto text-xs text-muted/80">
               {jobs.length} job{jobs.length === 1 ? "" : "s"}
             </span>
           </div>
           {error ? (
-            <p className="mt-3 text-sm text-red-300">{error}</p>
+            <p className="mt-3 text-sm text-accent">{error}</p>
           ) : null}
         </div>
 
-        <div className="overflow-hidden rounded-lg border border-slate-800 bg-slate-900/60">
-          <table className="min-w-full divide-y divide-slate-800 text-sm">
-            <thead className="bg-slate-900/90">
+        <div className="overflow-hidden rounded-lg border border-line bg-panel">
+          <table className="min-w-full divide-y divide-line text-sm">
+            <thead className="bg-panel/90">
               <tr>
-                <th className="px-3 py-2 text-left font-medium text-slate-300">Select</th>
-                <th className="px-3 py-2 text-left font-medium text-slate-300">Job</th>
-                <th className="px-3 py-2 text-left font-medium text-slate-300">Status</th>
-                <th className="px-3 py-2 text-left font-medium text-slate-300">Created</th>
-                <th className="px-3 py-2 text-left font-medium text-slate-300">Updated</th>
-                <th className="px-3 py-2 text-left font-medium text-slate-300">Job ID</th>
+                <th className="px-3 py-2 text-left font-medium text-muted">Select</th>
+                <th className="px-3 py-2 text-left font-medium text-muted">Job</th>
+                <th className="px-3 py-2 text-left font-medium text-muted">Status</th>
+                <th className="px-3 py-2 text-left font-medium text-muted">Created</th>
+                <th className="px-3 py-2 text-left font-medium text-muted">Updated</th>
+                <th className="px-3 py-2 text-left font-medium text-muted">Job ID</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800">
+            <tbody className="divide-y divide-line">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-3 py-6 text-center text-slate-400">
+                  <td colSpan={6} className="px-3 py-6 text-center text-muted/80">
                     Loading creative jobs...
                   </td>
                 </tr>
               ) : jobs.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-3 py-6 text-center text-slate-500">
+                  <td colSpan={6} className="px-3 py-6 text-center text-muted/60">
                     No creative jobs found for this run.
                   </td>
                 </tr>
@@ -275,22 +275,22 @@ export default function CreativeRunDataPage() {
                         disabled={deleting}
                       />
                     </td>
-                    <td className="px-3 py-2 text-slate-200">
+                    <td className="px-3 py-2 text-white/90">
                       <span>
                         {typeof job?.payload?.jobLabel === "string" && String(job.payload.jobLabel).trim()
                           ? String(job.payload.jobLabel).trim()
                           : CREATIVE_JOB_LABELS[job.type] ?? job.type}
                       </span>
                       {getSceneLabel(job) ? (
-                        <span className="ml-2 rounded bg-slate-700 px-1.5 py-0.5 text-xs text-slate-300">
+                        <span className="ml-2 rounded bg-panel-strong px-1.5 py-0.5 text-xs text-muted">
                           {getSceneLabel(job)}
                         </span>
                       ) : null}
                     </td>
-                    <td className="px-3 py-2 text-slate-300">{job.status}</td>
-                    <td className="px-3 py-2 text-slate-400">{formatDate(job.createdAt)}</td>
-                    <td className="px-3 py-2 text-slate-400">{formatDate(job.updatedAt)}</td>
-                    <td className="px-3 py-2 text-xs text-slate-500">{job.id}</td>
+                    <td className="px-3 py-2 text-muted">{job.status}</td>
+                    <td className="px-3 py-2 text-muted/80">{formatDate(job.createdAt)}</td>
+                    <td className="px-3 py-2 text-muted/80">{formatDate(job.updatedAt)}</td>
+                    <td className="px-3 py-2 text-xs text-muted/60">{job.id}</td>
                   </tr>
                 ))
               )}

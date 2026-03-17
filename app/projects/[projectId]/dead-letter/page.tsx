@@ -176,172 +176,172 @@ export default function DeadLetterPage({
   }
 
   return (
-    <div className="px-6 py-6 space-y-5">
+    <div className="px-6 py-6 space-y-6">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-[11px] uppercase tracking-widest text-slate-500">Project</p>
-          <h1 className="text-2xl font-semibold text-slate-50">Dead Letter</h1>
-          <p className="text-sm text-slate-400 mt-1">
+          <p className="eyebrow !mb-2">Project</p>
+          <h1 className="text-2xl font-semibold text-white tracking-tight">Dead Letter</h1>
+          <p className="text-sm text-muted mt-1 italic">
             Failed jobs that won’t be retried automatically.
           </p>
         </div>
         <div className="flex gap-2">
           <Link
             href={`/projects/${encodeURIComponent(projectId)}`}
-            className="inline-flex items-center justify-center rounded-md border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-slate-200 hover:bg-slate-900"
+            className="btn btn-secondary !min-h-[36px] px-4 text-xs"
           >
             Back
           </Link>
           <button
             onClick={() => void bulk("retry_all_transient")}
-            className="px-3 py-2 rounded border border-white/10 hover:border-white/20 text-sm text-slate-200"
+            className="btn btn-secondary !min-h-[36px] px-4 text-xs"
           >
-            Retry all (transient)
+            Retry all
           </button>
           <button
             onClick={() => void bulk("clear_attempts_all")}
-            className="px-3 py-2 rounded border border-white/10 hover:border-white/20 text-sm text-slate-200"
+            className="btn btn-secondary !min-h-[36px] px-4 text-xs"
           >
-            Clear attempts (all)
+            Clear all
           </button>
           <button
             onClick={() => void bulk("dismiss_all")}
-            className="px-3 py-2 rounded border border-white/10 hover:border-white/20 text-sm text-slate-200"
+            className="btn btn-secondary !min-h-[36px] px-4 text-xs"
           >
             Dismiss all
           </button>
           <button
             onClick={() => void load()}
-            className="inline-flex items-center justify-center rounded-md bg-sky-500 px-3 py-2 text-sm font-medium text-white hover:bg-sky-400 disabled:opacity-50"
+            className="btn btn-primary !min-h-[36px] px-6 text-xs"
             disabled={loading}
           >
-            Refresh
+            {loading ? "Refreshing…" : "Refresh"}
           </button>
         </div>
       </div>
 
       {msg ? (
-        <div className="rounded-xl border border-slate-800 bg-slate-950/70 px-4 py-3 text-sm text-slate-200">
+        <div className="rounded-card border border-line bg-panel px-4 py-3 text-sm text-muted font-mono italic">
           {msg}
         </div>
       ) : null}
 
-      <div className="rounded-xl border border-slate-800 bg-slate-900/70">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
-          <h2 className="text-sm font-semibold text-slate-100">Failed Jobs</h2>
-          <p className="text-xs text-slate-400">{loading ? "Loading…" : `${jobs.length} shown`}</p>
+      <div className="rounded-card border border-line bg-panel shadow-panel backdrop-blur-panel overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-line">
+          <h2 className="text-sm font-bold text-white uppercase tracking-tight">Failed Jobs</h2>
+          <p className="text-[10px] font-mono text-muted/40 uppercase tracking-widest">{loading ? "Loading…" : `${jobs.length} items recorded`}</p>
         </div>
 
         {loading ? (
-          <div className="px-4 py-6 text-sm text-slate-400">Loading failed jobs…</div>
+          <div className="px-5 py-8 text-center space-y-3">
+            <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin mx-auto" />
+            <p className="text-xs font-mono text-muted uppercase tracking-widest">Polling Queue...</p>
+          </div>
         ) : jobs.length === 0 ? (
-          <div className="px-4 py-6 text-sm text-slate-400">No failed jobs.</div>
+          <div className="px-5 py-12 text-center text-xs text-muted italic">No failed jobs in this sector.</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead>
-                <tr className="text-xs text-slate-400">
-                  <th className="p-3 text-left font-medium">Type</th>
-                  <th className="p-3 text-left font-medium">Attempts</th>
-                  <th className="p-3 text-left font-medium">Next run</th>
-                  <th className="p-3 text-left font-medium">Error</th>
-                  <th className="p-3 text-left font-medium">Updated</th>
-                  <th className="p-3 text-left font-medium">Actions</th>
+              <thead className="bg-bg-elevated/50 border-b border-line">
+                <tr>
+                  <th className="px-5 py-3 text-left text-[10px] font-mono text-muted uppercase tracking-widest">Type</th>
+                  <th className="px-5 py-3 text-left text-[10px] font-mono text-muted uppercase tracking-widest">Attempts</th>
+                  <th className="px-5 py-3 text-left text-[10px] font-mono text-muted uppercase tracking-widest">Next run</th>
+                  <th className="px-5 py-3 text-left text-[10px] font-mono text-muted uppercase tracking-widest">Error</th>
+                  <th className="px-5 py-3 text-left text-[10px] font-mono text-muted uppercase tracking-widest">Updated</th>
+                  <th className="px-5 py-3 text-left text-[10px] font-mono text-muted uppercase tracking-widest">Actions</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-line">
                 {jobs.map((j) => {
                   const rec = getRecommendation(j.lastError ?? j.error);
 
                   return [
-                    <tr key={j.id} className="border-t border-white/10">
-                      <td className="p-3 font-mono">{j.type}</td>
-                      <td className="p-3">{j.attempts}</td>
-                      <td className="p-3">{fmtNextRun(j.nextRunAt)}</td>
-                      <td className="p-3">
-                        <div className="max-w-[520px] truncate" title={j.lastError ?? j.error ?? ""}>
+                    <tr key={j.id} className="hover:bg-bg-elevated/40 transition-colors">
+                      <td className="px-5 py-4 text-xs font-mono text-accent-2">{j.type}</td>
+                      <td className="px-5 py-4 text-xs text-muted">{j.attempts}</td>
+                      <td className="px-5 py-4 text-xs text-muted font-mono">{fmtNextRun(j.nextRunAt)}</td>
+                      <td className="px-5 py-4">
+                        <div className="max-w-[420px] truncate text-xs text-white/80" title={j.lastError ?? j.error ?? ""}>
                           {j.lastError ?? j.error ?? "—"}
                         </div>
                         {rec && (
-                          <div className="mt-1 text-xs text-white/60">
-                            Recommended: {rec}
+                          <div className="mt-1 text-[10px] font-mono text-accent italic">
+                            REC: {rec}
                           </div>
                         )}
                       </td>
-                      <td className="p-3">{new Date(j.updatedAt).toLocaleString()}</td>
-                      <td className="p-3 flex flex-wrap gap-2">
+                      <td className="px-5 py-4 text-[10px] font-mono text-muted/40 uppercase tracking-tight">{new Date(j.updatedAt).toLocaleString()}</td>
+                      <td className="px-5 py-4 flex flex-wrap gap-2">
                         <button
                           onClick={() => act(j.id, "retry")}
                           disabled={busyJobId === j.id}
-                          className="px-2 py-1 rounded bg-white/10 hover:bg-white/20 disabled:opacity-50"
+                          className="btn btn-secondary !min-h-[28px] px-3 text-[10px]"
                         >
-                          Retry now
+                          Retry
                         </button>
                         <button
                           onClick={() => act(j.id, "clear-attempts")}
                           disabled={busyJobId === j.id}
-                          className="px-2 py-1 rounded bg-white/10 hover:bg-white/20 disabled:opacity-50"
+                          className="btn btn-secondary !min-h-[28px] px-3 text-[10px]"
                         >
-                          Clear attempts
+                          Reset
                         </button>
                         <button
                           onClick={() => act(j.id, "dismiss")}
                           disabled={busyJobId === j.id}
-                          className="px-2 py-1 rounded bg-white/10 hover:bg-white/20 disabled:opacity-50"
+                          className="btn btn-secondary !min-h-[28px] px-3 text-[10px] hover:text-danger hover:border-danger/30"
                         >
-                          Dismiss
+                          Kill
                         </button>
                         <button
                           onClick={() => setExpandedId(expandedId === j.id ? null : j.id)}
-                          className="px-2 py-1 rounded bg-white/10 hover:bg-white/20"
+                          className="btn btn-secondary !min-h-[28px] px-3 text-[10px]"
                         >
-                          {expandedId === j.id ? "Hide" : "Details"}
+                          {expandedId === j.id ? "Close" : "Data"}
                         </button>
                       </td>
                     </tr>,
                     expandedId === j.id ? (
-                      <tr key={`${j.id}:details`} className="border-t border-white/10 bg-white/[0.03]">
-                        <td colSpan={6} className="p-4 space-y-3">
+                      <tr key={`${j.id}:details`} className="bg-bg-elevated/20 border-t border-line">
+                        <td colSpan={6} className="p-6 space-y-4">
                           <div className="flex items-center gap-3 flex-wrap">
-                            <div className="text-xs text-white/70">
-                              <span className="font-mono">jobId</span>:{" "}
-                              <span className="font-mono">{j.id}</span>
+                            <div className="text-[11px] font-mono text-muted uppercase tracking-widest">
+                              JobID: <span className="text-accent-2">{j.id}</span>
                             </div>
                             <button
                               onClick={() => void copy(j.id)}
-                              className="px-2 py-1 rounded bg-white/10 hover:bg-white/20 text-xs"
+                              className="btn btn-secondary !min-h-[24px] px-2 text-[10px] opacity-70 hover:opacity-100"
                             >
-                              Copy jobId
+                              Copy ID
                             </button>
                             <button
                               onClick={() => void copy(JSON.stringify(j.payload ?? {}, null, 2))}
-                              className="px-2 py-1 rounded bg-white/10 hover:bg-white/20 text-xs"
+                              className="btn btn-secondary !min-h-[24px] px-2 text-[10px] opacity-70 hover:opacity-100"
                             >
-                              Copy payload
+                              Copy Payload
                             </button>
                           </div>
 
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            <div className="text-sm">
-                              <div className="text-xs text-white/60 mb-1">Error (job.error)</div>
-                              <div className="font-mono text-xs whitespace-pre-wrap break-words bg-black/30 border border-white/10 rounded p-2">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                              <div className="card-label !mb-0">Job Error</div>
+                              <div className="font-mono text-[11px] whitespace-pre-wrap break-words bg-black/40 border border-line rounded-card p-4 text-danger/80">
                                 {j.error ?? "—"}
                               </div>
                             </div>
 
-                            <div className="text-sm">
-                              <div className="text-xs text-white/60 mb-1">
-                                Last Error (payload.lastError)
-                              </div>
-                              <div className="font-mono text-xs whitespace-pre-wrap break-words bg-black/30 border border-white/10 rounded p-2">
+                            <div className="space-y-2">
+                              <div className="card-label !mb-0">Context Trace</div>
+                              <div className="font-mono text-[11px] whitespace-pre-wrap break-words bg-black/40 border border-line rounded-card p-4 text-accent-2/60">
                                 {j.lastError ?? "—"}
                               </div>
                             </div>
                           </div>
 
-                          <div className="text-sm">
-                            <div className="text-xs text-white/60 mb-1">Payload</div>
-                            <pre className="text-xs font-mono whitespace-pre-wrap break-words bg-black/30 border border-white/10 rounded p-3 overflow-x-auto">
+                          <div className="space-y-2">
+                            <div className="card-label !mb-0">Payload Schema</div>
+                            <pre className="text-[11px] font-mono whitespace-pre-wrap break-words bg-black/40 border border-line rounded-card p-5 text-muted/60 overflow-x-auto">
 {JSON.stringify(j.payload ?? {}, null, 2)}
                             </pre>
                           </div>

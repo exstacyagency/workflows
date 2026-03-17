@@ -306,170 +306,82 @@ function AddBeatExpansion({
 
   if (!expanded) {
     return (
-      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+      <div className="flex justify-end pr-2 py-4">
         <button
-          type="button"
           onClick={handleToggleExpanded}
           disabled={disabled}
-          style={{
-            border: "1px solid #334155",
-            backgroundColor: "#0f172a",
-            color: disabled ? "#64748b" : "#cbd5e1",
-            padding: "4px 8px",
-            borderRadius: 6,
-            fontSize: 12,
-            cursor: disabled ? "not-allowed" : "pointer",
-          }}
+          className="btn btn-secondary !min-h-[28px] !px-4 text-[9px] uppercase font-bold tracking-[0.15em] border-line/50 hover:border-accent/40 transition-all flex items-center gap-2 group"
         >
-          + Add Beat Below
+          <span className="text-accent opacity-60 group-hover:opacity-100 transition-opacity text-xs">+</span>
+          Initialize_Sequence_Node
         </button>
       </div>
     );
   }
 
   return (
-    <div
-      style={{
-        border: "1px solid #334155",
-        backgroundColor: "#020617",
-        borderRadius: 8,
-        padding: 10,
-        display: "grid",
-        gap: 8,
-      }}
-    >
-      <input
-        type="text"
-        value={label}
-        onChange={(event) => {
-          setLabel(event.target.value);
-          setError(null);
-        }}
-        placeholder="Beat label"
-        disabled={disabled || loading}
-        style={{
-          width: "100%",
-          boxSizing: "border-box",
-          borderRadius: 8,
-          border: "1px solid #334155",
-          backgroundColor: "#0f172a",
-          color: "#e2e8f0",
-          padding: "7px 9px",
-          fontSize: 13,
-        }}
-      />
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+    <div className="rounded-card border border-line bg-panel/30 p-6 space-y-5 animate-in fade-in zoom-in-95 duration-300">
+      <div className="space-y-2">
+         <span className="text-[9px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Node_Identifier</span>
+         <input
+           type="text"
+           value={label}
+           onChange={(event) => {
+             setLabel(event.target.value);
+             setError(null);
+           }}
+           placeholder="SCN_DESCRIPTOR"
+           disabled={disabled || loading}
+           className="w-full bg-black/40 border border-line/40 rounded-card px-4 py-2 text-[12px] font-mono text-white/70 focus:border-accent/40 focus:ring-1 focus:ring-accent/20 transition-all"
+         />
+      </div>
+
+      <div className="flex items-center gap-3">
         <button
-          type="button"
           onClick={handleWriteYourself}
           disabled={disabled || loading}
-          style={{
-            border: "1px solid #334155",
-            backgroundColor: selectedOption === "write" ? "#1e293b" : "#0f172a",
-            color: disabled || loading ? "#64748b" : "#cbd5e1",
-            padding: "5px 10px",
-            borderRadius: 6,
-            fontSize: 12,
-            fontWeight: 600,
-            cursor: disabled || loading ? "not-allowed" : "pointer",
-          }}
+          className="btn btn-secondary flex-1 !min-h-[36px] text-[9px] uppercase font-bold tracking-widest border-line/10"
         >
-          Write Yourself
+          Direct_Injection
         </button>
         <button
-          type="button"
           onClick={() => void runGenerateWithAi()}
           disabled={disabled || loading}
-          style={{
-            border: "none",
-            backgroundColor: disabled || loading ? "#1e293b" : "#0ea5e9",
-            color: disabled || loading ? "#94a3b8" : "#ffffff",
-            padding: "5px 10px",
-            borderRadius: 6,
-            fontSize: 12,
-            fontWeight: 600,
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 6,
-            cursor: disabled || loading ? "not-allowed" : "pointer",
-          }}
+          className="btn btn-primary flex-1 !min-h-[36px] text-[9px] uppercase font-bold tracking-widest gap-3"
         >
           {loading ? (
             <>
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                style={{ width: 14, height: 14, animation: "spin 1s linear infinite" }}
-              >
-                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" style={{ opacity: 0.25 }} />
-                <path
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  style={{ opacity: 0.75 }}
-                />
-              </svg>
-              Generating...
+              <div className="w-3 h-3 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+              Synthesizing...
             </>
           ) : (
-            "Generate with AI"
+            "Neural_Expansion"
           )}
         </button>
         <button
-          type="button"
           onClick={handleToggleExpanded}
           disabled={disabled || loading}
-          style={{
-            border: "1px solid #334155",
-            backgroundColor: "transparent",
-            color: disabled || loading ? "#64748b" : "#94a3b8",
-            padding: "5px 10px",
-            borderRadius: 6,
-            fontSize: 12,
-            fontWeight: 600,
-            cursor: disabled || loading ? "not-allowed" : "pointer",
-          }}
+          className="btn btn-secondary px-6 !min-h-[36px] text-[9px] uppercase font-bold tracking-widest opacity-40 hover:opacity-100"
         >
-          Cancel
+          Abort
         </button>
       </div>
+
       {error && (
-        <div
-          style={{
-            borderRadius: 6,
-            border: "1px solid rgba(239, 68, 68, 0.4)",
-            backgroundColor: "rgba(239, 68, 68, 0.1)",
-            color: "#fca5a5",
-            fontSize: 12,
-            padding: "8px 10px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 8,
-          }}
-        >
-          <span>{error}</span>
+        <div className="p-4 rounded-card border border-danger/30 bg-danger/5 flex items-center justify-between gap-4 animate-in slide-in-from-top-2">
+          <span className="text-[10px] font-mono text-danger uppercase tracking-widest">Protocol_Error: {error}</span>
           <button
-            type="button"
             onClick={() => void runGenerateWithAi()}
             disabled={disabled || loading}
-            style={{
-              border: "1px solid rgba(239, 68, 68, 0.45)",
-              backgroundColor: "rgba(239, 68, 68, 0.12)",
-              color: disabled || loading ? "#64748b" : "#fecaca",
-              borderRadius: 6,
-              padding: "4px 8px",
-              fontSize: 12,
-              fontWeight: 600,
-              cursor: disabled || loading ? "not-allowed" : "pointer",
-            }}
+            className="text-[9px] font-mono text-danger font-bold uppercase tracking-widest hover:underline"
           >
-            Retry
+            Retry_Sync
           </button>
         </div>
       )}
     </div>
   );
+
 }
 
 export default function CreativeStudioPage() {
@@ -3813,106 +3725,111 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
 
   function Spinner() {
     return (
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        fill="none"
-        viewBox="0 0 24 24"
-        style={{ width: 16, height: 16, animation: "spin 1s linear infinite" }}
-      >
-        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" style={{ opacity: 0.25 }} />
-        <path
-          fill="currentColor"
-          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-          style={{ opacity: 0.75 }}
-        />
-      </svg>
+      <div className="w-4 h-4 border-2 border-accent/20 border-t-accent rounded-full animate-spin" />
     );
   }
 
   function getStepBadge(status: ProductionStep["status"]) {
-    const badgeStyles: Record<ProductionStep["status"], React.CSSProperties> = {
-      not_started: {
-        backgroundColor: "#1e293b",
-        color: "#94a3b8",
-      },
-      running: {
-        backgroundColor: "rgba(14, 165, 233, 0.2)",
-        color: "#7dd3fc",
-        border: "1px solid rgba(14, 165, 233, 0.5)",
-      },
-      completed: {
-        backgroundColor: "rgba(16, 185, 129, 0.2)",
-        color: "#6ee7b7",
-        border: "1px solid rgba(16, 185, 129, 0.5)",
-      },
-      failed: {
-        backgroundColor: "rgba(239, 68, 68, 0.2)",
-        color: "#fca5a5",
-        border: "1px solid rgba(239, 68, 68, 0.5)",
-      },
-    };
     const labels = {
-      not_started: "Not Started",
-      running: "Running",
-      completed: "Completed",
-      failed: "Failed",
+      not_started: "Initialized",
+      running: "Processing",
+      completed: "Verified",
+      failed: "Error",
     };
+    const colors = {
+      not_started: "subtle opacity-40",
+      running: "bg-accent/10 text-accent border-accent/20 animate-pulse",
+      completed: "bg-accent-2/10 text-accent-2 border-accent-2/20",
+      failed: "bg-danger/10 text-danger border-danger/20",
+    };
+    
     return (
-      <span
-        style={{
-          padding: "2px 8px",
-          borderRadius: 9999,
-          fontSize: 11,
-          fontWeight: 600,
-          ...badgeStyles[status],
-        }}
-      >
+      <div className={`status-chip !px-3 !py-1 text-[8px] font-bold uppercase tracking-[0.2em] ${colors[status]}`}>
         {labels[status]}
-      </span>
+      </div>
     );
   }
+
 
   if (loading) {
     return (
       <div className="px-6 py-6">
-        <p className="text-sm text-slate-400">Loading creative studio...</p>
+        <p className="text-sm text-muted/80">Loading creative studio...</p>
       </div>
     );
   }
 
   return (
-    <div className="px-6 py-6 space-y-6 max-w-4xl">
+    <div className="min-h-screen bg-bg text-white pb-20">
       {/* Header */}
-      <section className="rounded-xl border border-slate-800 bg-slate-900/80 p-6">
-        <div className="flex items-start justify-between">
-          <div className="flex-1">
-            <h1 className="text-2xl font-semibold text-slate-50">Creative Studio</h1>
-            <div className="flex items-center gap-3 mt-1">
-              <p className="text-sm text-slate-300">
-                Transform your research into high-quality video ads through our automated production pipeline.
-              </p>
-              {sortedRuns.length === 0 && (
-                <div className="flex items-center gap-2 text-xs text-slate-500">
-                  <span>No runs yet</span>
-                </div>
-              )}
-              {lastRefresh && (
-                <div className="flex items-center gap-2 text-xs text-slate-500">
-                  <span className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-sky-500"></span>
-                  </span>
-                  <span>
-                    Updated {Math.floor((new Date().getTime() - lastRefresh.getTime()) / 1000)}s ago
-                  </span>
-                </div>
-              )}
+      <div className="border-b border-line bg-panel/50 backdrop-blur-md px-8 py-6 sticky top-0 z-40">
+        <div className="flex items-center justify-between gap-6">
+          <div className="space-y-4">
+            <Link
+              href={`/projects/${projectId}`}
+              className="text-[11px] font-mono text-muted hover:text-white uppercase tracking-widest transition-colors inline-block"
+            >
+              ← Back to Project
+            </Link>
+            <div className="flex items-center gap-4">
+              <h1 className="text-4xl font-bold tracking-tight text-white">Creative Studio</h1>
+              <div className="status-chip subtle uppercase tracking-widest text-[9px]">
+                Studio Active
+              </div>
             </div>
-            {products.length > 0 && (
-              <div className="mt-3 rounded-lg border border-slate-700 bg-slate-900/70 p-3 max-w-sm">
-                <div className="text-xs text-slate-500 mb-1">Current Product</div>
-                <div className="text-sm font-medium text-slate-100 mb-2">
-                  {selectedProduct ? selectedProduct.name : "Select a product"}
+            <p className="text-xs text-muted font-mono uppercase tracking-widest opacity-60">
+              Workflow: <span className="text-accent-2">Creative Production</span> 
+              <span className="mx-3 opacity-20">|</span> 
+              Project: <span className="text-white">{projectId.substring(0, 8)}</span>
+            </p>
+          </div>
+          
+          <div className="flex items-center gap-3">
+            <Link
+              href={`/projects/${projectId}/usage`}
+              className="btn btn-secondary !min-h-[40px] px-6 text-[10px] font-bold uppercase tracking-widest"
+            >
+              Usage Analytics
+            </Link>
+            {lastRefresh && (
+              <div className="status-chip subtle flex items-center gap-2 px-4 py-2 opacity-50">
+                <span className="relative flex h-1.5 w-1.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-accent"></span>
+                </span>
+                <span className="text-[9px] font-mono uppercase tracking-widest">
+                  Last Refresh: {Math.floor((new Date().getTime() - lastRefresh.getTime()) / 1000)}s
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="px-8 py-10 max-w-[1400px] mx-auto space-y-8">
+        {error && (
+          <div className="rounded-card border border-danger/20 bg-danger/5 p-4 flex items-center justify-between gap-4 animate-in fade-in slide-in-from-top-2">
+            <p className="text-[11px] font-mono text-danger uppercase tracking-widest">{error}</p>
+            <button onClick={() => setError(null)} className="text-white/20 hover:text-white transition-colors">✕</button>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Product Selection */}
+          <div className="rounded-card border border-line bg-panel/40 p-6 space-y-4">
+            <div className="flex items-center gap-3 mb-2">
+              <span className="text-[9px] font-mono text-accent uppercase tracking-widest font-bold">Selected Product</span>
+            </div>
+            {products.length > 0 ? (
+              <div className="space-y-4">
+                <div className="p-4 rounded-card border border-line/30 bg-bg/50">
+                  <div className="text-[10px] font-mono text-muted uppercase tracking-widest mb-1 opacity-60">Active Product</div>
+                  <div className="text-lg font-black text-white tracking-tight truncate">
+                    {selectedProduct ? selectedProduct.name : "No Product Selected"}
+                  </div>
+                  {selectedProduct?.amazonAsin && (
+                    <div className="text-[9px] font-mono text-accent-2/60 uppercase tracking-widest mt-1">ID: {selectedProduct.amazonAsin}</div>
+                  )}
                 </div>
                 <select
                   value={selectedProductId || ""}
@@ -3924,216 +3841,172 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                     url.searchParams.delete("product");
                     router.replace(url.pathname + url.search, { scroll: false });
                   }}
-                  className="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-300"
+                  className="w-full h-10 bg-black/40 border-line rounded-card px-3 text-[11px] font-mono text-muted uppercase tracking-widest focus:border-accent/50 focus:text-white outline-none transition-all"
                 >
                   {products.map((product) => (
-                    <option key={product.id} value={product.id}>
+                    <option key={product.id} value={product.id} className="bg-bg text-white">
                       {product.name}
                     </option>
                   ))}
                 </select>
-                <div className="mt-2 text-xs text-slate-500">
-                  Switching between {products.length} product{products.length === 1 ? "" : "s"}
-                </div>
                 <Link
                   href={`/projects/${projectId}`}
-                  className="mt-2 inline-block text-xs text-sky-400 hover:text-sky-300"
+                  className="text-[10px] font-mono text-accent-2 hover:text-white uppercase tracking-widest transition-colors inline-block pt-2"
                 >
                   ← Manage Products
                 </Link>
               </div>
+            ) : (
+              <p className="text-[10px] font-mono text-muted uppercase tracking-widest opacity-40">No entries detected.</p>
             )}
           </div>
-          <div className="ml-4">
+
+          {/* Research Context */}
+          <div className="rounded-card border border-line bg-panel/40 p-6 space-y-4 col-span-1 lg:col-span-2">
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <span className="text-[9px] font-mono text-accent uppercase tracking-widest font-bold">Research Context</span>
+              <div className="status-chip subtle uppercase tracking-widest text-[9px]">
+                {sortedRuns.length} Runs Available
+              </div>
+            </div>
+            
+            <div className="flex flex-col md:flex-row gap-4">
+              <div className="flex-1 space-y-4">
+                <select
+                  value={selectedRunId || "no-active"}
+                  onChange={(e) => {
+                    const value = e.target.value === "no-active" ? null : e.target.value;
+                    setSelectedRunId(value);
+                  }}
+                  className="w-full h-10 bg-black/40 border-line rounded-card px-4 text-[11px] font-mono text-muted uppercase tracking-widest focus:border-accent/50 focus:text-white outline-none transition-all"
+                >
+                  <option value="no-active" className="bg-bg">No Active Run</option>
+                  {sortedRuns.map((run) => (
+                    <option key={run.runId} value={run.runId} className="bg-bg">
+                      {run.displayLabel} [{formatRunDate(run.createdAt)}]
+                    </option>
+                  ))}
+                </select>
+                
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => setShowRunManagerModal(true)}
+                    className="btn btn-secondary !min-h-[36px] px-6 text-[9px] uppercase font-bold tracking-widest"
+                  >
+                    Manage Runs
+                  </button>
+                  <Link
+                    href={selectedRunId ? `/projects/${projectId}/creative-studio/run-data/${selectedRunId}` : "#"}
+                    className={`btn btn-secondary !min-h-[36px] px-6 text-[9px] uppercase font-bold tracking-widest ${!selectedRunId ? "opacity-30 cursor-not-allowed pointer-events-none" : ""}`}
+                  >
+                    View Run Data
+                  </Link>
+                  <RunManagementModal
+                    projectId={projectId}
+                    open={showRunManagerModal}
+                    onClose={() => setShowRunManagerModal(false)}
+                    onRunsChanged={handleRunsChanged}
+                  />
+                </div>
+              </div>
+
+              {orphanedJobsCount > 0 && (
+                <div className="w-px bg-line/30 mx-2 hidden md:block" />
+              )}
+
+              {orphanedJobsCount > 0 && (
+                <div className="flex-1 space-y-3">
+                  <p className="text-[10px] font-mono text-danger/80 uppercase tracking-widest leading-relaxed">
+                    Found {orphanedJobsCount} jobs not attached to a run.
+                  </p>
+                  <button
+                    onClick={() => void handleCleanupOrphanedJobs()}
+                    disabled={cleaningOrphanedJobs}
+                    className="btn btn-danger !min-h-[36px] w-full px-6 text-[9px] uppercase font-bold tracking-widest"
+                  >
+                    {cleaningOrphanedJobs ? "Cleaning..." : "Clean Up Jobs"}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {selectedProduct && !hasSelectedProductSoraCharacter && (
+          <div className="rounded-card border border-accent/20 bg-accent/5 p-5 flex items-center justify-between gap-6 animate-in slide-in-from-right-4 duration-700">
+            <div className="flex items-center gap-4">
+              <span className="text-xl">⚠️</span>
+              <p className="text-[11px] font-mono text-accent uppercase tracking-widest leading-relaxed">
+                <span className="font-black">Character setup recommended:</span> add a character profile for more consistent creative output.
+              </p>
+            </div>
             <Link
-              href={`/projects/${projectId}/usage`}
-              className="inline-flex items-center gap-2 rounded bg-slate-800 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-700"
+              href={`/products/${selectedProduct.id}`}
+              className="btn btn-secondary !min-h-[36px] px-6 text-[9px] uppercase font-bold tracking-widest whitespace-nowrap"
             >
-              Usage & Costs
+              Set Up Character →
             </Link>
           </div>
-        </div>
-      </section>
-
-      {error && (
-        <div className="rounded-lg bg-red-500/10 border border-red-500/50 p-4">
-          <p className="text-sm text-red-300">{error}</p>
-        </div>
-      )}
-
-      {selectedProduct && !hasSelectedProductSoraCharacter && (
-        <div className="rounded-lg bg-amber-500/10 border border-amber-500/50 p-4">
-          <p className="text-sm text-amber-200">
-            Character setup is recommended for better on-camera consistency, but you can continue without it.
-          </p>
-          <Link
-            href={`/products/${selectedProduct.id}`}
-            className="mt-2 inline-flex items-center text-xs font-medium text-amber-300 hover:text-amber-200"
-          >
-            Open Product Setup →
-          </Link>
-        </div>
-      )}
-
-      <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-5">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-slate-100">Creative Runs</h2>
-          <span className="text-xs text-slate-500">
-            {sortedRuns.length} {sortedRuns.length === 1 ? "run" : "runs"}
-          </span>
-        </div>
-
-        <div className="flex flex-col gap-2 md:flex-row md:items-center">
-          <select
-            value={selectedRunId || "no-active"}
-            onChange={(e) => {
-              const value = e.target.value === "no-active" ? null : e.target.value;
-              console.log("[Creative] run dropdown change", {
-                selectedValue: e.target.value,
-                nextRunId: value,
-              });
-              setSelectedRunId(value);
-            }}
-            className="w-full md:w-auto px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-300"
-          >
-            <option value="no-active">No active run</option>
-            {sortedRuns.map((run) => (
-              <option key={run.runId} value={run.runId}>
-                {run.displayLabel} - {formatRunDate(run.createdAt)}
-              </option>
-            ))}
-          </select>
-          <div className="w-full md:w-auto" style={{ position: "relative" }}>
-            <button
-              type="button"
-              onClick={() => setShowRunManagerModal(true)}
-              className="w-full md:w-auto rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-200 hover:bg-slate-700"
-            >
-              Manage Runs
-            </button>
-            {selectedRunId ? (
-              <Link
-                href={`/projects/${projectId}/creative-studio/run-data/${selectedRunId}`}
-                className="mt-2 block w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-center text-sm text-slate-200 hover:bg-slate-700 md:w-auto"
-              >
-                View Run Data
-              </Link>
-            ) : (
-              <button
-                type="button"
-                disabled
-                className="mt-2 w-full rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-sm text-slate-500 md:w-auto"
-                style={{ cursor: "not-allowed" }}
-              >
-                View Run Data
-              </button>
-            )}
-            <RunManagementModal
-              projectId={projectId}
-              open={showRunManagerModal}
-              onClose={() => setShowRunManagerModal(false)}
-              onRunsChanged={handleRunsChanged}
-            />
-          </div>
-          {orphanedJobsCount > 0 && (
-            <button
-              type="button"
-              onClick={() => void handleCleanupOrphanedJobs()}
-              disabled={cleaningOrphanedJobs}
-              className="w-full md:w-auto rounded-lg border border-red-500/60 bg-red-900/40 px-3 py-2 text-sm text-red-200 hover:bg-red-900/60"
-              style={{
-                cursor: cleaningOrphanedJobs ? "not-allowed" : "pointer",
-                opacity: cleaningOrphanedJobs ? 0.7 : 1,
-              }}
-            >
-              {cleaningOrphanedJobs
-                ? "Cleaning Orphaned Jobs..."
-                : `Clean Up Orphaned Jobs (${orphanedJobsCount})`}
-            </button>
-          )}
-        </div>
-
-      </section>
-
-      <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-5">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-slate-100">Character Casting</h2>
-          <span className="text-xs text-slate-500">
-            {runCharacters.length} {runCharacters.length === 1 ? "character" : "characters"}
-          </span>
-        </div>
-        {!selectedRunId ? (
-          <p className="text-xs text-slate-400">
-            Select a creative run to load run-scoped characters for storyboard casting.
-          </p>
-        ) : runCharacters.length === 0 ? (
-          <p className="text-xs text-amber-300">
-            No characters found for this run and product. Generate a character in Product Setup first.
-          </p>
-        ) : (
-          <div className="space-y-3">
-            <select
-              value={selectedStoryboardCharacterId ?? ""}
-              onChange={(event) => setSelectedStoryboardCharacterId(event.target.value || null)}
-              className="w-full md:w-auto px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-300"
-            >
-              {runCharacters.map((char) => (
-                <option key={char.id} value={char.id}>
-                  {(char.productName ? `${char.productName} - ` : "") + char.name}
-                </option>
-              ))}
-            </select>
-            {selectedStoryboardCharacterId && (
-              <p className="text-xs text-slate-500">
-                Selected character will be applied to On Camera storyboard panels (ON_CAMERA) by default.
-              </p>
-            )}
-          </div>
         )}
-      </section>
+
+        {/* Character Casting Section */}
+        <div className="rounded-card border border-line bg-panel/30 p-6 space-y-6">
+          <div className="flex items-center gap-3">
+            <span className="text-[9px] font-mono text-accent uppercase tracking-widest font-bold">Character Casting</span>
+          </div>
+
+          <div className="space-y-4">
+            {!selectedRunId ? (
+              <p className="text-[10px] font-mono text-muted uppercase tracking-[0.2em] opacity-40 italic">Select a run to load matching characters.</p>
+            ) : runCharacters.length === 0 ? (
+              <div className="p-4 rounded-card border border-accent/20 bg-accent/5">
+                <p className="text-[10px] font-mono text-accent uppercase tracking-widest">No matching characters found for this run.</p>
+              </div>
+            ) : (
+              <div className="flex flex-col md:flex-row items-center gap-6">
+                <select
+                  value={selectedStoryboardCharacterId ?? ""}
+                  onChange={(event) => setSelectedStoryboardCharacterId(event.target.value || null)}
+                  className="w-full md:w-auto h-12 bg-black/40 border-line rounded-card px-6 text-[11px] font-mono text-white uppercase tracking-widest focus:border-accent/50 outline-none transition-all"
+                >
+                  {runCharacters.map((char) => (
+                    <option key={char.id} value={char.id} className="bg-bg">
+                      {(char.productName ? `${char.productName} :: ` : "") + char.name.toUpperCase()}
+                    </option>
+                  ))}
+                </select>
+                <div className="flex-1">
+                  <p className="text-[10px] font-mono text-muted uppercase tracking-widest opacity-60 leading-relaxed">
+                    Selected entity will be injected into <span className="text-white">ON_CAMERA</span> storyboard clusters.
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
 
       {/* Production Pipeline */}
-      <section
-        style={{
-          backgroundColor: "#0b1220",
-          border: "1px solid #1e293b",
-          borderRadius: 12,
-          padding: 20,
-        }}
-      >
-        <div style={{ marginBottom: 16 }}>
-          <h2 style={{ fontSize: 20, fontWeight: 600, color: "#f8fafc", margin: 0 }}>Production Pipeline</h2>
+      <div className="rounded-card border border-line bg-panel/20 p-8 space-y-8">
+        <div className="flex items-center justify-between">
+          <div className="space-y-1">
+            <h2 className="text-xl font-bold text-white tracking-tight">Production_Pipeline</h2>
+            <p className="text-[10px] font-mono text-muted uppercase tracking-widest opacity-60">Sequential_Execution_Chain</p>
+          </div>
         </div>
 
         {!hasSelectedRunWithJobs ? (
-          <div
-            style={{
-              borderRadius: 12,
-              border: "1px solid #334155",
-              backgroundColor: "#0f172a",
-              padding: 20,
-            }}
-          >
-            <p style={{ margin: 0, fontSize: 14, color: "#cbd5e1", fontWeight: 600 }}>No active run selected</p>
-            <p style={{ margin: "8px 0 0 0", fontSize: 13, color: "#94a3b8" }}>
-              Select a run to view job status and error details, or start a new run from script generation.
-            </p>
+          <div className="rounded-card border border-line/50 bg-bg/50 p-12 text-center space-y-6">
+            <div className="space-y-2">
+              <p className="text-sm font-mono text-white uppercase tracking-widest">Null_Sequence_Detected</p>
+              <p className="text-[11px] text-muted max-w-md mx-auto leading-relaxed">
+                Initialize a creative sequence to activate job monitoring and pipeline diagnostics.
+              </p>
+            </div>
             <button
-              type="button"
               onClick={() => handleStepRunClick(steps[0])}
-              style={{
-                marginTop: 14,
-                padding: "8px 14px",
-                borderRadius: 8,
-                border: "none",
-                backgroundColor: "#0ea5e9",
-                color: "#ffffff",
-                fontSize: 13,
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
+              className="btn btn-primary !min-h-[44px] px-8 text-[11px] font-black uppercase tracking-[0.2em]"
             >
-              Start with Generate Script
+              Initialize_Sequence
             </button>
           </div>
         ) : (
@@ -4273,482 +4146,201 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                       ? "Running"
                       : "Run";
             return (
-            <div
-              key={step.key}
-              style={{
-                backgroundColor: "#0f172a",
-                border: "1px solid #334155",
-                borderRadius: 12,
-                padding: 20,
-                marginBottom: 16,
-              }}
-            >
               <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 16,
-                }}
+                key={step.key}
+                className="rounded-card border border-line bg-bg/40 overflow-hidden group hover:border-accent/30 transition-all duration-500 mb-4"
               >
-                <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0, flex: 1 }}>
-                  <div
-                    style={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: 9999,
-                      backgroundColor: "#1e293b",
-                      border: "1px solid #334155",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: 12,
-                      fontWeight: 600,
-                      color: "#cbd5e1",
-                      flexShrink: 0,
-                    }}
-                  >
-                    {index + 1}
-                  </div>
-                  <p
-                    style={{
-                      margin: 0,
-                      fontSize: 15,
-                      fontWeight: 600,
-                      color: "#f1f5f9",
-                    }}
-                  >
-                    {step.label}
-                  </p>
-                </div>
-                <div style={{ minWidth: 120, display: "flex", justifyContent: "center" }}>
-                  {getStepBadge(step.status)}
-                </div>
-                <div style={{ minWidth: 130, display: "flex", justifyContent: "flex-end" }}>
-                  {!isSceneControlStep ? (
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      {isCancelableJob(step.lastJob) && step.lastJob ? (
-                        <button
-                          type="button"
-                          onClick={() => void cancelJob(step.lastJob!.id)}
-                          disabled={Boolean(cancellingJobIds[step.lastJob.id])}
-                          style={{
-                            border: "1px solid rgba(248, 113, 113, 0.6)",
-                            backgroundColor: cancellingJobIds[step.lastJob.id]
-                              ? "#1e293b"
-                              : "rgba(127, 29, 29, 0.3)",
-                            color: cancellingJobIds[step.lastJob.id] ? "#64748b" : "#fecaca",
-                            borderRadius: 8,
-                            padding: "8px 10px",
-                            fontSize: 12,
-                            fontWeight: 600,
-                            cursor: cancellingJobIds[step.lastJob.id] ? "not-allowed" : "pointer",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {cancellingJobIds[step.lastJob.id] ? "Cancelling..." : "Cancel"}
-                        </button>
-                      ) : null}
-                      <button
-                        onClick={() => {
-                          handleStepRunClick(step);
-                        }}
-                        disabled={isPrimaryActionDisabled}
-                        style={{
-                          padding: "8px 16px",
-                          borderRadius: 8,
-                          border: "none",
-                          backgroundColor:
-                            isPrimaryActionDisabled
-                              ? "#1e293b"
-                              : "#0ea5e9",
-                          color:
-                            isPrimaryActionDisabled
-                              ? "#64748b"
-                              : "#ffffff",
-                          cursor:
-                            isPrimaryActionDisabled
-                              ? "not-allowed"
-                              : "pointer",
-                          fontSize: 14,
-                          fontWeight: 600,
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 8,
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {submitting === step.key && <Spinner />}
-                        {primaryActionLabel}
-                      </button>
+                <div className="px-6 py-5 flex items-center justify-between gap-6 border-b border-line/20">
+                  <div className="flex items-center gap-4 flex-1">
+                    <div className="w-8 h-8 rounded-card bg-panel border border-line flex items-center justify-center text-[10px] font-mono text-accent font-bold">
+                      {String(index + 1).padStart(2, "0")}
                     </div>
-                  ) : (
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      {isCancelableJob(step.lastJob) && step.lastJob ? (
-                        <button
-                          type="button"
-                          onClick={() => void cancelJob(step.lastJob!.id)}
-                          disabled={Boolean(cancellingJobIds[step.lastJob.id])}
-                          style={{
-                            border: "1px solid rgba(248, 113, 113, 0.6)",
-                            backgroundColor: cancellingJobIds[step.lastJob.id]
-                              ? "#1e293b"
-                              : "rgba(127, 29, 29, 0.3)",
-                            color: cancellingJobIds[step.lastJob.id] ? "#64748b" : "#fecaca",
-                            borderRadius: 8,
-                            padding: "8px 10px",
-                            fontSize: 12,
-                            fontWeight: 600,
-                            cursor: cancellingJobIds[step.lastJob.id] ? "not-allowed" : "pointer",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {cancellingJobIds[step.lastJob.id] ? "Cancelling..." : "Cancel"}
-                        </button>
-                      ) : null}
-                      <span style={{ color: "#94a3b8", fontSize: 12 }}>Use scene controls below</span>
-                      {runningVideoImageJobId && (
-                        <button
-                          type="button"
-                          onClick={() => void handleResetVideoImageJob(runningVideoImageJobId)}
-                          disabled={isResettingVideoImageJob}
-                          style={{
-                            border: "1px solid rgba(248, 113, 113, 0.6)",
-                            backgroundColor: isResettingVideoImageJob ? "#1e293b" : "rgba(127, 29, 29, 0.3)",
-                            color: isResettingVideoImageJob ? "#64748b" : "#fecaca",
-                            borderRadius: 8,
-                            padding: "8px 10px",
-                            fontSize: 12,
-                            fontWeight: 600,
-                            cursor: isResettingVideoImageJob ? "not-allowed" : "pointer",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {isResettingVideoImageJob ? "Resetting..." : "Reset Running Job"}
-                        </button>
+                    <div className="space-y-0.5">
+                      <div className="text-[10px] font-mono text-muted uppercase tracking-widest opacity-60">
+                        Step_ID: {step.key.toUpperCase()}
+                      </div>
+                      <h3 className="text-[13px] font-black text-white uppercase tracking-widest">
+                        {step.label}
+                      </h3>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center gap-6">
+                    <div className="status-chip subtle !px-4 !py-1.5 uppercase tracking-widest text-[9px] font-bold">
+                      {step.status.replace("_", " ")}
+                    </div>
+                    
+                    <div className="flex items-center gap-3">
+                      {!isSceneControlStep ? (
+                        <>
+                          {isCancelableJob(step.lastJob) && step.lastJob ? (
+                            <button
+                              type="button"
+                              onClick={() => void cancelJob(step.lastJob!.id)}
+                              disabled={Boolean(cancellingJobIds[step.lastJob.id])}
+                              className="btn btn-danger !min-h-[32px] px-4 text-[9px] uppercase font-bold tracking-widest"
+                            >
+                              {cancellingJobIds[step.lastJob.id] ? "Wiping..." : "Abort"}
+                            </button>
+                          ) : null}
+                          <button
+                            onClick={() => handleStepRunClick(step)}
+                            disabled={isPrimaryActionDisabled}
+                            className={`btn ${isPrimaryActionDisabled ? "btn-secondary opacity-50" : "btn-primary"} !min-h-[32px] px-6 text-[9px] uppercase font-bold tracking-widest flex items-center gap-2`}
+                          >
+                            {submitting === step.key && <Spinner />}
+                            {primaryActionLabel}
+                          </button>
+                        </>
+                      ) : (
+                        <div className="flex items-center gap-4">
+                          <span className="text-[9px] font-mono text-muted uppercase tracking-widest opacity-40">Scene_Interface_Locked</span>
+                          {runningVideoImageJobId && (
+                            <button
+                              type="button"
+                              onClick={() => void handleResetVideoImageJob(runningVideoImageJobId)}
+                              disabled={isResettingVideoImageJob}
+                              className="btn btn-danger !min-h-[30px] px-4 text-[8px] uppercase font-bold tracking-widest"
+                            >
+                              {isResettingVideoImageJob ? "Resetting..." : "Purge_Sequence"}
+                            </button>
+                          )}
+                        </div>
                       )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-6">
+                  {step.locked && (
+                    <div className="flex items-center gap-2 text-[10px] font-mono text-muted uppercase tracking-widest opacity-60 mb-4 animate-pulse">
+                      <span>Locked_Entry:</span>
+                      <span>{step.lockReason}</span>
                     </div>
                   )}
-                </div>
-              </div>
 
-              {step.locked && (
-                <p style={{ marginTop: 12, marginBottom: 0, fontSize: 12, color: "#64748b" }}>🔒 {step.lockReason}</p>
-              )}
+                  {isStuckImagePromptStep && (
+                    <div className="p-3 rounded-card border border-accent/20 bg-accent/5 text-[10px] font-mono text-accent uppercase tracking-widest mb-4">
+                      Sequence_StallDetected: Re-initialize to clear buffer
+                    </div>
+                  )}
 
-              {isStuckImagePromptStep && (
-                <p style={{ marginTop: 12, marginBottom: 0, fontSize: 12, color: "#fbbf24" }}>
-                  Previous job stuck - click to retry
-                </p>
-              )}
+                  {step.lastJob && step.status !== "failed" && step.status !== "running" && (
+                    <div className="text-[11px] text-muted font-mono leading-relaxed mb-4">
+                      {getSummaryText(step.lastJob.resultSummary)}
+                    </div>
+                  )}
 
-              {step.lastJob && step.status !== "failed" && step.status !== "running" && (
-                <p style={{ marginTop: 12, marginBottom: 0, fontSize: 12, color: "#94a3b8" }}>
-                  {getSummaryText(step.lastJob.resultSummary)}
-                </p>
-              )}
+                </div> {/* End of p-6 content */}
 
-              {usesBottomOutputToggle && (
-                <div style={{ marginTop: 10 }}>
-                  <button
-                    type="button"
-                    onClick={() => toggleCompletedStepOutput(step.key)}
-                    style={{
-                      border: "1px solid #334155",
-                      backgroundColor: "#0b1220",
-                      color: "#cbd5e1",
-                      padding: "6px 10px",
-                      borderRadius: 8,
-                      fontSize: 12,
-                      fontWeight: 600,
-                      cursor: "pointer",
-                    }}
-                  >
-                    {isOutputExpanded ? "Hide Output" : "View Output"}
-                  </button>
-                </div>
-              )}
+                {usesBottomOutputToggle && (
+                  <div className="px-6 py-4 bg-panel/30 border-t border-line/10 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => toggleCompletedStepOutput(step.key)}
+                      className="btn btn-secondary !min-h-[32px] px-6 text-[9px] uppercase font-bold tracking-widest"
+                    >
+                      {isOutputExpanded ? "Collapse_Output" : "Expand_Output"}
+                    </button>
+                  </div>
+                )}
 
               {step.key === "video_images" && (
-                <div
-                  style={{
-                    marginTop: 12,
-                    borderRadius: 10,
-                    border: "1px solid #334155",
-                    backgroundColor: "#020617",
-                    padding: 12,
-                  }}
-                >
+                <div className="mt-8 space-y-8 animate-in fade-in slide-in-from-top-4 duration-500">
                   {!storyboardId ? (
-                    <p style={{ margin: 0, color: "#fca5a5", fontSize: 13 }}>
-                      No storyboard found for this run.
-                    </p>
+                    <div className="rounded-card border border-danger/30 bg-danger/5 p-12 text-center">
+                      <p className="text-[10px] font-mono text-danger uppercase tracking-widest leading-relaxed">Null_Output_Error: Storyboard_Context_Missing</p>
+                    </div>
                   ) : storyboardPanelLoading && storyboardMatchesCurrentFetch ? (
-                    <p style={{ margin: 0, color: "#94a3b8", fontSize: 13 }}>
-                      Loading scene flow...
-                    </p>
+                    <div className="p-16 text-center animate-pulse">
+                      <p className="text-[10px] font-mono text-muted uppercase tracking-widest">Synchronizing_Scene_Flow...</p>
+                    </div>
                   ) : storyboardPanelError && storyboardMatchesCurrentFetch ? (
-                    <p style={{ margin: 0, color: "#fca5a5", fontSize: 13 }}>{storyboardPanelError}</p>
+                    <div className="p-12 text-center text-danger text-[10px] font-mono uppercase tracking-widest border border-danger/20 rounded-card bg-danger/5">
+                      Protocol_Error: {storyboardPanelError}
+                    </div>
                   ) : (
-                    <>
-                      <p style={{ margin: "0 0 10px 0", color: "#94a3b8", fontSize: 12 }}>
-                        Generate or re-generate first-frame output per scene.
-                      </p>
-                      {sceneActionError && (
-                        <p style={{ margin: "0 0 10px 0", color: "#fca5a5", fontSize: 12 }}>
-                          {sceneActionError}
+                    <div className="space-y-8">
+                      <div className="px-2">
+                        <span className="text-[10px] font-mono text-accent uppercase tracking-widest font-bold">Inception_Frame_Synthesis</span>
+                        <p className="mt-2 text-[11px] font-mono text-muted uppercase tracking-widest opacity-40 leading-relaxed">
+                          Resolve or Regenerate initial-frame metadata for scene synthesis.
                         </p>
+                      </div>
+
+                      {sceneActionError && (
+                        <div className="mx-2 p-4 rounded-card border border-danger/20 bg-danger/5 text-[10px] font-mono text-danger uppercase tracking-widest flex items-center gap-3">
+                          <div className="w-1.5 h-1.5 rounded-full bg-danger animate-pulse" />
+                          Synthesis_Protocol_Error: {sceneActionError}
+                        </div>
                       )}
-                      <div style={{ display: "grid", gap: 10 }}>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {sceneFlowRows.map((row) => {
                           const isGenerating = sceneGeneratingNumber === row.sceneNumber;
-                          const canReview = row.hasImages;
-                          const firstFramePrompt = String(row.panel?.firstFramePrompt || "").trim();
-                          const showRegenerateLabel =
-                            Boolean(selectedRunId) &&
-                            generatedFirstFrameScenesInActiveRun.has(row.sceneNumber) &&
-                            row.hasImages;
+                          
                           return (
                             <div
                               key={`scene-flow-${row.sceneNumber}`}
-                              style={{
-                                border: row.approved
-                                  ? "1px solid rgba(16, 185, 129, 0.55)"
-                                  : row.locked
-                                    ? "1px solid #334155"
-                                    : "1px solid rgba(14, 165, 233, 0.45)",
-                                borderRadius: 8,
-                                backgroundColor: "#0b1220",
-                                padding: 10,
-                                display: "grid",
-                                gap: 8,
-                              }}
+                              className="rounded-card border border-line bg-panel/30 overflow-hidden group hover:border-accent/30 transition-all duration-300"
                             >
-                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                <div style={{ color: "#e2e8f0", fontSize: 13, fontWeight: 600 }}>
-                                  Scene {row.sceneNumber}
-                                </div>
-                                <div
-                                  style={{
-                                    fontSize: 11,
-                                    color: row.approved
-                                      ? "#6ee7b7"
-                                      : row.locked
-                                        ? "#94a3b8"
-                                        : row.hasImages
-                                          ? "#7dd3fc"
-                                          : "#94a3b8",
-                                  }}
-                                >
-                                  {row.approved
-                                    ? "Approved"
-                                    : row.locked
-                                      ? "Locked"
-                                      : row.hasImages
-                                        ? "Ready"
-                                        : "Awaiting Generation"}
+                              <div className="px-5 py-3 bg-panel/50 border-b border-line/10 flex items-center justify-between">
+                                <span className="text-[10px] font-mono text-accent font-bold">SCN_{String(row.sceneNumber).padStart(2, "0")}</span>
+                                <div className="status-chip subtle !px-3 !py-1 uppercase tracking-widest text-[8px] font-bold">
+                                  {isGenerating ? "Synthesizing" : row.hasImages ? "Asset_Ready" : "Pending_Manifest"}
                                 </div>
                               </div>
+                              <div className="p-5 space-y-4">
+                                <div className="space-y-2">
+                                  <span className="text-[8px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Kinetic_Metadata</span>
+                                  <div className="bg-black/20 border border-line/10 rounded-card p-3 text-[11px] text-white/50 font-mono leading-relaxed min-h-[60px] line-clamp-3">
+                                    {row.panel?.vo || "No_Audio_Directive"}
+                                  </div>
+                                </div>
 
-                              {row.lockReason && (
-                                <div style={{ color: "#94a3b8", fontSize: 11 }}>🔒 {row.lockReason}</div>
-                              )}
-
-                              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    showRegenerateLabel
-                                      ? setRegenerateModalScene(row.sceneNumber)
-                                      : void handleGenerateScene(row.sceneNumber)
-                                  }
-                                  disabled={row.locked || isGenerating || sceneGeneratingNumber !== null || submitting === step.key}
-                                  style={{
-                                    border: "none",
-                                    backgroundColor: row.locked || isGenerating ? "#1e293b" : "#0ea5e9",
-                                    color: row.locked || isGenerating ? "#64748b" : "#ffffff",
-                                    borderRadius: 7,
-                                    padding: "6px 10px",
-                                    fontSize: 12,
-                                    fontWeight: 600,
-                                    cursor: row.locked || isGenerating ? "not-allowed" : "pointer",
-                                  }}
-                                >
-                                  {isGenerating
-                                    ? "Generating..."
-                                    : showRegenerateLabel
-                                      ? "Re-generate"
-                                      : "Generate"}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => toggleSceneReview(row.sceneNumber)}
-                                  disabled={!canReview}
-                                  style={{
-                                    border: "1px solid #334155",
-                                    backgroundColor: "#0b1220",
-                                    color: canReview ? "#cbd5e1" : "#64748b",
-                                    borderRadius: 7,
-                                    padding: "6px 10px",
-                                    fontSize: 12,
-                                    fontWeight: 600,
-                                    cursor: canReview ? "pointer" : "not-allowed",
-                                  }}
-                                >
-                                  {row.isReviewOpen ? "Hide Review" : "Review"}
-                                </button>
-                              </div>
-
-                              {row.isReviewOpen && row.hasImages && (
-                                <div style={{ display: "grid", gap: 8 }}>
-                                  <div
-                                    style={{
-                                      display: "grid",
-                                      gridTemplateColumns: "minmax(180px, 1fr)",
-                                      gap: 8,
-                                    }}
+                                <div className="pt-2">
+                                  <button
+                                    onClick={() => void handleGenerateScene(row.sceneNumber)}
+                                    disabled={isGenerating || submitting === step.key}
+                                    className="btn btn-secondary w-full !min-h-[32px] text-[9px] uppercase font-bold tracking-widest"
                                   >
-                                    <div>
-                                      <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>First Frame</div>
-                                      {row.firstFrameImageUrl ? (
-                                        <img
-                                          src={row.firstFrameImageUrl}
-                                          alt={`Scene ${row.sceneNumber} first frame`}
-                                          style={{
-                                            width: "100%",
-                                            maxWidth: 540,
-                                            aspectRatio: "9 / 16",
-                                            objectFit: "cover",
-                                            borderRadius: 8,
-                                            border: "1px solid #334155",
-                                            display: "block",
-                                          }}
-                                        />
-                                      ) : (
-                                        <div style={{ color: "#94a3b8", fontSize: 11 }}>No first frame image.</div>
-                                      )}
-                                    </div>
-                                  </div>
-                                  <div style={{ color: "#94a3b8", fontSize: 11 }}>First Frame Prompt</div>
-                                  <div style={{ color: "#e2e8f0", fontSize: 12 }}>
-                                    {firstFramePrompt || "No first-frame prompt."}
-                                  </div>
+                                    {isGenerating ? "Processing..." : row.hasImages ? "Regenerate_Inception" : "Initialize_Synthesis"}
+                                  </button>
                                 </div>
-                              )}
+                              </div>
                             </div>
                           );
                         })}
                       </div>
-                      {regenerateModalScene !== null && (
-                        <div
-                          style={{
-                            position: "fixed", inset: 0, zIndex: 1000,
-                            background: "rgba(0,0,0,0.7)",
-                            display: "flex", alignItems: "center", justifyContent: "center",
-                          }}
-                          onClick={() => setRegenerateModalScene(null)}
-                        >
-                          <div
-                            style={{
-                              background: "#1e293b", border: "1px solid #334155",
-                              borderRadius: 12, padding: 24, width: 480, maxWidth: "90vw",
-                              display: "grid", gap: 16,
-                            }}
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <div style={{ color: "#f1f5f9", fontWeight: 600, fontSize: 15 }}>
-                              Re-generate Scene {regenerateModalScene}
-                            </div>
-                            <div>
-                              <div style={{ color: "#94a3b8", fontSize: 12, marginBottom: 6 }}>
-                                Additional instructions (optional)
-                              </div>
-                              <textarea
-                                autoFocus
-                                placeholder="e.g. only one laptop on the desk"
-                                value={sceneAdditionalInstructionsByNumber[regenerateModalScene] ?? ""}
-                                onChange={(e) =>
-                                  setSceneAdditionalInstructionsByNumber((prev) => ({
-                                    ...prev,
-                                    [regenerateModalScene]: e.target.value,
-                                  }))
-                                }
-                                rows={3}
-                                style={{
-                                  width: "100%", background: "#0f172a",
-                                  border: "1px solid #334155", borderRadius: 6,
-                                  color: "#e2e8f0", fontSize: 13,
-                                  padding: "8px 10px", resize: "vertical", boxSizing: "border-box",
-                                }}
-                              />
-                            </div>
-                            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-                              <button
-                                type="button"
-                                onClick={() => setRegenerateModalScene(null)}
-                                style={{
-                                  background: "transparent", border: "1px solid #334155",
-                                  color: "#94a3b8", borderRadius: 6, padding: "8px 16px", cursor: "pointer",
-                                }}
-                              >
-                                Cancel
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const sceneNumber = regenerateModalScene;
-                                  if (sceneNumber === null) return;
-                                  setRegenerateModalScene(null);
-                                  void handleGenerateScene(sceneNumber);
-                                }}
-                                style={{
-                                  background: "#0ea5e9", border: "none",
-                                  color: "#fff", borderRadius: 6, padding: "8px 16px",
-                                  cursor: "pointer", fontWeight: 600,
-                                }}
-                              >
-                                Re-generate
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </>
+                    </div>
                   )}
                 </div>
               )}
 
               {step.key === "video" && (
-                <div
-                  style={{
-                    marginTop: 12,
-                    borderRadius: 10,
-                    border: "1px solid #334155",
-                    backgroundColor: "#020617",
-                    padding: 12,
-                  }}
-                >
+                <div className="mt-8 space-y-8 animate-in fade-in slide-in-from-top-4 duration-500">
                   {!storyboardId ? (
-                    <p style={{ margin: 0, color: "#fca5a5", fontSize: 13 }}>
-                      No storyboard found for this run.
-                    </p>
+                    <div className="rounded-card border border-danger/30 bg-danger/5 p-12 text-center">
+                      <p className="text-[10px] font-mono text-danger uppercase tracking-widest leading-relaxed">Null_Output_Error: Storyboard_Context_Missing</p>
+                    </div>
                   ) : storyboardPanelLoading && storyboardMatchesCurrentFetch ? (
-                    <p style={{ margin: 0, color: "#94a3b8", fontSize: 13 }}>
-                      Loading scene flow...
-                    </p>
+                    <div className="p-16 text-center animate-pulse">
+                      <p className="text-[10px] font-mono text-muted uppercase tracking-widest">Synchronizing_Kinetic_Manifest...</p>
+                    </div>
                   ) : storyboardPanelError && storyboardMatchesCurrentFetch ? (
-                    <p style={{ margin: 0, color: "#fca5a5", fontSize: 13 }}>{storyboardPanelError}</p>
+                    <div className="p-12 text-center text-danger text-[10px] font-mono uppercase tracking-widest border border-danger/20 rounded-card bg-danger/5">
+                      Protocol_Error: {storyboardPanelError}
+                    </div>
                   ) : (
-                    <>
-                      <p style={{ margin: "0 0 10px 0", color: "#94a3b8", fontSize: 12 }}>
-                        Generate or re-generate video per scene.
-                      </p>
-                      {sceneActionError && (
-                        <p style={{ margin: "0 0 10px 0", color: "#fca5a5", fontSize: 12 }}>
-                          {sceneActionError}
+                    <div className="space-y-8">
+                       <div className="px-2">
+                        <span className="text-[10px] font-mono text-accent uppercase tracking-widest font-bold">Kinetic_Rendering_Engine</span>
+                        <p className="mt-2 text-[11px] font-mono text-muted uppercase tracking-widest opacity-40 leading-relaxed">
+                          Finalize scene motion and acoustic sync.
                         </p>
-                      )}
-                      <div style={{ display: "grid", gap: 10 }}>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {sceneFlowRows.map((row) => {
                           const isGenerating = videoGeneratingNumber === row.sceneNumber;
                           const hasVideo = row.hasVideo;
@@ -4757,151 +4349,96 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                           return (
                             <div
                               key={`scene-video-${row.sceneNumber}`}
-                              style={{
-                                border: row.locked
-                                  ? "1px solid #334155"
-                                  : hasVideo
-                                    ? "1px solid rgba(16, 185, 129, 0.55)"
-                                    : "1px solid rgba(14, 165, 233, 0.45)",
-                                borderRadius: 8,
-                                backgroundColor: "#0b1220",
-                                padding: 10,
-                                display: "grid",
-                                gap: 8,
-                              }}
+                              className="rounded-card border border-line bg-panel/30 overflow-hidden group hover:border-accent/30 transition-all duration-300"
                             >
-                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                <div style={{ color: "#e2e8f0", fontSize: 13, fontWeight: 600 }}>
-                                  Scene {row.sceneNumber}
-                                </div>
-                                <div
-                                  style={{
-                                    fontSize: 11,
-                                    color: row.locked
-                                      ? "#94a3b8"
-                                      : isGenerating
-                                        ? "#7dd3fc"
-                                        : hasVideo
-                                          ? "#6ee7b7"
-                                          : "#94a3b8",
-                                  }}
-                                >
-                                  {isGenerating ? "Generating..." : hasVideo ? "Ready" : "Awaiting Generation"}
+                              <div className="px-5 py-3 bg-panel/50 border-b border-line/10 flex items-center justify-between">
+                                <span className="text-[10px] font-mono text-accent font-bold">SCN_{String(row.sceneNumber).padStart(2, "0")}</span>
+                                <div className="status-chip subtle !px-3 !py-1 uppercase tracking-widest text-[8px] font-bold">
+                                  {isGenerating ? "Synthesizing" : hasVideo ? "Render_Complete" : "Pending_Render"}
                                 </div>
                               </div>
 
                               {row.lockReason && (
-                                <div style={{ color: "#94a3b8", fontSize: 11 }}>🔒 {row.lockReason}</div>
+                                <div className="px-5 py-2 flex items-center gap-2 text-[9px] font-mono text-muted uppercase tracking-widest opacity-60 bg-black/20 border-b border-line/5">
+                                  <span>Locked:</span>
+                                  <span>{row.lockReason}</span>
+                                </div>
                               )}
 
-                              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                                <button
-                                  type="button"
-                                  onClick={() => void handleGenerateSceneVideo(row.sceneNumber)}
-                                  disabled={row.locked || isGenerating || videoGeneratingNumber !== null || submitting === step.key}
-                                  style={{
-                                    border: "none",
-                                    backgroundColor: row.locked || isGenerating ? "#1e293b" : "#0ea5e9",
-                                    color: row.locked || isGenerating ? "#64748b" : "#ffffff",
-                                    borderRadius: 7,
-                                    padding: "6px 10px",
-                                    fontSize: 12,
-                                    fontWeight: 600,
-                                    cursor: row.locked || isGenerating ? "not-allowed" : "pointer",
-                                  }}
-                                >
-                                  {isGenerating
-                                    ? "Generating..."
-                                    : hasVideo
-                                      ? "Re-generate"
-                                      : "Generate"}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => toggleSceneVideoReview(row.sceneNumber)}
-                                  disabled={!hasVideo}
-                                  style={{
-                                    border: "1px solid #334155",
-                                    backgroundColor: "#0b1220",
-                                    color: hasVideo ? "#cbd5e1" : "#64748b",
-                                    borderRadius: 7,
-                                    padding: "6px 10px",
-                                    fontSize: 12,
-                                    fontWeight: 600,
-                                    cursor: hasVideo ? "pointer" : "not-allowed",
-                                  }}
-                                >
-                                  {isReviewOpen ? "Hide Review" : "Review"}
-                                </button>
+                              <div className="p-5 space-y-4">
+                                <div className="flex items-center gap-3">
+                                  <button
+                                    onClick={() => void handleGenerateSceneVideo(row.sceneNumber)}
+                                    disabled={row.locked || isGenerating || videoGeneratingNumber !== null || submitting === step.key}
+                                    className="btn btn-secondary flex-1 !min-h-[32px] text-[9px] uppercase font-bold tracking-widest"
+                                  >
+                                    {isGenerating ? "Synthesizing..." : hasVideo ? "Re-render" : "Execute_Render"}
+                                  </button>
+                                  <button
+                                    onClick={() => toggleSceneVideoReview(row.sceneNumber)}
+                                    disabled={!hasVideo}
+                                    className="btn btn-secondary !min-h-[32px] px-4 text-[9px] uppercase font-bold tracking-widest"
+                                  >
+                                    {isReviewOpen ? "Hide" : "Preview"}
+                                  </button>
+                                </div>
+
+                                {isReviewOpen && hasVideo && (
+                                  <div className="pt-2 animate-in fade-in zoom-in-95 duration-300">
+                                    <video
+                                      src={videoUrl}
+                                      controls
+                                      className="w-full aspect-[9/16] rounded-card border border-line shadow-inner bg-black"
+                                    />
+                                  </div>
+                                )}
                               </div>
-
-                              {isReviewOpen && hasVideo && (
-                                <video
-                                  src={videoUrl}
-                                  controls
-                                  style={{
-                                    width: "100%",
-                                    maxWidth: 360,
-                                    aspectRatio: "9 / 16",
-                                    borderRadius: 8,
-                                    border: "1px solid #334155",
-                                    display: "block",
-                                  }}
-                                />
-                              )}
                             </div>
                           );
                         })}
                       </div>
-                    </>
+                    </div>
                   )}
                 </div>
               )}
 
               {step.key === "review" && (
-                <div
-                  style={{
-                    marginTop: 12,
-                    borderRadius: 10,
-                    border: "1px solid #334155",
-                    backgroundColor: "#020617",
-                    padding: 12,
-                  }}
-                >
+                <div className="mt-8 space-y-8 animate-in fade-in slide-in-from-top-4 duration-500">
                   {!storyboardId ? (
-                    <p style={{ margin: 0, color: "#fca5a5", fontSize: 13 }}>
-                      No storyboard found for this run.
-                    </p>
-                  ) : storyboardPanelLoading && storyboardMatchesCurrentFetch ? (
-                    <p style={{ margin: 0, color: "#94a3b8", fontSize: 13 }}>
-                      Loading scene flow...
-                    </p>
-                  ) : storyboardPanelError && storyboardMatchesCurrentFetch ? (
-                    <p style={{ margin: 0, color: "#fca5a5", fontSize: 13 }}>{storyboardPanelError}</p>
+                    <div className="rounded-card border border-danger/30 bg-danger/5 p-12 text-center">
+                      <p className="text-[10px] font-mono text-danger uppercase tracking-widest leading-relaxed">Null_Output_Error: Storyboard_Context_Missing</p>
+                    </div>
                   ) : (
-                    <VideoEditorStep
-                      storyboardId={storyboardId}
-                      projectId={projectId}
-                      scenes={storyboardPanels
-                        .filter((p) => Boolean(p.videoUrl))
-                        .map((p) => ({
-                          sceneId: String((p as any).sceneId ?? p.id ?? p.sceneNumber ?? ""),
-                          sceneNumber: Number(p.sceneNumber) || 0,
-                          videoUrl: p.videoUrl,
-                          beatLabel: String(p.beatLabel ?? ""),
-                          vo: String(p.vo ?? ""),
-                          durationSec: typeof p.clipDurationSeconds === "number" ? p.clipDurationSeconds : undefined,
-                        }))}
-                      onComplete={(nextMergedVideoUrl) => {
-                        setMergedVideoUrl(nextMergedVideoUrl);
-                      }}
-                    />
+                    <div className="rounded-card border border-line bg-panel/10 overflow-hidden">
+                       <VideoEditorStep
+                         storyboardId={storyboardId}
+                         projectId={projectId}
+                         scenes={storyboardPanels
+                           .filter((p) => Boolean(p.videoUrl))
+                           .map((p) => ({
+                             sceneId: String((p as any).sceneId ?? p.id ?? p.sceneNumber ?? ""),
+                             sceneNumber: Number(p.sceneNumber) || 0,
+                             videoUrl: p.videoUrl,
+                             beatLabel: String(p.beatLabel ?? ""),
+                             vo: String(p.vo ?? ""),
+                             durationSec: typeof p.clipDurationSeconds === "number" ? p.clipDurationSeconds : undefined,
+                           }))}
+                         onComplete={(nextMergedVideoUrl) => {
+                           setMergedVideoUrl(nextMergedVideoUrl);
+                         }}
+                       />
+                    </div>
                   )}
                 </div>
               )}
 
+
               {step.key === "script" && step.status === "completed" && scriptId && (
-                <div style={{ marginTop: 10 }}>
+                <div className="mt-8 flex justify-between items-center">
+                  <div className="flex items-center gap-3">
+                    <span className="text-[9px] font-mono text-accent uppercase tracking-widest font-bold">Inference_Result</span>
+                    <span className="text-[10px] font-mono text-muted uppercase tracking-widest opacity-40">Ref_{scriptId.substring(0, 8)}</span>
+                  </div>
                   <button
                     type="button"
                     onClick={() => {
@@ -4911,713 +4448,381 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                         void loadScriptPanel(scriptId);
                       }
                     }}
-                    style={{
-                      border: "1px solid #334155",
-                      backgroundColor: "#0b1220",
-                      color: "#cbd5e1",
-                      padding: "6px 10px",
-                      borderRadius: 8,
-                      fontSize: 12,
-                      fontWeight: 600,
-                      cursor: "pointer",
-                    }}
+                    className="text-[10px] font-mono text-accent-2 hover:text-white uppercase tracking-widest transition-colors flex items-center gap-2"
                   >
-                    {isScriptPanelOpen ? "Hide Script" : "View/Edit Script"}
+                    <span className="w-1.5 h-1.5 rounded-full bg-accent-2 animate-pulse" />
+                    {isScriptPanelOpen ? "Close_Editor" : "Open_Editor"}
                   </button>
                 </div>
               )}
 
               {step.key === "script" && step.status === "completed" && isScriptPanelOpen && (
-                <div
-                  style={{
-                    marginTop: 12,
-                    borderRadius: 10,
-                    border: "1px solid #334155",
-                    backgroundColor: "#020617",
-                    padding: 12,
-                  }}
-                >
+                <div className="mt-8 space-y-8 animate-in fade-in slide-in-from-top-4 duration-500">
                   {scriptPanelLoading ? (
-                    <p style={{ margin: 0, color: "#94a3b8", fontSize: 13 }}>Loading script...</p>
+                    <div className="p-16 text-center animate-pulse">
+                      <p className="text-[10px] font-mono text-muted uppercase tracking-widest">Synchronizing_Script_Manifest...</p>
+                    </div>
                   ) : scriptPanelError ? (
-                    <p style={{ margin: 0, color: "#fca5a5", fontSize: 13 }}>{scriptPanelError}</p>
+                    <div className="p-12 text-center text-danger text-[10px] font-mono uppercase tracking-widest border border-danger/20 rounded-card bg-danger/5">
+                      Protocol_Error: {scriptPanelError}
+                    </div>
                   ) : scriptPanelData ? (
-                    <>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-                        <div style={{ color: "#94a3b8", fontSize: 12 }}>
-                          <div>Script ID: {scriptPanelData.id}</div>
-                          <div>
-                            Words: {scriptPanelData.wordCount ?? "unknown"} • Created:{" "}
-                            {new Date(scriptPanelData.createdAt).toLocaleString("en-US", {
-                              month: "short",
-                              day: "numeric",
-                              hour: "numeric",
-                              minute: "2-digit",
-                              hour12: true,
-                            })}
-                          </div>
+                    <div className="space-y-6">
+                      <div className="flex items-center justify-between px-2">
+                        <div className="flex items-center gap-4">
+                          <span className="text-[10px] font-mono text-accent uppercase tracking-widest font-bold">Script_Unit_Manifest</span>
+                          <span className="text-[11px] font-mono text-muted uppercase tracking-widest opacity-40">
+                             ID: {scriptPanelData.id.substring(0, 12)} • {scriptPanelData.wordCount ?? "---"} Words
+                          </span>
                         </div>
-                        {!scriptPanelEditMode ? (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const beats = extractScriptBeats(scriptPanelData.rawJson);
-                              setScriptPanelDraftBeats(beats);
-                              setScriptPanelCombinedVoDraft(buildCombinedVoDraftFromBeats(beats));
-                              setScriptPanelEditMode(true);
-                              setScriptPanelError(null);
-                            }}
-                            style={{
-                              border: "1px solid #334155",
-                              backgroundColor: "#0f172a",
-                              color: "#cbd5e1",
-                              padding: "6px 10px",
-                              borderRadius: 8,
-                              fontSize: 12,
-                              fontWeight: 600,
-                              cursor: "pointer",
-                            }}
-                          >
-                            Edit
-                          </button>
-                        ) : (
-                          <div style={{ display: "flex", gap: 8 }}>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const beats = extractScriptBeats(scriptPanelData.rawJson);
-                                setScriptPanelDraftBeats(beats);
-                                setScriptPanelCombinedVoDraft(buildCombinedVoDraftFromBeats(beats));
-                                setScriptPanelEditMode(false);
-                                setScriptPanelError(null);
-                              }}
-                              disabled={scriptPanelSaving}
-                              style={{
-                                border: "1px solid #334155",
-                                backgroundColor: "#0b1220",
-                                color: "#cbd5e1",
-                                padding: "6px 10px",
-                                borderRadius: 8,
-                                fontSize: 12,
-                                fontWeight: 600,
-                                cursor: scriptPanelSaving ? "not-allowed" : "pointer",
-                              }}
-                            >
-                              Cancel
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => void handleSaveScriptPanelEdits()}
-                              disabled={scriptPanelSaving}
-                              style={{
-                                border: "none",
-                                backgroundColor: scriptPanelSaving ? "#1e293b" : "#0ea5e9",
-                                color: scriptPanelSaving ? "#64748b" : "#ffffff",
-                                padding: "6px 10px",
-                                borderRadius: 8,
-                                fontSize: 12,
-                                fontWeight: 600,
-                                cursor: scriptPanelSaving ? "not-allowed" : "pointer",
-                              }}
-                            >
-                              {scriptPanelSaving ? "Saving..." : "Save"}
-                            </button>
-                          </div>
-                        )}
+                        <div className="flex items-center gap-3">
+                           {scriptPanelEditMode ? (
+                             <div className="flex items-center gap-3">
+                               <button
+                                 onClick={() => {
+                                   setScriptPanelEditMode(false);
+                                   setScriptPanelError(null);
+                                 }}
+                                 disabled={scriptPanelSaving}
+                                 className="btn btn-secondary !min-h-[32px] px-6 text-[9px] uppercase font-bold tracking-widest"
+                               >
+                                 Abort_Edit
+                               </button>
+                               <button
+                                 onClick={() => void handleSaveScriptPanelEdits()}
+                                 disabled={scriptPanelSaving}
+                                 className="btn btn-primary !min-h-[32px] px-6 text-[9px] uppercase font-bold tracking-widest"
+                               >
+                                 {scriptPanelSaving ? "Committing..." : "Commit_Changes"}
+                               </button>
+                             </div>
+                           ) : (
+                             <button
+                               onClick={() => {
+                                 const beats = extractScriptBeats(scriptPanelData.rawJson);
+                                 setScriptPanelDraftBeats(beats);
+                                 setScriptPanelCombinedVoDraft(buildCombinedVoDraftFromBeats(beats));
+                                 setScriptPanelEditMode(true);
+                               }}
+                               className="btn btn-secondary !min-h-[32px] px-6 text-[9px] uppercase font-bold tracking-widest"
+                             >
+                               Modify_Directive
+                             </button>
+                           )}
+                        </div>
                       </div>
 
-                      <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-                        {scriptPanelEditMode ? (
-                          <div
-                            style={{
-                              border: "1px solid #334155",
-                              borderRadius: 8,
-                              backgroundColor: "#0b1220",
-                              padding: 10,
-                              display: "grid",
-                              gap: 10,
-                            }}
-                          >
-                            <div style={{ color: "#94a3b8", fontSize: 12 }}>
-                              Beats are locked. Keep one `Beat N:` header per section and write VO directly under it.
+                      <div className="rounded-card border border-line bg-panel/30 overflow-hidden group hover:border-accent/30 transition-all duration-300">
+                        <div className="px-6 py-4 bg-panel/50 border-b border-line/10 flex items-center justify-between">
+                          <span className="text-[11px] font-mono text-accent-2 font-bold tracking-tighter uppercase whitespace-pre">Audio_Synthesis_Path</span>
+                          <span className="text-[8px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Script_Output</span>
+                        </div>
+                        <div className="p-8">
+                          {scriptPanelEditMode ? (
+                            <div className="space-y-6">
+                              <div className="p-4 rounded-card border border-accent-2/20 bg-accent-2/5 text-[10px] font-mono text-accent-2 uppercase tracking-widest leading-relaxed">
+                                <span className="opacity-60">System_Note:</span> Maintain "Beat N:" headers to preserve sequential sync logic.
+                              </div>
+                              <textarea
+                                value={scriptPanelCombinedVoDraft}
+                                onChange={(e) => setScriptPanelCombinedVoDraft(e.target.value)}
+                                className="w-full bg-black/40 border border-line/40 rounded-card p-6 text-[13px] font-mono text-white/70 focus:border-accent-2/40 focus:ring-1 focus:ring-accent-2/20 transition-all min-h-[400px] leading-relaxed"
+                              />
                             </div>
-                            <div style={{ color: "#94a3b8", fontSize: 12 }}>
-                              Expected sections: {scriptPanelDraftBeats.length}
+                          ) : (
+                            <div className="text-[14px] text-white/80 leading-[1.8] whitespace-pre-wrap font-mono selection:bg-accent-2/30 selection:text-white">
+                              {buildCombinedVoDraftFromBeats(extractScriptBeats(scriptPanelData.rawJson)) || "Null_Audio_Output"}
                             </div>
-                            <textarea
-                              value={scriptPanelCombinedVoDraft}
-                              onChange={(e) => setScriptPanelCombinedVoDraft(e.target.value)}
-                              onBlur={(e) => setScriptPanelCombinedVoDraft(e.target.value)}
-                              rows={14}
-                              style={{
-                                width: "100%",
-                                boxSizing: "border-box",
-                                borderRadius: 8,
-                                border: "1px solid #334155",
-                                backgroundColor: "#0f172a",
-                                color: "#e2e8f0",
-                                padding: 10,
-                                fontSize: 13,
-                                resize: "vertical",
-                                lineHeight: 1.5,
-                              }}
-                            />
-                          </div>
-                        ) : (
-                          <div
-                            style={{
-                              border: "1px solid #334155",
-                              borderRadius: 8,
-                              backgroundColor: "#0b1220",
-                              padding: 10,
-                            }}
-                          >
-                            <p
-                              style={{
-                                margin: 0,
-                                fontSize: 13,
-                                lineHeight: 1.6,
-                                color: "#cbd5e1",
-                                whiteSpace: "pre-wrap",
-                              }}
-                            >
-                              {buildCombinedVoDraftFromBeats(extractScriptBeats(scriptPanelData.rawJson)) || "No spoken words"}
-                            </p>
-                          </div>
-                        )}
+                          )}
+                        </div>
                       </div>
-                    </>
+                    </div>
                   ) : (
-                    <p style={{ margin: 0, color: "#94a3b8", fontSize: 13 }}>No script data available.</p>
+                    <div className="p-12 text-center text-muted text-[10px] font-mono uppercase tracking-widest border border-line/20 rounded-card bg-panel/5">
+                      Null_Data_Error: Script_Reference_Broken
+                    </div>
                   )}
                 </div>
               )}
 
               {scriptSources && (
-                <details
-                  style={{
-                    marginTop: 10,
-                    borderRadius: 8,
-                    border: "1px solid #334155",
-                    backgroundColor: "#0b1220",
-                    padding: "8px 10px",
-                  }}
-                >
-                  <summary
-                    style={{
-                      cursor: "pointer",
-                      color: "#cbd5e1",
-                      fontSize: 12,
-                      fontWeight: 600,
-                      userSelect: "none",
-                    }}
-                  >
-                    Research sources used
-                  </summary>
-                  <div
-                    style={{
-                      marginTop: 8,
-                      color: "#94a3b8",
-                      fontSize: 12,
-                      lineHeight: 1.4,
-                    }}
-                  >
-                    <div>Customer analysis run: {formatMetadataDate(scriptSources.customerAnalysisRunDate)}</div>
-                    <div>Pattern analysis run: {formatMetadataDate(scriptSources.patternAnalysisRunDate)}</div>
-                    <div>Product intel: {formatMetadataDate(scriptSources.productIntelDate)}</div>
-                  </div>
-                </details>
+                <div className="mt-6 border border-line/10 rounded-card bg-panel/20 overflow-hidden">
+                  <details className="group">
+                    <summary className="px-6 py-4 cursor-pointer flex items-center justify-between text-[10px] font-mono text-muted uppercase tracking-widest font-bold hover:bg-panel/40 transition-colors list-none">
+                      <div className="flex items-center gap-3">
+                        <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
+                        Inference_Dependency_Manifest
+                      </div>
+                      <span className="opacity-40 transition-transform group-open:rotate-180">▼</span>
+                    </summary>
+                    <div className="px-8 pb-6 pt-2 space-y-3">
+                      <div className="flex justify-between text-[10px] font-mono">
+                        <span className="text-muted/60 uppercase tracking-widest">Customer_Protocol:</span>
+                        <span className="text-accent-2">{formatMetadataDate(scriptSources.customerAnalysisRunDate)}</span>
+                      </div>
+                      <div className="flex justify-between text-[10px] font-mono">
+                        <span className="text-muted/60 uppercase tracking-widest">Pattern_Baseline:</span>
+                        <span className="text-accent-2">{formatMetadataDate(scriptSources.patternAnalysisRunDate)}</span>
+                      </div>
+                      <div className="flex justify-between text-[10px] font-mono">
+                        <span className="text-muted/60 uppercase tracking-widest">Product_Intelligence:</span>
+                        <span className="text-accent-2">{formatMetadataDate(scriptSources.productIntelDate)}</span>
+                      </div>
+                    </div>
+                  </details>
+                </div>
               )}
 
               {step.key === "storyboard" && step.status === "completed" && isOutputExpanded && (
-                <div
-                  style={{
-                    marginTop: 12,
-                    borderRadius: 10,
-                    border: "1px solid #334155",
-                    backgroundColor: "#020617",
-                    padding: 12,
-                  }}
-                >
+                <div className="mt-8 space-y-8 animate-in fade-in slide-in-from-top-4 duration-500">
                   {!storyboardId ? (
-                    <p style={{ margin: 0, color: "#fca5a5", fontSize: 13 }}>
-                      Storyboard generation failed to produce output.
-                    </p>
+                    <div className="rounded-card border border-danger/30 bg-danger/5 p-12 text-center">
+                      <p className="text-[10px] font-mono text-danger uppercase tracking-widest leading-relaxed">Null_Output_Error: Storyboard_Generation_Failed</p>
+                    </div>
                   ) : storyboardPanelLoading && storyboardMatchesCurrentFetch ? (
-                    <p style={{ margin: 0, color: "#94a3b8", fontSize: 13 }}>
-                      Loading storyboard panels...
-                    </p>
+                    <div className="p-16 text-center animate-pulse">
+                      <p className="text-[10px] font-mono text-muted uppercase tracking-widest">Synchronizing_Sequence_Data...</p>
+                    </div>
                   ) : storyboardPanelError && storyboardMatchesCurrentFetch ? (
-                    <p style={{ margin: 0, color: "#fca5a5", fontSize: 13 }}>{storyboardPanelError}</p>
+                    <div className="p-12 text-center text-danger text-[10px] font-mono uppercase tracking-widest border border-danger/20 rounded-card bg-danger/5">
+                      Protocol_Error: {storyboardPanelError}
+                    </div>
                   ) : storyboardPanels.length === 0 ? (
-                    <p style={{ margin: 0, color: "#fca5a5", fontSize: 13 }}>
-                      Storyboard generation failed to produce output.
-                    </p>
+                    <div className="rounded-card border border-danger/30 bg-danger/5 p-12 text-center">
+                      <p className="text-[10px] font-mono text-danger uppercase tracking-widest">Zero_Unit_Exception: No_Panels_Resolved</p>
+                    </div>
                   ) : (
-                    <>
-                      <div style={{ marginBottom: 10, color: "#94a3b8", fontSize: 12 }}>
-                        {storyboardEditMode
-                          ? `${storyboardDraftPanels.length} panel(s) in edit mode`
-                          : `${storyboardPanels.length} panel(s)`}
+                    <div className="space-y-8">
+                      <div className="flex items-center justify-between px-2">
+                        <div className="flex items-center gap-4">
+                          <span className="text-[10px] font-mono text-accent uppercase tracking-widest font-bold">Sequence_Manifest</span>
+                          <span className="text-[11px] font-mono text-muted uppercase tracking-widest opacity-40">
+                             {storyboardEditMode
+                              ? `Edit_Mode: ${storyboardDraftPanels.length}_Units`
+                              : `Resolved: ${storyboardPanels.length}_Units`}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                           {storyboardEditMode && (
+                             <button
+                               onClick={() => void handleSaveStoryboardEdits()}
+                               disabled={storyboardSaving}
+                               className="btn btn-primary !min-h-[32px] px-6 text-[9px] uppercase font-bold tracking-widest"
+                             >
+                               {storyboardSaving ? "Committing..." : "Commit_Sequence"}
+                             </button>
+                           )}
+                           <button
+                             onClick={storyboardEditMode ? cancelStoryboardEditMode : openStoryboardEditMode}
+                             className="btn btn-secondary !min-h-[32px] px-6 text-[9px] uppercase font-bold tracking-widest"
+                           >
+                             {storyboardEditMode ? "Abort_Edit" : "Enter_Sequence_Editor"}
+                           </button>
+                        </div>
                       </div>
 
                       {storyboardSaveError && (
-                        <p style={{ margin: "0 0 8px 0", color: "#fca5a5", fontSize: 12 }}>{storyboardSaveError}</p>
-                      )}
-                      {storyboardRegenerateError && (
-                        <p style={{ margin: "0 0 8px 0", color: "#fca5a5", fontSize: 12 }}>
-                          {storyboardRegenerateError}
-                        </p>
+                        <div className="mx-2 p-4 rounded-card border border-danger/20 bg-danger/5 text-[10px] font-mono text-danger uppercase tracking-widest flex items-center gap-3">
+                          <div className="w-1.5 h-1.5 rounded-full bg-danger animate-pulse" />
+                          Critical_Save_Failure: {storyboardSaveError}
+                        </div>
                       )}
 
-                      <div style={{ display: "grid", gap: 10 }}>
+                      <div className="space-y-8">
                         {(storyboardEditMode ? storyboardDraftPanels : storyboardPanels).map((panel, panelIndex) => (
                           <div
                             key={`${panel.beatLabel}-${panel.startTime}-${panel.endTime}-${panelIndex}`}
-                            style={{
-                              border: "1px solid #334155",
-                              borderRadius: 8,
-                              backgroundColor: "#0b1220",
-                              padding: 10,
-                            }}
+                            className="rounded-card border border-line bg-panel/30 overflow-hidden group hover:border-accent/30 transition-all duration-300"
                           >
-                            <div
-                              style={{
-                                display: "flex",
-                                justifyContent: "space-between",
-                                alignItems: "center",
-                                gap: 10,
-                                marginBottom: 8,
-                              }}
-                            >
-                              <p style={{ margin: 0, color: "#e2e8f0", fontSize: 13, fontWeight: 600 }}>
-                                {panel.panelType === "B_ROLL_ONLY"
-                                  ? "CUTAWAY"
-                                  : panel.beatLabel || `Beat ${panelIndex + 1}`}
-                              </p>
-                              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                <span style={{ color: "#94a3b8", fontSize: 12 }}>
-                                  {formatStoryboardPanelTiming(panel)}
-                                </span>
-                                {storyboardEditMode && (
-                                  <div style={{ display: "flex", gap: 6 }}>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleMoveStoryboardPanel(panelIndex, -1)}
-                                      disabled={panelIndex === 0 || storyboardSaving}
-                                      style={{
-                                        border: "1px solid #334155",
-                                        backgroundColor: "#0f172a",
-                                        color: "#cbd5e1",
-                                        padding: "2px 8px",
-                                        borderRadius: 6,
-                                        fontSize: 12,
-                                        cursor:
-                                          panelIndex === 0 || storyboardSaving ? "not-allowed" : "pointer",
-                                      }}
-                                    >
-                                      ↑
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleMoveStoryboardPanel(panelIndex, 1)}
-                                      disabled={
-                                        panelIndex === storyboardDraftPanels.length - 1 || storyboardSaving
-                                      }
-                                      style={{
-                                        border: "1px solid #334155",
-                                        backgroundColor: "#0f172a",
-                                        color: "#cbd5e1",
-                                        padding: "2px 8px",
-                                        borderRadius: 6,
-                                        fontSize: 12,
-                                        cursor:
-                                          panelIndex === storyboardDraftPanels.length - 1 || storyboardSaving
-                                            ? "not-allowed"
-                                            : "pointer",
-                                      }}
-                                    >
-                                      ↓
-                                    </button>
+                            <div className="px-5 py-3 bg-panel/50 border-b border-line/10 flex items-center justify-between">
+                              <div className="flex items-center gap-4">
+                                <span className="text-[10px] font-mono text-accent font-bold">Panel_{String(panelIndex + 1).padStart(2, "0")}</span>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[9px] font-mono text-muted uppercase tracking-widest opacity-40">Timing_Window:</span>
+                                  <span className="text-[10px] font-mono text-white font-bold">{formatStoryboardPanelTiming(panel)}</span>
+                                </div>
+                                <div className="status-chip subtle !px-3 !py-1 uppercase tracking-widest text-[8px] font-bold">
+                                  {panel.panelType === "B_ROLL_ONLY" ? "Cutaway" : "Primary"}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                {storyboardEditMode ? (
+                                  <div className="flex items-center gap-2">
+                                    <div className="flex rounded-card border border-line overflow-hidden">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleMoveStoryboardPanel(panelIndex, -1)}
+                                        disabled={panelIndex === 0 || storyboardSaving}
+                                        className="btn btn-secondary !min-h-[26px] !rounded-none border-0 px-3 text-[10px] flex items-center justify-center"
+                                      >
+                                        ↑
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleMoveStoryboardPanel(panelIndex, 1)}
+                                        disabled={panelIndex === storyboardDraftPanels.length - 1 || storyboardSaving}
+                                        className="btn btn-secondary !min-h-[26px] !rounded-none border-l border-line px-3 text-[10px] flex items-center justify-center"
+                                      >
+                                        ↓
+                                      </button>
+                                    </div>
                                     {panelIndex < storyboardDraftPanels.length - 1 &&
-                                      storyboardDraftPanels[panelIndex].panelType ===
-                                        storyboardDraftPanels[panelIndex + 1]?.panelType && (
-                                        <button
-                                          type="button"
-                                          onClick={() => mergeStoryboardPanels(panelIndex)}
-                                          disabled={storyboardSaving}
-                                          style={{
-                                            border: "1px solid rgba(168, 85, 247, 0.5)",
-                                            backgroundColor: "rgba(168, 85, 247, 0.15)",
-                                            color: "#d8b4fe",
-                                            padding: "2px 8px",
-                                            borderRadius: 6,
-                                            fontSize: 12,
-                                            cursor: storyboardSaving ? "not-allowed" : "pointer",
-                                          }}
-                                        >
-                                          Merge ↓
-                                        </button>
-                                      )}
-                                    <button
-                                      type="button"
-                                      onClick={() => handleDeleteStoryboardPanel(panelIndex)}
-                                      disabled={storyboardDraftPanels.length <= 1 || storyboardSaving}
-                                      style={{
-                                        border: "1px solid rgba(239, 68, 68, 0.5)",
-                                        backgroundColor: "rgba(239, 68, 68, 0.15)",
-                                        color: "#fca5a5",
-                                        padding: "2px 8px",
-                                        borderRadius: 6,
-                                        fontSize: 12,
-                                        cursor:
-                                          storyboardDraftPanels.length <= 1 || storyboardSaving
-                                            ? "not-allowed"
-                                            : "pointer",
-                                      }}
-                                    >
-                                      Delete
-                                    </button>
+                                      storyboardDraftPanels[panelIndex].panelType === storyboardDraftPanels[panelIndex + 1]?.panelType && (
+                                      <button
+                                        type="button"
+                                        onClick={() => mergeStoryboardPanels(panelIndex)}
+                                        disabled={storyboardSaving}
+                                        className="btn btn-secondary !min-h-[26px] px-3 text-[8px] font-black uppercase tracking-widest text-accent-2 border-accent-2/30 bg-accent-2/5"
+                                      >
+                                        Merge_Next
+                                      </button>
+                                    )}
                                     <button
                                       type="button"
                                       onClick={() => void handleRegenerateStoryboardPanel(panelIndex)}
                                       disabled={storyboardRegeneratingIndex === panelIndex || storyboardSaving}
-                                      style={{
-                                        border: "1px solid rgba(14, 165, 233, 0.5)",
-                                        backgroundColor: "rgba(14, 165, 233, 0.15)",
-                                        color: "#7dd3fc",
-                                        padding: "2px 8px",
-                                        borderRadius: 6,
-                                        fontSize: 12,
-                                        cursor:
-                                          storyboardRegeneratingIndex === panelIndex || storyboardSaving
-                                            ? "not-allowed"
-                                            : "pointer",
-                                      }}
+                                      className="btn btn-secondary !min-h-[26px] px-3 text-[8px] font-black uppercase tracking-widest text-accent border-accent/30 bg-accent/5"
                                     >
-                                      {storyboardRegeneratingIndex === panelIndex
-                                        ? "Regenerating..."
-                                        : "Regenerate Panel"}
+                                      {storyboardRegeneratingIndex === panelIndex ? "Syncing..." : "Re-generate"}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteStoryboardPanel(panelIndex)}
+                                      disabled={storyboardDraftPanels.length <= 1 || storyboardSaving}
+                                      className="btn btn-danger !min-h-[26px] px-3 text-[8px] font-black uppercase tracking-widest"
+                                    >
+                                      Delete
                                     </button>
                                   </div>
+                                ) : (
+                                  <span className="text-[9px] font-mono text-muted uppercase tracking-widest opacity-40">System_Locked</span>
                                 )}
                               </div>
                             </div>
+                            <div className="p-8 space-y-8 bg-black/20">
+                              <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
+                                <div className="space-y-4">
+                                  <div className="flex items-center justify-between border-b border-line/5 pb-2">
+                                    <span className="text-[9px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Auditory_Manifest (VO)</span>
+                                    <span className="w-1.5 h-1.5 rounded-full bg-accent-2/40" />
+                                  </div>
+                                  <div className="w-full bg-panel/10 border border-line/20 rounded-card p-5 text-[14px] text-white/80 font-sans leading-relaxed min-h-[100px] whitespace-pre-wrap">
+                                    {panel.vo || "No_Audio_Data"}
+                                  </div>
+                                </div>
+                                <div className="space-y-4">
+                                  <div className="flex items-center justify-between border-b border-line/5 pb-2">
+                                    <span className="text-[9px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Visual_Directives (Prompt)</span>
+                                    <span className="w-1.5 h-1.5 rounded-full bg-accent/40" />
+                                  </div>
+                                  <div className="w-full bg-panel/10 border border-line/20 rounded-card p-5 text-[13px] font-mono text-accent-2/70 leading-relaxed min-h-[100px] whitespace-pre-wrap">
+                                    {panel.videoPrompt || "No_Visual_Directives"}
+                                  </div>
+                                </div>
+                              </div>
 
-                            {storyboardEditMode ? (
-                              <div style={{ display: "grid", gap: 8 }}>
-                                <div>
-                                  <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>Panel Type</div>
-                                  <select
-                                    value={panel.panelType}
-                                    onChange={(e) =>
+                              {storyboardEditMode && (
+                                <div className="space-y-4 pt-4 border-t border-line/5">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-[9px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Beat_Synthesis_Editor</span>
+                                    <span className="text-[8px] font-mono text-accent/60 uppercase tracking-widest font-bold">Inference_Override_Active</span>
+                                  </div>
+                                  <textarea
+                                    value={storyboardBeatEditorDrafts[panelIndex] ?? buildStoryboardBeatEditorText(panel)}
+                                    onChange={(e) => {
+                                      const nextValue = e.target.value;
+                                      setStoryboardBeatEditorDrafts((prev) =>
+                                        storyboardDraftPanels.map((draftPanel, index) =>
+                                          index === panelIndex ? nextValue : (typeof prev[index] === "string" ? prev[index] : buildStoryboardBeatEditorText(draftPanel))
+                                        )
+                                      );
+                                      const parsed = parseStoryboardBeatEditorText(nextValue, panel);
                                       updateStoryboardDraftPanel(panelIndex, (prev) => ({
                                         ...prev,
-                                        panelType: e.target.value === "B_ROLL_ONLY" ? "B_ROLL_ONLY"
-                                          : e.target.value === "PRODUCT_ONLY" ? "PRODUCT_ONLY"
-                                          : "ON_CAMERA",
-                                      }))
-                                    }
-                                    style={{
-                                      width: "100%",
-                                      boxSizing: "border-box",
-                                      borderRadius: 8,
-                                      border: "1px solid #334155",
-                                      backgroundColor: "#0f172a",
-                                      color: "#e2e8f0",
-                                      padding: 8,
-                                      fontSize: 12,
+                                        ...parsed
+                                      }));
                                     }}
-                                  >
-                                    <option value="ON_CAMERA">On Camera</option>
-                                    <option value="PRODUCT_ONLY">Product Shot</option>
-                                    <option value="B_ROLL_ONLY">Cutaway</option>
-                                  </select>
-                                </div>
-                                <div>
-                                  <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>Voice Mode</div>
-                                  <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-                                    <input
-                                      type="checkbox"
-                                      checked={Boolean(panel.voiceoverOnly)}
-                                      onChange={(e) =>
-                                        updateStoryboardDraftPanel(panelIndex, (prev) => ({
-                                          ...prev,
-                                          voiceoverOnly: e.target.checked,
-                                        }))
-                                      }
-                                    />
-                                    <span style={{ color: "#e2e8f0", fontSize: 12 }}>
-                                      Voiceover only (creator present, no lip sync)
-                                    </span>
-                                  </label>
-                                </div>
-                                <div>
-                                  <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>Beat</div>
-                                  <textarea
-                                    value={`Beat ${panelIndex + 1}`}
-                                    readOnly
-                                    rows={2}
-                                    style={{
-                                      width: "100%",
-                                      boxSizing: "border-box",
-                                      borderRadius: 8,
-                                      border: "1px solid #1e293b",
-                                      backgroundColor: "#020617",
-                                      color: "#94a3b8",
-                                      padding: 8,
-                                      fontSize: 12,
-                                      resize: "vertical",
-                                    }}
+                                    className="w-full bg-black/40 border border-line/40 rounded-card p-6 text-[12px] font-mono text-white/70 focus:border-accent/40 focus:ring-1 focus:ring-accent/20 transition-all leading-relaxed min-h-[240px]"
                                   />
                                 </div>
-                                <div style={{ color: "#94a3b8", fontSize: 11 }}>
-                                  Timing: {formatStoryboardPanelTiming(panel)}
-                                </div>
-                                <div style={{ color: "#94a3b8", fontSize: 11 }}>VO</div>
-                                <textarea
-                                  value={panel.vo ?? ""}
-                                  readOnly
-                                  rows={2}
-                                  style={{
-                                    width: "100%",
-                                    boxSizing: "border-box",
-                                    borderRadius: 8,
-                                    border: "1px solid #1e293b",
-                                    backgroundColor: "#020617",
-                                    color: "#94a3b8",
-                                    padding: 8,
-                                    fontSize: 12,
-                                    resize: "vertical",
-                                  }}
-                                />
-                                <div style={{ color: "#94a3b8", fontSize: 11 }}>
-                                  Edit this beat as one block. Keep the labels and write under each one.
-                                </div>
-                                <textarea
-                                  value={
-                                    storyboardBeatEditorDrafts[panelIndex] ??
-                                    buildStoryboardBeatEditorText(panel)
-                                  }
-                                  onChange={(e) => {
-                                    const nextValue = e.target.value;
-                                    setStoryboardBeatEditorDrafts((prev) =>
-                                      storyboardDraftPanels.map((draftPanel, index) =>
-                                        index === panelIndex
-                                          ? nextValue
-                                          : typeof prev[index] === "string"
-                                            ? prev[index]
-                                            : buildStoryboardBeatEditorText(draftPanel),
-                                      ),
-                                    );
-                                    const parsed = parseStoryboardBeatEditorText(nextValue, panel);
-                                    updateStoryboardDraftPanel(panelIndex, (prev) => ({
-                                      ...prev,
-                                      characterName: parsed.characterName,
-                                      characterDescription: parsed.characterDescription,
-                                      characterAction: parsed.characterAction,
-                                      environment: parsed.environment,
-                                      cameraDirection: parsed.cameraDirection,
-                                      productPlacement: parsed.productPlacement,
-                                      bRollSuggestions: parsed.bRollSuggestions,
-                                    }));
-                                  }}
-                                  rows={panel.panelType === "B_ROLL_ONLY" ? 14 : 16}
-                                  style={{
-                                    width: "100%",
-                                    boxSizing: "border-box",
-                                    borderRadius: 8,
-                                    border:
-                                      panel.panelType === "B_ROLL_ONLY"
-                                        ? "1px solid rgba(14, 165, 233, 0.6)"
-                                        : "1px solid #334155",
-                                    backgroundColor: "#0f172a",
-                                    color: "#e2e8f0",
-                                    padding: 8,
-                                    fontSize: 12,
-                                    resize: "vertical",
-                                    lineHeight: 1.5,
-                                  }}
-                                />
+                              )}
 
-                                <div style={{ marginTop: 2 }}>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleAddStoryboardPanel(panelIndex)}
-                                    disabled={storyboardSaving}
-                                    style={{
-                                      border: "1px solid #334155",
-                                      backgroundColor: "#0f172a",
-                                      color: "#cbd5e1",
-                                      padding: "6px 10px",
-                                      borderRadius: 8,
-                                      fontSize: 12,
-                                      cursor: storyboardSaving ? "not-allowed" : "pointer",
-                                    }}
-                                  >
-                                    Add Panel Below
-                                  </button>
+                              {storyboardEditMode && (
+                                <div className="flex justify-start pt-4">
+                                   <button
+                                     type="button"
+                                     onClick={() => handleAddStoryboardPanel(panelIndex)}
+                                     disabled={storyboardSaving}
+                                     className="btn btn-secondary !min-h-[32px] px-6 text-[9px] uppercase font-bold tracking-widest"
+                                   >
+                                     + Insert_Sequence_Unit
+                                   </button>
                                 </div>
-                              </div>
-                            ) : (
-                              <div style={{ display: "grid", gap: 6, fontSize: 12, color: "#cbd5e1" }}>
-                                {panel.panelType === "B_ROLL_ONLY" ? (
-                                  <>
-                                    <div><strong style={{ color: "#f1f5f9" }}>VO:</strong> {panel.vo || "Not provided"}</div>
-                                    <div><strong style={{ color: "#f1f5f9" }}>Character Name:</strong> {panel.characterName || "Not provided"}</div>
-                                    <div><strong style={{ color: "#f1f5f9" }}>Character Description:</strong> {panel.characterDescription || "Not provided"}</div>
-                                    <div>
-                                      <strong style={{ color: "#f1f5f9" }}>B-roll Suggestions:</strong>
-                                      {(panel.bRollSuggestions ?? []).length > 0 ? (
-                                        <div style={{ marginTop: 4, display: "grid", gap: 4 }}>
-                                          {(panel.bRollSuggestions ?? []).map((suggestion, suggestionIndex) => (
-                                            <div key={`broll-${panelIndex}-${suggestionIndex}`}>• {suggestion}</div>
-                                          ))}
-                                        </div>
-                                      ) : (
-                                        " Not provided"
-                                      )}
-                                    </div>
-                                    <div><strong style={{ color: "#f1f5f9" }}>Camera Direction:</strong> {panel.cameraDirection || "Not provided"}</div>
-                                    <div><strong style={{ color: "#f1f5f9" }}>Product Placement:</strong> {panel.productPlacement || "Not provided"}</div>
-                                  </>
-                                ) : (
-                                  <>
-                                    <div><strong style={{ color: "#f1f5f9" }}>VO:</strong> {panel.vo || "Not provided"}</div>
-                                    <div><strong style={{ color: "#f1f5f9" }}>Character Name:</strong> {panel.characterName || "Not provided"}</div>
-                                    <div><strong style={{ color: "#f1f5f9" }}>Character Description:</strong> {panel.characterDescription || "Not provided"}</div>
-                                    <div><strong style={{ color: "#f1f5f9" }}>Character Action:</strong> {panel.characterAction || "Not provided"}</div>
-                                    <div><strong style={{ color: "#f1f5f9" }}>Environment:</strong> {panel.environment || "Not provided"}</div>
-                                    <div><strong style={{ color: "#f1f5f9" }}>Camera Direction:</strong> {panel.cameraDirection || "Not provided"}</div>
-                                    <div><strong style={{ color: "#f1f5f9" }}>Product Placement:</strong> {panel.productPlacement || "Not provided"}</div>
-                                    <div>
-                                      <strong style={{ color: "#f1f5f9" }}>B-roll Suggestions:</strong>{" "}
-                                      {(panel.bRollSuggestions ?? []).length > 0
-                                        ? (panel.bRollSuggestions ?? []).join(", ")
-                                        : "Not provided"}
-                                    </div>
-                                  </>
-                                )}
-                              </div>
-                            )}
+                              )}
+                            </div>
                           </div>
                         ))}
                       </div>
-                      <div
-                        style={{
-                          marginTop: 10,
-                          display: "flex",
-                          justifyContent: "flex-start",
-                          alignItems: "center",
-                          gap: 8,
-                        }}
-                      >
-                        {!storyboardEditMode ? (
-                          <button
-                            type="button"
-                            onClick={openStoryboardEditMode}
-                            style={{
-                              border: "1px solid #334155",
-                              backgroundColor: "#0b1220",
-                              color: "#cbd5e1",
-                              padding: "6px 10px",
-                              borderRadius: 8,
-                              fontSize: 12,
-                              fontWeight: 600,
-                              cursor: "pointer",
-                            }}
-                          >
-                            Edit Storyboard
-                          </button>
-                        ) : (
-                          <>
-                            <button
-                              type="button"
-                              onClick={cancelStoryboardEditMode}
-                              disabled={storyboardSaving}
-                              style={{
-                                border: "1px solid #334155",
-                                backgroundColor: "#0b1220",
-                                color: storyboardSaving ? "#64748b" : "#cbd5e1",
-                                padding: "6px 10px",
-                                borderRadius: 8,
-                                fontSize: 12,
-                                fontWeight: 600,
-                                cursor: storyboardSaving ? "not-allowed" : "pointer",
-                              }}
-                            >
-                              Cancel
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => void handleSaveStoryboardEdits()}
-                              disabled={storyboardSaving}
-                              style={{
-                                border: "1px solid #334155",
-                                backgroundColor: "#0b1220",
-                                color: storyboardSaving ? "#64748b" : "#cbd5e1",
-                                padding: "6px 10px",
-                                borderRadius: 8,
-                                fontSize: 12,
-                                fontWeight: 600,
-                                cursor: storyboardSaving ? "not-allowed" : "pointer",
-                              }}
-                            >
-                              {storyboardSaving ? "Saving..." : "Save Storyboard"}
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </>
+                    </div>
                   )}
                 </div>
               )}
-
               {step.key === "image_prompts" && step.status === "completed" && isOutputExpanded && (
-                <div
-                  style={{
-                    marginTop: 12,
-                    borderRadius: 10,
-                    border: "1px solid #334155",
-                    backgroundColor: "#020617",
-                    padding: 12,
-                  }}
-                >
+                <div className="mt-8 space-y-8 animate-in fade-in slide-in-from-top-4 duration-500">
                   {!storyboardId ? (
-                    <p style={{ margin: 0, color: "#fca5a5", fontSize: 13 }}>
-                      No storyboard found for this completed run.
-                    </p>
+                    <div className="rounded-card border border-danger/30 bg-danger/5 p-12 text-center">
+                      <p className="text-[10px] font-mono text-danger uppercase tracking-widest leading-relaxed">Null_Output_Error: Storyboard_Context_Missing</p>
+                    </div>
                   ) : storyboardPanelLoading && storyboardMatchesCurrentFetch ? (
-                    <p style={{ margin: 0, color: "#94a3b8", fontSize: 13 }}>
-                      Loading generated image prompts...
-                    </p>
+                    <div className="p-16 text-center animate-pulse">
+                      <p className="text-[10px] font-mono text-muted uppercase tracking-widest">Synchronizing_Inference_Assets...</p>
+                    </div>
                   ) : storyboardPanelError && storyboardMatchesCurrentFetch ? (
-                    <p style={{ margin: 0, color: "#fca5a5", fontSize: 13 }}>{storyboardPanelError}</p>
+                    <div className="p-12 text-center text-danger text-[10px] font-mono uppercase tracking-widest border border-danger/20 rounded-card bg-danger/5">
+                      Protocol_Error: {storyboardPanelError}
+                    </div>
                   ) : imagePromptRows.length === 0 ? (
-                    <p style={{ margin: 0, color: "#fca5a5", fontSize: 13 }}>
-                      No storyboard scenes available for image prompts.
-                    </p>
+                    <div className="rounded-card border border-danger/30 bg-danger/5 p-12 text-center">
+                      <p className="text-[10px] font-mono text-danger uppercase tracking-widest">Zero_Unit_Exception: No_Visual_Directives_Resolved</p>
+                    </div>
                   ) : (
-                    <>
-                      <div style={{ marginBottom: 10, color: "#94a3b8", fontSize: 12 }}>
-                        {imagePromptEditMode
-                          ? `${imagePromptDrafts.length} scene prompt pair(s) in edit mode`
-                          : `${imagePromptRows.length} scene prompt pair(s)`}
+                    <div className="space-y-8">
+                      <div className="flex items-center justify-between px-2">
+                        <div className="flex items-center gap-4">
+                          <span className="text-[10px] font-mono text-accent uppercase tracking-widest font-bold">Image_Directives_Manifest</span>
+                          <span className="text-[11px] font-mono text-muted uppercase tracking-widest opacity-40">
+                             {imagePromptEditMode
+                              ? `Edit_Mode: ${imagePromptDrafts.length}_Units`
+                              : `Resolved: ${imagePromptRows.length}_Units`}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                           {imagePromptEditMode && (
+                             <button
+                               onClick={() => void handleSaveImagePromptEdits()}
+                               disabled={imagePromptSaving}
+                               className="btn btn-primary !min-h-[32px] px-6 text-[9px] uppercase font-bold tracking-widest"
+                             >
+                               {imagePromptSaving ? "Committing..." : "Commit_Changes"}
+                             </button>
+                           )}
+                           <button
+                             onClick={imagePromptEditMode ? cancelImagePromptEditMode : openImagePromptEditMode}
+                             className="btn btn-secondary !min-h-[32px] px-6 text-[9px] uppercase font-bold tracking-widest"
+                           >
+                             {imagePromptEditMode ? "Abort_Edit" : "Enter_Directive_Editor"}
+                           </button>
+                        </div>
                       </div>
 
                       {imagePromptSaveError && (
-                        <p style={{ margin: "0 0 8px 0", color: "#fca5a5", fontSize: 12 }}>
-                          {imagePromptSaveError}
-                        </p>
+                        <div className="mx-2 p-4 rounded-card border border-danger/20 bg-danger/5 text-[10px] font-mono text-danger uppercase tracking-widest flex items-center gap-3">
+                          <div className="w-1.5 h-1.5 rounded-full bg-danger animate-pulse" />
+                          Critical_Save_Failure: {imagePromptSaveError}
+                        </div>
                       )}
 
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-                          gap: 10,
-                        }}
-                      >
+                      <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
                         {imagePromptRows.map((row) => {
                           const draft = imagePromptDrafts[row.panelIndex] ?? {
                             firstFramePrompt: row.firstFramePrompt,
@@ -5633,240 +4838,125 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                           return (
                             <div
                               key={`image-prompt-${row.panelIndex}`}
-                              style={{
-                                border: "1px solid #334155",
-                                borderRadius: 8,
-                                backgroundColor: "#0b1220",
-                                padding: 10,
-                                display: "grid",
-                                gap: 8,
-                              }}
+                              className="rounded-card border border-line bg-panel/30 overflow-hidden group hover:border-accent/30 transition-all duration-300"
                             >
-                              <div style={{ color: "#94a3b8", fontSize: 11, fontWeight: 600 }}>
-                                Scene {row.sceneNumber}
+                              <div className="px-6 py-4 bg-panel/50 border-b border-line/10 flex items-center justify-between">
+                                <span className="text-[11px] font-mono text-accent font-bold tracking-tighter">SCN_{String(row.sceneNumber).padStart(2, "0")}</span>
+                                <span className="text-[8px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Visual_Asset_Directives</span>
                               </div>
-                              <div style={{ color: "#94a3b8", fontSize: 11 }}>VO Context</div>
-                              <p
-                                style={{
-                                  margin: 0,
-                                  color: "#cbd5e1",
-                                  fontSize: 12,
-                                  lineHeight: 1.5,
-                                  backgroundColor: "#020617",
-                                  border: "1px solid #1e293b",
-                                  borderRadius: 8,
-                                  padding: 8,
-                                }}
-                              >
-                                {row.vo || "No VO available."}
-                              </p>
-
-                              <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
-                                <div>
-                                  <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>
-                                    First Frame Prompt
+                              <div className="p-6 space-y-6">
+                                <div className="space-y-3">
+                                  <span className="text-[8px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Context_VO</span>
+                                  <div className="bg-black/20 border border-line/10 rounded-card p-4 text-[12px] text-white/60 leading-relaxed italic">
+                                    "{row.vo || "No_Audio_Data"}"
                                   </div>
-                                  {imagePromptEditMode ? (
-                                    <textarea
-                                      value={firstFramePrompt}
-                                      onChange={(event) =>
-                                        updateImagePromptDraft(row.panelIndex, {
-                                          firstFramePrompt: event.target.value,
-                                        })
-                                      }
-                                      disabled={imagePromptSaving}
-                                      rows={3}
-                                      style={{
-                                        width: "100%",
-                                        boxSizing: "border-box",
-                                        borderRadius: 8,
-                                        border: "1px solid #334155",
-                                        backgroundColor: "#0f172a",
-                                        color: "#e2e8f0",
-                                        padding: 8,
-                                        fontSize: 12,
-                                        resize: "vertical",
-                                      }}
-                                    />
-                                  ) : (
-                                    <div
-                                      style={{
-                                        color: "#e2e8f0",
-                                        fontSize: 13,
-                                        lineHeight: 1.5,
-                                        backgroundColor: "#020617",
-                                        border: "1px solid #1e293b",
-                                        borderRadius: 8,
-                                        padding: 8,
-                                        minHeight: 64,
-                                      }}
-                                    >
-                                      {firstFramePrompt || "No prompt generated yet."}
-                                    </div>
-                                  )}
                                 </div>
-
-                                <div>
-                                  <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>
-                                    Last Frame Prompt
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                  <div className="space-y-3">
+                                    <span className="text-[8px] font-mono text-accent-2/60 uppercase tracking-[0.2em]">Start_Frame_Directive</span>
+                                    {imagePromptEditMode ? (
+                                      <textarea
+                                        value={firstFramePrompt}
+                                        onChange={(event) =>
+                                          updateImagePromptDraft(row.panelIndex, {
+                                            firstFramePrompt: event.target.value,
+                                          })
+                                        }
+                                        disabled={imagePromptSaving}
+                                        className="w-full bg-black/40 border border-line/40 rounded-card p-4 text-[11px] font-mono text-white/70 focus:border-accent-2/40 focus:ring-1 focus:ring-accent-2/20 transition-all min-h-[120px]"
+                                      />
+                                    ) : (
+                                      <div className="w-full bg-panel/10 border border-line/20 rounded-card p-4 text-[11px] font-mono text-accent-2/70 leading-relaxed min-h-[120px]">
+                                        {firstFramePrompt || "Null_Directive"}
+                                      </div>
+                                    )}
                                   </div>
-                                  {imagePromptEditMode ? (
-                                    <textarea
-                                      value={lastFramePrompt}
-                                      onChange={(event) =>
-                                        updateImagePromptDraft(row.panelIndex, {
-                                          lastFramePrompt: event.target.value,
-                                        })
-                                      }
-                                      disabled={imagePromptSaving}
-                                      rows={3}
-                                      style={{
-                                        width: "100%",
-                                        boxSizing: "border-box",
-                                        borderRadius: 8,
-                                        border: "1px solid #334155",
-                                        backgroundColor: "#0f172a",
-                                        color: "#e2e8f0",
-                                        padding: 8,
-                                        fontSize: 12,
-                                        resize: "vertical",
-                                      }}
-                                    />
-                                  ) : (
-                                    <div
-                                      style={{
-                                        color: "#e2e8f0",
-                                        fontSize: 13,
-                                        lineHeight: 1.5,
-                                        backgroundColor: "#020617",
-                                        border: "1px solid #1e293b",
-                                        borderRadius: 8,
-                                        padding: 8,
-                                        minHeight: 64,
-                                      }}
-                                    >
-                                      {lastFramePrompt || "No prompt generated yet."}
-                                    </div>
-                                  )}
+                                  <div className="space-y-3">
+                                    <span className="text-[8px] font-mono text-accent/60 uppercase tracking-[0.2em]">End_Frame_Directive</span>
+                                    {imagePromptEditMode ? (
+                                      <textarea
+                                        value={lastFramePrompt}
+                                        onChange={(event) =>
+                                          updateImagePromptDraft(row.panelIndex, {
+                                            lastFramePrompt: event.target.value,
+                                          })
+                                        }
+                                        disabled={imagePromptSaving}
+                                        className="w-full bg-black/40 border border-line/40 rounded-card p-4 text-[11px] font-mono text-white/70 focus:border-accent/40 focus:ring-1 focus:ring-accent/20 transition-all min-h-[120px]"
+                                      />
+                                    ) : (
+                                      <div className="w-full bg-panel/10 border border-line/20 rounded-card p-4 text-[11px] font-mono text-accent/70 leading-relaxed min-h-[120px]">
+                                        {lastFramePrompt || "Null_Directive"}
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
                             </div>
                           );
                         })}
                       </div>
-
-                      <div
-                        style={{
-                          marginTop: 10,
-                          display: "flex",
-                          justifyContent: "flex-start",
-                          alignItems: "center",
-                          gap: 8,
-                        }}
-                      >
-                        {!imagePromptEditMode ? (
-                          <button
-                            type="button"
-                            onClick={openImagePromptEditMode}
-                            style={{
-                              border: "1px solid #334155",
-                              backgroundColor: "#0b1220",
-                              color: "#cbd5e1",
-                              padding: "6px 10px",
-                              borderRadius: 8,
-                              fontSize: 12,
-                              fontWeight: 600,
-                              cursor: "pointer",
-                            }}
-                          >
-                            Edit Image Prompts
-                          </button>
-                        ) : (
-                          <>
-                            <button
-                              type="button"
-                              onClick={cancelImagePromptEditMode}
-                              disabled={imagePromptSaving}
-                              style={{
-                                border: "1px solid #334155",
-                                backgroundColor: "#0b1220",
-                                color: imagePromptSaving ? "#64748b" : "#cbd5e1",
-                                padding: "6px 10px",
-                                borderRadius: 8,
-                                fontSize: 12,
-                                fontWeight: 600,
-                                cursor: imagePromptSaving ? "not-allowed" : "pointer",
-                              }}
-                            >
-                              Cancel
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => void handleSaveImagePromptEdits()}
-                              disabled={imagePromptSaving}
-                              style={{
-                                border: "1px solid #334155",
-                                backgroundColor: "#0b1220",
-                                color: imagePromptSaving ? "#64748b" : "#cbd5e1",
-                                padding: "6px 10px",
-                                borderRadius: 8,
-                                fontSize: 12,
-                                fontWeight: 600,
-                                cursor: imagePromptSaving ? "not-allowed" : "pointer",
-                              }}
-                            >
-                              {imagePromptSaving ? "Saving..." : "Save Image Prompts"}
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </>
+                    </div>
                   )}
                 </div>
               )}
 
               {step.key === "video_prompts" && step.status === "completed" && isOutputExpanded && (
-                <div
-                  style={{
-                    marginTop: 12,
-                    borderRadius: 10,
-                    border: "1px solid #334155",
-                    backgroundColor: "#020617",
-                    padding: 12,
-                  }}
-                >
+                <div className="mt-8 space-y-8 animate-in fade-in slide-in-from-top-4 duration-500">
                   {!storyboardId ? (
-                    <p style={{ margin: 0, color: "#fca5a5", fontSize: 13 }}>
-                      No storyboard found for this completed run.
-                    </p>
+                    <div className="rounded-card border border-danger/30 bg-danger/5 p-12 text-center">
+                      <p className="text-[10px] font-mono text-danger uppercase tracking-widest leading-relaxed">Null_Output_Error: Storyboard_Context_Missing</p>
+                    </div>
                   ) : storyboardPanelLoading && storyboardMatchesCurrentFetch ? (
-                    <p style={{ margin: 0, color: "#94a3b8", fontSize: 13 }}>
-                      Loading generated video prompts...
-                    </p>
+                    <div className="p-16 text-center animate-pulse">
+                      <p className="text-[10px] font-mono text-muted uppercase tracking-widest">Synchronizing_Kinetic_Synthesis...</p>
+                    </div>
                   ) : storyboardPanelError && storyboardMatchesCurrentFetch ? (
-                    <p style={{ margin: 0, color: "#fca5a5", fontSize: 13 }}>{storyboardPanelError}</p>
+                    <div className="p-12 text-center text-danger text-[10px] font-mono uppercase tracking-widest border border-danger/20 rounded-card bg-danger/5">
+                      Protocol_Error: {storyboardPanelError}
+                    </div>
                   ) : videoPromptRows.length === 0 ? (
-                    <p style={{ margin: 0, color: "#fca5a5", fontSize: 13 }}>
-                      No storyboard scenes available for video prompts.
-                    </p>
+                    <div className="rounded-card border border-danger/30 bg-danger/5 p-12 text-center">
+                      <p className="text-[10px] font-mono text-danger uppercase tracking-widest">Zero_Unit_Exception: No_Kinetic_Directives_Resolved</p>
+                    </div>
                   ) : (
-                    <>
-                      <div style={{ marginBottom: 10, color: "#94a3b8", fontSize: 12 }}>
-                        {videoPromptEditMode
-                          ? `${videoPromptDrafts.length} prompt(s) in edit mode`
-                          : `${videoPromptRows.length} scene prompt(s)`}
+                    <div className="space-y-8">
+                      <div className="flex items-center justify-between px-2">
+                        <div className="flex items-center gap-4">
+                          <span className="text-[10px] font-mono text-accent uppercase tracking-widest font-bold">Kinetic_Directives_Manifest</span>
+                          <span className="text-[11px] font-mono text-muted uppercase tracking-widest opacity-40">
+                             {videoPromptEditMode
+                              ? `Edit_Mode: ${videoPromptDrafts.length}_Units`
+                              : `Resolved: ${videoPromptRows.length}_Units`}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                           {videoPromptEditMode && (
+                             <button
+                               onClick={() => void handleSaveVideoPromptEdits()}
+                               disabled={videoPromptSaving}
+                               className="btn btn-primary !min-h-[32px] px-6 text-[9px] uppercase font-bold tracking-widest"
+                             >
+                               {videoPromptSaving ? "Committing..." : "Commit_Changes"}
+                             </button>
+                           )}
+                           <button
+                             onClick={videoPromptEditMode ? cancelVideoPromptEditMode : openVideoPromptEditMode}
+                             className="btn btn-secondary !min-h-[32px] px-6 text-[9px] uppercase font-bold tracking-widest"
+                           >
+                             {videoPromptEditMode ? "Abort_Edit" : "Enter_Kinetic_Editor"}
+                           </button>
+                        </div>
                       </div>
 
                       {videoPromptSaveError && (
-                        <p style={{ margin: "0 0 8px 0", color: "#fca5a5", fontSize: 12 }}>{videoPromptSaveError}</p>
-                      )}
-                      {videoPromptRegenerateError && (
-                        <p style={{ margin: "0 0 8px 0", color: "#fca5a5", fontSize: 12 }}>
-                          {videoPromptRegenerateError}
-                        </p>
+                        <div className="mx-2 p-4 rounded-card border border-danger/20 bg-danger/5 text-[10px] font-mono text-danger uppercase tracking-widest flex items-center gap-3">
+                          <div className="w-1.5 h-1.5 rounded-full bg-danger animate-pulse" />
+                          Critical_Save_Failure: {videoPromptSaveError}
+                        </div>
                       )}
 
-                      <div style={{ display: "grid", gap: 10 }}>
+                      <div className="space-y-6">
                         {videoPromptRows.map((row) => {
                           const promptValue = videoPromptEditMode
                             ? String(videoPromptDrafts[row.panelIndex] ?? row.prompt)
@@ -5875,1531 +4965,481 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                           return (
                             <div
                               key={`video-prompt-${row.panelIndex}`}
-                              style={{
-                                border: "1px solid #334155",
-                                borderRadius: 8,
-                                backgroundColor: "#0b1220",
-                                padding: 10,
-                                display: "grid",
-                                gap: 8,
-                              }}
+                              className="rounded-card border border-line bg-panel/30 overflow-hidden group hover:border-accent/30 transition-all duration-300"
                             >
-                              <div style={{ color: "#94a3b8", fontSize: 11 }}>
-                                Scene {row.panelIndex + 1} •{" "}
-                                {row.panelType === "B_ROLL_ONLY" ? "B-roll" : "Creator present"}
-                              </div>
-                              {videoPromptEditMode ? (
-                                <>
-                                  <textarea
-                                    value={promptValue}
-                                    onChange={(event) =>
-                                      updateVideoPromptDraft(row.panelIndex, event.target.value)
-                                    }
-                                    disabled={videoPromptSaving}
-                                    rows={3}
-                                    style={{
-                                      width: "100%",
-                                      boxSizing: "border-box",
-                                      borderRadius: 8,
-                                      border: "1px solid #334155",
-                                      backgroundColor: "#0f172a",
-                                      color: "#e2e8f0",
-                                      padding: 8,
-                                      fontSize: 12,
-                                      resize: "vertical",
-                                    }}
-                                  />
-                                  <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                                    <button
-                                      type="button"
-                                      onClick={() => void handleRegenerateVideoPrompt(row.panelIndex)}
-                                      disabled={
-                                        videoPromptRegeneratingIndex === row.panelIndex || videoPromptSaving
-                                      }
-                                      style={{
-                                        border: "1px solid rgba(14, 165, 233, 0.5)",
-                                        backgroundColor: "rgba(14, 165, 233, 0.15)",
-                                        color: "#7dd3fc",
-                                        padding: "4px 10px",
-                                        borderRadius: 6,
-                                        fontSize: 12,
-                                        cursor:
-                                          videoPromptRegeneratingIndex === row.panelIndex || videoPromptSaving
-                                            ? "not-allowed"
-                                            : "pointer",
-                                      }}
-                                    >
-                                      {videoPromptRegeneratingIndex === row.panelIndex
-                                        ? "Regenerating..."
-                                        : "Regenerate"}
-                                    </button>
+                              <div className="px-6 py-4 bg-panel/50 border-b border-line/10 flex items-center justify-between">
+                                <div className="flex items-center gap-6">
+                                  <span className="text-[11px] font-mono text-accent font-bold tracking-tighter">SCN_{String(row.panelIndex + 1).padStart(2, "0")}</span>
+                                  <div className="status-chip subtle !px-3 !py-1 uppercase tracking-widest text-[8px] font-bold">
+                                    {row.panelType === "B_ROLL_ONLY" ? "Cutaway_Asset" : "Primary_Capture"}
                                   </div>
-                                </>
-                              ) : (
-                                <p
-                                  style={{
-                                    margin: 0,
-                                    color: "#e2e8f0",
-                                    fontSize: 13,
-                                    lineHeight: 1.5,
-                                    whiteSpace: "pre-wrap",
-                                  }}
-                                >
-                                  {promptValue || "No prompt generated yet."}
-                                </p>
-                              )}
+                                </div>
+                                <span className="text-[8px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Kinetic_Synthesis_Directive</span>
+                              </div>
+                              <div className="p-6 space-y-4">
+                                {videoPromptEditMode ? (
+                                  <div className="space-y-4">
+                                    <textarea
+                                      value={promptValue}
+                                      onChange={(event) =>
+                                        updateVideoPromptDraft(row.panelIndex, event.target.value)
+                                      }
+                                      disabled={videoPromptSaving}
+                                      className="w-full bg-black/40 border border-line/40 rounded-card p-6 text-[12px] font-mono text-white/70 focus:border-accent/40 focus:ring-1 focus:ring-accent/20 transition-all leading-relaxed min-h-[140px]"
+                                    />
+                                    <div className="flex justify-end">
+                                      <button
+                                        type="button"
+                                        onClick={() => void handleRegenerateVideoPrompt(row.panelIndex)}
+                                        disabled={videoPromptRegeneratingIndex === row.panelIndex || videoPromptSaving}
+                                        className="btn btn-secondary !min-h-[28px] px-4 text-[8px] font-bold uppercase tracking-widest text-accent border-accent/20 bg-accent/5 hover:bg-accent/10 transition-colors"
+                                      >
+                                        {videoPromptRegeneratingIndex === row.panelIndex ? "Syncing..." : "Re-generate_Inference"}
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="w-full bg-panel/10 border border-line/20 rounded-card p-6 text-[12px] font-mono text-white/70 leading-relaxed min-h-[100px] whitespace-pre-wrap">
+                                    {promptValue || "Null_Kinetic_Directive"}
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           );
                         })}
                       </div>
-                      <div
-                        style={{
-                          marginTop: 10,
-                          display: "flex",
-                          justifyContent: "flex-start",
-                          alignItems: "center",
-                          gap: 8,
-                        }}
-                      >
-                        {!videoPromptEditMode ? (
-                          <button
-                            type="button"
-                            onClick={openVideoPromptEditMode}
-                            style={{
-                              border: "1px solid #334155",
-                              backgroundColor: "#0b1220",
-                              color: "#cbd5e1",
-                              padding: "6px 10px",
-                              borderRadius: 8,
-                              fontSize: 12,
-                              fontWeight: 600,
-                              cursor: "pointer",
-                            }}
-                          >
-                            Edit Video Prompts
-                          </button>
-                        ) : (
-                          <>
-                            <button
-                              type="button"
-                              onClick={cancelVideoPromptEditMode}
-                              disabled={videoPromptSaving}
-                              style={{
-                                border: "1px solid #334155",
-                                backgroundColor: "#0b1220",
-                                color: videoPromptSaving ? "#64748b" : "#cbd5e1",
-                                padding: "6px 10px",
-                                borderRadius: 8,
-                                fontSize: 12,
-                                fontWeight: 600,
-                                cursor: videoPromptSaving ? "not-allowed" : "pointer",
-                              }}
-                            >
-                              Cancel
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => void handleSaveVideoPromptEdits()}
-                              disabled={videoPromptSaving}
-                              style={{
-                                border: "1px solid #334155",
-                                backgroundColor: "#0b1220",
-                                color: videoPromptSaving ? "#64748b" : "#cbd5e1",
-                                padding: "6px 10px",
-                                borderRadius: 8,
-                                fontSize: 12,
-                                fontWeight: 600,
-                                cursor: videoPromptSaving ? "not-allowed" : "pointer",
-                              }}
-                            >
-                              {videoPromptSaving ? "Saving..." : "Save Video Prompts"}
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </>
+                    </div>
                   )}
                 </div>
               )}
 
               {step.status === "running" && (
-                <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 8, color: "#7dd3fc" }}>
+                <div className="mt-6 flex items-center gap-3 px-4 py-3 rounded-card border border-accent/20 bg-accent/5 animate-pulse">
                   <Spinner />
-                  <span style={{ fontSize: 12 }}>Processing...</span>
+                  <span className="text-[10px] font-mono text-accent uppercase tracking-widest font-bold">Inference_Engine_Active...</span>
                 </div>
               )}
 
               {hasSelectedRunWithJobs && step.status === "failed" && Boolean(step.lastJob?.error) && (
-                <div
-                  style={{
-                    marginTop: 12,
-                    borderRadius: 8,
-                    backgroundColor: "rgba(239, 68, 68, 0.1)",
-                    border: "1px solid rgba(239, 68, 68, 0.3)",
-                    padding: 12,
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-                    <div style={{ flex: 1 }}>
-                      <p style={{ fontSize: 12, fontWeight: 600, color: "#fca5a5", margin: "0 0 4px 0" }}>Error Details:</p>
-                      <p style={{ fontSize: 12, color: "#f87171", margin: 0 }}>{getErrorText(step.lastJob?.error)}</p>
-                    </div>
+                <div className="mt-6 rounded-card border border-danger/30 bg-danger/5 p-4 flex items-start gap-4">
+                  <div className="w-2 h-2 rounded-full bg-danger mt-1 animate-pulse" />
+                  <div className="flex-1">
+                    <p className="text-[10px] font-mono text-danger uppercase tracking-widest font-bold mb-1">Critical_Process_Failure</p>
+                    <p className="text-[11px] font-mono text-danger/80 leading-relaxed">{getErrorText(step.lastJob?.error)}</p>
                   </div>
                 </div>
               )}
             </div>
-            );
-          })}
-        </div>
-        )}
-      </section>
+          );
+        })}
+      </div>
+    )}
+  </div>
 
       {showScriptModal && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            backgroundColor: "rgba(2, 6, 23, 0.75)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1000,
-            padding: 16,
-          }}
-        >
-          <div
-            style={{
-              width: "100%",
-              maxWidth: 720,
-              maxHeight: "90vh",
-              backgroundColor: "#0f172a",
-              border: "1px solid #334155",
-              borderRadius: 12,
-              padding: 20,
-              overflowY: "auto",
-              boxSizing: "border-box",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: "#f8fafc" }}>Generate Script</h3>
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 bg-black/80 backdrop-blur-sm animate-in fade-in duration-300" onClick={() => { if (!scriptModalSubmitting) { setShowScriptModal(false); resetScriptModal(); } }}>
+          <div className="w-full max-w-2xl bg-bg border border-line rounded-card overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300 max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="px-6 py-4 bg-panel/50 border-b border-line/10 flex items-center justify-between">
+              <span className="text-[11px] font-mono text-accent font-bold uppercase tracking-widest">Script_Inference_Orchestrator</span>
               <button
-                type="button"
-                onClick={() => {
-                  if (scriptModalSubmitting) return;
-                  setShowScriptModal(false);
-                  resetScriptModal();
-                }}
-                style={{
-                  border: "none",
-                  background: "transparent",
-                  color: "#94a3b8",
-                  cursor: scriptModalSubmitting ? "not-allowed" : "pointer",
-                  fontSize: 18,
-                  lineHeight: 1,
-                }}
+                onClick={() => { if (!scriptModalSubmitting) { setShowScriptModal(false); resetScriptModal(); } }}
+                className="text-muted hover:text-white transition-colors text-xl font-mono"
               >
                 ×
               </button>
             </div>
-
-            {scriptModalMode === "choose" ? (
-              <div>
-                <p style={{ margin: "0 0 16px 0", color: "#cbd5e1", fontSize: 14 }}>
-                  Choose a script path.
-                </p>
-                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                  <button
-                    type="button"
-                    onClick={() => void handleChooseGenerateWithAi("swipe_template")}
-                    disabled={scriptModalSubmitting}
-                    style={{
-                      width: "100%",
-                      textAlign: "left",
-                      padding: "12px 14px",
-                      borderRadius: 10,
-                      border: "1px solid #334155",
-                      backgroundColor: "#1e293b",
-                      color: "#f8fafc",
-                      fontSize: 14,
-                      fontWeight: 600,
-                      cursor: scriptModalSubmitting ? "not-allowed" : "pointer",
-                    }}
-                  >
-                    Select ad template from swipe
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleChooseGenerateWithAi("research_formula")}
-                    disabled={scriptModalSubmitting}
-                    style={{
-                      width: "100%",
-                      textAlign: "left",
-                      padding: "12px 14px",
-                      borderRadius: 10,
-                      border: "1px solid #334155",
-                      backgroundColor: "#1e293b",
-                      color: "#f8fafc",
-                      fontSize: 14,
-                      fontWeight: 600,
-                      cursor: scriptModalSubmitting ? "not-allowed" : "pointer",
-                    }}
-                  >
-                    Use formula from research
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleChooseGenerateWithAi("upload_template")}
-                    disabled={scriptModalSubmitting}
-                    style={{
-                      width: "100%",
-                      textAlign: "left",
-                      padding: "12px 14px",
-                      borderRadius: 10,
-                      border: "1px solid #334155",
-                      backgroundColor: "#1e293b",
-                      color: "#f8fafc",
-                      fontSize: 14,
-                      fontWeight: 600,
-                      cursor: scriptModalSubmitting ? "not-allowed" : "pointer",
-                    }}
-                  >
-                    Upload transcript as template
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setScriptModalMode("upload");
-                      setScriptModalError(null);
-                    }}
-                    disabled={scriptModalSubmitting}
-                    style={{
-                      width: "100%",
-                      textAlign: "left",
-                      padding: "12px 14px",
-                      borderRadius: 10,
-                      border: "1px solid #334155",
-                      backgroundColor: "#0b1220",
-                      color: "#e2e8f0",
-                      fontSize: 14,
-                      fontWeight: 600,
-                      cursor: scriptModalSubmitting ? "not-allowed" : "pointer",
-                    }}
-                  >
-                    Manually create script
-                  </button>
-                </div>
-              </div>
-            ) : scriptModalMode === "ai" ? (
-              <div>
-                <p style={{ margin: "0 0 12px 0", color: "#cbd5e1", fontSize: 14 }}>
-                  Choose which completed research run should power script generation.
-                </p>
-                {scriptRunsLoading ? (
-                  <p style={{ margin: 0, color: "#94a3b8", fontSize: 13 }}>Loading completed research runs...</p>
-                ) : (
-                  <div>
-                    {scriptResearchRuns.length === 0 ? (
-                      <div>
-                        <div
-                          style={{
-                            borderRadius: 10,
-                            border: "1px solid rgba(234, 179, 8, 0.5)",
-                            backgroundColor: "rgba(234, 179, 8, 0.1)",
-                            color: "#fde68a",
-                            padding: "10px 12px",
-                            fontSize: 13,
-                          }}
-                        >
-                          No research data found. Script will be generic and not tailored to your customer insights.
-                        </div>
-                        <label
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 8,
-                            marginTop: 10,
-                            color: "#f1f5f9",
-                            fontSize: 13,
-                          }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={scriptNoResearchAcknowledged}
-                            onChange={(e) => setScriptNoResearchAcknowledged(e.target.checked)}
-                            disabled={scriptModalSubmitting}
-                          />
-                          I understand and want to generate a generic script.
-                        </label>
+            
+            <div className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar">
+              {scriptModalMode === "choose" ? (
+                <div className="space-y-6">
+                  <div className="space-y-2">
+                    <span className="text-[10px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Choose_Protocol</span>
+                    <p className="text-[12px] text-white/50 leading-relaxed">Select the synthesis architecture for this script iteration.</p>
+                  </div>
+                  <div className="grid grid-cols-1 gap-4">
+                    <button onClick={() => void handleChooseGenerateWithAi("swipe_template")} disabled={scriptModalSubmitting} className="btn btn-secondary !justify-start px-6 py-4 h-auto group bg-panel/20 border-line/10 hover:border-accent/30 transition-all">
+                      <div className="text-left space-y-1">
+                        <div className="text-[11px] font-mono text-accent uppercase tracking-widest group-hover:text-accent transition-colors">Select_Ad_Template_From_Swipe</div>
+                        <div className="text-[9px] text-muted uppercase tracking-widest opacity-40">Leverage existing high-performance creative structures.</div>
                       </div>
-                    ) : (
-                      <>
-                        <select
-                          value={selectedScriptResearchJobId}
-                          onChange={(e) => setSelectedScriptResearchJobId(e.target.value)}
-                          disabled={scriptModalSubmitting}
-                          style={{
-                            width: "100%",
-                            borderRadius: 10,
-                            border: "1px solid #334155",
-                            backgroundColor: "#020617",
-                            color: "#e2e8f0",
-                            padding: "10px 12px",
-                            fontSize: 14,
-                            boxSizing: "border-box",
-                          }}
-                        >
-                          {scriptResearchRuns.map((run) => {
-                            const timestamp = new Date(run.createdAt).toLocaleString("en-US", {
-                              month: "short",
-                              day: "numeric",
-                              hour: "numeric",
-                              minute: "2-digit",
-                              hour12: true,
-                            });
-                            return (
-                              <option key={run.jobId} value={run.jobId}>
-                                {timestamp}
-                                {run.runId ? ` • Run ${run.runId}` : ""}
-                              </option>
-                            );
-                          })}
-                        </select>
-                        {selectedScriptResearchJobId && (
-                          <div style={{ marginTop: 8 }}>
-                            <p style={{ margin: 0, color: "#94a3b8", fontSize: 12 }}>
-                              Selected analysis job: {selectedScriptResearchJobId}
-                            </p>
-                            {selectedScriptResearchRun?.runId && (
-                              <p style={{ margin: "4px 0 0 0", color: "#94a3b8", fontSize: 12 }}>
-                                Selected run: {selectedScriptResearchRun.runId}
-                              </p>
-                            )}
+                    </button>
+                    <button onClick={() => void handleChooseGenerateWithAi("research_formula")} disabled={scriptModalSubmitting} className="btn btn-secondary !justify-start px-6 py-4 h-auto group bg-panel/20 border-line/10 hover:border-accent/30 transition-all">
+                      <div className="text-left space-y-1">
+                        <div className="text-[11px] font-mono text-accent uppercase tracking-widest group-hover:text-accent transition-colors">Use_Formula_From_Research</div>
+                        <div className="text-[9px] text-muted uppercase tracking-widest opacity-40">Derive script structure from validated market insights.</div>
+                      </div>
+                    </button>
+                    <button onClick={() => void handleChooseGenerateWithAi("upload_template")} disabled={scriptModalSubmitting} className="btn btn-secondary !justify-start px-6 py-4 h-auto group bg-panel/20 border-line/10 hover:border-accent/30 transition-all">
+                      <div className="text-left space-y-1">
+                        <div className="text-[11px] font-mono text-accent uppercase tracking-widest group-hover:text-accent transition-colors">Upload_Transcript_As_Template</div>
+                        <div className="text-[9px] text-muted uppercase tracking-widest opacity-40">Inject custom baseline for synthesis.</div>
+                      </div>
+                    </button>
+                    <button onClick={() => { setScriptModalMode("upload"); setScriptModalError(null); }} disabled={scriptModalSubmitting} className="btn btn-secondary !justify-start px-6 py-4 h-auto group bg-panel/20 border-line/10 hover:border-accent/30 transition-all">
+                      <div className="text-left space-y-1">
+                        <div className="text-[11px] font-mono text-muted uppercase tracking-widest group-hover:text-white transition-colors">Manual_Script_Initialization</div>
+                        <div className="text-[9px] text-muted uppercase tracking-widest opacity-40">Direct entry of pre-resolved audio assets.</div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              ) : scriptModalMode === "ai" ? (
+                <div className="space-y-6">
+                   <div className="space-y-2">
+                    <span className="text-[10px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Knowledge_Synchronization</span>
+                    <p className="text-[12px] text-white/50 leading-relaxed uppercase tracking-widest">Attach validated research unit to power inference.</p>
+                  </div>
 
-                            {scriptRunSummaryLoading ? (
-                              <p style={{ margin: "10px 0 0 0", color: "#94a3b8", fontSize: 12 }}>
-                                Loading source summary...
-                              </p>
-                            ) : scriptRunSummaryError ? (
-                              <p style={{ margin: "10px 0 0 0", color: "#fca5a5", fontSize: 12 }}>
-                                {scriptRunSummaryError}
-                              </p>
-                            ) : scriptRunSummary ? (
-                              (() => {
-                                const customer = getSourceRowContent(
-                                  scriptRunSummary.customerAnalysis,
-                                  String(scriptRunSummary.customerAnalysis.avatarSummary ?? "")
-                                );
-                                const pattern = getSourceRowContent(
-                                  scriptRunSummary.patternAnalysis,
-                                  ""
-                                );
-                                const productLabel = String(
-                                  scriptRunSummary.productCollection.productName ?? ""
-                                ).trim();
-                                const productDate = scriptRunSummary.productCollection.completedAt
-                                  ? formatMetadataDate(scriptRunSummary.productCollection.completedAt)
-                                  : "";
-                                const product = getSourceRowContent(
-                                  scriptRunSummary.productCollection,
-                                  [productLabel, productDate].filter(Boolean).join(" • ")
-                                );
-                                const rows = [
-                                  { label: "Customer Analysis", value: customer.text, missing: customer.missing },
-                                  { label: "Pattern Analysis", value: pattern.text, missing: pattern.missing },
-                                  { label: "Product Collection", value: product.text, missing: product.missing },
-                                ];
-
+                  {scriptRunsLoading ? (
+                    <div className="p-12 text-center animate-pulse">
+                      <p className="text-[10px] font-mono text-muted uppercase tracking-widest">Querying_Research_Datastore...</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-6">
+                      {scriptResearchRuns.length === 0 ? (
+                        <div className="space-y-4">
+                          <div className="p-4 rounded-card border border-warning/30 bg-warning/5 text-[10px] font-mono text-warning uppercase tracking-widest leading-relaxed">
+                            Zero_Unit_Exception: No validated research data found. Output will be generic.
+                          </div>
+                          <label className="flex items-center gap-3 cursor-pointer group">
+                            <input
+                              type="checkbox"
+                              checked={scriptNoResearchAcknowledged}
+                              onChange={(e) => setScriptNoResearchAcknowledged(e.target.checked)}
+                              disabled={scriptModalSubmitting}
+                              className="accent-accent"
+                            />
+                            <span className="text-[11px] font-mono text-muted group-hover:text-white transition-colors">Acknowledge_Generic_Inference_Mode</span>
+                          </label>
+                        </div>
+                      ) : (
+                        <div className="space-y-6">
+                          <div className="space-y-3">
+                            <span className="text-[9px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Resolved_Research_Runs</span>
+                            <select
+                              value={selectedScriptResearchJobId}
+                              onChange={(e) => setSelectedScriptResearchJobId(e.target.value)}
+                              disabled={scriptModalSubmitting}
+                              className="w-full bg-black/40 border border-line/40 rounded-card px-4 py-3 text-[12px] font-mono text-white/70 focus:border-accent/40 focus:ring-1 focus:ring-accent/20 transition-all cursor-pointer"
+                            >
+                              {scriptResearchRuns.map((run) => {
+                                const timestamp = new Date(run.createdAt).toLocaleString("en-US", {
+                                  month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true
+                                });
                                 return (
-                                  <div
-                                    style={{
-                                      marginTop: 10,
-                                      border: "1px solid #334155",
-                                      borderRadius: 10,
-                                      backgroundColor: "#0b1220",
-                                      padding: "8px 10px",
-                                    }}
-                                  >
-                                    {rows.map((row) => (
-                                      <div
-                                        key={row.label}
-                                        style={{
-                                          display: "flex",
-                                          alignItems: "flex-start",
-                                          justifyContent: "space-between",
-                                          gap: 12,
-                                          padding: "6px 0",
-                                          borderBottom: row.label === "Product Collection" ? "none" : "1px solid #1e293b",
-                                        }}
-                                      >
-                                        <span style={{ color: "#cbd5e1", fontSize: 12, fontWeight: 600 }}>
-                                          {row.label}
-                                        </span>
-                                        <span
-                                          style={{
-                                            color: row.missing ? "#fde68a" : "#94a3b8",
-                                            fontSize: 12,
-                                            textAlign: "right",
-                                          }}
-                                        >
-                                          {row.missing ? `Warning: ${row.value}` : row.value}
+                                  <option key={run.jobId} value={run.jobId} className="bg-bg">
+                                    {timestamp} {run.runId ? ` • RUN_${run.runId}` : ""}
+                                  </option>
+                                );
+                              })}
+                            </select>
+                          </div>
+
+                          {selectedScriptResearchJobId && (
+                            <div className="space-y-4">
+                              <div className="flex flex-col gap-1 px-2">
+                                <span className="text-[9px] font-mono text-muted uppercase tracking-widest opacity-40">Job_Ref: {selectedScriptResearchJobId}</span>
+                                {selectedScriptResearchRun?.runId && (
+                                  <span className="text-[9px] font-mono text-muted uppercase tracking-widest opacity-40">Run_Ref: {selectedScriptResearchRun.runId}</span>
+                                )}
+                              </div>
+
+                              {scriptRunSummaryLoading ? (
+                                <p className="text-[10px] font-mono text-muted uppercase tracking-widest px-2 animate-pulse">Syncing_Source_Manifest...</p>
+                              ) : scriptRunSummaryError ? (
+                                <div className="p-4 rounded-card border border-danger/30 bg-danger/5 text-[10px] font-mono text-danger uppercase tracking-widest">Manifest_Sync_Error: {scriptRunSummaryError}</div>
+                              ) : scriptRunSummary ? (
+                                <div className="rounded-card border border-line/10 bg-panel/30 overflow-hidden divide-y divide-line/10">
+                                  {(() => {
+                                    const customer = getSourceRowContent(scriptRunSummary.customerAnalysis, String(scriptRunSummary.customerAnalysis.avatarSummary ?? ""));
+                                    const pattern = getSourceRowContent(scriptRunSummary.patternAnalysis, "");
+                                    const productLabel = String(scriptRunSummary.productCollection.productName ?? "").trim();
+                                    const product = getSourceRowContent(scriptRunSummary.productCollection, [productLabel, scriptRunSummary.productCollection.completedAt ? formatMetadataDate(scriptRunSummary.productCollection.completedAt) : ""].filter(Boolean).join(" • "));
+                                    
+                                    return [
+                                      { label: "Customer_Analysis", value: customer.text, missing: customer.missing },
+                                      { label: "Pattern_Analysis", value: pattern.text, missing: pattern.missing },
+                                      { label: "Product_Intelligence", value: product.text, missing: product.missing },
+                                    ].map((row) => (
+                                      <div key={row.label} className="px-5 py-3 flex items-start justify-between gap-6 hover:bg-panel/5 transition-colors">
+                                        <span className="text-[10px] font-mono text-muted font-bold uppercase tracking-widest opacity-60 shrink-0">{row.label}</span>
+                                        <span className={`text-[10px] font-mono text-right leading-relaxed ${row.missing ? 'text-warning' : 'text-accent-2'}`}>
+                                          {row.missing ? row.value : row.value}
                                         </span>
                                       </div>
-                                    ))}
-                                  </div>
-                                );
-                              })()
-                            ) : null}
-                          </div>
-                        )}
-
-                        <div
-                          style={{
-                            marginTop: 10,
-                            border: "1px solid #334155",
-                            borderRadius: 10,
-                            backgroundColor: "#0b1220",
-                            padding: "10px 12px",
-                          }}
-                        >
-                          <p style={{ margin: "0 0 8px 0", color: "#cbd5e1", fontSize: 12, fontWeight: 600 }}>
-                            Script Strategy
-                          </p>
-                          <label
-                            style={{ display: "flex", alignItems: "center", gap: 8, color: "#e2e8f0", fontSize: 13 }}
-                          >
-                            <input
-                              type="radio"
-                              name="script-strategy"
-                              value="swipe_template"
-                              checked={scriptGenerationStrategy === "swipe_template"}
-                              onChange={() => setScriptGenerationStrategy("swipe_template")}
-                              disabled={scriptModalSubmitting}
-                            />
-                            Select ad template from swipe
-                          </label>
-                          <label
-                            style={{ display: "flex", alignItems: "center", gap: 8, color: "#e2e8f0", fontSize: 13, marginTop: 6 }}
-                          >
-                            <input
-                              type="radio"
-                              name="script-strategy"
-                              value="research_formula"
-                              checked={scriptGenerationStrategy === "research_formula"}
-                              onChange={() => setScriptGenerationStrategy("research_formula")}
-                              disabled={scriptModalSubmitting}
-                            />
-                            Use formula from research
-                          </label>
-                          <label
-                            style={{ display: "flex", alignItems: "center", gap: 8, color: "#e2e8f0", fontSize: 13, marginTop: 6 }}
-                          >
-                            <input
-                              type="radio"
-                              name="script-strategy"
-                              value="upload_template"
-                              checked={scriptGenerationStrategy === "upload_template"}
-                              onChange={() => setScriptGenerationStrategy("upload_template")}
-                              disabled={scriptModalSubmitting}
-                            />
-                            Upload transcript as template
-                          </label>
-                          <label
-                            style={{ display: "flex", alignItems: "center", gap: 8, color: "#e2e8f0", fontSize: 13, marginTop: 6 }}
-                          >
-                            <input
-                              type="radio"
-                              name="script-strategy"
-                              value="manual_create"
-                              checked={false}
-                              onChange={() => {
-                                if (scriptModalSubmitting) return;
-                                setScriptModalMode("upload");
-                                setScriptModalError(null);
-                              }}
-                              disabled={scriptModalSubmitting}
-                            />
-                            Manually create script
-                          </label>
-
-                          {scriptGenerationStrategy === "swipe_template" && (
-                            <div style={{ marginTop: 10 }}>
-                              {(() => {
-                                const recommendation = scriptRunSummary?.swipeRecommendation;
-                                const candidates = recommendation?.candidates ?? [];
-                                if (candidates.length === 0) {
-                                  return (
-                                    <p style={{ margin: 0, color: "#fde68a", fontSize: 12 }}>
-                                      No swipe-eligible ads found. Ads need a transcript to use as a script template.
-                                    </p>
-                                  );
-                                }
-                                return (
-                                  <>
-                                    <p style={{ margin: "0 0 6px 0", color: "#94a3b8", fontSize: 12 }}>
-                                      Recommended by engagement metrics. Only ads that passed quality assessment are shown.
-                                    </p>
-                                    {recommendation?.sourceMode === "run_ad" ? (
-                                      <p style={{ margin: "0 0 8px 0", color: "#fde68a", fontSize: 12 }}>
-                                        No explicit swipe-file templates were found in this run. Showing top quality-passed ads from this run as template candidates.
-                                      </p>
-                                    ) : null}
-                                    <select
-                                      value={selectedSwipeTemplateAdId}
-                                      onChange={(e) => setSelectedSwipeTemplateAdId(e.target.value)}
-                                      disabled={scriptModalSubmitting}
-                                      style={{
-                                        width: "100%",
-                                        borderRadius: 8,
-                                        border: "1px solid #334155",
-                                        backgroundColor: "#020617",
-                                        color: "#e2e8f0",
-                                        padding: "8px 10px",
-                                        fontSize: 12,
-                                        boxSizing: "border-box",
-                                      }}
-                                    >
-                                      {candidates.map((candidate) => {
-                                        const labelTitle = (candidate.title || "Untitled ad").slice(0, 80);
-                                        return (
-                                          <option key={candidate.assetId} value={candidate.assetId}>
-                                            {recommendation?.recommendedAdId === candidate.assetId
-                                              ? "★ "
-                                              : ""}
-                                            {labelTitle} · score {candidate.score.toFixed(3)}
-                                          </option>
-                                        );
-                                      })}
-                                    </select>
-                                    {scriptGenerationStrategy === "swipe_template" &&
-                                      (() => {
-                                        const active = selectedSwipeCandidate;
-                                        if (!active) return null;
-                                        return (
-                                          <div
-                                            style={{
-                                              marginTop: 8,
-                                              border: "1px solid #334155",
-                                              borderRadius: 10,
-                                              backgroundColor: "#020617",
-                                              padding: "10px 12px",
-                                            }}
-                                          >
-                                            <p style={{ margin: 0, color: "#cbd5e1", fontSize: 12, fontWeight: 700 }}>
-                                              Selected Swipe Preview
-                                            </p>
-                                            <p style={{ margin: "6px 0 0 0", color: "#94a3b8", fontSize: 12 }}>
-                                              {active.reasons.join(" · ")}
-                                            </p>
-                                            <div
-                                              style={{
-                                                marginTop: 8,
-                                                display: "grid",
-                                                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                                                gap: 8,
-                                              }}
-                                            >
-                                              <div style={{ color: "#e2e8f0", fontSize: 12 }}>
-                                                <span style={{ color: "#94a3b8" }}>Score:</span>{" "}
-                                                {formatSwipeMetricNumber(active.score, 4)}
-                                              </div>
-                                              <div style={{ color: "#e2e8f0", fontSize: 12 }}>
-                                                <span style={{ color: "#94a3b8" }}>Engagement:</span>{" "}
-                                                {formatSwipeMetricNumber(active.metrics.engagementScore)}
-                                              </div>
-                                              <div style={{ color: "#e2e8f0", fontSize: 12 }}>
-                                                <span style={{ color: "#94a3b8" }}>3s retention:</span>{" "}
-                                                {formatSwipeMetricPercent(active.metrics.retention3s)}
-                                              </div>
-                                              <div style={{ color: "#e2e8f0", fontSize: 12 }}>
-                                                <span style={{ color: "#94a3b8" }}>10s retention:</span>{" "}
-                                                {formatSwipeMetricPercent(active.metrics.retention10s)}
-                                              </div>
-                                              <div style={{ color: "#e2e8f0", fontSize: 12 }}>
-                                                <span style={{ color: "#94a3b8" }}>CTR:</span>{" "}
-                                                {formatSwipeMetricPercent(active.metrics.ctr, 2)}
-                                              </div>
-                                              <div style={{ color: "#e2e8f0", fontSize: 12 }}>
-                                                <span style={{ color: "#94a3b8" }}>Views:</span>{" "}
-                                                {active.metrics.views !== null
-                                                  ? Math.round(active.metrics.views).toLocaleString()
-                                                  : "—"}
-                                              </div>
-                                            </div>
-                                            {active.transcriptSnippet ? (
-                                              <div style={{ marginTop: 8 }}>
-                                                <p
-                                                  style={{
-                                                    margin: "0 0 4px 0",
-                                                    color: "#94a3b8",
-                                                    fontSize: 11,
-                                                    fontWeight: 600,
-                                                  }}
-                                                >
-                                                  Transcript
-                                                </p>
-                                                <p style={{ margin: 0, color: "#e2e8f0", fontSize: 12, lineHeight: 1.4 }}>
-                                                  {active.transcriptSnippet}
-                                                </p>
-                                              </div>
-                                            ) : null}
-                                            <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", gap: 8 }}>
-                                              <span style={{ color: "#64748b", fontSize: 11 }}>
-                                                Asset ID: {active.assetId.slice(0, 8)}...
-                                              </span>
-                                              {active.sourceUrl ? (
-                                                <a
-                                                  href={active.sourceUrl}
-                                                  target="_blank"
-                                                  rel="noreferrer"
-                                                  style={{ color: "#38bdf8", fontSize: 11, textDecoration: "none" }}
-                                                >
-                                                  Open source video
-                                                </a>
-                                              ) : null}
-                                            </div>
-                                          </div>
-                                        );
-                                      })()}
-                                  </>
-                                );
-                              })()}
-                            </div>
-                          )}
-
-                          {scriptGenerationStrategy === "upload_template" && (
-                            <div
-                              style={{
-                                marginTop: 10,
-                                border: "1px solid #334155",
-                                borderRadius: 10,
-                                backgroundColor: "#020617",
-                                padding: "10px 12px",
-                              }}
-                            >
-                              <p style={{ margin: 0, color: "#cbd5e1", fontSize: 12, fontWeight: 700 }}>
-                                Upload Transcript as Template
-                              </p>
-                              <p style={{ margin: "6px 0 8px 0", color: "#94a3b8", fontSize: 12 }}>
-                                Add your own transcript and use it as the template for this run.
-                              </p>
-                              <input
-                                type="text"
-                                value={manualSwipeTemplateTitle}
-                                onChange={(e) => setManualSwipeTemplateTitle(e.target.value)}
-                                placeholder="Template title (optional)"
-                                disabled={scriptModalSubmitting || manualSwipeTemplateUploading}
-                                style={{
-                                  width: "100%",
-                                  borderRadius: 8,
-                                  border: "1px solid #334155",
-                                  backgroundColor: "#0b1220",
-                                  color: "#e2e8f0",
-                                  padding: "8px 10px",
-                                  fontSize: 12,
-                                  boxSizing: "border-box",
-                                }}
-                              />
-                              <textarea
-                                value={manualSwipeTemplateTranscript}
-                                onChange={(e) => setManualSwipeTemplateTranscript(e.target.value)}
-                                placeholder="Paste transcript (minimum 100 characters)"
-                                rows={4}
-                                disabled={scriptModalSubmitting || manualSwipeTemplateUploading}
-                                style={{
-                                  marginTop: 8,
-                                  width: "100%",
-                                  borderRadius: 8,
-                                  border: "1px solid #334155",
-                                  backgroundColor: "#0b1220",
-                                  color: "#e2e8f0",
-                                  padding: "8px 10px",
-                                  fontSize: 12,
-                                  boxSizing: "border-box",
-                                  resize: "vertical",
-                                }}
-                              />
-                              <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", gap: 8 }}>
-                                <span style={{ color: "#64748b", fontSize: 11 }}>
-                                  {manualSwipeTemplateTranscript.trim().length} chars
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => void handleUploadManualSwipeTemplateTranscript()}
-                                  disabled={
-                                    scriptModalSubmitting ||
-                                    manualSwipeTemplateUploading ||
-                                    manualSwipeTemplateTranscript.trim().length < 100 ||
-                                    !selectedScriptResearchRun?.runId
-                                  }
-                                  style={{
-                                    border: "none",
-                                    backgroundColor:
-                                      scriptModalSubmitting ||
-                                      manualSwipeTemplateUploading ||
-                                      manualSwipeTemplateTranscript.trim().length < 100 ||
-                                      !selectedScriptResearchRun?.runId
-                                        ? "#1e293b"
-                                        : "#0ea5e9",
-                                    color:
-                                      scriptModalSubmitting ||
-                                      manualSwipeTemplateUploading ||
-                                      manualSwipeTemplateTranscript.trim().length < 100 ||
-                                      !selectedScriptResearchRun?.runId
-                                        ? "#64748b"
-                                        : "#ffffff",
-                                    padding: "6px 10px",
-                                    borderRadius: 8,
-                                    fontSize: 12,
-                                    fontWeight: 600,
-                                    cursor:
-                                      scriptModalSubmitting ||
-                                      manualSwipeTemplateUploading ||
-                                      manualSwipeTemplateTranscript.trim().length < 100 ||
-                                      !selectedScriptResearchRun?.runId
-                                        ? "not-allowed"
-                                        : "pointer",
-                                  }}
-                                >
-                                  {manualSwipeTemplateUploading ? "Uploading..." : "Add Template"}
-                                </button>
-                              </div>
-                            </div>
-                          )}
-
-                          {scriptGenerationStrategy === "research_formula" && (
-                            <div
-                              style={{
-                                marginTop: 10,
-                                border: "1px solid #334155",
-                                borderRadius: 10,
-                                backgroundColor: "#020617",
-                                padding: "10px 12px",
-                              }}
-                            >
-                              <p style={{ margin: 0, color: "#cbd5e1", fontSize: 12, fontWeight: 700 }}>
-                                Formula Preview
-                              </p>
-                              {scriptRunSummary?.patternAnalysis?.formulaSummary ? (
-                                <div style={{ marginTop: 8 }}>
-                                  <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: 11, fontWeight: 600 }}>
-                                    Transfer Formula
-                                  </p>
-                                  <p style={{ margin: 0, color: "#e2e8f0", fontSize: 12, lineHeight: 1.45 }}>
-                                    {scriptRunSummary.patternAnalysis.formulaSummary}
-                                  </p>
+                                    ));
+                                  })()}
                                 </div>
-                              ) : null}
-                              {scriptRunSummary?.patternAnalysis?.formulaDetails ? (
-                                <div style={{ marginTop: 8 }}>
-                                  <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: 11, fontWeight: 600 }}>
-                                    Formula Label
-                                  </p>
-                                  <p style={{ margin: 0, color: "#e2e8f0", fontSize: 12, lineHeight: 1.45 }}>
-                                    {scriptRunSummary.patternAnalysis.formulaDetails.label || "Not provided"}
-                                  </p>
-                                  {scriptRunSummary.patternAnalysis.formulaDetails.components.length > 0 ? (
-                                    <div style={{ marginTop: 6, display: "grid", gap: 6 }}>
-                                      {scriptRunSummary.patternAnalysis.formulaDetails.components.map((component, idx) => (
-                                        <div key={`${component.name}-${idx}`} style={{ fontSize: 12, color: "#cbd5e1" }}>
-                                          <p style={{ margin: 0, color: "#e2e8f0", fontWeight: 600 }}>
-                                            {component.name || `Component ${idx + 1}`}
-                                          </p>
-                                          <p style={{ margin: "2px 0 0 0", color: "#cbd5e1", lineHeight: 1.4 }}>
-                                            {component.executionBrief || "No execution brief provided."}
-                                          </p>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  ) : null}
-                                </div>
-                              ) : null}
-                              {scriptRunSummary?.patternAnalysis?.psychologicalMechanism ? (
-                                <div style={{ marginTop: 8 }}>
-                                  <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: 11, fontWeight: 600 }}>
-                                    Psychological Mechanism
-                                  </p>
-                                  <p style={{ margin: 0, color: "#e2e8f0", fontSize: 12, lineHeight: 1.45 }}>
-                                    {scriptRunSummary.patternAnalysis.psychologicalMechanism}
-                                  </p>
-                                </div>
-                              ) : null}
-                              {scriptRunSummary?.patternAnalysis?.psychologicalMechanismDetails ? (
-                                <div style={{ marginTop: 8 }}>
-                                  <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: 11, fontWeight: 600 }}>
-                                    Mechanism Label
-                                  </p>
-                                  <p style={{ margin: 0, color: "#e2e8f0", fontSize: 12, lineHeight: 1.45 }}>
-                                    {scriptRunSummary.patternAnalysis.psychologicalMechanismDetails.label || "Not provided"}
-                                  </p>
-                                  <p style={{ margin: "4px 0 0 0", color: "#cbd5e1", fontSize: 12, lineHeight: 1.45 }}>
-                                    {scriptRunSummary.patternAnalysis.psychologicalMechanismDetails.executionBrief ||
-                                      "No execution brief provided."}
-                                  </p>
-                                </div>
-                              ) : null}
-                              {scriptRunSummary?.patternAnalysis?.summary ? (
-                                <div style={{ marginTop: 8 }}>
-                                  <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: 11, fontWeight: 600 }}>
-                                    Pattern Summary
-                                  </p>
-                                  <p style={{ margin: 0, color: "#cbd5e1", fontSize: 12, lineHeight: 1.45 }}>
-                                    {scriptRunSummary.patternAnalysis.summary}
-                                  </p>
-                                </div>
-                              ) : null}
-                              {!scriptRunSummary?.patternAnalysis?.formulaSummary &&
-                              !scriptRunSummary?.patternAnalysis?.formulaDetails &&
-                              !scriptRunSummary?.patternAnalysis?.psychologicalMechanism &&
-                              !scriptRunSummary?.patternAnalysis?.psychologicalMechanismDetails &&
-                              !scriptRunSummary?.patternAnalysis?.summary ? (
-                                <p style={{ margin: "8px 0 0 0", color: "#fde68a", fontSize: 12 }}>
-                                  No formula details were found for this run. Pattern Analysis may need to be rerun.
-                                </p>
                               ) : null}
                             </div>
                           )}
                         </div>
-                      </>
-                    )}
-                  </div>
-                )}
-                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12 }}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (scriptModalSubmitting) return;
-                      setScriptModalMode("choose");
-                      setScriptModalError(null);
-                    }}
-                    style={{
-                      border: "1px solid #334155",
-                      backgroundColor: "#0b1220",
-                      color: "#cbd5e1",
-                      padding: "8px 12px",
-                      borderRadius: 8,
-                      cursor: scriptModalSubmitting ? "not-allowed" : "pointer",
-                    }}
-                  >
-                    Back
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleGenerateScriptWithAi}
-                    disabled={scriptGenerateDisabled}
-                    style={{
-                      border: "none",
-                      backgroundColor: scriptGenerateDisabled ? "#1e293b" : "#0ea5e9",
-                      color: scriptGenerateDisabled ? "#64748b" : "#ffffff",
-                      padding: "8px 14px",
-                      borderRadius: 8,
-                      fontWeight: 600,
-                      cursor: scriptGenerateDisabled ? "not-allowed" : "pointer",
-                    }}
-                  >
-                    {scriptModalSubmitting
-                      ? "Starting AI generation..."
-                      : scriptGenerationStrategy === "upload_template"
-                        ? "Generate from Uploaded Template"
-                        : scriptGenerationStrategy === "swipe_template"
-                        ? "Generate from Swipe Template"
-                        : "Generate from Research Formula"}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div>
-                <div
-                  style={{
-                    marginBottom: 12,
-                    border: "1px solid #334155",
-                    borderRadius: 10,
-                    backgroundColor: "#0b1220",
-                    padding: "10px 12px",
-                  }}
-                >
-                  <p style={{ margin: "0 0 8px 0", color: "#cbd5e1", fontSize: 12, fontWeight: 600 }}>
-                    Script Strategy
-                  </p>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8, color: "#e2e8f0", fontSize: 13 }}>
-                    <input
-                      type="radio"
-                      name="script-strategy-upload-mode"
-                      checked={false}
-                      onChange={() => void handleChooseGenerateWithAi("swipe_template")}
-                      disabled={scriptModalSubmitting}
-                    />
-                    Select ad template from swipe
-                  </label>
-                  <label
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      color: "#e2e8f0",
-                      fontSize: 13,
-                      marginTop: 6,
-                    }}
-                  >
-                    <input
-                      type="radio"
-                      name="script-strategy-upload-mode"
-                      checked={false}
-                      onChange={() => void handleChooseGenerateWithAi("research_formula")}
-                      disabled={scriptModalSubmitting}
-                    />
-                    Use formula from research
-                  </label>
-                  <label
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      color: "#e2e8f0",
-                      fontSize: 13,
-                      marginTop: 6,
-                    }}
-                  >
-                    <input
-                      type="radio"
-                      name="script-strategy-upload-mode"
-                      checked={false}
-                      onChange={() => void handleChooseGenerateWithAi("upload_template")}
-                      disabled={scriptModalSubmitting}
-                    />
-                    Upload transcript as template
-                  </label>
-                  <label
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      color: "#e2e8f0",
-                      fontSize: 13,
-                      marginTop: 6,
-                    }}
-                  >
-                    <input
-                      type="radio"
-                      name="script-strategy-upload-mode"
-                      checked
-                      readOnly
-                    />
-                    Manually create script
-                  </label>
-                </div>
-                <p style={{ margin: "0 0 12px 0", color: "#cbd5e1", fontSize: 14 }}>
-                  Paste your script below. This bypasses AI generation and saves your text directly.
-                </p>
-                <textarea
-                  value={scriptUploadText}
-                  onChange={(e) => setScriptUploadText(e.target.value)}
-                  onBlur={(e) => setScriptUploadText(e.target.value)}
-                  disabled={scriptModalSubmitting}
-                  placeholder="Paste your script text here..."
-                  rows={10}
-                  style={{
-                    width: "100%",
-                    borderRadius: 10,
-                    border: "1px solid #334155",
-                    backgroundColor: "#020617",
-                    color: "#e2e8f0",
-                    padding: 12,
-                    fontSize: 14,
-                    resize: "vertical",
-                    boxSizing: "border-box",
-                  }}
-                />
-                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12 }}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (scriptModalSubmitting) return;
-                      setScriptModalMode("choose");
-                      setScriptModalError(null);
-                    }}
-                    style={{
-                      border: "1px solid #334155",
-                      backgroundColor: "#0b1220",
-                      color: "#cbd5e1",
-                      padding: "8px 12px",
-                      borderRadius: 8,
-                      cursor: scriptModalSubmitting ? "not-allowed" : "pointer",
-                    }}
-                  >
-                    Back
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleUploadScript}
-                    disabled={scriptModalSubmitting}
-                    style={{
-                      border: "none",
-                      backgroundColor: scriptModalSubmitting ? "#1e293b" : "#0ea5e9",
-                      color: scriptModalSubmitting ? "#64748b" : "#ffffff",
-                      padding: "8px 14px",
-                      borderRadius: 8,
-                      fontWeight: 600,
-                      cursor: scriptModalSubmitting ? "not-allowed" : "pointer",
-                    }}
-                  >
-                    {scriptModalSubmitting ? "Uploading..." : "Upload Script"}
-                  </button>
-                </div>
-              </div>
-            )}
+                      )}
 
-            {scriptModalError && (
-              <p style={{ margin: "12px 0 0 0", color: "#fca5a5", fontSize: 13 }}>{scriptModalError}</p>
-            )}
+                      <div className="space-y-4 pt-6 border-t border-line/10">
+                         <span className="text-[10px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Synthesis_Strategy</span>
+                         <div className="grid grid-cols-1 gap-3">
+                           {[
+                             { id: 'swipe_template', label: 'Swipe_Inference', sub: 'Match proven creative structures.' },
+                             { id: 'research_formula', label: 'Formulaic_Synthesis', sub: 'Direct mapping from insights.' },
+                             { id: 'upload_template', label: 'Manual_Baseline', sub: 'Inject custom transcript logic.' },
+                           ].map((strategy) => (
+                             <label key={strategy.id} className={`flex items-start gap-4 p-4 rounded-card border transition-all cursor-pointer ${scriptGenerationStrategy === strategy.id ? 'border-accent bg-accent/5' : 'border-line/10 bg-panel/10 hover:border-line/30'}`}>
+                               <input
+                                 type="radio"
+                                 name="script-strategy"
+                                 value={strategy.id}
+                                 checked={scriptGenerationStrategy === strategy.id}
+                                 onChange={() => setScriptGenerationStrategy(strategy.id as any)}
+                                 disabled={scriptModalSubmitting}
+                                 className="mt-1 accent-accent"
+                               />
+                               <div className="space-y-1">
+                                 <div className={`text-[11px] font-mono font-bold uppercase tracking-widest ${scriptGenerationStrategy === strategy.id ? 'text-accent' : 'text-white/70'}`}>{strategy.label}</div>
+                                 <div className="text-[9px] text-muted uppercase tracking-widest opacity-40">{strategy.sub}</div>
+                               </div>
+                             </label>
+                           ))}
+                         </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-8">
+                  <div className="space-y-2">
+                    <span className="text-[10px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Manual_Entry_Interface</span>
+                    <p className="text-[12px] text-white/50 leading-relaxed uppercase tracking-widest">Bypass AI synthesis and commit audio directives directly.</p>
+                  </div>
+                  <textarea
+                    value={scriptUploadText}
+                    onChange={(e) => setScriptUploadText(e.target.value)}
+                    disabled={scriptModalSubmitting}
+                    placeholder="Enter audio directives here..."
+                    className="w-full bg-black/40 border border-line/40 rounded-card p-6 text-[13px] font-mono text-white/70 focus:border-accent/40 focus:ring-1 focus:ring-accent/20 transition-all min-h-[300px] leading-relaxed placeholder:opacity-20"
+                  />
+                </div>
+              )}
+            </div>
+            
+            <div className="px-8 py-6 bg-panel/50 border-t border-line/10 flex items-center justify-between">
+              <button
+                onClick={() => {
+                  if (scriptModalSubmitting) return;
+                  if (scriptModalMode === "choose") { setShowScriptModal(false); resetScriptModal(); }
+                  else { setScriptModalMode("choose"); setScriptModalError(null); }
+                }}
+                className="btn btn-secondary !min-h-[40px] px-8 text-[10px] uppercase font-bold tracking-widest"
+              >
+                {scriptModalMode === "choose" ? "Dismiss" : "Return"}
+              </button>
+              <button
+                onClick={scriptModalMode === "upload" ? handleUploadScript : () => {
+                   if (scriptModalMode === "choose") { /* handled in button grid */ } else { handleGenerateScriptWithAi(); }
+                }}
+                disabled={scriptModalSubmitting}
+                className="btn btn-primary !min-h-[40px] px-10 text-[10px] uppercase font-bold tracking-widest"
+              >
+                {scriptModalSubmitting ? "Orchestrating..." : scriptModalMode === "upload" ? "Commit_Script" : "Execute_Inference"}
+              </button>
+            </div>
           </div>
         </div>
       )}
 
       {showStoryboardModal && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            backgroundColor: "rgba(2, 6, 23, 0.75)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1000,
-            padding: 16,
-          }}
-        >
-          <div
-            style={{
-              width: "100%",
-              maxWidth: 560,
-              backgroundColor: "#0f172a",
-              border: "1px solid #334155",
-              borderRadius: 12,
-              padding: 20,
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: "#f8fafc" }}>Create Storyboard</h3>
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 bg-black/80 backdrop-blur-sm animate-in fade-in duration-300" onClick={() => { if (!storyboardModalSubmitting) { setShowStoryboardModal(false); setStoryboardModalMode("choose"); setManualStoryboardPanels([]); } }}>
+          <div className="w-full max-w-2xl bg-bg border border-line rounded-card overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300 max-h-[95vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="px-6 py-4 bg-panel/50 border-b border-line/10 flex items-center justify-between">
+              <span className="text-[11px] font-mono text-accent font-bold uppercase tracking-widest">Sequence_Manifest_Orchestrator</span>
               <button
-                type="button"
-                onClick={() => {
-                  if (storyboardModalSubmitting) return;
-                  setShowStoryboardModal(false);
-                  setStoryboardModalMode("choose");
-                  setManualStoryboardPanels([]);
-                  setStoryboardModalError(null);
-                }}
-                style={{
-                  border: "none",
-                  background: "transparent",
-                  color: "#94a3b8",
-                  cursor: storyboardModalSubmitting ? "not-allowed" : "pointer",
-                  fontSize: 18,
-                  lineHeight: 1,
-                }}
+                onClick={() => { if (!storyboardModalSubmitting) { setShowStoryboardModal(false); setStoryboardModalMode("choose"); setManualStoryboardPanels([]); } }}
+                className="text-muted hover:text-white transition-colors text-xl font-mono"
               >
                 ×
               </button>
             </div>
-
-            {storyboardModalMode === "choose" ? (
-              <>
-                <p style={{ margin: "0 0 16px 0", color: "#cbd5e1", fontSize: 14 }}>
-                  Choose how you want to create this storyboard.
-                </p>
-
-                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                  <button
-                    type="button"
-                    onClick={() => void handleGenerateStoryboardWithMode("ai")}
-                    disabled={storyboardModalSubmitting}
-                    style={{
-                      width: "100%",
-                      textAlign: "left",
-                      padding: "12px 14px",
-                      borderRadius: 10,
-                      border: "1px solid #334155",
-                      backgroundColor: "#1e293b",
-                      color: "#f8fafc",
-                      fontSize: 14,
-                      fontWeight: 600,
-                      cursor: storyboardModalSubmitting ? "not-allowed" : "pointer",
-                    }}
-                  >
-                    Generate Storyboard (AI)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void openManualStoryboardBuilder()}
-                    disabled={storyboardModalSubmitting}
-                    style={{
-                      width: "100%",
-                      textAlign: "left",
-                      padding: "12px 14px",
-                      borderRadius: 10,
-                      border: "1px solid #334155",
-                      backgroundColor: "#0b1220",
-                      color: "#e2e8f0",
-                      fontSize: 14,
-                      fontWeight: 600,
-                      cursor: storyboardModalSubmitting ? "not-allowed" : "pointer",
-                    }}
-                  >
-                    Manual Storyboard
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <p style={{ margin: "0 0 12px 0", color: "#cbd5e1", fontSize: 14 }}>
-                  Fill each panel manually using the script VO as fixed reference.
-                </p>
-                <div style={{ maxHeight: "55vh", overflowY: "auto", display: "grid", gap: 10, paddingRight: 2 }}>
-                  {manualStoryboardPanels.map((panel, index) => (
-                    <div
-                      key={`manual-storyboard-panel-${index}`}
-                      style={{
-                        borderRadius: 10,
-                        border: "1px solid #334155",
-                        backgroundColor: "#0b1220",
-                        padding: 10,
-                        display: "grid",
-                        gap: 8,
-                      }}
-                    >
-                      <div style={{ color: "#e2e8f0", fontSize: 13, fontWeight: 700 }}>
-                        {panel.beatLabel} {panel.startTime || panel.endTime ? `(${panel.startTime}-${panel.endTime})` : ""}
-                      </div>
-                      <div>
-                          <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>VO (from script)</div>
-                          <textarea
-                            readOnly
-                            value={panel.vo ?? ""}
-                            rows={2}
-                            style={{
-                              width: "100%",
-                              boxSizing: "border-box",
-                              borderRadius: 8,
-                              border: "1px solid #1e293b",
-                              backgroundColor: "#020617",
-                              color: "#94a3b8",
-                              padding: 8,
-                              fontSize: 12,
-                              resize: "vertical",
-                            }}
-                          />
-                      </div>
-                      <div>
-                        <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>creatorAction</div>
-                        <textarea
-                          value={panel.creatorAction}
-                          onChange={(e) =>
-                            updateManualStoryboardPanel(
-                              index,
-                              "creatorAction",
-                              e.target.value,
-                            )
-                          }
-                          onBlur={(e) =>
-                            updateManualStoryboardPanel(
-                              index,
-                              "creatorAction",
-                              enforceBlankLineBetweenTextLines(e.target.value),
-                            )
-                          }
-                          rows={2}
-                          style={{
-                            width: "100%",
-                            boxSizing: "border-box",
-                            borderRadius: 8,
-                            border: "1px solid #334155",
-                            backgroundColor: "#0f172a",
-                            color: "#e2e8f0",
-                            padding: 8,
-                            fontSize: 12,
-                            resize: "vertical",
-                          }}
-                        />
-                      </div>
-                      <div>
-                        <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>textOverlay</div>
-                        <input
-                          value={panel.textOverlay}
-                          onChange={(e) => updateManualStoryboardPanel(index, "textOverlay", e.target.value)}
-                          onBlur={(e) =>
-                            updateManualStoryboardPanel(
-                              index,
-                              "textOverlay",
-                              normalizeSingleLineText(e.target.value),
-                            )
-                          }
-                          placeholder='COPY (0s-3s)'
-                          style={{
-                            width: "100%",
-                            boxSizing: "border-box",
-                            borderRadius: 8,
-                            border: "1px solid #334155",
-                            backgroundColor: "#0f172a",
-                            color: "#e2e8f0",
-                            padding: 8,
-                            fontSize: 12,
-                          }}
-                        />
-                      </div>
-                      <div>
-                        <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>visualDescription</div>
-                        <textarea
-                          value={panel.visualDescription}
-                          onChange={(e) =>
-                            updateManualStoryboardPanel(
-                              index,
-                              "visualDescription",
-                              e.target.value,
-                            )
-                          }
-                          onBlur={(e) =>
-                            updateManualStoryboardPanel(
-                              index,
-                              "visualDescription",
-                              enforceBlankLineBetweenTextLines(e.target.value),
-                            )
-                          }
-                          rows={2}
-                          style={{
-                            width: "100%",
-                            boxSizing: "border-box",
-                            borderRadius: 8,
-                            border: "1px solid #334155",
-                            backgroundColor: "#0f172a",
-                            color: "#e2e8f0",
-                            padding: 8,
-                            fontSize: 12,
-                            resize: "vertical",
-                          }}
-                        />
-                      </div>
-                      <div>
-                        <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>productPlacement</div>
-                        <textarea
-                          value={panel.productPlacement}
-                          onChange={(e) =>
-                            updateManualStoryboardPanel(
-                              index,
-                              "productPlacement",
-                              e.target.value,
-                            )
-                          }
-                          onBlur={(e) =>
-                            updateManualStoryboardPanel(
-                              index,
-                              "productPlacement",
-                              enforceBlankLineBetweenTextLines(e.target.value),
-                            )
-                          }
-                          rows={2}
-                          style={{
-                            width: "100%",
-                            boxSizing: "border-box",
-                            borderRadius: 8,
-                            border: "1px solid #334155",
-                            backgroundColor: "#0f172a",
-                            color: "#e2e8f0",
-                            padding: 8,
-                            fontSize: 12,
-                            resize: "vertical",
-                          }}
-                        />
-                      </div>
+            
+            <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+              {storyboardModalMode === "choose" ? (
+                <div className="grid grid-cols-1 gap-6">
+                   <div className="space-y-2">
+                    <span className="text-[10px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Storyboard Mode</span>
+                    <p className="text-[12px] text-white/50 leading-relaxed uppercase tracking-widest">Choose how you want to build the storyboard.</p>
+                  </div>
+                  <button onClick={() => void handleGenerateStoryboardWithMode("ai")} disabled={storyboardModalSubmitting} className="btn btn-secondary !justify-start px-6 py-6 h-auto group bg-panel/20 border-line/10 hover:border-accent/30 transition-all">
+                    <div className="text-left space-y-1">
+                      <div className="text-[11px] font-mono text-accent-2 uppercase tracking-widest font-bold">AI Storyboard</div>
+                      <div className="text-[9px] text-muted uppercase tracking-widest opacity-40">Generate storyboard frames automatically.</div>
                     </div>
-                  ))}
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12 }}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (storyboardModalSubmitting) return;
-                      setStoryboardModalMode("choose");
-                      setStoryboardModalError(null);
-                    }}
-                    style={{
-                      border: "1px solid #334155",
-                      backgroundColor: "#0b1220",
-                      color: "#cbd5e1",
-                      padding: "8px 12px",
-                      borderRadius: 8,
-                      cursor: storyboardModalSubmitting ? "not-allowed" : "pointer",
-                    }}
-                  >
-                    Back
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleGenerateStoryboardWithMode("manual", manualStoryboardPanels)}
-                    disabled={storyboardModalSubmitting}
-                    style={{
-                      border: "none",
-                      backgroundColor: storyboardModalSubmitting ? "#1e293b" : "#0ea5e9",
-                      color: storyboardModalSubmitting ? "#64748b" : "#ffffff",
-                      padding: "8px 14px",
-                      borderRadius: 8,
-                      fontWeight: 600,
-                      cursor: storyboardModalSubmitting ? "not-allowed" : "pointer",
-                    }}
-                  >
-                    {storyboardModalSubmitting ? "Starting Manual Storyboard..." : "Create Manual Storyboard"}
+                  <button onClick={() => void openManualStoryboardBuilder()} disabled={storyboardModalSubmitting} className="btn btn-secondary !justify-start px-6 py-6 h-auto group bg-panel/20 border-line/10 hover:border-accent/30 transition-all">
+                    <div className="text-left space-y-1">
+                      <div className="text-[11px] font-mono text-white/70 uppercase tracking-widest font-bold">Manual Storyboard</div>
+                      <div className="text-[9px] text-muted uppercase tracking-widest opacity-40">Build storyboard frames and beat mapping by hand.</div>
+                    </div>
                   </button>
                 </div>
-              </>
-            )}
-
-            {storyboardModalError && (
-              <p style={{ margin: "12px 0 0 0", color: "#fca5a5", fontSize: 13 }}>{storyboardModalError}</p>
-            )}
+              ) : (
+                <div className="space-y-8">
+                  <div className="space-y-2">
+                    <span className="text-[10px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Unit_Expansion_Interface</span>
+                    <p className="text-[12px] text-white/50 leading-relaxed uppercase tracking-widest">Synchronize visual metadata with temporal markers.</p>
+                  </div>
+                  <div className="space-y-6">
+                    {manualStoryboardPanels.map((panel, index) => (
+                      <div key={`manual-panel-${index}`} className="rounded-card border border-line bg-panel/20 overflow-hidden divide-y divide-line/10">
+                        <div className="px-5 py-3 bg-panel/50 flex items-center justify-between">
+                          <span className="text-[10px] font-mono text-accent font-bold uppercase tracking-widest">{panel.beatLabel}</span>
+                          <span className="text-[9px] font-mono text-muted opacity-40 uppercase tracking-widest">[{panel.startTime}s - {panel.endTime}s]</span>
+                        </div>
+                        <div className="p-6 space-y-5">
+                          <div className="space-y-2">
+                             <span className="text-[8px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Context_VO</span>
+                             <div className="bg-black/40 p-3 rounded-card text-[11px] font-mono text-muted leading-relaxed line-clamp-2 italic">"{panel.vo}"</div>
+                          </div>
+                          <div className="grid grid-cols-1 gap-4">
+                             <div className="space-y-2">
+                               <span className="text-[8px] font-mono text-accent-2/60 uppercase tracking-[0.2em]">Visual_Directive</span>
+                               <textarea
+                                 value={panel.visualDescription}
+                                 onChange={(e) => updateManualStoryboardPanel(index, "visualDescription", e.target.value)}
+                                 className="w-full bg-black/20 border border-line/20 rounded-card p-3 text-[11px] font-mono text-white/70 min-h-[80px]"
+                                 placeholder="Inference_Directives..."
+                               />
+                             </div>
+                             <div className="grid grid-cols-2 gap-4">
+                               <div className="space-y-2">
+                                  <span className="text-[8px] font-mono text-muted uppercase tracking-[0.2em]">Creator_Action</span>
+                                  <input
+                                    value={panel.creatorAction}
+                                    onChange={(e) => updateManualStoryboardPanel(index, "creatorAction", e.target.value)}
+                                    className="w-full bg-black/20 border border-line/20 rounded-card px-3 py-2 text-[10px] font-mono text-white/70"
+                                  />
+                               </div>
+                               <div className="space-y-2">
+                                  <span className="text-[8px] font-mono text-muted uppercase tracking-[0.2em]">Graphic_Overlay</span>
+                                  <input
+                                    value={panel.textOverlay}
+                                    onChange={(e) => updateManualStoryboardPanel(index, "textOverlay", e.target.value)}
+                                    className="w-full bg-black/20 border border-line/20 rounded-card px-3 py-2 text-[10px] font-mono text-white/70"
+                                  />
+                               </div>
+                             </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            <div className="px-8 py-6 bg-panel/50 border-t border-line/10 flex items-center justify-between">
+              <button
+                onClick={() => {
+                  if (storyboardModalSubmitting) return;
+                  if (storyboardModalMode === "choose") { setShowStoryboardModal(false); }
+                  else { setStoryboardModalMode("choose"); }
+                }}
+                className="btn btn-secondary !min-h-[40px] px-8 text-[10px] uppercase font-bold tracking-widest"
+              >
+                {storyboardModalMode === "choose" ? "Cancel" : "Back_To_Protocol"}
+              </button>
+              <button
+                onClick={() => void handleGenerateStoryboardWithMode(storyboardModalMode === "choose" ? "ai" : "manual", manualStoryboardPanels)}
+                disabled={storyboardModalSubmitting}
+                className={`btn !min-h-[40px] px-10 text-[10px] uppercase font-bold tracking-widest ${storyboardModalMode === "choose" ? 'btn-primary' : 'btn-primary'}`}
+              >
+                {storyboardModalSubmitting ? "Constructing..." : storyboardModalMode === "choose" ? "Automated_Build" : "Commit_Manifest"}
+              </button>
+            </div>
           </div>
         </div>
       )}
 
       {showMissingProductImageWarning && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            backgroundColor: "rgba(2, 6, 23, 0.75)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1000,
-            padding: 16,
-          }}
-        >
-          <div
-            style={{
-              width: "100%",
-              maxWidth: 560,
-              backgroundColor: "#0f172a",
-              border: "1px solid #334155",
-              borderRadius: 12,
-              padding: 20,
-            }}
-          >
-            <h3 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: "#f8fafc" }}>
-              Product Image Missing
-            </h3>
-            <p style={{ margin: "10px 0 0 0", color: "#cbd5e1", fontSize: 14 }}>
-              No product image has been uploaded for this product. Video generation can continue, but quality may be lower without a product reference image.
-            </p>
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 16 }}>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowMissingProductImageWarning(false);
-                  setPendingVideoStep(null);
-                  void router.push(`/projects/${projectId}/products`);
-                }}
-                style={{
-                  border: "1px solid #334155",
-                  backgroundColor: "#0b1220",
-                  color: "#cbd5e1",
-                  padding: "8px 12px",
-                  borderRadius: 8,
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                Go to product setup page
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const step = pendingVideoStep;
-                  setShowMissingProductImageWarning(false);
-                  setPendingVideoStep(null);
-                  if (step) {
-                    void runStep(step);
-                  }
-                }}
-                style={{
-                  border: "none",
-                  backgroundColor: "#0ea5e9",
-                  color: "#ffffff",
-                  padding: "8px 12px",
-                  borderRadius: 8,
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                Generate anyway
-              </button>
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 bg-black/80 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="w-full max-w-md bg-bg border border-danger/30 rounded-card overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300">
+            <div className="px-6 py-4 bg-danger/5 border-b border-danger/10">
+              <span className="text-[11px] font-mono text-danger font-bold uppercase tracking-widest">System_Alert: Asset_Reference_Missing</span>
+            </div>
+            <div className="p-8 space-y-6">
+              <p className="text-[13px] text-white/70 leading-relaxed font-mono uppercase tracking-tight">
+                No primary product reference image detected in cloud storage. Logic suggests inferior synthesis quality without visual anchor.
+              </p>
+              <div className="flex flex-col gap-3 pt-4">
+                <button
+                  onClick={() => { setShowMissingProductImageWarning(false); setPendingVideoStep(null); void router.push(`/projects/${projectId}/products`); }}
+                  className="btn btn-primary !min-h-[44px] text-[10px] uppercase font-bold tracking-widest"
+                >
+                  Return_To_Asset_Configuration
+                </button>
+                <button
+                  onClick={() => { const step = pendingVideoStep; setShowMissingProductImageWarning(false); setPendingVideoStep(null); if (step) { void runStep(step); } }}
+                  className="btn btn-secondary border-danger/20 hover:border-danger/40 !min-h-[44px] text-[10px] uppercase font-bold tracking-widest"
+                >
+                  Proceed_Under_Degraded_Conditions
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      <div className="mt-8 border-t border-slate-800 pt-6">
-        <h2 className="text-lg font-semibold text-slate-200 mb-4">Recent Jobs</h2>
-        <div className="space-y-2">
+      <div className="mt-16 pt-12 border-t border-line/10 space-y-8 pb-12">
+        <div className="flex items-center justify-between gap-4 px-2">
+           <div className="flex items-center gap-4">
+             <span className="text-[11px] font-mono text-accent font-bold uppercase tracking-widest shrink-0">Historical_Protocol_History</span>
+             <div className="h-[1px] w-32 bg-line/20 hidden md:block" />
+             <span className="text-[9px] font-mono text-muted uppercase tracking-widest opacity-40">System_Archive_Log</span>
+           </div>
+           <Link
+             href={`/projects/${projectId}/research-hub`}
+             className="btn btn-secondary !min-h-[32px] px-6 text-[9px] uppercase font-bold tracking-widest text-accent border-accent/20 bg-accent/5 hover:bg-accent/10 transition-colors"
+           >
+             Return_To_Central_Command
+           </Link>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
           {recentCreativeJobs.map((job) => (
-            <div
-              key={job.id}
-              className="flex items-start justify-between gap-4 p-3 rounded-lg bg-slate-900/50 border border-slate-800"
-            >
-              <div className="flex-1">
-                <div className="text-sm font-medium text-slate-200">{getRunJobName(job)}</div>
-                <div className="text-xs text-slate-500">
-                  {new Date(job.updatedAt ?? job.createdAt).toLocaleString()}
-                </div>
-                {isCancelableJob(job) ? (
-                  <div className="mt-2">
-                    <button
-                      type="button"
-                      onClick={() => void cancelJob(job.id)}
-                      disabled={Boolean(cancellingJobIds[job.id])}
-                      className="px-2 py-1 text-xs text-red-300 border border-red-500/40 rounded hover:bg-red-500/10 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {cancellingJobIds[job.id] ? "Cancelling..." : "Cancel"}
-                    </button>
+            <div key={job.id} className="rounded-card border border-line bg-panel/20 p-5 flex flex-col justify-between gap-6 hover:border-accent/30 transition-all group">
+              <div className="space-y-4">
+                <div className="flex items-start justify-between">
+                  <div className="space-y-1">
+                    <div className="text-[12px] font-mono text-white font-bold uppercase tracking-wide group-hover:text-accent transition-colors">{getRunJobName(job)}</div>
+                    <div className="text-[9px] font-mono text-muted uppercase tracking-widest opacity-60">
+                      {new Date(job.updatedAt ?? job.createdAt).toLocaleString()}
+                    </div>
                   </div>
-                ) : null}
+                  <div className={`status-chip !px-3 !py-1 text-[8px] font-bold uppercase tracking-widest ${
+                    job.status === JobStatus.COMPLETED ? 'bg-accent/10 text-accent border-accent/20' :
+                    job.status === JobStatus.FAILED ? 'bg-danger/10 text-danger border-danger/20' :
+                    'bg-accent-2/10 text-accent-2 border-accent-2/20 animate-pulse'
+                  }`}>
+                    {job.status}
+                  </div>
+                </div>
+                <div className="text-[9px] font-mono text-muted/40 uppercase tracking-widest truncate">Ref_{job.id}</div>
               </div>
-              <div
-                className={`px-2 py-1 rounded text-xs ${
-                  job.status === JobStatus.COMPLETED
-                    ? "bg-emerald-500/10 text-emerald-400"
-                    : job.status === JobStatus.FAILED
-                      ? "bg-red-500/10 text-red-400"
-                      : job.status === JobStatus.RUNNING
-                        ? "bg-sky-500/10 text-sky-400"
-                        : "bg-slate-500/10 text-slate-400"
-                }`}
-              >
-                {job.status}
-              </div>
+              
+              {isCancelableJob(job) && (
+                <button
+                  onClick={() => void cancelJob(job.id)}
+                  disabled={Boolean(cancellingJobIds[job.id])}
+                  className="btn btn-danger w-full !min-h-[28px] text-[8px] uppercase font-bold tracking-widest"
+                >
+                  {cancellingJobIds[job.id] ? "Wiping..." : "Abort_Session"}
+                </button>
+              )}
             </div>
           ))}
         </div>
       </div>
 
-      <div style={{ display: "flex", justifyContent: "flex-start" }}>
-        <Link
-          href={`/projects/${projectId}/research-hub`}
-          style={{
-            border: "1px solid #334155",
-            backgroundColor: "#0b1220",
-            color: "#cbd5e1",
-            padding: "8px 12px",
-            borderRadius: 8,
-            fontSize: 13,
-            fontWeight: 600,
-            textDecoration: "none",
-          }}
-        >
-          Back to Research Hub
-        </Link>
-      </div>
-
-      <Toaster position="top-right" />
+      <Toaster position="bottom-right" />
     </div>
-  );
+  </div>
+);
 }

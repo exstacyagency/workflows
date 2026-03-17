@@ -1068,274 +1068,242 @@ export default function ResearchHubPage() {
     }
   };
 
-  // Status badge
   const StatusBadge = ({ status }: { status: JobStatus }) => {
-    const colors = {
-      NOT_STARTED: "bg-slate-500/20 text-slate-400",
-      PENDING: "bg-yellow-500/20 text-yellow-400",
-      RUNNING: "bg-sky-500/20 text-sky-400",
-      COMPLETED: "bg-emerald-500/20 text-emerald-400",
-      FAILED: "bg-red-500/20 text-red-400",
-    };
-
     return (
-      <span className={`px-2 py-1 rounded text-xs font-medium ${colors[status]}`}>
-        {status.replace("_", " ")}
-      </span>
+      <div className={`status-chip ${
+        status === 'COMPLETED' ? 'success' :
+        status === 'RUNNING' || status === 'PENDING' ? 'info pulse' :
+        status === 'FAILED' ? 'danger' :
+        'subtle'
+      }`}>
+        {status === 'COMPLETED' ? 'VERIFIED' :
+         status === 'RUNNING' ? 'PROCESSING' :
+         status === 'FAILED' ? 'ERROR' :
+         status.replace("_", " ")}
+      </div>
     );
   };
 
   if (loading) {
     return (
-      <div className="px-6 py-6 flex items-center justify-center min-h-screen">
-        <p className="text-sm text-slate-400">Loading research hub...</p>
+      <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
+        <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+        <p className="text-xs font-mono text-muted uppercase tracking-widest">Initialising Hub...</p>
       </div>
     );
   }
 
   return (
-    <>
+    <div className="px-8 py-8 max-w-7xl mx-auto space-y-10">
       {/* New Run Confirmation Modal */}
       {showNewRunModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-900 rounded-lg border border-slate-700 max-w-md w-full">
-            <div className="p-6">
-              <h2 className="text-xl font-bold text-white mb-2">Start New Research Run?</h2>
-              <p className="text-sm text-slate-400 mb-6">
-                This will begin tracking a fresh set of research jobs. Your previous run data will remain accessible in the job history.
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="rounded-card border border-line bg-panel p-8 shadow-panel max-w-md w-full space-y-6">
+            <div className="space-y-2 text-center">
+              <h2 className="text-xl font-bold text-white tracking-tight">Initialise New Trace?</h2>
+              <p className="text-sm text-muted">
+                This will begin tracking a fresh set of research jobs. Existing run data will remain in the ledger.
               </p>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setShowNewRunModal(false)}
-                  className="flex-1 px-4 py-2 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleStartNewRun}
-                  className="flex-1 px-4 py-2 rounded bg-emerald-500 hover:bg-emerald-400 text-white font-medium"
-                >
-                  Start New Run
-                </button>
-              </div>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowNewRunModal(false)}
+                className="btn btn-secondary flex-1 py-3 text-[10px]"
+              >
+                ABORT
+              </button>
+              <button
+                onClick={handleStartNewRun}
+                className="btn btn-primary flex-1 py-3 text-[10px]"
+              >
+                CONFIRM_NEW_TRACE
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      <div className="px-6 py-6 max-w-7xl mx-auto">
-      {/* Header */}
-      <div className="mb-8">
-        <Link
-          href={`/projects/${projectId}`}
-          className="text-sm text-slate-400 hover:text-slate-300 mb-2 inline-block"
-        >
-          ← Back to Project
-        </Link>
-        <div className="flex items-center justify-between">
-          <div className="flex-1">
-            <h1 className="text-3xl font-bold text-white mb-2">
-              Research Hub{selectedProduct ? ` - ${selectedProduct.name}` : ""}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
+        <div className="space-y-4">
+          <Link
+            href={`/projects/${projectId}`}
+            className="text-[11px] font-mono text-muted hover:text-white mb-6 inline-block uppercase tracking-wider transition-colors"
+          >
+            ← Back to Project
+          </Link>
+          <div className="flex items-center gap-4">
+            <h1 className="text-4xl font-bold text-white tracking-tight">
+              Research Core{selectedProduct ? <span className="text-accent ml-3">/ {selectedProduct.name}</span> : ""}
             </h1>
-            <div className="flex items-center gap-3">
-              <p className="text-slate-400">
-                Build a comprehensive understanding of your customers, ads, and product
-              </p>
-              {!latestJob && (
-                <div className="flex items-center gap-2 text-xs text-slate-500">
-                  <span>No runs yet</span>
-                </div>
-              )}
+            <div className={`status-chip ${anyRunning ? 'info pulse' : 'subtle'}`}>
+              {anyRunning ? 'ACTIVE_SCAN' : 'SYSTEM_READY'}
             </div>
           </div>
-          <div className="ml-4">
-            <Link
-              href={`/projects/${projectId}/usage`}
-              className="inline-flex items-center gap-2 rounded bg-slate-800 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-700"
-            >
-              Usage & Costs
-            </Link>
-          </div>
+          <p className="text-sm text-muted max-w-xl font-mono uppercase tracking-widest opacity-60">
+            Multi-track audience research, creative analysis, and ad strategy.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <Link
+            href={`/projects/${projectId}/usage`}
+            className="btn btn-secondary !min-h-[36px] px-4 text-[10px] font-bold uppercase tracking-widest"
+          >
+            Usage Metrics
+          </Link>
         </div>
       </div>
 
-      {/* Current Run Banner */}
-      <div className="mb-6 p-4 rounded-lg bg-slate-900/50 border border-slate-800">
-        <div className="flex items-center justify-between">
-          <div className="flex-1">
-            <p className="text-xs text-slate-500 mb-2">Current Research Run</p>
-            {statusMessage && (
-              <p className="mb-2 text-xs text-slate-300">{statusMessage}</p>
-            )}
-            {hasRunningJob && (
-              <div className="mb-4 p-4 bg-sky-500/10 border border-sky-500/50 rounded-lg">
-                <div className="flex items-center gap-3">
-                  <div>
-                    <p className="text-sm font-medium text-sky-300">RUNNING</p>
-                    <p className="text-xs text-slate-400">
-                      {runningJob ? getRunJobName(runningJob) : "Processing"}
-                    </p>
+      {/* Operation Control Center */}
+      <div className="rounded-card border border-line bg-panel p-8 shadow-panel backdrop-blur-panel mb-12">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+          <div className="space-y-6">
+            <div>
+              <p className="card-label mb-4">Product Focus</p>
+              {products.length > 0 ? (
+                <div className="space-y-4">
+                  <div className="flex flex-col gap-2">
+                    <label className="text-[10px] font-mono text-muted uppercase tracking-[0.2em] ml-1">Active Product</label>
+                    <select
+                      value={selectedProductId || ''}
+                      onChange={(e) => {
+                        const newProductId = e.target.value;
+                        setPauseAutoRefresh(true);
+                        setSelectedProductId(newProductId);
+                        const url = new URL(window.location.href);
+                        url.searchParams.set('productId', newProductId);
+                        url.searchParams.delete('product');
+                        router.replace(url.pathname + url.search, { scroll: false });
+                        loadJobs(newProductId);
+                        setTimeout(() => setPauseAutoRefresh(false), 10000);
+                      }}
+                      className="w-full bg-bg-elevated border border-line rounded-card px-4 py-3 text-sm text-white font-mono outline-none focus:border-accent/40 transition-colors cursor-pointer"
+                    >
+                      {products.map((product) => (
+                        <option key={product.id} value={product.id} className="bg-bg text-white">
+                          {product.name}
+                        </option>
+                      ))}
+                    </select>
                   </div>
+                  {selectedProduct && (
+                    <div className="p-4 rounded-card border border-accent-2/10 bg-accent-2/5 space-y-1">
+                      <p className="text-[10px] font-mono text-accent-2 uppercase tracking-widest opacity-60">Product Angle</p>
+                      <p className="text-xs text-muted leading-relaxed italic">{selectedProduct.productProblemSolved}</p>
+                    </div>
+                  )}
                 </div>
-              </div>
-            )}
-            {products.length > 0 ? (
-              <div className="mb-3 rounded-lg border border-slate-700 bg-slate-900/70 p-3">
-                <div className="text-xs text-slate-500 mb-1">Current Product</div>
-                <div className="text-sm font-medium text-slate-100 mb-2">
-                  {selectedProduct?.name || "Select a product"}
-                </div>
-                <select
-                  value={selectedProductId || ''}
-                  onChange={(e) => {
-                    const newProductId = e.target.value;
-                    setPauseAutoRefresh(true);
-                    setSelectedProductId(newProductId);
-                    const url = new URL(window.location.href);
-                    url.searchParams.set('productId', newProductId);
-                    url.searchParams.delete('product');
-                    router.replace(url.pathname + url.search, { scroll: false });
-                    loadJobs(newProductId);
-                    setTimeout(() => setPauseAutoRefresh(false), 10000);
-                  }}
-                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-sm text-slate-200"
-                >
-                  {products.map((product) => (
-                    <option key={product.id} value={product.id}>
-                      {product.name}
-                    </option>
-                  ))}
-                </select>
-                <Link
-                  href={`/projects/${projectId}`}
-                  className="mt-2 inline-block text-xs text-sky-400 hover:text-sky-300"
-                >
-                  ← Manage Products
-                </Link>
-              </div>
-            ) : (
-              <p className="text-sm text-slate-400 mb-3">
-                No products found. Create one in the project dashboard first.
-              </p>
-            )}
-            <div className="flex flex-col gap-2 md:flex-row md:items-center">
-              <select
-                value={selectedRunId || "no-active"}
-                onChange={(e) => {
-                  const value = e.target.value === "no-active" ? null : e.target.value;
-                  setSelectedRunId(value);
-                  setCurrentRunId(value);
-                }}
-                className="px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              >
-                <option value="no-active">No active run</option>
-                {sortedRuns.map((run) => (
-                  <option key={run.runId} value={run.runId}>
-                    {run.displayLabel} - {formatRunDate(run.createdAt)}
-                  </option>
-                ))}
-              </select>
-              <div style={{ position: "relative" }}>
-                <button
-                  type="button"
-                  onClick={() => setShowRunManagerModal(true)}
-                  className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-200 hover:bg-slate-700"
-                >
-                  Manage Runs
-                </button>
-                <RunManagementModal
-                  projectId={projectId}
-                  open={showRunManagerModal}
-                  onClose={() => setShowRunManagerModal(false)}
-                  onRunsChanged={handleRunsChanged}
-                />
-              </div>
-              {selectedRunId ? (
-                <Link
-                  href={`/projects/${projectId}/research-hub/run-data/${selectedRunId}`}
-                  className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-200 hover:bg-slate-700"
-                >
-                  View Run Data
-                </Link>
               ) : (
-                <button
-                  type="button"
-                  disabled
-                  className="cursor-not-allowed rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-sm text-slate-500"
-                >
-                  View Run Data
-                </button>
+                <p className="text-sm text-danger/80 font-mono uppercase tracking-widest py-4 border border-danger/20 bg-danger/5 rounded-card text-center">
+                  NO_PRODUCTS_ADDED
+                </p>
               )}
             </div>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <Link
-                href={customerDataHref}
-                className="inline-block rounded bg-slate-800 px-4 py-2 text-sm text-slate-200 hover:bg-slate-700"
-              >
-                View Customer Data
-              </Link>
-              {selectedRunId ? (
-                <Link
-                  href={adDataHref}
-                  className="inline-block rounded bg-slate-800 px-4 py-2 text-sm text-slate-200 hover:bg-slate-700"
-                >
-                  View Ad Data
-                </Link>
-              ) : (
-                <button
-                  type="button"
-                  disabled
-                  title="Select a run to view ad data"
-                  className="inline-block cursor-not-allowed rounded bg-slate-900 px-4 py-2 text-sm text-slate-500"
-                >
-                  View Ad Data
-                </button>
-              )}
-              <Link
-                href={productDataHref}
-                className="inline-block rounded bg-slate-800 px-4 py-2 text-sm text-slate-200 hover:bg-slate-700"
-              >
-                View Product Data
-              </Link>
+          </div>
+
+          <div className="space-y-6">
+            <div>
+              <p className="card-label mb-4">Campaign Run</p>
+              <div className="space-y-4">
+                <div className="flex flex-col gap-2">
+                  <label className="text-[10px] font-mono text-muted uppercase tracking-[0.2em] ml-1">Active Run</label>
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <select
+                      value={selectedRunId || "no-active"}
+                      onChange={(e) => {
+                        const value = e.target.value === "no-active" ? null : e.target.value;
+                        setSelectedRunId(value);
+                        setCurrentRunId(value);
+                      }}
+                      className="flex-1 bg-bg-elevated border border-line rounded-card px-4 py-3 text-sm text-white font-mono outline-none focus:border-accent/40 transition-colors cursor-pointer"
+                    >
+                      <option value="no-active" className="bg-bg text-white">NO_ACTIVE_RUN</option>
+                      {sortedRuns.map((run) => (
+                        <option key={run.runId} value={run.runId} className="bg-bg text-white">
+                          {run.displayLabel}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => setShowRunManagerModal(true)}
+                      className="btn btn-secondary !min-h-[46px] px-6 text-[10px]"
+                    >
+                      Run Manager
+                    </button>
+                    <RunManagementModal
+                      projectId={projectId}
+                      open={showRunManagerModal}
+                      onClose={() => setShowRunManagerModal(false)}
+                      onRunsChanged={handleRunsChanged}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2 pt-2">
+                  <Link
+                    href={customerDataHref}
+                    className="btn btn-secondary !min-h-[32px] px-4 text-[9px] opacity-70 hover:opacity-100"
+                  >
+                    Audience Research
+                  </Link>
+                  <Link
+                    href={adDataHref}
+                    className="btn btn-secondary !min-h-[32px] px-4 text-[9px] opacity-70 hover:opacity-100"
+                  >
+                    Ad Research
+                  </Link>
+                  <Link
+                    href={productDataHref}
+                    className="btn btn-secondary !min-h-[32px] px-4 text-[9px] opacity-70 hover:opacity-100"
+                  >
+                    Product Research
+                  </Link>
+                </div>
+              </div>
             </div>
           </div>
         </div>
+
+        {statusMessage && (
+           <div className="mt-8 p-3 rounded bg-accent/10 border border-accent/20 flex items-center gap-3">
+              <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
+              <p className="text-[11px] font-mono text-accent uppercase tracking-widest">{statusMessage}</p>
+           </div>
+        )}
       </div>
 
       {/* Research Tracks */}
       <div className="space-y-8">
-        {updatedTracks.map((track) => {
-          const completion = calculateCompletion(track);
-          const colorClasses = {
-            emerald: "border-emerald-500/50 bg-emerald-500/5",
-            sky: "border-sky-500/50 bg-sky-500/5",
-            violet: "border-violet-500/50 bg-violet-500/5",
-          }[track.color];
+          {updatedTracks.map((track) => {
+            const completion = calculateCompletion(track);
+            
+            return (
+              <div key={track.key} className="space-y-6">
+                <div className="flex items-center justify-between border-b border-line pb-4">
+                  <div className="flex items-center gap-4">
+                    <div className="w-2 h-8 rounded-full bg-accent-2 shadow-[0_0_15px_rgba(154,208,255,0.4)]" />
+                    <div>
+                      <h2 className="text-xl font-bold text-white tracking-tight uppercase tracking-[0.1em]">{track.label}</h2>
+                      <p className="text-[11px] font-mono text-muted uppercase tracking-[0.05em] opacity-60">{track.description}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-6">
+                    <div className="text-right whitespace-nowrap">
+                      <p className="text-[10px] font-mono text-muted uppercase tracking-widest opacity-40 mb-1">Vector Progress</p>
+                      <div className="flex items-center gap-3">
+                        <div className="h-1 bg-bg-elevated rounded-full w-24 overflow-hidden">
+                          <div className="h-full bg-accent-2" style={{ width: `${completion}%` }} />
+                        </div>
+                        <span className="text-xs font-mono text-accent-2">{completion}%</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
 
-          return (
-            <div
-              key={track.key}
-              className={`rounded-lg border ${colorClasses} p-6 ${
-                !track.enabled ? "opacity-50" : ""
-              }`}
-            >
-              {/* Track Header */}
-              <div className="mb-4">
-                <h2 className="text-xl font-bold text-white">{track.label}</h2>
-                <p className="text-sm text-slate-400">{track.description}</p>
-              </div>
-
-              {/* Progress Bar */}
-              <div className="mb-6 h-2 bg-slate-800 rounded-full overflow-hidden">
-                <div
-                  className={`h-full bg-${track.color}-500 transition-all duration-500`}
-                  style={{ width: `${completion}%` }}
-                />
-              </div>
-
-              {/* Steps */}
-              {track.enabled ? (
-                <div className="space-y-4">
+                {/* Steps */}
+                {track.enabled ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {track.steps.map((step, idx) => {
                     const stepStatus = getStepStatus(step.jobType, step.id);
                     const stepWithStatus = {
@@ -1388,16 +1356,16 @@ export default function ResearchHubPage() {
 	                    return (
                       <div
                         key={stepWithStatus.id}
-                        className="flex items-start gap-4 p-4 rounded-lg bg-slate-900/50 border border-slate-800"
+                        className="flex items-start gap-4 p-4 rounded-lg bg-panel/80 border border-line"
                       >
                         {/* Step Info */}
                         <div className="flex-1 min-w-0">
                           <h3 className="text-sm font-semibold text-white mb-1">
                             {stepWithStatus.label}
                           </h3>
-                          <p className="text-xs text-slate-400 mb-2">{stepWithStatus.description}</p>
+                          <p className="text-xs text-muted/80 mb-2">{stepWithStatus.description}</p>
                           {stepWithStatus.attemptCount && stepWithStatus.attemptCount > 0 && (
-                            <p className="text-[11px] text-slate-500 mb-2">
+                            <p className="text-[11px] text-muted/60 mb-2">
                               Attempt {stepWithStatus.attemptCount}
                               {stepWithStatus.lastJob?.createdAt
                                 ? ` · Last run ${new Date(stepWithStatus.lastJob.createdAt).toLocaleString()}`
@@ -1410,16 +1378,16 @@ export default function ResearchHubPage() {
                               )
                             : stepWithStatus.status !== "NOT_STARTED" && <StatusBadge status={stepWithStatus.status} />}
                           {stepWithStatus.label === "Customer Analysis" && analysisRunning && (
-                            <div className="mt-2 text-xs text-slate-400">Analysis in progress...</div>
+                            <div className="mt-2 text-xs text-muted/80">Analysis in progress...</div>
                           )}
 
                           {/* Error Display */}
                           {stepWithStatus.status === "FAILED" && stepWithStatus.lastJob?.error && (
-                            <div className="mt-3 rounded-lg bg-red-500/10 border border-red-500/30 p-3">
+                            <div className="mt-3 rounded-lg bg-accent/10 border border-accent/30 p-3">
                               <div className="flex items-start gap-3">
                                 <div className="flex-1">
-                                  <p className="text-xs font-semibold text-red-300 mb-1">Error Details:</p>
-                                  <p className="text-xs text-red-400">{stepWithStatus.lastJob.error}</p>
+                                  <p className="text-xs font-semibold text-accent mb-1">Error Details:</p>
+                                  <p className="text-xs text-accent">{stepWithStatus.lastJob.error}</p>
                                 </div>
                               </div>
                             </div>
@@ -1433,7 +1401,7 @@ export default function ResearchHubPage() {
                               onClick={() => {
                                 router.push(historyUrl);
                               }}
-                              className="text-slate-400 hover:text-slate-300 text-xs underline"
+                              className="text-muted/80 hover:text-muted text-xs underline"
                             >
                               {currentRunId ? "View Run History" : "View All History"}
                             </button>
@@ -1445,14 +1413,14 @@ export default function ResearchHubPage() {
                                 {selectedRunCustomerJob ? (
                                   <Link
                                     href={`/projects/${projectId}/research/data/${selectedRunCustomerJob.id}?runId=${selectedRunCustomerJob.runId ?? selectedRunCustomerJob.id}`}
-                                    className="inline-block px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-xs"
+                                    className="inline-block px-4 py-2 bg-accent text-white rounded hover:bg-accent/90 text-xs"
                                   >
                                     View Raw Data
                                   </Link>
                                 ) : (
                                   <button
                                     disabled
-                                    className="px-4 py-2 bg-gray-600 text-gray-400 rounded opacity-50 cursor-not-allowed text-xs"
+                                    className="px-4 py-2 bg-bg-elevated text-muted/80 rounded opacity-50 cursor-not-allowed text-xs"
                                     title={!selectedRun ? "Select a run first" : "Customer Collection must be completed"}
                                   >
                                     View Raw Data
@@ -1466,7 +1434,7 @@ export default function ResearchHubPage() {
                               {selectedRunId && analysisStatusJob?.status === "COMPLETED" && (
                                 <Link
                                   href={`/projects/${projectId}/research-hub/analysis/data/${analysisStatusJob.id}`}
-                                  className="inline-block px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-xs"
+                                  className="inline-block px-4 py-2 bg-accent text-white rounded hover:bg-accent/90 text-xs"
                                 >
                                   View Results
                                 </Link>
@@ -1478,7 +1446,7 @@ export default function ResearchHubPage() {
 	                              {stepWithStatus.id === "product-collection" && stepRawDataHref && (
 	                                <Link
 	                                  href={stepRawDataHref}
-	                                  className="inline-block px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-xs"
+	                                  className="inline-block px-4 py-2 bg-accent text-white rounded hover:bg-accent/90 text-xs"
 	                                >
 	                                  View Raw Data
 	                                </Link>
@@ -1496,7 +1464,7 @@ export default function ResearchHubPage() {
                                     const runQuery = runId ? `&runId=${runId}` : "";
                                     router.push(`/projects/${projectId}/research-hub/data?jobType=${jobType}${runQuery}`);
                                   }}
-                                  className="px-2 py-1 text-xs text-slate-300 border border-slate-600 rounded hover:border-slate-500 hover:text-slate-200"
+                                  className="px-2 py-1 text-xs text-muted border border-line rounded hover:border-muted/60 hover:text-white/90"
                                 >
                                   View Data
                                 </button>
@@ -1509,7 +1477,7 @@ export default function ResearchHubPage() {
                               disabled={!canRunAnalysis || isRunning}
                               className={`px-4 py-2 rounded text-sm font-medium flex items-center gap-2 ${
                                 !canRunAnalysis || isRunning
-                                  ? "bg-slate-800 text-slate-600 cursor-not-allowed"
+                                  ? "bg-bg-elevated text-muted/60 cursor-not-allowed"
                                   : `bg-${track.color}-500 hover:bg-${track.color}-400 text-white`
                               }`}
                               title={!canRunAnalysis ? "Complete Customer Collection first" : undefined}
@@ -1524,8 +1492,8 @@ export default function ResearchHubPage() {
                                   disabled={isRunning || isCollecting}
                                   className={`px-3 py-1 text-sm rounded ${
                                     isRunning || isCollecting
-                                      ? "bg-gray-700 text-gray-500 cursor-not-allowed"
-                                      : "bg-blue-600 hover:bg-blue-700 text-white"
+                                      ? "bg-panel-strong text-muted/50 cursor-not-allowed"
+                                      : "bg-accent hover:bg-accent/90 text-bg"
                                   }`}
                                 >
                                   Run
@@ -1537,7 +1505,7 @@ export default function ResearchHubPage() {
                                   stepWithStatus.lastJob && (
                                   <button
                                     onClick={() => handleViewStepData(stepWithStatus)}
-                                    className="px-2 py-1 text-xs text-gray-400 hover:text-gray-300 border border-gray-600 rounded"
+                                    className="px-2 py-1 text-xs text-muted/80 hover:text-white/90 border border-line rounded"
                                   >
                                     View Data
                                   </button>
@@ -1559,8 +1527,8 @@ export default function ResearchHubPage() {
                                     }
                                     className={`px-3 py-1 text-sm rounded ${
                                       locked || isRunning || (isCustomerCollectionStep && hasRunningJob) || (stepWithStatus.label === "Customer Analysis" && (analysisRunning || !canRunAnalysis))
-                                        ? "bg-gray-700 text-gray-500 cursor-not-allowed"
-                                        : "bg-blue-600 hover:bg-blue-700 text-white"
+                                        ? "bg-panel-strong text-muted/50 cursor-not-allowed"
+                                        : "bg-accent hover:bg-accent/90 text-bg"
                                     }`}
                                   >
                                     {isRunning
@@ -1579,7 +1547,7 @@ export default function ResearchHubPage() {
                             stepWithStatus.lastJob && (
                             <button
                               onClick={() => cancelJob(stepWithStatus.lastJob!.id)}
-                              className="px-2 py-1 text-xs text-red-400 hover:text-red-300"
+                              className="px-2 py-1 text-xs text-accent hover:text-accent"
                             >
                               Cancel
                             </button>
@@ -1649,30 +1617,30 @@ export default function ResearchHubPage() {
       </div>
 
       {/* Recent Jobs */}
-      <div className="mt-8 border-t border-slate-800 pt-6">
-        <h2 className="text-lg font-semibold text-slate-200 mb-4">Recent Jobs</h2>
-        <div className="space-y-2">
+      <div className="mt-8 border-t border-line pt-6">
+        <h2 className="app-section-title mb-4 text-white/90">Recent Jobs</h2>
+        <div className="app-list">
           {recentResearchJobs.map(job => {
             const rs = job.resultSummary as any;
             const isCancelable = job.status === "RUNNING" || job.status === "PENDING";
             return (
-              <div key={job.id} className="flex items-start justify-between gap-4 p-3 rounded-lg bg-slate-900/50 border border-slate-800">
+              <div key={job.id} className="app-list-item flex items-start justify-between gap-4">
                 <div className="flex-1">
-                  <div className="text-sm font-medium text-slate-200">{job.type}</div>
-                  <div className="text-xs text-slate-500">{new Date(job.createdAt).toLocaleString()}</div>
+                  <div className="text-sm font-medium text-white/90">{job.type}</div>
+                  <div className="text-xs text-muted/60">{new Date(job.createdAt).toLocaleString()}</div>
                   {isCancelable && (
                     <div className="mt-2">
                       <button
                         onClick={() => cancelJob(job.id)}
-                        className="px-2 py-1 text-xs text-red-400 hover:text-red-300 border border-red-500/30 rounded"
+                        className="px-2 py-1 text-xs text-accent hover:text-accent border border-accent/30 rounded"
                       >
                         Cancel
                       </button>
                     </div>
                   )}
                   {rs?.amazon && (
-                    <div className="mt-2 rounded border border-slate-800 p-2 text-sm text-slate-300">
-                      <div className="font-medium text-slate-200">Amazon</div>
+                    <div className="mt-2 rounded border border-line p-2 text-sm text-muted">
+                      <div className="font-medium text-white/90">Amazon</div>
                       <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-1">
                         <div>Total reviews</div><div className="text-right">{rs.amazon.productTotal ?? 0}</div>
                         <div>Competitor reviews</div><div className="text-right">
@@ -1682,11 +1650,11 @@ export default function ResearchHubPage() {
                     </div>
                   )}
                 </div>
-                <div className={`px-2 py-1 rounded text-xs ${
-                  job.status === 'COMPLETED' ? 'bg-emerald-500/10 text-emerald-400' :
-                  job.status === 'FAILED' ? 'bg-red-500/10 text-red-400' :
-                  job.status === 'RUNNING' ? 'bg-sky-500/10 text-sky-400' :
-                  'bg-slate-500/10 text-slate-400'
+                <div className={`app-chip ${
+                  job.status === 'COMPLETED' ? 'app-chip--success' :
+                  job.status === 'FAILED' ? 'app-chip--danger' :
+                  job.status === 'RUNNING' ? 'app-chip--info' :
+                  ''
                 }`}>
                   {job.status}
                 </div>
@@ -1697,29 +1665,28 @@ export default function ResearchHubPage() {
       </div>
 
       {/* Next Step CTA */}
-      <div className="mt-8 p-6 rounded-lg bg-slate-900/50 border border-slate-800">
-        <h3 className="text-lg font-bold text-white mb-2">Ready for Production?</h3>
-        <p className="text-sm text-slate-400 mb-4">
+      <div className="app-surface mt-8">
+        <h3 className="app-section-title text-white mb-2">Ready for Production?</h3>
+        <p className="text-sm text-muted/80 mb-4">
           Once you&apos;ve completed your research, head to the Creative Studio to generate
           ad scripts and videos.
         </p>
         <div className="flex gap-3">
           <Link
             href={`/projects/${projectId}/creative-studio`}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded bg-sky-500 hover:bg-sky-400 text-white text-sm font-medium"
+            className="app-button app-button--primary text-sm font-medium"
           >
             Go to Creative Studio →
           </Link>
           <Link
             href={`/projects/${projectId}/usage`}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-medium"
+            className="app-button app-button--muted text-sm font-medium"
           >
             View Usage & Costs →
           </Link>
         </div>
       </div>
     </div>
-    </>
   );
 }
 
@@ -1825,28 +1792,28 @@ function CustomerResearchModal({
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-slate-900 rounded-lg border border-slate-700 max-w-lg w-full max-h-[90vh] overflow-y-auto">
+      <div className="bg-panel rounded-lg border border-line max-w-lg w-full max-h-[90vh] overflow-y-auto">
         <div className="p-6">
           <h2 className="text-xl font-bold text-white mb-2">
-            {uploadOnly ? "Upload Research Data" : "Collect Customer Inputs"}
+            {uploadOnly ? "Upload Market Research" : "Collect Audience Research"}
           </h2>
-          <p className="text-sm text-slate-400 mb-6">
+          <p className="text-sm text-muted/80 mb-6">
             {uploadOnly
               ? "Add additional research data to your existing collection"
               : "Scrape from Reddit/Amazon or upload your own research data"}
           </p>
-          {formError && <p className="text-sm text-red-400 mb-3">{formError}</p>}
-          {uploadMessage && <p className="text-sm text-slate-300 mb-3">{uploadMessage}</p>}
+          {formError && <p className="text-sm text-accent mb-3">{formError}</p>}
+          {uploadMessage && <p className="text-sm text-muted mb-3">{uploadMessage}</p>}
 
           {!uploadOnly && (
-            <div className="flex gap-2 mb-6 border-b border-slate-700">
+            <div className="flex gap-2 mb-6 border-b border-line">
               <button
                 type="button"
                 onClick={() => setActiveTab("scrape")}
                 className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
                   activeTab === "scrape"
-                    ? "border-sky-500 text-sky-400"
-                    : "border-transparent text-slate-400 hover:text-slate-300"
+                    ? "border-accent-2 text-accent-2"
+                    : "border-transparent text-muted/80 hover:text-muted"
                 }`}
               >
                 Scrape Data
@@ -1856,8 +1823,8 @@ function CustomerResearchModal({
                 onClick={() => setActiveTab("upload")}
                 className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
                   activeTab === "upload"
-                    ? "border-sky-500 text-sky-400"
-                    : "border-transparent text-slate-400 hover:text-slate-300"
+                    ? "border-accent-2 text-accent-2"
+                    : "border-transparent text-muted/80 hover:text-muted"
                 }`}
               >
                 Upload Data
@@ -1868,36 +1835,36 @@ function CustomerResearchModal({
           {!uploadOnly && activeTab === "scrape" && (
             <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                Problem to Research <span className="text-slate-500">(required)</span>
+              <label className="block text-sm font-medium text-muted mb-2">
+                Problem to Research <span className="text-muted/60">(required)</span>
               </label>
               <textarea
                 value={formData.productProblemSolved}
                 onChange={(e) => setFormData({ ...formData, productProblemSolved: e.target.value })}
-                className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                className="w-full px-3 py-2 bg-bg-elevated border border-line rounded text-white placeholder:text-muted/40 focus:outline-none focus:ring-2 focus:ring-accent/20"
                 placeholder="e.g., Provides noise cancellation for focus"
                 rows={3}
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                Additional Problems <span className="text-slate-500">(optional)</span>
+              <label className="block text-sm font-medium text-muted mb-2">
+                Additional Problems <span className="text-muted/60">(optional)</span>
               </label>
               <textarea
                 value={formData.additionalProblems}
                 onChange={(e) => setFormData({ ...formData, additionalProblems: e.target.value })}
-                className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                className="w-full px-3 py-2 bg-bg-elevated border border-line rounded text-white placeholder:text-muted/40 focus:outline-none focus:ring-2 focus:ring-accent/20"
                 placeholder={"e.g.,\nbreakouts before period\nsensitive skin irritation"}
                 rows={3}
               />
-              <p className="text-xs text-slate-500 mt-1">One per line or comma-separated</p>
+              <p className="text-xs text-muted/60 mt-1">One per line or comma-separated</p>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
+              <label className="block text-sm font-medium text-muted mb-2">
                 Solution Keywords (optional)
-                <span className="ml-2 text-xs text-slate-500">
+                <span className="ml-2 text-xs text-muted/60">
                   Specific solutions, products, or alternatives to search for
                 </span>
               </label>
@@ -1906,77 +1873,77 @@ function CustomerResearchModal({
                 value={formData.solutionKeywords}
                 onChange={(e) => setFormData({ ...formData, solutionKeywords: e.target.value })}
                 placeholder="e.g., tretinoin, accutane, birth control"
-                className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                className="w-full px-3 py-2 bg-bg-elevated border border-line rounded text-white placeholder:text-muted/40 focus:outline-none focus:ring-2 focus:ring-accent/20"
               />
-              <p className="mt-1 text-xs text-slate-500">
+              <p className="mt-1 text-xs text-muted/60">
                 Comma-separated. Search for discussions about specific solutions/alternatives
               </p>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                Amazon ASIN <span className="text-slate-500">(optional)</span>
+              <label className="block text-sm font-medium text-muted mb-2">
+                Amazon ASIN <span className="text-muted/60">(optional)</span>
               </label>
               <input
                 type="text"
                 value={formData.mainProductAsin}
                 onChange={(e) => setFormData({ ...formData, mainProductAsin: e.target.value })}
-                className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                className="w-full px-3 py-2 bg-bg-elevated border border-line rounded text-white placeholder:text-muted/40 focus:outline-none focus:ring-2 focus:ring-accent/20"
                 placeholder="e.g., B07XYZ1234"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                Competitor 1 ASIN <span className="text-slate-500">(optional)</span>
+              <label className="block text-sm font-medium text-muted mb-2">
+                Competitor 1 ASIN <span className="text-muted/60">(optional)</span>
               </label>
               <input
                 type="text"
                 value={formData.competitor1Asin}
                 onChange={(e) => setFormData({ ...formData, competitor1Asin: e.target.value })}
-                className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                className="w-full px-3 py-2 bg-bg-elevated border border-line rounded text-white placeholder:text-muted/40 focus:outline-none focus:ring-2 focus:ring-accent/20"
                 placeholder="e.g., B08ABC5678"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                Competitor 2 ASIN <span className="text-slate-500">(optional)</span>
+              <label className="block text-sm font-medium text-muted mb-2">
+                Competitor 2 ASIN <span className="text-muted/60">(optional)</span>
               </label>
               <input
                 type="text"
                 value={formData.competitor2Asin}
                 onChange={(e) => setFormData({ ...formData, competitor2Asin: e.target.value })}
-                className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                className="w-full px-3 py-2 bg-bg-elevated border border-line rounded text-white placeholder:text-muted/40 focus:outline-none focus:ring-2 focus:ring-accent/20"
                 placeholder="e.g., B09DEF9012"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                Competitor 3 ASIN <span className="text-slate-500">(optional)</span>
+              <label className="block text-sm font-medium text-muted mb-2">
+                Competitor 3 ASIN <span className="text-muted/60">(optional)</span>
               </label>
               <input
                 type="text"
                 value={formData.competitor3Asin}
                 onChange={(e) => setFormData({ ...formData, competitor3Asin: e.target.value })}
-                className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                className="w-full px-3 py-2 bg-bg-elevated border border-line rounded text-white placeholder:text-muted/40 focus:outline-none focus:ring-2 focus:ring-accent/20"
                 placeholder="e.g., B0GHI3456"
               />
             </div>
 
             {/* Reddit Search Settings */}
-            <div className="border-t border-slate-700 pt-6 mt-6">
-              <h3 className="text-lg font-semibold text-slate-200 mb-4">Reddit Search Settings</h3>
-              <p className="text-sm text-slate-400 mb-6">
+            <div className="border-t border-line pt-6 mt-6">
+              <h3 className="text-lg font-semibold text-white/90 mb-4">Reddit Search Settings</h3>
+              <p className="text-sm text-muted/80 mb-6">
                 Reddit search is problem-focused. Use optional fields below to control intent, keywords, and alternatives.
               </p>
               
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                  <label className="block text-sm font-medium text-muted mb-2">
                     Search Intent (optional)
-                    <span className="ml-2 text-xs text-slate-500">
+                    <span className="ml-2 text-xs text-muted/60">
                       What type of discussions to find
                     </span>
                   </label>
@@ -1985,15 +1952,15 @@ function CustomerResearchModal({
                     value={formData.searchIntent}
                     onChange={(e) => setFormData({ ...formData, searchIntent: e.target.value })}
                     placeholder="e.g., routine, help, what worked, recommend, tried everything"
-                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    className="w-full px-3 py-2 bg-bg-elevated border border-line rounded text-white placeholder:text-muted/40 focus:outline-none focus:ring-2 focus:ring-accent/20"
                   />
-                  <p className="mt-1 text-xs text-slate-500">
+                  <p className="mt-1 text-xs text-muted/60">
                     Comma-separated phrases. Examples: &quot;routine&quot;, &quot;help&quot;, &quot;what worked&quot;, &quot;tried everything&quot;, &quot;side effects&quot;
                   </p>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                  <label className="block text-sm font-medium text-muted mb-2">
                     Time Range
                   </label>
                   <select
@@ -2004,7 +1971,7 @@ function CustomerResearchModal({
                         timeRange: e.target.value as 'hour' | 'day' | 'week' | 'month' | 'year' | 'all',
                       })
                     }
-                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    className="w-full px-3 py-2 bg-bg-elevated border border-line rounded text-white focus:outline-none focus:ring-2 focus:ring-accent/20"
                   >
                     <option value="hour">Past Hour</option>
                     <option value="day">Past Day</option>
@@ -2021,16 +1988,16 @@ function CustomerResearchModal({
                       type="checkbox"
                       checked={formData.scrapeComments}
                       onChange={(e) => setFormData({ ...formData, scrapeComments: e.target.checked })}
-                      className="w-4 h-4 rounded border-slate-700 bg-slate-800 text-emerald-500 focus:ring-2 focus:ring-emerald-500"
+                      className="w-4 h-4 rounded border-line bg-bg-elevated text-success focus:ring-2 focus:ring-accent/20"
                     />
-                    <span className="text-sm text-slate-300">Scrape comments from posts</span>
+                    <span className="text-sm text-muted">Scrape comments from posts</span>
                   </label>
-                  <p className="text-xs text-slate-500 mt-1 ml-6">Recommended for deeper insights</p>
+                  <p className="text-xs text-muted/60 mt-1 ml-6">Recommended for deeper insights</p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                    <label className="block text-sm font-medium text-muted mb-2">
                       Max Posts
                     </label>
                     <input
@@ -2040,13 +2007,13 @@ function CustomerResearchModal({
                       min={10}
                       max={1000}
                       onChange={(e) => setFormData({ ...formData, maxPosts: Number(e.target.value) })}
-                      className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-slate-200"
+                      className="w-full px-3 py-2 bg-bg-elevated border border-line rounded text-white/90"
                     />
-                    <p className="text-xs text-slate-500 mt-1">Recommended: 50-200</p>
+                    <p className="text-xs text-muted/60 mt-1">Recommended: 50-200</p>
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                    <label className="block text-sm font-medium text-muted mb-2">
                       Max Comments Per Post
                     </label>
                     <input
@@ -2056,9 +2023,9 @@ function CustomerResearchModal({
                       min={0}
                       max={500}
                       onChange={(e) => setFormData({ ...formData, maxCommentsPerPost: Number(e.target.value) })}
-                      className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-slate-200"
+                      className="w-full px-3 py-2 bg-bg-elevated border border-line rounded text-white/90"
                     />
-                    <p className="text-xs text-slate-500 mt-1">0 = no comments, Recommended: 50-100</p>
+                    <p className="text-xs text-muted/60 mt-1">0 = no comments, Recommended: 50-100</p>
                   </div>
                 </div>
               </div>
@@ -2068,13 +2035,13 @@ function CustomerResearchModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="flex-1 px-4 py-2 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium"
+                className="flex-1 px-4 py-2 rounded bg-bg-elevated hover:bg-panel-strong text-muted font-medium"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="flex-1 px-4 py-2 rounded bg-emerald-500 hover:bg-emerald-400 text-white font-medium"
+                className="flex-1 px-4 py-2 rounded bg-success hover:bg-success/90 text-white font-medium"
               >
                 Run
               </button>
@@ -2085,25 +2052,25 @@ function CustomerResearchModal({
           {(uploadOnly || activeTab === "upload") && (
             <form onSubmit={handleUpload} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">
+                <label className="block text-sm font-medium text-muted mb-2">
                   Upload Research File
                 </label>
-                <p className="text-xs text-slate-400 mb-3">
+                <p className="text-xs text-muted/80 mb-3">
                   Accepted formats: CSV, TXT, PDF, DOCX, JSON
                 </p>
                 <input
                   type="file"
                   accept=".csv,.txt,.pdf,.docx,.json"
                   onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
-                  className="block w-full text-sm text-slate-400
+                  className="block w-full text-sm text-muted/80
                     file:mr-4 file:py-2 file:px-4
                     file:rounded file:border-0
                     file:text-sm file:font-medium
-                    file:bg-sky-600 file:text-white
-                    hover:file:bg-sky-500"
+                    file:bg-accent file:text-bg
+                    hover:file:bg-accent"
                 />
                 {uploadFile && (
-                  <p className="text-xs text-slate-400 mt-2">
+                  <p className="text-xs text-muted/80 mt-2">
                     Selected: {uploadFile.name} ({(uploadFile.size / 1024).toFixed(1)} KB)
                   </p>
                 )}
@@ -2113,20 +2080,20 @@ function CustomerResearchModal({
                 <button
                   type="button"
                   onClick={onClose}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded text-sm"
+                  className="px-4 py-2 bg-bg-elevated hover:bg-panel-strong rounded text-sm"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={uploading || !uploadFile}
-                  className="px-4 py-2 bg-sky-600 hover:bg-sky-500 disabled:opacity-50 disabled:cursor-not-allowed rounded text-sm"
+                  className="px-4 py-2 bg-accent hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed rounded text-sm"
                 >
                   {uploading ? "Uploading..." : "Upload & Add Data"}
                 </button>
               </div>
               {uploading && (
-                <p className="text-xs text-slate-400 text-right">Processing file...</p>
+                <p className="text-xs text-muted/80 text-right">Processing file...</p>
               )}
             </form>
           )}
@@ -2240,23 +2207,23 @@ function AdCollectionModal({
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-slate-900 rounded-lg border border-slate-700 max-w-lg w-full">
+      <div className="bg-panel rounded-lg border border-line max-w-lg w-full">
         <div className="p-6">
           <h2 className="text-xl font-bold text-white mb-2">Industry Selection</h2>
-          <p className="text-sm text-slate-400 mb-6">
+          <p className="text-sm text-muted/80 mb-6">
             Enter your industry code to collect relevant ads or upload your own ad research data
           </p>
-          {errorMessage && <p className="text-sm text-red-400 mb-3">{errorMessage}</p>}
-          {uploadMessage && <p className="text-sm text-slate-300 mb-3">{uploadMessage}</p>}
+          {errorMessage && <p className="text-sm text-accent mb-3">{errorMessage}</p>}
+          {uploadMessage && <p className="text-sm text-muted mb-3">{uploadMessage}</p>}
 
-          <div className="flex gap-2 mb-6 border-b border-slate-700">
+          <div className="flex gap-2 mb-6 border-b border-line">
             <button
               type="button"
               onClick={() => setActiveTab("collect")}
               className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
                 activeTab === "collect"
-                  ? "border-sky-500 text-sky-400"
-                  : "border-transparent text-slate-400 hover:text-slate-300"
+                  ? "border-accent-2 text-accent-2"
+                  : "border-transparent text-muted/80 hover:text-muted"
               }`}
             >
               Collect Ads
@@ -2266,8 +2233,8 @@ function AdCollectionModal({
               onClick={() => setActiveTab("upload")}
               className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
                 activeTab === "upload"
-                  ? "border-sky-500 text-sky-400"
-                  : "border-transparent text-slate-400 hover:text-slate-300"
+                  ? "border-accent-2 text-accent-2"
+                  : "border-transparent text-muted/80 hover:text-muted"
               }`}
             >
               Upload Data
@@ -2277,14 +2244,14 @@ function AdCollectionModal({
           {activeTab === "collect" && (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                Industry Code <span className="text-red-400">*</span>
+              <label className="block text-sm font-medium text-muted mb-2">
+                Industry Code <span className="text-accent">*</span>
               </label>
               <div className="relative" ref={dropdownRef}>
                 <button
                   type="button"
                   onClick={() => setIsDropdownOpen((prev) => !prev)}
-                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-left text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+                  className="w-full px-3 py-2 bg-bg-elevated border border-line rounded text-left text-white focus:outline-none focus:ring-2 focus:ring-accent/20"
                 >
                   {selectedIndustry
                     ? `${selectedIndustry.label} (${selectedIndustry.code})`
@@ -2292,20 +2259,20 @@ function AdCollectionModal({
                 </button>
 
                 {isDropdownOpen && (
-                  <div className="absolute z-20 mt-2 w-full rounded border border-slate-700 bg-slate-900 shadow-xl">
-                    <div className="p-2 border-b border-slate-700">
+                  <div className="absolute z-20 mt-2 w-full rounded border border-line bg-panel shadow-xl">
+                    <div className="p-2 border-b border-line">
                       <input
                         ref={searchInputRef}
                         type="text"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                        className="w-full px-3 py-2 bg-bg-elevated border border-line rounded text-white placeholder:text-muted/40 focus:outline-none focus:ring-2 focus:ring-accent/20"
                         placeholder="Search industry (e.g., Health)"
                       />
                     </div>
                     <div className="max-h-64 overflow-y-auto p-1">
                       {filteredIndustries.length === 0 ? (
-                        <p className="px-3 py-2 text-sm text-slate-400">
+                        <p className="px-3 py-2 text-sm text-muted/80">
                           No matching industries.
                         </p>
                       ) : (
@@ -2318,14 +2285,14 @@ function AdCollectionModal({
                               setSearchQuery("");
                               setIsDropdownOpen(false);
                             }}
-                            className={`w-full rounded px-3 py-2 text-left text-sm hover:bg-slate-800 ${
+                            className={`w-full rounded px-3 py-2 text-left text-sm hover:bg-bg-elevated ${
                               option.code === industryCode
-                                ? "bg-slate-800 text-sky-300"
-                                : "text-slate-200"
+                                ? "bg-bg-elevated text-accent-2"
+                                : "text-white/90"
                             }`}
                           >
                             <span>{option.label}</span>
-                            <span className="ml-2 text-xs text-slate-400">{option.code}</span>
+                            <span className="ml-2 text-xs text-muted/80">{option.code}</span>
                           </button>
                         ))
                       )}
@@ -2333,7 +2300,7 @@ function AdCollectionModal({
                   </div>
                 )}
               </div>
-              <p className="mt-2 text-xs text-slate-500">
+              <p className="mt-2 text-xs text-muted/60">
                 Search by name or code. All 21 TikTok industry categories are available.
               </p>
             </div>
@@ -2342,13 +2309,13 @@ function AdCollectionModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="flex-1 px-4 py-2 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium"
+                className="flex-1 px-4 py-2 rounded bg-bg-elevated hover:bg-panel-strong text-muted font-medium"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="flex-1 px-4 py-2 rounded bg-sky-500 hover:bg-sky-400 text-white font-medium"
+                className="flex-1 px-4 py-2 rounded bg-accent hover:bg-accent/90 text-bg font-medium"
               >
                 Run
               </button>
@@ -2358,25 +2325,25 @@ function AdCollectionModal({
           {activeTab === "upload" && (
             <form onSubmit={handleUpload} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">
+                <label className="block text-sm font-medium text-muted mb-2">
                   Upload Research File
                 </label>
-                <p className="text-xs text-slate-400 mb-3">
+                <p className="text-xs text-muted/80 mb-3">
                   Accepted formats: CSV, TXT, PDF, DOCX, JSON
                 </p>
                 <input
                   type="file"
                   accept=".csv,.txt,.pdf,.docx,.json"
                   onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
-                  className="block w-full text-sm text-slate-400
+                  className="block w-full text-sm text-muted/80
                     file:mr-4 file:py-2 file:px-4
                     file:rounded file:border-0
                     file:text-sm file:font-medium
-                    file:bg-sky-600 file:text-white
-                    hover:file:bg-sky-500"
+                    file:bg-accent file:text-bg
+                    hover:file:bg-accent"
                 />
                 {uploadFile && (
-                  <p className="text-xs text-slate-400 mt-2">
+                  <p className="text-xs text-muted/80 mt-2">
                     Selected: {uploadFile.name} ({(uploadFile.size / 1024).toFixed(1)} KB)
                   </p>
                 )}
@@ -2386,20 +2353,20 @@ function AdCollectionModal({
                 <button
                   type="button"
                   onClick={onClose}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded text-sm"
+                  className="px-4 py-2 bg-bg-elevated hover:bg-panel-strong rounded text-sm"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={uploading || !uploadFile}
-                  className="px-4 py-2 bg-sky-600 hover:bg-sky-500 disabled:opacity-50 disabled:cursor-not-allowed rounded text-sm"
+                  className="px-4 py-2 bg-accent hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed rounded text-sm"
                 >
                   {uploading ? "Uploading..." : "Upload & Add Data"}
                 </button>
               </div>
               {uploading && (
-                <p className="text-xs text-slate-400 text-right">Processing file...</p>
+                <p className="text-xs text-muted/80 text-right">Processing file...</p>
               )}
             </form>
           )}
@@ -2482,23 +2449,23 @@ function ProductCollectionModal({
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-slate-900 rounded-lg border border-slate-700 max-w-lg w-full max-h-[90vh] overflow-y-auto">
+      <div className="bg-panel rounded-lg border border-line max-w-lg w-full max-h-[90vh] overflow-y-auto">
         <div className="p-6">
           <h2 className="text-xl font-bold text-white mb-2">Product Information</h2>
-          <p className="text-sm text-slate-400 mb-6">
+          <p className="text-sm text-muted/80 mb-6">
             Enter your product URL or upload your own product research data
           </p>
-          {errorMessage && <p className="text-sm text-red-400 mb-3">{errorMessage}</p>}
-          {uploadMessage && <p className="text-sm text-slate-300 mb-3">{uploadMessage}</p>}
+          {errorMessage && <p className="text-sm text-accent mb-3">{errorMessage}</p>}
+          {uploadMessage && <p className="text-sm text-muted mb-3">{uploadMessage}</p>}
 
-          <div className="flex gap-2 mb-6 border-b border-slate-700">
+          <div className="flex gap-2 mb-6 border-b border-line">
             <button
               type="button"
               onClick={() => setActiveTab("collect")}
               className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
                 activeTab === "collect"
-                  ? "border-violet-500 text-violet-400"
-                  : "border-transparent text-slate-400 hover:text-slate-300"
+                  ? "border-accent text-accent"
+                  : "border-transparent text-muted/80 hover:text-muted"
               }`}
             >
               Collect Data
@@ -2508,8 +2475,8 @@ function ProductCollectionModal({
               onClick={() => setActiveTab("upload")}
               className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
                 activeTab === "upload"
-                  ? "border-violet-500 text-violet-400"
-                  : "border-transparent text-slate-400 hover:text-slate-300"
+                  ? "border-accent text-accent"
+                  : "border-transparent text-muted/80 hover:text-muted"
               }`}
             >
               Upload Data
@@ -2519,14 +2486,14 @@ function ProductCollectionModal({
           {activeTab === "collect" && (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                Product URL <span className="text-red-400">*</span>
+              <label className="block text-sm font-medium text-muted mb-2">
+                Product URL <span className="text-accent">*</span>
               </label>
               <input
                 type="url"
                 value={formData.productUrl}
                 onChange={(e) => setFormData({ ...formData, productUrl: e.target.value })}
-                className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                className="w-full px-3 py-2 bg-bg-elevated border border-line rounded text-white placeholder:text-muted/40 focus:outline-none focus:ring-2 focus:ring-accent/20"
                 placeholder="https://example.com/product"
                 required
               />
@@ -2537,7 +2504,7 @@ function ProductCollectionModal({
                 value={formData.returnsUrl}
                 onChange={(e) => setFormData({ ...formData, returnsUrl: e.target.value })}
                 placeholder="Returns/Refund Policy URL (optional)"
-                className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white"
+                className="w-full px-3 py-2 bg-bg-elevated border border-line rounded text-white"
               />
             </div>
             <div>
@@ -2546,7 +2513,7 @@ function ProductCollectionModal({
                 value={formData.shippingUrl}
                 onChange={(e) => setFormData({ ...formData, shippingUrl: e.target.value })}
                 placeholder="Shipping Policy URL (optional)"
-                className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white"
+                className="w-full px-3 py-2 bg-bg-elevated border border-line rounded text-white"
               />
             </div>
             <div>
@@ -2555,7 +2522,7 @@ function ProductCollectionModal({
                 value={formData.aboutUrl}
                 onChange={(e) => setFormData({ ...formData, aboutUrl: e.target.value })}
                 placeholder="About/Standards URL (optional)"
-                className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white"
+                className="w-full px-3 py-2 bg-bg-elevated border border-line rounded text-white"
               />
             </div>
 
@@ -2563,13 +2530,13 @@ function ProductCollectionModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="flex-1 px-4 py-2 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium"
+                className="flex-1 px-4 py-2 rounded bg-bg-elevated hover:bg-panel-strong text-muted font-medium"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="flex-1 px-4 py-2 rounded bg-violet-500 hover:bg-violet-400 text-white font-medium"
+                className="flex-1 px-4 py-2 rounded bg-accent hover:bg-accent/90 text-bg font-medium"
               >
                 Run
               </button>
@@ -2579,25 +2546,25 @@ function ProductCollectionModal({
           {activeTab === "upload" && (
             <form onSubmit={handleUpload} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">
+                <label className="block text-sm font-medium text-muted mb-2">
                   Upload Research File
                 </label>
-                <p className="text-xs text-slate-400 mb-3">
+                <p className="text-xs text-muted/80 mb-3">
                   Accepted formats: CSV, TXT, PDF, DOCX, JSON
                 </p>
                 <input
                   type="file"
                   accept=".csv,.txt,.pdf,.docx,.json"
                   onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
-                  className="block w-full text-sm text-slate-400
+                  className="block w-full text-sm text-muted/80
                     file:mr-4 file:py-2 file:px-4
                     file:rounded file:border-0
                     file:text-sm file:font-medium
-                    file:bg-violet-600 file:text-white
-                    hover:file:bg-violet-500"
+                    file:bg-accent file:text-bg
+                    hover:file:bg-accent"
                 />
                 {uploadFile && (
-                  <p className="text-xs text-slate-400 mt-2">
+                  <p className="text-xs text-muted/80 mt-2">
                     Selected: {uploadFile.name} ({(uploadFile.size / 1024).toFixed(1)} KB)
                   </p>
                 )}
@@ -2607,20 +2574,20 @@ function ProductCollectionModal({
                 <button
                   type="button"
                   onClick={onClose}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded text-sm"
+                  className="px-4 py-2 bg-bg-elevated hover:bg-panel-strong rounded text-sm"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={uploading || !uploadFile}
-                  className="px-4 py-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed rounded text-sm"
+                  className="px-4 py-2 bg-accent hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed rounded text-sm"
                 >
                   {uploading ? "Uploading..." : "Upload & Add Data"}
                 </button>
               </div>
               {uploading && (
-                <p className="text-xs text-slate-400 text-right">Processing file...</p>
+                <p className="text-xs text-muted/80 text-right">Processing file...</p>
               )}
             </form>
           )}

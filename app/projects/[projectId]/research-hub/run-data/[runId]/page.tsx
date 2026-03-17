@@ -151,110 +151,153 @@ export default function ResearchRunDataPage() {
     }
   }
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-bg text-white px-8 py-8">
+        <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
+          <div className="w-8 h-8 border-2 border-accent/20 border-t-accent rounded-full animate-spin" />
+          <p className="text-[10px] font-mono text-muted uppercase tracking-[0.3em] animate-pulse">Syncing_Run_State...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <main className="min-h-screen bg-slate-950 p-6 text-slate-100">
-      <div className="mx-auto w-full max-w-6xl space-y-4">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <h1 className="text-xl font-semibold">Research Run Data</h1>
-            <p className="text-sm text-slate-400">
-              Run ID: <span className="text-slate-200">{runId || "N/A"}</span>
+    <div className="min-h-screen bg-bg text-white">
+      <div className="border-b border-line bg-panel/50 backdrop-blur-md px-8 py-6">
+        <div className="flex items-center justify-between gap-6">
+          <div className="space-y-4">
+            <Link
+              href={`/projects/${projectId}/research-hub`}
+              className="text-[11px] font-mono text-muted hover:text-white uppercase tracking-widest transition-colors inline-block"
+            >
+              ← Back to Research Hub
+            </Link>
+            <div className="flex items-center gap-4">
+              <h1 className="text-4xl font-bold tracking-tight text-white">Run Overview</h1>
+              <div className="status-chip subtle uppercase tracking-widest text-[9px]">
+                {runId.substring(0, 8)}
+              </div>
+            </div>
+            <p className="text-xs text-muted font-mono uppercase tracking-widest opacity-60">
+              Run ID: <span className="text-accent">{runId}</span> 
+              <span className="mx-3 opacity-20">|</span> 
+              Jobs: <span className="text-accent-2">{jobs.length} Active</span>
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          
+          <div className="flex items-center gap-3">
             <button
-              type="button"
               onClick={() => void loadJobs()}
               disabled={loading || deleting}
-              className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+              className="btn btn-secondary !min-h-[40px] px-6 text-[10px] font-bold uppercase tracking-widest"
             >
               Refresh
             </button>
-            <Link
-              href={`/projects/${projectId}/research-hub`}
-              className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800"
-            >
-              Back to Research Hub
-            </Link>
           </div>
         </div>
+      </div>
 
-        <div className="rounded-lg border border-slate-800 bg-slate-900/80 p-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={toggleAll}
-              disabled={loading || deleting || jobs.length === 0}
-              className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-200 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {allSelected ? "Clear Selection" : "Select All"}
-            </button>
-            <button
-              type="button"
-              onClick={() => void deleteJobs("selected")}
-              disabled={loading || deleting || selectedIds.length === 0}
-              className="rounded-lg border border-red-500/60 bg-red-900/40 px-3 py-2 text-sm text-red-200 hover:bg-red-900/60 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              Delete Selected ({selectedIds.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => void deleteJobs("all")}
-              disabled={loading || deleting || jobs.length === 0}
-              className="rounded-lg border border-red-500/80 bg-red-900/50 px-3 py-2 text-sm text-red-100 hover:bg-red-900/70 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              Delete All Research Jobs
-            </button>
-            <span className="ml-auto text-xs text-slate-400">
-              {jobs.length} job{jobs.length === 1 ? "" : "s"}
-            </span>
-          </div>
-          {error ? <p className="mt-3 text-sm text-red-300">{error}</p> : null}
+      <div className="px-8 py-10 space-y-8 max-w-[1200px] mx-auto">
+        <div className="rounded-card border border-line bg-panel/40 p-6 backdrop-blur-panel flex flex-wrap items-center gap-4">
+          <button
+            onClick={toggleAll}
+            disabled={jobs.length === 0}
+            className="px-4 py-2 rounded-pill border border-line bg-bg-elevated/50 text-[10px] font-mono text-muted uppercase tracking-widest hover:text-white transition-colors"
+          >
+            {allSelected ? "Clear Selection" : "Select All Jobs"}
+          </button>
+          
+          <div className="h-4 w-px bg-line/50 mx-2"></div>
+          
+          <button
+            onClick={() => void deleteJobs("selected")}
+            disabled={selectedIds.length === 0 || deleting}
+            className="px-4 py-2 rounded-pill border border-danger/20 bg-danger/5 text-[10px] font-mono text-danger uppercase tracking-widest hover:bg-danger/10 transition-all font-bold"
+          >
+            Delete Selected ({selectedIds.length})
+          </button>
+          
+          <button
+            onClick={() => void deleteJobs("all")}
+            disabled={jobs.length === 0 || deleting}
+            className="px-4 py-2 rounded-pill border border-danger/40 bg-danger/10 text-[10px] font-mono text-danger uppercase tracking-widest hover:bg-danger/20 transition-all font-bold"
+          >
+             Delete All Jobs
+          </button>
+
+          {error && (
+            <div className="ml-4 px-3 py-1.5 rounded bg-danger/10 border border-danger/20 text-[10px] font-mono text-danger uppercase">
+              {error}
+            </div>
+          )}
         </div>
 
-        <div className="overflow-hidden rounded-lg border border-slate-800 bg-slate-900/60">
-          <table className="min-w-full divide-y divide-slate-800 text-sm">
-            <thead className="bg-slate-900/90">
+        <div className="rounded-card border border-line bg-panel overflow-hidden shadow-panel">
+          <div className="px-6 py-3 border-b border-line bg-bg-elevated/30">
+            <h2 className="text-[10px] font-mono text-accent uppercase tracking-[0.2em] font-bold">Run Jobs</h2>
+          </div>
+          <table className="w-full text-left border-collapse">
+            <thead className="bg-bg-elevated/10 border-b border-line">
               <tr>
-                <th className="px-3 py-2 text-left font-medium text-slate-300">Select</th>
-                <th className="px-3 py-2 text-left font-medium text-slate-300">Job</th>
-                <th className="px-3 py-2 text-left font-medium text-slate-300">Status</th>
-                <th className="px-3 py-2 text-left font-medium text-slate-300">Created</th>
-                <th className="px-3 py-2 text-left font-medium text-slate-300">Updated</th>
-                <th className="px-3 py-2 text-left font-medium text-slate-300">Job ID</th>
+                <th className="p-5 w-10">
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    onChange={toggleAll}
+                    className="h-3.5 w-3.5 rounded-sm bg-black/40 border-line checked:bg-accent-2 checked:border-accent-2 transition-all cursor-pointer"
+                  />
+                </th>
+                <th className="p-5 text-[9px] font-mono text-accent uppercase tracking-[0.2em]">Job Type</th>
+                <th className="p-5 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-32">Status</th>
+                <th className="p-5 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-48">Created</th>
+                <th className="p-5 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-48">Updated</th>
+                <th className="p-5 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-40">Job ID</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800">
-              {loading ? (
+            <tbody className="divide-y divide-line/30">
+              {jobs.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-3 py-6 text-center text-slate-400">
-                    Loading research jobs...
-                  </td>
-                </tr>
-              ) : jobs.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-3 py-6 text-center text-slate-500">
-                    No research jobs found for this run.
+                  <td colSpan={6} className="p-10 text-center text-[10px] font-mono text-muted uppercase tracking-widest opacity-40">
+                    No jobs found for this run
                   </td>
                 </tr>
               ) : (
                 jobs.map((job) => (
-                  <tr key={job.id}>
-                    <td className="px-3 py-2">
+                  <tr key={job.id} className="hover:bg-panel/[0.02] transition-colors group">
+                    <td className="p-5">
                       <input
                         type="checkbox"
                         checked={Boolean(selectedJobIds[job.id])}
                         onChange={() => toggleOne(job.id)}
+                        className="h-3.5 w-3.5 rounded-sm bg-black/40 border-line checked:bg-accent-2 checked:border-accent-2 transition-all cursor-pointer"
                         disabled={deleting}
                       />
                     </td>
-                    <td className="px-3 py-2 text-slate-200">
-                      {getResearchJobLabel(job)}
+                    <td className="p-5">
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[14px] font-black text-accent tracking-tight leading-none">
+                          {getResearchJobLabel(job)}
+                        </span>
+                        <span className="text-[9px] font-mono text-muted uppercase tracking-widest opacity-40">
+                          {job.type}
+                        </span>
+                      </div>
                     </td>
-                    <td className="px-3 py-2 text-slate-300">{job.status}</td>
-                    <td className="px-3 py-2 text-slate-400">{formatDate(job.createdAt)}</td>
-                    <td className="px-3 py-2 text-slate-400">{formatDate(job.updatedAt)}</td>
-                    <td className="px-3 py-2 text-xs text-slate-500">{job.id}</td>
+                    <td className="p-5">
+                      <span className={`status-chip !text-[8.5px] uppercase font-bold tracking-tighter !py-0.5 ${
+                        job.status === 'COMPLETED' ? 'success' :
+                        job.status === 'FAILED' ? 'danger' :
+                        'warning'
+                      }`}>
+                        {job.status}
+                      </span>
+                    </td>
+                    <td className="p-5 font-mono text-[10px] text-muted uppercase">{formatDate(job.createdAt)}</td>
+                    <td className="p-5 font-mono text-[10px] text-muted uppercase">{formatDate(job.updatedAt)}</td>
+                    <td className="p-5 text-[10px] font-mono text-accent-2/40 truncate max-w-[100px] hover:max-w-none transition-all cursor-default">
+                      {job.id}
+                    </td>
                   </tr>
                 ))
               )}
@@ -262,6 +305,6 @@ export default function ResearchRunDataPage() {
           </table>
         </div>
       </div>
-    </main>
+    </div>
   );
 }

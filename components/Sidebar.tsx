@@ -22,35 +22,35 @@ function SidebarLink({ href, label }: NavItem) {
     <Link
       href={href}
       className={[
-        "flex items-center justify-between px-3 py-2 rounded-md text-sm transition-colors",
+        "flex items-center justify-between px-3 py-2 rounded-md text-sm transition-all duration-200",
         active
-          ? "bg-slate-800/80 text-slate-50 border border-sky-500/70"
-          : "text-slate-300 hover:bg-slate-800/60 hover:text-white border border-transparent",
+          ? "bg-panel text-white border border-accent/30"
+          : "text-muted hover:bg-panel-strong hover:text-white border border-transparent",
       ].join(" ")}
     >
-      <span>{label}</span>
-      {active && <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />}
+      <span className={active ? "text-accent" : ""}>{label}</span>
+      {active && <span className="w-1.5 h-1.5 rounded-full bg-accent shadow-[0_0_8px_rgba(232,209,122,0.4)]" />}
     </Link>
   );
 }
 
 export default function Sidebar() {
   return (
-    <aside className="h-screen w-64 bg-slate-950 border-r border-slate-800 flex flex-col">
+    <aside className="h-screen w-64 bg-black/80 backdrop-blur-panel border-r border-line flex flex-col sticky top-0 z-30">
       {/* Brand */}
-      <div className="px-4 py-4 border-b border-slate-800">
-        <div className="text-[10px] uppercase tracking-[0.25em] text-slate-500">
-          FrameForge
+      <div className="px-4 py-4 border-b border-line">
+        <div className="text-[10px] uppercase tracking-[0.25em] text-accent font-bold">
+          KAIROS
         </div>
-        <div className="text-lg font-semibold text-slate-50 mt-1">
-          FrameForge AI Studio
+        <div className="text-lg font-semibold text-white mt-1 tracking-tight">
+          Kairos AI Studio
         </div>
       </div>
 
       {/* Main navigation */}
       <nav className="flex-1 px-3 py-4 space-y-6 overflow-y-auto">
         <div>
-          <div className="text-[11px] uppercase tracking-wide text-slate-500 mb-2">
+          <div className="eyebrow !m-0 !mb-2">
             Main
           </div>
           <div className="space-y-1">
@@ -61,18 +61,18 @@ export default function Sidebar() {
         </div>
 
         <div>
-          <div className="text-[11px] uppercase tracking-wide text-slate-500 mb-2">
+          <div className="eyebrow !m-0 !mb-2">
             Pipeline
           </div>
-          <p className="text-[11px] text-slate-500">
+          <p className="text-[11px] text-muted italic">
             Open a project to see phase-level navigation here.
           </p>
         </div>
       </nav>
 
       {/* Footer */}
-      <div className="px-4 py-3 border-t border-slate-800 text-[11px] text-slate-500">
-        FrameForge AI · v1.0
+      <div className="px-4 py-3 border-t border-line text-[11px] text-muted font-mono">
+        KAIROS AI · v1.0
       </div>
     </aside>
   );

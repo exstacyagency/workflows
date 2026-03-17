@@ -47,7 +47,7 @@ export default function CreateProjectButton() {
     <button 
       onClick={handleCreate}
       disabled={loading}
-      className="inline-flex items-center px-3 py-1.5 rounded-md bg-sky-500 hover:bg-sky-400 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-medium"
+      className="inline-flex items-center px-3 py-1.5 rounded-md bg-accent hover:bg-accent/90 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-medium"
     >
       {loading ? "Creating…" : "Create Project"}
     </button>
