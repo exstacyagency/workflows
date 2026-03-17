@@ -1,6 +1,6 @@
 # Security Overview
 
-This document captures the current authentication, authorization, and multitenancy posture of the FrameForge AI Studio repository as of today.
+This document captures the current authentication, authorization, and multitenancy posture of the Victora repository as of today.
 
 ## Authentication & Session State
 - `grep` searches across the repo (excluding dependencies) show **no usage** of NextAuth, Clerk, Auth0, Supabase, or other hosted auth SDKs, and no custom JWT/session helpers. The only reference to Auth0 is inside a dependency license file.

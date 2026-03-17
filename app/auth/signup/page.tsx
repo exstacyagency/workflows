@@ -60,13 +60,13 @@ export default function SignUpPage() {
         <h1 className="text-xl font-semibold">Create account</h1>
         <form onSubmit={onSubmit} className="space-y-3">
           <input
-            className="w-full rounded-pill bg-black/40 border border-line px-4 py-2 text-sm text-white placeholder:text-muted/40 outline-none focus:border-accent/40 transition-colors"
+            className="w-full rounded-pill bg-panel border border-line px-4 py-2 text-sm text-white placeholder:text-muted/40 outline-none focus:border-accent/40 transition-colors"
             placeholder="Name (optional)"
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
           <input
-            className="w-full rounded-pill bg-black/40 border border-line px-4 py-2 text-sm text-white placeholder:text-muted/40 outline-none focus:border-accent/40 transition-colors"
+            className="w-full rounded-pill bg-panel border border-line px-4 py-2 text-sm text-white placeholder:text-muted/40 outline-none focus:border-accent/40 transition-colors"
             placeholder="Email"
             type="email"
             value={email}
@@ -74,7 +74,7 @@ export default function SignUpPage() {
             required
           />
           <input
-            className="w-full rounded-pill bg-black/40 border border-line px-4 py-2 text-sm text-white placeholder:text-muted/40 outline-none focus:border-accent/40 transition-colors"
+            className="w-full rounded-pill bg-panel border border-line px-4 py-2 text-sm text-white placeholder:text-muted/40 outline-none focus:border-accent/40 transition-colors"
             placeholder="Password (min 8 chars)"
             type="password"
             value={password}
@@ -83,7 +83,7 @@ export default function SignUpPage() {
             required
           />
           <input
-            className="w-full rounded-pill bg-black/40 border border-line px-4 py-2 text-sm text-white placeholder:text-muted/40 outline-none focus:border-accent/40 transition-colors"
+            className="w-full rounded-pill bg-panel border border-line px-4 py-2 text-sm text-white placeholder:text-muted/40 outline-none focus:border-accent/40 transition-colors"
             placeholder="Confirm password"
             type="password"
             value={confirmPassword}
@@ -102,7 +102,7 @@ export default function SignUpPage() {
         </form>
         <p className="text-sm text-muted">
           Already have an account?{" "}
-          <Link href="/auth/signin" className="text-accent-2 hover:text-accent-2/80 font-mono font-medium">
+          <Link href="/auth/signin" className="text-accent hover:text-accent/80 font-mono font-medium">
             Sign in
           </Link>
         </p>

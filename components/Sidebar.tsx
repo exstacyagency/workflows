@@ -36,7 +36,7 @@ function SidebarLink({ href, label }: NavItem) {
 
 export default function Sidebar() {
   return (
-    <aside className="h-screen w-64 bg-black/80 backdrop-blur-panel border-r border-line flex flex-col sticky top-0 z-30">
+    <aside className="h-screen w-64 bg-panel backdrop-blur-panel border-r border-line flex flex-col sticky top-0 z-30">
       {/* Brand */}
       <div className="px-4 py-4 border-b border-line">
         <div className="text-[10px] uppercase tracking-[0.25em] text-accent font-bold">

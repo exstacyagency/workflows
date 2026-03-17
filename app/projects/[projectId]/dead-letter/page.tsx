@@ -326,14 +326,14 @@ export default function DeadLetterPage({
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-2">
                               <div className="card-label !mb-0">Job Error</div>
-                              <div className="font-mono text-[11px] whitespace-pre-wrap break-words bg-black/40 border border-line rounded-card p-4 text-danger/80">
+                              <div className="font-mono text-[11px] whitespace-pre-wrap break-words bg-panel border border-line rounded-card p-4 text-danger/80">
                                 {j.error ?? "—"}
                               </div>
                             </div>
 
                             <div className="space-y-2">
                               <div className="card-label !mb-0">Context Trace</div>
-                              <div className="font-mono text-[11px] whitespace-pre-wrap break-words bg-black/40 border border-line rounded-card p-4 text-accent-2/60">
+                              <div className="font-mono text-[11px] whitespace-pre-wrap break-words bg-panel border border-line rounded-card p-4 text-accent-2/60">
                                 {j.lastError ?? "—"}
                               </div>
                             </div>
@@ -341,7 +341,7 @@ export default function DeadLetterPage({
 
                           <div className="space-y-2">
                             <div className="card-label !mb-0">Payload Schema</div>
-                            <pre className="text-[11px] font-mono whitespace-pre-wrap break-words bg-black/40 border border-line rounded-card p-5 text-muted/60 overflow-x-auto">
+                            <pre className="text-[11px] font-mono whitespace-pre-wrap break-words bg-panel border border-line rounded-card p-5 text-muted/60 overflow-x-auto">
 {JSON.stringify(j.payload ?? {}, null, 2)}
                             </pre>
                           </div>

@@ -87,7 +87,7 @@ export default function ProjectsPage() {
           <div>
             <h1 className="text-2xl font-semibold text-white tracking-tight">Projects</h1>
             <p className="text-sm text-muted mt-1 italic max-w-2xl">
-              Create and manage FrameForge AI productions. Each project flows through the full research → script → storyboard → video pipeline.
+              Create and manage your projects. Each project flows through the full research → script → storyboard → video pipeline.
             </p>
           </div>
         </div>
@@ -112,7 +112,7 @@ export default function ProjectsPage() {
               Name <span className="text-danger">*</span>
             </label>
             <input
-              className="w-full rounded-pill border border-line bg-[rgba(255,255,255,0.03)] px-4 py-2 text-sm text-white placeholder:text-muted/40 outline-none focus:border-accent/40 transition-colors"
+              className="w-full rounded-pill border border-line bg-panel px-4 py-2 text-sm text-white placeholder:text-muted/40 outline-none focus:border-accent/40 transition-colors"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. ClearGlow Acne Serum Launch"
@@ -123,7 +123,7 @@ export default function ProjectsPage() {
               Description
             </label>
             <textarea
-              className="w-full rounded-card border border-line bg-[rgba(255,255,255,0.03)] px-4 py-2 text-sm text-white placeholder:text-muted/40 outline-none focus:border-accent/40 transition-colors min-h-[80px]"
+              className="w-full rounded-card border border-line bg-panel px-4 py-2 text-sm text-white placeholder:text-muted/40 outline-none focus:border-accent/40 transition-colors min-h-[80px]"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Optional short description to remind you what this project is about."
@@ -162,7 +162,7 @@ export default function ProjectsPage() {
           {projects.map((project) => (
             <div
               key={project.id}
-              className="flex items-center justify-between rounded-card border border-line bg-[rgba(255,255,255,0.03)] px-5 py-4 transition-colors hover:bg-bg-elevated/70"
+              className="flex cursor-pointer items-center justify-between rounded-card border border-line bg-panel px-5 py-4"
             >
               <div className="space-y-1.5">
                 <div className="text-sm font-bold text-white tracking-tight">

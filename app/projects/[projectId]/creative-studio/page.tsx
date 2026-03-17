@@ -320,7 +320,7 @@ function AddBeatExpansion({
   }
 
   return (
-    <div className="rounded-card border border-line bg-panel/30 p-6 space-y-5 animate-in fade-in zoom-in-95 duration-300">
+    <div className="rounded-card border border-line bg-panel p-6 space-y-5 animate-in fade-in zoom-in-95 duration-300">
       <div className="space-y-2">
          <span className="text-[9px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Node_Identifier</span>
          <input
@@ -332,7 +332,7 @@ function AddBeatExpansion({
            }}
            placeholder="SCN_DESCRIPTOR"
            disabled={disabled || loading}
-           className="w-full bg-black/40 border border-line/40 rounded-card px-4 py-2 text-[12px] font-mono text-white/70 focus:border-accent/40 focus:ring-1 focus:ring-accent/20 transition-all"
+           className="w-full bg-panel border border-line/40 rounded-card px-4 py-2 text-[12px] font-mono text-white/70 focus:border-accent/40 focus:ring-1 focus:ring-accent/20 transition-all"
          />
       </div>
 
@@ -3762,7 +3762,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
   return (
     <div className="min-h-screen bg-bg text-white pb-20">
       {/* Header */}
-      <div className="border-b border-line bg-panel/50 backdrop-blur-md px-8 py-6 sticky top-0 z-40">
+      <div className="border-b border-line bg-panel backdrop-blur-md px-8 py-6 sticky top-0 z-40">
         <div className="flex items-center justify-between gap-6">
           <div className="space-y-4">
             <Link
@@ -3807,6 +3807,54 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
       </div>
 
       <div className="px-8 py-10 max-w-[1400px] mx-auto space-y-8">
+        <section className="app-surface space-y-3">
+          <div className="app-panel-header">
+            <div>
+              <h2 className="app-section-title text-white">Research Hub</h2>
+              <p className="text-sm text-muted mt-1 italic">
+                Return to the research workspace to inspect customer insight, ad analysis, and supporting inputs.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <p className="app-status-line">
+              Open Research Hub to validate the evidence feeding your current creative decisions.
+            </p>
+            <Link
+              href={
+                selectedProductId
+                  ? `/projects/${projectId}/research-hub?productId=${selectedProductId}`
+                  : `/projects/${projectId}/research-hub`
+              }
+              className="app-button app-button--primary text-sm font-medium"
+            >
+              Open Research Hub
+            </Link>
+          </div>
+        </section>
+
+        <section className="app-surface space-y-3">
+          <div className="app-panel-header">
+            <div>
+              <h2 className="app-section-title text-white">Usage and Cost</h2>
+              <p className="text-sm text-muted mt-1 italic">
+                Review spend, usage events, and settled provider costs for this project.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <p className="app-status-line">
+              Check cost impact and usage history while iterating on creative production.
+            </p>
+            <Link
+              href={`/projects/${projectId}/usage`}
+              className="app-button app-button--primary text-sm font-medium"
+            >
+              Open Usage & Costs
+            </Link>
+          </div>
+        </section>
+
         {error && (
           <div className="rounded-card border border-danger/20 bg-danger/5 p-4 flex items-center justify-between gap-4 animate-in fade-in slide-in-from-top-2">
             <p className="text-[11px] font-mono text-danger uppercase tracking-widest">{error}</p>
@@ -3816,13 +3864,13 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Product Selection */}
-          <div className="rounded-card border border-line bg-panel/40 p-6 space-y-4">
+          <div className="rounded-card border border-line bg-panel p-6 space-y-4">
             <div className="flex items-center gap-3 mb-2">
               <span className="text-[9px] font-mono text-accent uppercase tracking-widest font-bold">Selected Product</span>
             </div>
             {products.length > 0 ? (
               <div className="space-y-4">
-                <div className="p-4 rounded-card border border-line/30 bg-bg/50">
+                <div className="p-4 rounded-card border border-line/30 bg-transparent">
                   <div className="text-[10px] font-mono text-muted uppercase tracking-widest mb-1 opacity-60">Active Product</div>
                   <div className="text-lg font-black text-white tracking-tight truncate">
                     {selectedProduct ? selectedProduct.name : "No Product Selected"}
@@ -3841,7 +3889,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                     url.searchParams.delete("product");
                     router.replace(url.pathname + url.search, { scroll: false });
                   }}
-                  className="w-full h-10 bg-black/40 border-line rounded-card px-3 text-[11px] font-mono text-muted uppercase tracking-widest focus:border-accent/50 focus:text-white outline-none transition-all"
+                  className="w-full h-10 bg-panel border-line rounded-card px-3 text-[11px] font-mono text-muted uppercase tracking-widest focus:border-accent/50 focus:text-white outline-none transition-all"
                 >
                   {products.map((product) => (
                     <option key={product.id} value={product.id} className="bg-bg text-white">
@@ -3862,7 +3910,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
           </div>
 
           {/* Research Context */}
-          <div className="rounded-card border border-line bg-panel/40 p-6 space-y-4 col-span-1 lg:col-span-2">
+          <div className="rounded-card border border-line bg-panel p-6 space-y-4 col-span-1 lg:col-span-2">
             <div className="flex items-center justify-between gap-3 mb-2">
               <span className="text-[9px] font-mono text-accent uppercase tracking-widest font-bold">Research Context</span>
               <div className="status-chip subtle uppercase tracking-widest text-[9px]">
@@ -3878,7 +3926,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                     const value = e.target.value === "no-active" ? null : e.target.value;
                     setSelectedRunId(value);
                   }}
-                  className="w-full h-10 bg-black/40 border-line rounded-card px-4 text-[11px] font-mono text-muted uppercase tracking-widest focus:border-accent/50 focus:text-white outline-none transition-all"
+                  className="w-full h-10 bg-panel border-line rounded-card px-4 text-[11px] font-mono text-muted uppercase tracking-widest focus:border-accent/50 focus:text-white outline-none transition-all"
                 >
                   <option value="no-active" className="bg-bg">No Active Run</option>
                   {sortedRuns.map((run) => (
@@ -3950,7 +3998,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
         )}
 
         {/* Character Casting Section */}
-        <div className="rounded-card border border-line bg-panel/30 p-6 space-y-6">
+        <div className="rounded-card border border-line bg-panel p-6 space-y-6">
           <div className="flex items-center gap-3">
             <span className="text-[9px] font-mono text-accent uppercase tracking-widest font-bold">Character Casting</span>
           </div>
@@ -3967,7 +4015,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                 <select
                   value={selectedStoryboardCharacterId ?? ""}
                   onChange={(event) => setSelectedStoryboardCharacterId(event.target.value || null)}
-                  className="w-full md:w-auto h-12 bg-black/40 border-line rounded-card px-6 text-[11px] font-mono text-white uppercase tracking-widest focus:border-accent/50 outline-none transition-all"
+                  className="w-full md:w-auto h-12 bg-panel border-line rounded-card px-6 text-[11px] font-mono text-white uppercase tracking-widest focus:border-accent/50 outline-none transition-all"
                 >
                   {runCharacters.map((char) => (
                     <option key={char.id} value={char.id} className="bg-bg">
@@ -3986,7 +4034,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
         </div>
 
       {/* Production Pipeline */}
-      <div className="rounded-card border border-line bg-panel/20 p-8 space-y-8">
+      <div className="rounded-card border border-line bg-panel p-8 space-y-8">
         <div className="flex items-center justify-between">
           <div className="space-y-1">
             <h2 className="text-xl font-bold text-white tracking-tight">Production_Pipeline</h2>
@@ -3995,7 +4043,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
         </div>
 
         {!hasSelectedRunWithJobs ? (
-          <div className="rounded-card border border-line/50 bg-bg/50 p-12 text-center space-y-6">
+          <div className="rounded-card border border-line/50 bg-transparent p-12 text-center space-y-6">
             <div className="space-y-2">
               <p className="text-sm font-mono text-white uppercase tracking-widest">Null_Sequence_Detected</p>
               <p className="text-[11px] text-muted max-w-md mx-auto leading-relaxed">
@@ -4148,7 +4196,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
             return (
               <div
                 key={step.key}
-                className="rounded-card border border-line bg-bg/40 overflow-hidden group hover:border-accent/30 transition-all duration-500 mb-4"
+                className="rounded-card border border-line bg-transparent overflow-hidden group hover:border-accent/30 transition-all duration-500 mb-4"
               >
                 <div className="px-6 py-5 flex items-center justify-between gap-6 border-b border-line/20">
                   <div className="flex items-center gap-4 flex-1">
@@ -4234,7 +4282,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                 </div> {/* End of p-6 content */}
 
                 {usesBottomOutputToggle && (
-                  <div className="px-6 py-4 bg-panel/30 border-t border-line/10 flex justify-end">
+                  <div className="px-6 py-4 bg-panel border-t border-line/10 flex justify-end">
                     <button
                       type="button"
                       onClick={() => toggleCompletedStepOutput(step.key)}
@@ -4282,9 +4330,9 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                           return (
                             <div
                               key={`scene-flow-${row.sceneNumber}`}
-                              className="rounded-card border border-line bg-panel/30 overflow-hidden group hover:border-accent/30 transition-all duration-300"
+                              className="rounded-card border border-line bg-panel overflow-hidden group hover:border-accent/30 transition-all duration-300"
                             >
-                              <div className="px-5 py-3 bg-panel/50 border-b border-line/10 flex items-center justify-between">
+                              <div className="px-5 py-3 bg-panel border-b border-line/10 flex items-center justify-between">
                                 <span className="text-[10px] font-mono text-accent font-bold">SCN_{String(row.sceneNumber).padStart(2, "0")}</span>
                                 <div className="status-chip subtle !px-3 !py-1 uppercase tracking-widest text-[8px] font-bold">
                                   {isGenerating ? "Synthesizing" : row.hasImages ? "Asset_Ready" : "Pending_Manifest"}
@@ -4293,7 +4341,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                               <div className="p-5 space-y-4">
                                 <div className="space-y-2">
                                   <span className="text-[8px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Kinetic_Metadata</span>
-                                  <div className="bg-black/20 border border-line/10 rounded-card p-3 text-[11px] text-white/50 font-mono leading-relaxed min-h-[60px] line-clamp-3">
+                                  <div className="bg-panel border border-line/10 rounded-card p-3 text-[11px] text-white/50 font-mono leading-relaxed min-h-[60px] line-clamp-3">
                                     {row.panel?.vo || "No_Audio_Directive"}
                                   </div>
                                 </div>
@@ -4349,9 +4397,9 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                           return (
                             <div
                               key={`scene-video-${row.sceneNumber}`}
-                              className="rounded-card border border-line bg-panel/30 overflow-hidden group hover:border-accent/30 transition-all duration-300"
+                              className="rounded-card border border-line bg-panel overflow-hidden group hover:border-accent/30 transition-all duration-300"
                             >
-                              <div className="px-5 py-3 bg-panel/50 border-b border-line/10 flex items-center justify-between">
+                              <div className="px-5 py-3 bg-panel border-b border-line/10 flex items-center justify-between">
                                 <span className="text-[10px] font-mono text-accent font-bold">SCN_{String(row.sceneNumber).padStart(2, "0")}</span>
                                 <div className="status-chip subtle !px-3 !py-1 uppercase tracking-widest text-[8px] font-bold">
                                   {isGenerating ? "Synthesizing" : hasVideo ? "Render_Complete" : "Pending_Render"}
@@ -4359,7 +4407,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                               </div>
 
                               {row.lockReason && (
-                                <div className="px-5 py-2 flex items-center gap-2 text-[9px] font-mono text-muted uppercase tracking-widest opacity-60 bg-black/20 border-b border-line/5">
+                                <div className="px-5 py-2 flex items-center gap-2 text-[9px] font-mono text-muted uppercase tracking-widest opacity-60 bg-panel border-b border-line/5">
                                   <span>Locked:</span>
                                   <span>{row.lockReason}</span>
                                 </div>
@@ -4388,7 +4436,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                                     <video
                                       src={videoUrl}
                                       controls
-                                      className="w-full aspect-[9/16] rounded-card border border-line shadow-inner bg-black"
+                                      className="w-full aspect-[9/16] rounded-card border border-line shadow-inner bg-panel"
                                     />
                                   </div>
                                 )}
@@ -4409,7 +4457,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                       <p className="text-[10px] font-mono text-danger uppercase tracking-widest leading-relaxed">Null_Output_Error: Storyboard_Context_Missing</p>
                     </div>
                   ) : (
-                    <div className="rounded-card border border-line bg-panel/10 overflow-hidden">
+                    <div className="rounded-card border border-line bg-transparent overflow-hidden">
                        <VideoEditorStep
                          storyboardId={storyboardId}
                          projectId={projectId}
@@ -4512,8 +4560,8 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                         </div>
                       </div>
 
-                      <div className="rounded-card border border-line bg-panel/30 overflow-hidden group hover:border-accent/30 transition-all duration-300">
-                        <div className="px-6 py-4 bg-panel/50 border-b border-line/10 flex items-center justify-between">
+                      <div className="rounded-card border border-line bg-panel overflow-hidden group hover:border-accent/30 transition-all duration-300">
+                        <div className="px-6 py-4 bg-panel border-b border-line/10 flex items-center justify-between">
                           <span className="text-[11px] font-mono text-accent-2 font-bold tracking-tighter uppercase whitespace-pre">Audio_Synthesis_Path</span>
                           <span className="text-[8px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Script_Output</span>
                         </div>
@@ -4521,12 +4569,12 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                           {scriptPanelEditMode ? (
                             <div className="space-y-6">
                               <div className="p-4 rounded-card border border-accent-2/20 bg-accent-2/5 text-[10px] font-mono text-accent-2 uppercase tracking-widest leading-relaxed">
-                                <span className="opacity-60">System_Note:</span> Maintain "Beat N:" headers to preserve sequential sync logic.
+                                <span className="opacity-60">System_Note:</span> Maintain &quot;Beat N:&quot; headers to preserve sequential sync logic.
                               </div>
                               <textarea
                                 value={scriptPanelCombinedVoDraft}
                                 onChange={(e) => setScriptPanelCombinedVoDraft(e.target.value)}
-                                className="w-full bg-black/40 border border-line/40 rounded-card p-6 text-[13px] font-mono text-white/70 focus:border-accent-2/40 focus:ring-1 focus:ring-accent-2/20 transition-all min-h-[400px] leading-relaxed"
+                                className="w-full bg-panel border border-line/40 rounded-card p-6 text-[13px] font-mono text-white/70 focus:border-accent-2/40 focus:ring-1 focus:ring-accent-2/20 transition-all min-h-[400px] leading-relaxed"
                               />
                             </div>
                           ) : (
@@ -4538,7 +4586,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                       </div>
                     </div>
                   ) : (
-                    <div className="p-12 text-center text-muted text-[10px] font-mono uppercase tracking-widest border border-line/20 rounded-card bg-panel/5">
+                    <div className="p-12 text-center text-muted text-[10px] font-mono uppercase tracking-widest border border-line/20 rounded-card bg-transparent">
                       Null_Data_Error: Script_Reference_Broken
                     </div>
                   )}
@@ -4546,9 +4594,9 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
               )}
 
               {scriptSources && (
-                <div className="mt-6 border border-line/10 rounded-card bg-panel/20 overflow-hidden">
+                <div className="mt-6 border border-line/10 rounded-card bg-panel overflow-hidden">
                   <details className="group">
-                    <summary className="px-6 py-4 cursor-pointer flex items-center justify-between text-[10px] font-mono text-muted uppercase tracking-widest font-bold hover:bg-panel/40 transition-colors list-none">
+                    <summary className="px-6 py-4 cursor-pointer flex items-center justify-between text-[10px] font-mono text-muted uppercase tracking-widest font-bold hover:bg-panel transition-colors list-none">
                       <div className="flex items-center gap-3">
                         <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
                         Inference_Dependency_Manifest
@@ -4632,9 +4680,9 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                         {(storyboardEditMode ? storyboardDraftPanels : storyboardPanels).map((panel, panelIndex) => (
                           <div
                             key={`${panel.beatLabel}-${panel.startTime}-${panel.endTime}-${panelIndex}`}
-                            className="rounded-card border border-line bg-panel/30 overflow-hidden group hover:border-accent/30 transition-all duration-300"
+                            className="rounded-card border border-line bg-panel overflow-hidden group hover:border-accent/30 transition-all duration-300"
                           >
-                            <div className="px-5 py-3 bg-panel/50 border-b border-line/10 flex items-center justify-between">
+                            <div className="px-5 py-3 bg-panel border-b border-line/10 flex items-center justify-between">
                               <div className="flex items-center gap-4">
                                 <span className="text-[10px] font-mono text-accent font-bold">Panel_{String(panelIndex + 1).padStart(2, "0")}</span>
                                 <div className="flex items-center gap-2">
@@ -4699,14 +4747,14 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                                 )}
                               </div>
                             </div>
-                            <div className="p-8 space-y-8 bg-black/20">
+                            <div className="p-8 space-y-8 bg-panel">
                               <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
                                 <div className="space-y-4">
                                   <div className="flex items-center justify-between border-b border-line/5 pb-2">
                                     <span className="text-[9px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Auditory_Manifest (VO)</span>
                                     <span className="w-1.5 h-1.5 rounded-full bg-accent-2/40" />
                                   </div>
-                                  <div className="w-full bg-panel/10 border border-line/20 rounded-card p-5 text-[14px] text-white/80 font-sans leading-relaxed min-h-[100px] whitespace-pre-wrap">
+                                  <div className="w-full bg-transparent border border-line/20 rounded-card p-5 text-[14px] text-white/80 font-sans leading-relaxed min-h-[100px] whitespace-pre-wrap">
                                     {panel.vo || "No_Audio_Data"}
                                   </div>
                                 </div>
@@ -4715,7 +4763,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                                     <span className="text-[9px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Visual_Directives (Prompt)</span>
                                     <span className="w-1.5 h-1.5 rounded-full bg-accent/40" />
                                   </div>
-                                  <div className="w-full bg-panel/10 border border-line/20 rounded-card p-5 text-[13px] font-mono text-accent-2/70 leading-relaxed min-h-[100px] whitespace-pre-wrap">
+                                  <div className="w-full bg-transparent border border-line/20 rounded-card p-5 text-[13px] font-mono text-accent-2/70 leading-relaxed min-h-[100px] whitespace-pre-wrap">
                                     {panel.videoPrompt || "No_Visual_Directives"}
                                   </div>
                                 </div>
@@ -4742,7 +4790,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                                         ...parsed
                                       }));
                                     }}
-                                    className="w-full bg-black/40 border border-line/40 rounded-card p-6 text-[12px] font-mono text-white/70 focus:border-accent/40 focus:ring-1 focus:ring-accent/20 transition-all leading-relaxed min-h-[240px]"
+                                    className="w-full bg-panel border border-line/40 rounded-card p-6 text-[12px] font-mono text-white/70 focus:border-accent/40 focus:ring-1 focus:ring-accent/20 transition-all leading-relaxed min-h-[240px]"
                                   />
                                 </div>
                               )}
@@ -4838,17 +4886,17 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                           return (
                             <div
                               key={`image-prompt-${row.panelIndex}`}
-                              className="rounded-card border border-line bg-panel/30 overflow-hidden group hover:border-accent/30 transition-all duration-300"
+                              className="rounded-card border border-line bg-panel overflow-hidden group hover:border-accent/30 transition-all duration-300"
                             >
-                              <div className="px-6 py-4 bg-panel/50 border-b border-line/10 flex items-center justify-between">
+                              <div className="px-6 py-4 bg-panel border-b border-line/10 flex items-center justify-between">
                                 <span className="text-[11px] font-mono text-accent font-bold tracking-tighter">SCN_{String(row.sceneNumber).padStart(2, "0")}</span>
                                 <span className="text-[8px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Visual_Asset_Directives</span>
                               </div>
                               <div className="p-6 space-y-6">
                                 <div className="space-y-3">
                                   <span className="text-[8px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Context_VO</span>
-                                  <div className="bg-black/20 border border-line/10 rounded-card p-4 text-[12px] text-white/60 leading-relaxed italic">
-                                    "{row.vo || "No_Audio_Data"}"
+                                  <div className="bg-panel border border-line/10 rounded-card p-4 text-[12px] text-white/60 leading-relaxed italic">
+                                    &quot;{row.vo || "No_Audio_Data"}&quot;
                                   </div>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -4863,10 +4911,10 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                                           })
                                         }
                                         disabled={imagePromptSaving}
-                                        className="w-full bg-black/40 border border-line/40 rounded-card p-4 text-[11px] font-mono text-white/70 focus:border-accent-2/40 focus:ring-1 focus:ring-accent-2/20 transition-all min-h-[120px]"
+                                        className="w-full bg-panel border border-line/40 rounded-card p-4 text-[11px] font-mono text-white/70 focus:border-accent-2/40 focus:ring-1 focus:ring-accent-2/20 transition-all min-h-[120px]"
                                       />
                                     ) : (
-                                      <div className="w-full bg-panel/10 border border-line/20 rounded-card p-4 text-[11px] font-mono text-accent-2/70 leading-relaxed min-h-[120px]">
+                                      <div className="w-full bg-transparent border border-line/20 rounded-card p-4 text-[11px] font-mono text-accent-2/70 leading-relaxed min-h-[120px]">
                                         {firstFramePrompt || "Null_Directive"}
                                       </div>
                                     )}
@@ -4882,10 +4930,10 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                                           })
                                         }
                                         disabled={imagePromptSaving}
-                                        className="w-full bg-black/40 border border-line/40 rounded-card p-4 text-[11px] font-mono text-white/70 focus:border-accent/40 focus:ring-1 focus:ring-accent/20 transition-all min-h-[120px]"
+                                        className="w-full bg-panel border border-line/40 rounded-card p-4 text-[11px] font-mono text-white/70 focus:border-accent/40 focus:ring-1 focus:ring-accent/20 transition-all min-h-[120px]"
                                       />
                                     ) : (
-                                      <div className="w-full bg-panel/10 border border-line/20 rounded-card p-4 text-[11px] font-mono text-accent/70 leading-relaxed min-h-[120px]">
+                                      <div className="w-full bg-transparent border border-line/20 rounded-card p-4 text-[11px] font-mono text-accent/70 leading-relaxed min-h-[120px]">
                                         {lastFramePrompt || "Null_Directive"}
                                       </div>
                                     )}
@@ -4965,9 +5013,9 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                           return (
                             <div
                               key={`video-prompt-${row.panelIndex}`}
-                              className="rounded-card border border-line bg-panel/30 overflow-hidden group hover:border-accent/30 transition-all duration-300"
+                              className="rounded-card border border-line bg-panel overflow-hidden group hover:border-accent/30 transition-all duration-300"
                             >
-                              <div className="px-6 py-4 bg-panel/50 border-b border-line/10 flex items-center justify-between">
+                              <div className="px-6 py-4 bg-panel border-b border-line/10 flex items-center justify-between">
                                 <div className="flex items-center gap-6">
                                   <span className="text-[11px] font-mono text-accent font-bold tracking-tighter">SCN_{String(row.panelIndex + 1).padStart(2, "0")}</span>
                                   <div className="status-chip subtle !px-3 !py-1 uppercase tracking-widest text-[8px] font-bold">
@@ -4985,7 +5033,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                                         updateVideoPromptDraft(row.panelIndex, event.target.value)
                                       }
                                       disabled={videoPromptSaving}
-                                      className="w-full bg-black/40 border border-line/40 rounded-card p-6 text-[12px] font-mono text-white/70 focus:border-accent/40 focus:ring-1 focus:ring-accent/20 transition-all leading-relaxed min-h-[140px]"
+                                      className="w-full bg-panel border border-line/40 rounded-card p-6 text-[12px] font-mono text-white/70 focus:border-accent/40 focus:ring-1 focus:ring-accent/20 transition-all leading-relaxed min-h-[140px]"
                                     />
                                     <div className="flex justify-end">
                                       <button
@@ -4999,7 +5047,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                                     </div>
                                   </div>
                                 ) : (
-                                  <div className="w-full bg-panel/10 border border-line/20 rounded-card p-6 text-[12px] font-mono text-white/70 leading-relaxed min-h-[100px] whitespace-pre-wrap">
+                                  <div className="w-full bg-transparent border border-line/20 rounded-card p-6 text-[12px] font-mono text-white/70 leading-relaxed min-h-[100px] whitespace-pre-wrap">
                                     {promptValue || "Null_Kinetic_Directive"}
                                   </div>
                                 )}
@@ -5037,9 +5085,9 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
   </div>
 
       {showScriptModal && (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 bg-black/80 backdrop-blur-sm animate-in fade-in duration-300" onClick={() => { if (!scriptModalSubmitting) { setShowScriptModal(false); resetScriptModal(); } }}>
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 bg-overlay backdrop-blur-sm animate-in fade-in duration-300" onClick={() => { if (!scriptModalSubmitting) { setShowScriptModal(false); resetScriptModal(); } }}>
           <div className="w-full max-w-2xl bg-bg border border-line rounded-card overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300 max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <div className="px-6 py-4 bg-panel/50 border-b border-line/10 flex items-center justify-between">
+            <div className="px-6 py-4 bg-panel border-b border-line/10 flex items-center justify-between">
               <span className="text-[11px] font-mono text-accent font-bold uppercase tracking-widest">Script_Inference_Orchestrator</span>
               <button
                 onClick={() => { if (!scriptModalSubmitting) { setShowScriptModal(false); resetScriptModal(); } }}
@@ -5057,25 +5105,25 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                     <p className="text-[12px] text-white/50 leading-relaxed">Select the synthesis architecture for this script iteration.</p>
                   </div>
                   <div className="grid grid-cols-1 gap-4">
-                    <button onClick={() => void handleChooseGenerateWithAi("swipe_template")} disabled={scriptModalSubmitting} className="btn btn-secondary !justify-start px-6 py-4 h-auto group bg-panel/20 border-line/10 hover:border-accent/30 transition-all">
+                    <button onClick={() => void handleChooseGenerateWithAi("swipe_template")} disabled={scriptModalSubmitting} className="btn btn-secondary !justify-start px-6 py-4 h-auto group bg-panel border-line/10 hover:border-accent/30 transition-all">
                       <div className="text-left space-y-1">
                         <div className="text-[11px] font-mono text-accent uppercase tracking-widest group-hover:text-accent transition-colors">Select_Ad_Template_From_Swipe</div>
                         <div className="text-[9px] text-muted uppercase tracking-widest opacity-40">Leverage existing high-performance creative structures.</div>
                       </div>
                     </button>
-                    <button onClick={() => void handleChooseGenerateWithAi("research_formula")} disabled={scriptModalSubmitting} className="btn btn-secondary !justify-start px-6 py-4 h-auto group bg-panel/20 border-line/10 hover:border-accent/30 transition-all">
+                    <button onClick={() => void handleChooseGenerateWithAi("research_formula")} disabled={scriptModalSubmitting} className="btn btn-secondary !justify-start px-6 py-4 h-auto group bg-panel border-line/10 hover:border-accent/30 transition-all">
                       <div className="text-left space-y-1">
                         <div className="text-[11px] font-mono text-accent uppercase tracking-widest group-hover:text-accent transition-colors">Use_Formula_From_Research</div>
                         <div className="text-[9px] text-muted uppercase tracking-widest opacity-40">Derive script structure from validated market insights.</div>
                       </div>
                     </button>
-                    <button onClick={() => void handleChooseGenerateWithAi("upload_template")} disabled={scriptModalSubmitting} className="btn btn-secondary !justify-start px-6 py-4 h-auto group bg-panel/20 border-line/10 hover:border-accent/30 transition-all">
+                    <button onClick={() => void handleChooseGenerateWithAi("upload_template")} disabled={scriptModalSubmitting} className="btn btn-secondary !justify-start px-6 py-4 h-auto group bg-panel border-line/10 hover:border-accent/30 transition-all">
                       <div className="text-left space-y-1">
                         <div className="text-[11px] font-mono text-accent uppercase tracking-widest group-hover:text-accent transition-colors">Upload_Transcript_As_Template</div>
                         <div className="text-[9px] text-muted uppercase tracking-widest opacity-40">Inject custom baseline for synthesis.</div>
                       </div>
                     </button>
-                    <button onClick={() => { setScriptModalMode("upload"); setScriptModalError(null); }} disabled={scriptModalSubmitting} className="btn btn-secondary !justify-start px-6 py-4 h-auto group bg-panel/20 border-line/10 hover:border-accent/30 transition-all">
+                    <button onClick={() => { setScriptModalMode("upload"); setScriptModalError(null); }} disabled={scriptModalSubmitting} className="btn btn-secondary !justify-start px-6 py-4 h-auto group bg-panel border-line/10 hover:border-accent/30 transition-all">
                       <div className="text-left space-y-1">
                         <div className="text-[11px] font-mono text-muted uppercase tracking-widest group-hover:text-white transition-colors">Manual_Script_Initialization</div>
                         <div className="text-[9px] text-muted uppercase tracking-widest opacity-40">Direct entry of pre-resolved audio assets.</div>
@@ -5120,7 +5168,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                               value={selectedScriptResearchJobId}
                               onChange={(e) => setSelectedScriptResearchJobId(e.target.value)}
                               disabled={scriptModalSubmitting}
-                              className="w-full bg-black/40 border border-line/40 rounded-card px-4 py-3 text-[12px] font-mono text-white/70 focus:border-accent/40 focus:ring-1 focus:ring-accent/20 transition-all cursor-pointer"
+                              className="w-full bg-panel border border-line/40 rounded-card px-4 py-3 text-[12px] font-mono text-white/70 focus:border-accent/40 focus:ring-1 focus:ring-accent/20 transition-all cursor-pointer"
                             >
                               {scriptResearchRuns.map((run) => {
                                 const timestamp = new Date(run.createdAt).toLocaleString("en-US", {
@@ -5149,7 +5197,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                               ) : scriptRunSummaryError ? (
                                 <div className="p-4 rounded-card border border-danger/30 bg-danger/5 text-[10px] font-mono text-danger uppercase tracking-widest">Manifest_Sync_Error: {scriptRunSummaryError}</div>
                               ) : scriptRunSummary ? (
-                                <div className="rounded-card border border-line/10 bg-panel/30 overflow-hidden divide-y divide-line/10">
+                                <div className="rounded-card border border-line/10 bg-panel overflow-hidden divide-y divide-line/10">
                                   {(() => {
                                     const customer = getSourceRowContent(scriptRunSummary.customerAnalysis, String(scriptRunSummary.customerAnalysis.avatarSummary ?? ""));
                                     const pattern = getSourceRowContent(scriptRunSummary.patternAnalysis, "");
@@ -5161,7 +5209,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                                       { label: "Pattern_Analysis", value: pattern.text, missing: pattern.missing },
                                       { label: "Product_Intelligence", value: product.text, missing: product.missing },
                                     ].map((row) => (
-                                      <div key={row.label} className="px-5 py-3 flex items-start justify-between gap-6 hover:bg-panel/5 transition-colors">
+                                      <div key={row.label} className="px-5 py-3 flex items-start justify-between gap-6 hover:bg-transparent transition-colors">
                                         <span className="text-[10px] font-mono text-muted font-bold uppercase tracking-widest opacity-60 shrink-0">{row.label}</span>
                                         <span className={`text-[10px] font-mono text-right leading-relaxed ${row.missing ? 'text-warning' : 'text-accent-2'}`}>
                                           {row.missing ? row.value : row.value}
@@ -5216,13 +5264,13 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                     onChange={(e) => setScriptUploadText(e.target.value)}
                     disabled={scriptModalSubmitting}
                     placeholder="Enter audio directives here..."
-                    className="w-full bg-black/40 border border-line/40 rounded-card p-6 text-[13px] font-mono text-white/70 focus:border-accent/40 focus:ring-1 focus:ring-accent/20 transition-all min-h-[300px] leading-relaxed placeholder:opacity-20"
+                    className="w-full bg-panel border border-line/40 rounded-card p-6 text-[13px] font-mono text-white/70 focus:border-accent/40 focus:ring-1 focus:ring-accent/20 transition-all min-h-[300px] leading-relaxed placeholder:opacity-20"
                   />
                 </div>
               )}
             </div>
             
-            <div className="px-8 py-6 bg-panel/50 border-t border-line/10 flex items-center justify-between">
+            <div className="px-8 py-6 bg-panel border-t border-line/10 flex items-center justify-between">
               <button
                 onClick={() => {
                   if (scriptModalSubmitting) return;
@@ -5248,9 +5296,9 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
       )}
 
       {showStoryboardModal && (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 bg-black/80 backdrop-blur-sm animate-in fade-in duration-300" onClick={() => { if (!storyboardModalSubmitting) { setShowStoryboardModal(false); setStoryboardModalMode("choose"); setManualStoryboardPanels([]); } }}>
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 bg-overlay backdrop-blur-sm animate-in fade-in duration-300" onClick={() => { if (!storyboardModalSubmitting) { setShowStoryboardModal(false); setStoryboardModalMode("choose"); setManualStoryboardPanels([]); } }}>
           <div className="w-full max-w-2xl bg-bg border border-line rounded-card overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300 max-h-[95vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <div className="px-6 py-4 bg-panel/50 border-b border-line/10 flex items-center justify-between">
+            <div className="px-6 py-4 bg-panel border-b border-line/10 flex items-center justify-between">
               <span className="text-[11px] font-mono text-accent font-bold uppercase tracking-widest">Sequence_Manifest_Orchestrator</span>
               <button
                 onClick={() => { if (!storyboardModalSubmitting) { setShowStoryboardModal(false); setStoryboardModalMode("choose"); setManualStoryboardPanels([]); } }}
@@ -5267,13 +5315,13 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                     <span className="text-[10px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Storyboard Mode</span>
                     <p className="text-[12px] text-white/50 leading-relaxed uppercase tracking-widest">Choose how you want to build the storyboard.</p>
                   </div>
-                  <button onClick={() => void handleGenerateStoryboardWithMode("ai")} disabled={storyboardModalSubmitting} className="btn btn-secondary !justify-start px-6 py-6 h-auto group bg-panel/20 border-line/10 hover:border-accent/30 transition-all">
+                  <button onClick={() => void handleGenerateStoryboardWithMode("ai")} disabled={storyboardModalSubmitting} className="btn btn-secondary !justify-start px-6 py-6 h-auto group bg-panel border-line/10 hover:border-accent/30 transition-all">
                     <div className="text-left space-y-1">
                       <div className="text-[11px] font-mono text-accent-2 uppercase tracking-widest font-bold">AI Storyboard</div>
                       <div className="text-[9px] text-muted uppercase tracking-widest opacity-40">Generate storyboard frames automatically.</div>
                     </div>
                   </button>
-                  <button onClick={() => void openManualStoryboardBuilder()} disabled={storyboardModalSubmitting} className="btn btn-secondary !justify-start px-6 py-6 h-auto group bg-panel/20 border-line/10 hover:border-accent/30 transition-all">
+                  <button onClick={() => void openManualStoryboardBuilder()} disabled={storyboardModalSubmitting} className="btn btn-secondary !justify-start px-6 py-6 h-auto group bg-panel border-line/10 hover:border-accent/30 transition-all">
                     <div className="text-left space-y-1">
                       <div className="text-[11px] font-mono text-white/70 uppercase tracking-widest font-bold">Manual Storyboard</div>
                       <div className="text-[9px] text-muted uppercase tracking-widest opacity-40">Build storyboard frames and beat mapping by hand.</div>
@@ -5288,15 +5336,15 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                   </div>
                   <div className="space-y-6">
                     {manualStoryboardPanels.map((panel, index) => (
-                      <div key={`manual-panel-${index}`} className="rounded-card border border-line bg-panel/20 overflow-hidden divide-y divide-line/10">
-                        <div className="px-5 py-3 bg-panel/50 flex items-center justify-between">
+                      <div key={`manual-panel-${index}`} className="rounded-card border border-line bg-panel overflow-hidden divide-y divide-line/10">
+                        <div className="px-5 py-3 bg-panel flex items-center justify-between">
                           <span className="text-[10px] font-mono text-accent font-bold uppercase tracking-widest">{panel.beatLabel}</span>
                           <span className="text-[9px] font-mono text-muted opacity-40 uppercase tracking-widest">[{panel.startTime}s - {panel.endTime}s]</span>
                         </div>
                         <div className="p-6 space-y-5">
                           <div className="space-y-2">
                              <span className="text-[8px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Context_VO</span>
-                             <div className="bg-black/40 p-3 rounded-card text-[11px] font-mono text-muted leading-relaxed line-clamp-2 italic">"{panel.vo}"</div>
+                             <div className="bg-panel p-3 rounded-card text-[11px] font-mono text-muted leading-relaxed line-clamp-2 italic">&quot;{panel.vo}&quot;</div>
                           </div>
                           <div className="grid grid-cols-1 gap-4">
                              <div className="space-y-2">
@@ -5304,7 +5352,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                                <textarea
                                  value={panel.visualDescription}
                                  onChange={(e) => updateManualStoryboardPanel(index, "visualDescription", e.target.value)}
-                                 className="w-full bg-black/20 border border-line/20 rounded-card p-3 text-[11px] font-mono text-white/70 min-h-[80px]"
+                                 className="w-full bg-panel border border-line/20 rounded-card p-3 text-[11px] font-mono text-white/70 min-h-[80px]"
                                  placeholder="Inference_Directives..."
                                />
                              </div>
@@ -5314,7 +5362,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                                   <input
                                     value={panel.creatorAction}
                                     onChange={(e) => updateManualStoryboardPanel(index, "creatorAction", e.target.value)}
-                                    className="w-full bg-black/20 border border-line/20 rounded-card px-3 py-2 text-[10px] font-mono text-white/70"
+                                    className="w-full bg-panel border border-line/20 rounded-card px-3 py-2 text-[10px] font-mono text-white/70"
                                   />
                                </div>
                                <div className="space-y-2">
@@ -5322,7 +5370,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                                   <input
                                     value={panel.textOverlay}
                                     onChange={(e) => updateManualStoryboardPanel(index, "textOverlay", e.target.value)}
-                                    className="w-full bg-black/20 border border-line/20 rounded-card px-3 py-2 text-[10px] font-mono text-white/70"
+                                    className="w-full bg-panel border border-line/20 rounded-card px-3 py-2 text-[10px] font-mono text-white/70"
                                   />
                                </div>
                              </div>
@@ -5335,7 +5383,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
               )}
             </div>
             
-            <div className="px-8 py-6 bg-panel/50 border-t border-line/10 flex items-center justify-between">
+            <div className="px-8 py-6 bg-panel border-t border-line/10 flex items-center justify-between">
               <button
                 onClick={() => {
                   if (storyboardModalSubmitting) return;
@@ -5359,7 +5407,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
       )}
 
       {showMissingProductImageWarning && (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 bg-black/80 backdrop-blur-sm animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 bg-overlay backdrop-blur-sm animate-in fade-in duration-300">
           <div className="w-full max-w-md bg-bg border border-danger/30 rounded-card overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300">
             <div className="px-6 py-4 bg-danger/5 border-b border-danger/10">
               <span className="text-[11px] font-mono text-danger font-bold uppercase tracking-widest">System_Alert: Asset_Reference_Missing</span>
@@ -5404,7 +5452,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
 
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
           {recentCreativeJobs.map((job) => (
-            <div key={job.id} className="rounded-card border border-line bg-panel/20 p-5 flex flex-col justify-between gap-6 hover:border-accent/30 transition-all group">
+            <div key={job.id} className="rounded-card border border-line bg-panel p-5 flex flex-col justify-between gap-6 hover:border-accent/30 transition-all group">
               <div className="space-y-4">
                 <div className="flex items-start justify-between">
                   <div className="space-y-1">

@@ -65,7 +65,7 @@ export function UploadDataModal({ isOpen, onClose, jobId, projectId }: UploadDat
         zIndex: 9999,
       }}
     >
-      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+      <div className="absolute inset-0 bg-overlay" onClick={onClose} />
       <div
         className="relative bg-panel border border-line rounded-lg p-6 max-w-md w-full shadow-panel backdrop-blur-panel"
         style={{

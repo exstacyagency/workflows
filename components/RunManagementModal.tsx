@@ -205,7 +205,7 @@ export default function RunManagementModal({
   return createPortal(
     <div
       onClick={onClose}
-      className="fixed inset-0 bg-black/80 z-[9999] flex items-center justify-center p-6 backdrop-blur-sm"
+      className="fixed inset-0 bg-overlay z-[9999] flex items-center justify-center p-6 backdrop-blur-sm"
     >
       <div
         onClick={(e) => e.stopPropagation()}
@@ -257,7 +257,7 @@ export default function RunManagementModal({
                 return (
                   <div
                     key={run.id}
-                    className="rounded-card border border-line bg-bg-elevated/40 p-4 hover:bg-bg-elevated/60 transition-colors"
+                    className="rounded-card border border-line bg-panel p-4 hover:bg-panel-strong transition-colors"
                   >
                     <div className="flex items-start justify-between gap-4 mb-4">
                       <div className="space-y-1">
@@ -290,7 +290,7 @@ export default function RunManagementModal({
                         }
                         placeholder="Assign Name..."
                         maxLength={120}
-                        className="flex-1 min-w-[200px] rounded-pill border border-line bg-black/40 px-4 py-2 text-xs text-white placeholder:text-muted/30 outline-none focus:border-accent/40 transition-colors"
+                        className="flex-1 min-w-[200px] rounded-pill border border-line bg-panel px-4 py-2 text-xs text-white placeholder:text-muted/30 outline-none focus:border-accent/40 transition-colors"
                       />
                       <button
                         type="button"

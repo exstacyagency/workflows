@@ -234,18 +234,18 @@ export default function ResearchRunDataPage() {
         </div>
 
         <div className="rounded-card border border-line bg-panel overflow-hidden shadow-panel">
-          <div className="px-6 py-3 border-b border-line bg-bg-elevated/30">
+          <div className="px-6 py-3 border-b border-line bg-bg-elevated">
             <h2 className="text-[10px] font-mono text-accent uppercase tracking-[0.2em] font-bold">Run Jobs</h2>
           </div>
           <table className="w-full text-left border-collapse">
-            <thead className="bg-bg-elevated/10 border-b border-line">
+            <thead className="bg-bg-elevated border-b border-line">
               <tr>
                 <th className="p-5 w-10">
                   <input
                     type="checkbox"
                     checked={allSelected}
                     onChange={toggleAll}
-                    className="h-3.5 w-3.5 rounded-sm bg-black/40 border-line checked:bg-accent-2 checked:border-accent-2 transition-all cursor-pointer"
+                    className="h-3.5 w-3.5 rounded-sm bg-panel border-line checked:bg-accent-2 checked:border-accent-2 transition-all cursor-pointer"
                   />
                 </th>
                 <th className="p-5 text-[9px] font-mono text-accent uppercase tracking-[0.2em]">Job Type</th>
@@ -264,13 +264,13 @@ export default function ResearchRunDataPage() {
                 </tr>
               ) : (
                 jobs.map((job) => (
-                  <tr key={job.id} className="hover:bg-panel/[0.02] transition-colors group">
+                  <tr key={job.id} className="bg-panel-row transition-colors group">
                     <td className="p-5">
                       <input
                         type="checkbox"
                         checked={Boolean(selectedJobIds[job.id])}
                         onChange={() => toggleOne(job.id)}
-                        className="h-3.5 w-3.5 rounded-sm bg-black/40 border-line checked:bg-accent-2 checked:border-accent-2 transition-all cursor-pointer"
+                        className="h-3.5 w-3.5 rounded-sm bg-panel border-line checked:bg-accent-2 checked:border-accent-2 transition-all cursor-pointer"
                         disabled={deleting}
                       />
                     </td>
