@@ -333,19 +333,10 @@ async function callAnthropic(
     };
   } | null;
 }> {
-  try {
-    console.log('[Customer Analysis] Checking for ANTHROPIC_API_KEY...');
-    requireEnv(['ANTHROPIC_API_KEY'], 'ANTHROPIC');
-    console.log('[Customer Analysis] ANTHROPIC_API_KEY found');
-  } catch (error) {
-    console.error('[Customer Analysis] ANTHROPIC_API_KEY missing!');
-    throw error;
-  }
+  requireEnv(['ANTHROPIC_API_KEY'], 'ANTHROPIC');
   const apiKey = env('ANTHROPIC_API_KEY')!;
   const anthropic = new Anthropic({ apiKey, timeout: 60000 });
   console.log('CUSTOMER_ANALYSIS_LLM_RETRIES:', CUSTOMER_ANALYSIS_LLM_RETRIES);
-  console.log('API Key present:', !!apiKey);
-  console.log('API Key length:', apiKey?.length);
   const model = "claude-sonnet-4-6";
   const maxTokens = 16000;
   const temperature = 1;
@@ -354,7 +345,6 @@ async function callAnthropic(
   console.log('[Customer Analysis] Prompt length:', prompt.length);
   console.log('[Customer Analysis] System length:', system.length);
   console.log('[Customer Analysis] Model:', model);
-  console.log('[Customer Analysis] ANTHROPIC_API_KEY set:', Boolean(apiKey));
   console.log('[Customer Analysis] CUSTOMER_ANALYSIS_LLM_RETRIES:', CUSTOMER_ANALYSIS_LLM_RETRIES);
   console.log('[Customer Analysis] Starting retry loop, max attempts:', CUSTOMER_ANALYSIS_LLM_RETRIES);
 

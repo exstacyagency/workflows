@@ -66,12 +66,6 @@ import { updateJobStatus } from "@/lib/jobs/updateJobStatus";
 import { generateRandomCharacterName } from "../lib/characterNameService.ts";
 import { uploadAvatarCharacterObject } from "@/lib/s3Service";
 
-console.log("=== WORKER ENVIRONMENT CHECK ===");
-console.log("ANTHROPIC_API_KEY present:", !!cfg.raw("ANTHROPIC_API_KEY"));
-console.log("ANTHROPIC_API_KEY length:", cfg.raw("ANTHROPIC_API_KEY")?.length || 0);
-console.log("NODE_ENV:", cfg.raw("NODE_ENV"));
-console.log("================================");
-
 function writeLog(line: string) {
   process.stdout.write(`${line}\n`);
 }
@@ -649,15 +643,7 @@ async function runJob(
     switch (job.type) {
       case JobType.CUSTOMER_RESEARCH: {
         writeLog("=== CUSTOMER_RESEARCH JOB ===");
-        writeLog("Checking Apify token...");
-        writeLog(
-          `APIFY_API_TOKEN: ${cfg.raw("APIFY_API_TOKEN") ? "exists" : "missing"}`,
-        );
-
         const apifyToken = cfg.raw("APIFY_API_TOKEN");
-        writeLog(`cfg.raw result: ${apifyToken ? "found token" : "NO TOKEN"}`);
-        writeLog(`hasApifyToken: ${!!apifyToken}`);
-
         if (!apifyToken) {
           writeLog("SKIPPING: Apify not configured");
           await rollbackJobQuotaIfNeeded({ jobId, projectId: job.projectId, payload });
@@ -1693,15 +1679,7 @@ async function startWorker() {
   writeLog("Waiting 10 seconds before checking environment...");
   await new Promise((resolve) => setTimeout(resolve, STARTUP_DELAY_MS));
 
-  writeLog("=== WORKER ENV CHECK ===");
-  writeLog(
-    `APIFY_API_TOKEN: ${cfg.raw("APIFY_API_TOKEN") ? "✓ Present" : "✗ Missing"}`,
-  );
-  writeLog(
-    `ANTHROPIC_API_KEY: ${cfg.raw("ANTHROPIC_API_KEY") ? "✓ Present" : "✗ Missing"}`,
-  );
-  writeLog(`NODE_ENV: ${cfg.raw("NODE_ENV")}`);
-  writeLog("========================");
+  writeLog(`=== WORKER ENV CHECK (${cfg.raw("NODE_ENV") || "development"}) ===`);
   writeLog("Starting job polling in 5 seconds...");
   await new Promise((resolve) => setTimeout(resolve, STARTUP_POST_ENV_DELAY_MS));
 

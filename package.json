@@ -33,6 +33,7 @@
     "dev:set-password": "tsx scripts/set_password.ts",
     "dev:create-script": "tsx scripts/create_script.ts",
     "bootstrap": "npx tsx scripts/bootstrap.ts",
+    "bootstrap:local": "bash scripts/bootstrap-local.sh",
     "bootstrap:dev": "tsx scripts/bootstrap-dev.ts",
     "billing:matrix": "node scripts/generate_billing_matrix.mjs",
     "dev:auth:reset": "node scripts/dev_auth_reset.mjs attacker@local.dev Attacker123",

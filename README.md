@@ -135,6 +135,19 @@ cd workflows
 npm install
 ```
 
+### One-command local bootstrap
+
+```bash
+npm run bootstrap:local
+```
+
+This command will:
+- install dependencies
+- create `.env` from `.env.example` if needed
+- run Prisma generate + migrations
+- seed the bootstrap admin/project
+- start the Next.js app and worker together
+
 ### 2. Configure environment
 
 ```bash

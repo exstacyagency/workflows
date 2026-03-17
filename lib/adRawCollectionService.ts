@@ -115,11 +115,6 @@ function sleep(ms: number) {
 }
 
 function getAdResearchApifyToken(): string {
-  // TODO(low): remove env-presence logging once APIFY wiring is stable.
-  console.log('[adRawCollectionService] APIFY_TOKEN:', env('APIFY_TOKEN') ? 'Present' : 'Missing');
-  console.log('[adRawCollectionService] APIFY_API_TOKEN_AUX:', env('APIFY_API_TOKEN_AUX') ? 'Present' : 'Missing');
-  console.log('[adRawCollectionService] APIFY_API_TOKEN:', env('APIFY_API_TOKEN') ? 'Present' : 'Missing');
-
   // Ad research route uses AUX token when provided, otherwise falls back to MAIN.
   const aux = env('APIFY_API_TOKEN_AUX');
   if (aux) return aux;
