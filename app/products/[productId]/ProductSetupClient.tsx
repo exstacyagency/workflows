@@ -254,8 +254,11 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
   const effectiveCharacterId =
     pipelineStatus?.character?.soraCharacterId ?? selectedRunCharacter?.soraCharacterId ?? null;
   const resolvedAvatarImageUrl =
+    selectedRunCharacter?.seedVideoUrl ??
+    product.characterSeedVideoUrl ??
     pipelineStatus?.character?.characterReferenceVideoUrl ??
     pipelineStatus?.character?.characterAvatarImageUrl ??
+    product.characterReferenceVideoUrl ??
     product.characterAvatarImageUrl ??
     null;
   const allCharactersSelected =

@@ -61,16 +61,24 @@ function getBucketConfig(target: BucketTarget): BucketConfig {
     avatar_character_generation: {
       bucket:
         cfg.raw("AWS_S3_BUCKET_AVATAR_CHARACTER_GENERATION") ||
-        cfg.raw("S3_BUCKET_AVATAR_CHARACTER_GENERATION"),
+        cfg.raw("S3_BUCKET_AVATAR_CHARACTER_GENERATION") ||
+        cfg.raw("AWS_S3_BUCKET_PRODUCT_SETUP") ||
+        cfg.raw("S3_BUCKET_PRODUCT_SETUP"),
       region:
         cfg.raw("AWS_S3_REGION_AVATAR_CHARACTER_GENERATION") ||
         cfg.raw("S3_AVATAR_CHARACTER_GENERATION_REGION") ||
+        cfg.raw("AWS_S3_REGION_PRODUCT_SETUP") ||
+        cfg.raw("S3_PRODUCT_SETUP_REGION") ||
         defaultRegion,
       endpoint:
         cfg.raw("AWS_S3_ENDPOINT_AVATAR_CHARACTER_GENERATION") ||
         cfg.raw("S3_AVATAR_CHARACTER_GENERATION_ENDPOINT") ||
+        cfg.raw("AWS_S3_ENDPOINT_PRODUCT_SETUP") ||
+        cfg.raw("S3_PRODUCT_SETUP_ENDPOINT") ||
         defaultEndpoint,
-      publicBaseUrl: cfg.raw("S3_AVATAR_CHARACTER_GENERATION_PUBLIC_BASE_URL"),
+      publicBaseUrl:
+        cfg.raw("S3_AVATAR_CHARACTER_GENERATION_PUBLIC_BASE_URL") ||
+        cfg.raw("S3_PRODUCT_SETUP_PUBLIC_BASE_URL"),
       accessKeyId,
       secretAccessKey,
     },

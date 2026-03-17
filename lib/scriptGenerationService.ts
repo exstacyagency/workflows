@@ -185,7 +185,7 @@ type SwipeTemplate = {
   hookPattern: string;
   problemPattern: string;
   solutionPattern: string;
-  ctaPattern: string;
+  ctaPattern: string | null;
   beatStructure: Array<{
     beat: string;
     duration: string;
@@ -287,7 +287,7 @@ function normalizeSwipeTemplate(value: unknown): SwipeTemplate | null {
   const solutionPattern = asString(raw.solutionPattern);
   const ctaPattern = asString(raw.ctaPattern);
 
-  if (!hookPattern || !problemPattern || !solutionPattern || !ctaPattern) {
+  if (!hookPattern || !problemPattern || !solutionPattern) {
     return null;
   }
 
@@ -313,7 +313,7 @@ function normalizeSwipeTemplate(value: unknown): SwipeTemplate | null {
     hookPattern,
     problemPattern,
     solutionPattern,
-    ctaPattern,
+    ctaPattern: ctaPattern ?? null,
     beatStructure,
   };
 }
@@ -1379,7 +1379,7 @@ export function validateScriptAgainstGates(args: {
   const matchedPhrases = normalizedCopyReadyPhrases.filter((phrase) =>
     voLower.includes(phrase.toLowerCase()),
   );
-  const gate1Passed = matchedPhrases.length >= 2;
+  const gate1Passed = normalizedCopyReadyPhrases.length === 0 || matchedPhrases.length >= 2;
 
   const verifiedNumberSet = new Set(
     (args.verifiedNumericClaims ?? [])
@@ -1396,7 +1396,7 @@ export function validateScriptAgainstGates(args: {
       extractedNumbers.filter((token) => token && !verifiedNumberSet.has(token)),
     ),
   );
-  const gate2Passed = unmatchedNumbers.length === 0;
+  const gate2Passed = (args.verifiedNumericClaims ?? []).length === 0 || unmatchedNumbers.length === 0;
 
   const successKeywords = tokenizeSemanticKeywords(args.successLooksLikeQuote ?? "");
   const finalBeatKeywords = new Set(tokenizeSemanticKeywords(finalBeatVo));
@@ -2140,6 +2140,34 @@ async function selectSwipeFile(
   const scopedCandidates =
     sameRunCandidates.length > 0 ? sameRunCandidates : await getCandidates(null);
   const candidateScope = sameRunCandidates.length > 0 ? "same_run" : "project_wide";
+  const rawCandidates = [...scopedCandidates];
+
+  // Ensure a specifically requested ad is considered even if ranking would
+  // otherwise push it out of the top-N candidate query.
+  if (requestedSwipeTemplateAdId) {
+    const alreadyIncluded = rawCandidates.some((candidate) => candidate.id === requestedSwipeTemplateAdId);
+    if (!alreadyIncluded) {
+      const specific = await prisma.$queryRaw<SwipeCandidateRow[]>(
+        Prisma.sql`
+          SELECT a."id", a."createdAt", a."rawJson", a."swipeMetadata"
+          FROM "ad_asset" a
+          LEFT JOIN "job" j ON j."id" = a."jobId"
+          WHERE a."id" = ${requestedSwipeTemplateAdId}
+            AND a."projectId" = ${projectId}
+            AND COALESCE(a."contentViable", false) = true
+            AND (a."rawJson"->>'transcript') IS NOT NULL
+            AND LENGTH(TRIM(a."rawJson"->>'transcript')) > 100
+            ${preferredRunId && sameRunCandidates.length > 0
+              ? Prisma.sql`AND j."runId" = ${preferredRunId}`
+              : Prisma.empty}
+          LIMIT 1
+        `,
+      );
+      if (specific.length > 0) {
+        rawCandidates.push(specific[0]);
+      }
+    }
+  }
 
   const scoreSwipe = (rawJson: Prisma.JsonValue): number => {
     const raw = asObject(rawJson) ?? {};
@@ -2165,7 +2193,7 @@ async function selectSwipeFile(
     );
   };
 
-  const orderedCandidates = scopedCandidates
+  const orderedCandidates = rawCandidates
     .map((candidate) => ({
       candidate,
       score: scoreSwipe(candidate.rawJson),
@@ -2196,7 +2224,8 @@ async function selectSwipeFile(
 
     const shouldExtractInline =
       !swipeMetadata &&
-      (index < MAX_INLINE_EXTRACT || candidate.id === requestedSwipeTemplateAdId);
+      (index < MAX_INLINE_EXTRACT ||
+        (!!requestedSwipeTemplateAdId && candidate.id === requestedSwipeTemplateAdId));
     if (!swipeMetadata && shouldExtractInline) {
       if (transcript && transcript.length > 100) {
         try {
@@ -2229,7 +2258,14 @@ async function selectSwipeFile(
       }
     }
 
-    if (!swipeMetadata) continue;
+    if (!swipeMetadata) {
+      if (candidate.id === requestedSwipeTemplateAdId) {
+        throw new Error(
+          "Selected swipe template ad was found but has no usable swipe metadata. Re-run ad collection or select a different ad.",
+        );
+      }
+      continue;
+    }
     candidates.push({
       id: candidate.id,
       views: entry.views,
@@ -2498,9 +2534,12 @@ export async function runScriptGeneration(args: {
     const voFull = buildVoFullFromScriptJson(scriptJson);
     const derivedWordCount = countWords(voFull);
     const selectedSwipeMetadata = swipeFile?.swipeMetadata ?? null;
+    const isSwipeTemplate = selectedScriptStrategy === "swipe_template";
     const validationReport = validateScriptAgainstGates({
       scriptJson,
-      ...validationInputs,
+      copyReadyPhrases: isSwipeTemplate ? [] : validationInputs.copyReadyPhrases,
+      verifiedNumericClaims: isSwipeTemplate ? [] : validationInputs.verifiedNumericClaims,
+      successLooksLikeQuote: validationInputs.successLooksLikeQuote,
     });
 
     if (!validationReport.gatesPassed) {
