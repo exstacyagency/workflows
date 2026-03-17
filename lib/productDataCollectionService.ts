@@ -48,12 +48,6 @@ type ValidatedField = {
   note?: string;
 };
 
-type WebSearchEnrichment = {
-  resolved_fields?: Partial<Record<ProductIntelField, unknown>>;
-  validated_fields?: Partial<Record<ProductIntelField, ValidatedField>>;
-  citations?: Partial<Record<ProductIntelField, Citation[]>>;
-};
-
 type BillingUsageEntry = {
   metric: string;
   provider: string;
@@ -65,6 +59,8 @@ type BillingUsageEntry = {
     outputTokens: number;
   };
 };
+
+const PRODUCT_INTEL_ANTHROPIC_MODEL = "claude-sonnet-4-6";
 
 const PRODUCT_INTEL_FIELDS: ProductIntelField[] = [
   "main_benefit",
@@ -86,8 +82,8 @@ const PRODUCT_INTEL_ARRAY_FIELDS = new Set<ProductIntelField>([
 
 const MAX_HTML_CHARS = 120_000;
 const HTML_FETCH_TIMEOUT_MS = 30_000;
+const PRODUCT_INTEL_EXTRACTION_TIMEOUT_MS = 30_000;
 const DEFAULT_USER_AGENT = "Mozilla/5.0";
-const WEB_SEARCH_TOOL_MAX_STEPS = 5;
 const SPECIFIC_CLAIM_NUMERIC_PATTERN = /\d/;
 const SPECIFIC_CLAIM_MEASURABLE_UNIT_PATTERN =
   /\b(?:mg|g|kg|mcg|ug|ml|l|oz|lb|lbs|capsule(?:s)?|tablet(?:s)?|serving(?:s)?|day(?:s)?|week(?:s)?|month(?:s)?|year(?:s)?|hour(?:s)?|minute(?:s)?|sec(?:ond)?s?)\b/i;
@@ -239,6 +235,38 @@ function countCitations(value: unknown): number {
   }, 0);
 }
 
+function isTimeoutError(error: unknown): boolean {
+  const message = String((error as { message?: unknown })?.message ?? error).toLowerCase();
+  return message.includes("timeout") || message.includes("timed out");
+}
+
+function appendAnthropicUsageEntry(
+  usageEntries: BillingUsageEntry[],
+  response: unknown,
+  model = PRODUCT_INTEL_ANTHROPIC_MODEL
+) {
+  const inputTokens = Number((response as any)?.usage?.input_tokens ?? 0);
+  const outputTokens = Number((response as any)?.usage?.output_tokens ?? 0);
+  const totalTokens = Math.max(0, Math.trunc(inputTokens + outputTokens));
+  if (totalTokens <= 0) return;
+
+  usageEntries.push({
+    metric: "tokens",
+    provider: "anthropic",
+    model,
+    units: totalTokens,
+    costCents: computeAnthropicCostCents(
+      model,
+      Math.max(0, Math.trunc(inputTokens)),
+      Math.max(0, Math.trunc(outputTokens)),
+    ),
+    metadata: {
+      inputTokens: Math.max(0, Math.trunc(inputTokens)),
+      outputTokens: Math.max(0, Math.trunc(outputTokens)),
+    },
+  });
+}
+
 function assessCitationSourceConfidence(sourceUrl: string): {
   source_domain: string | null;
   source_confidence: "high" | "low";
@@ -359,207 +387,6 @@ function normalizeValidatedFields(
   return output;
 }
 
-function mergeSearchEnrichment(
-  baseIntel: ProductIntel,
-  enrichment: WebSearchEnrichment
-): ProductIntel {
-  const merged: ProductIntel = { ...baseIntel };
-  const resolvedViaWebSearch: ProductIntelField[] = [];
-  const citations: Partial<Record<ProductIntelField, Citation[]>> = {
-    ...(baseIntel.citations ?? {}),
-  };
-
-  const resolvedFields = enrichment.resolved_fields ?? {};
-  const enrichmentCitations = enrichment.citations ?? {};
-  const validatedFields = normalizeValidatedFields(enrichment.validated_fields);
-
-  for (const field of PRODUCT_INTEL_FIELDS) {
-    const hasBaseValue = hasValue(baseIntel[field], field);
-    const hasResolvedValue = hasValue(resolvedFields[field], field);
-    const resolutionStatus = validatedFields[field]?.status;
-    const shouldOverride = resolutionStatus === "corrected";
-    const shouldApply = hasResolvedValue && (!hasBaseValue || shouldOverride);
-
-    if (!shouldApply) {
-      continue;
-    }
-
-    const fieldCitations = normalizeCitationArray(enrichmentCitations[field]);
-    if (fieldCitations.length === 0) {
-      console.warn(
-        "[Product Intel] Web search value discarded due to missing citations:",
-        field
-      );
-      continue;
-    }
-
-    if (PRODUCT_INTEL_ARRAY_FIELDS.has(field)) {
-      (merged as Record<string, unknown>)[field] = normalizeStringArray(resolvedFields[field]);
-    } else {
-      (merged as Record<string, unknown>)[field] = String(resolvedFields[field]).trim();
-    }
-
-    citations[field] = fieldCitations;
-    resolvedViaWebSearch.push(field);
-  }
-
-  if (resolvedViaWebSearch.length > 0) {
-    merged.citations = citations;
-    merged.resolved_via_web_search = resolvedViaWebSearch;
-  }
-
-  if (Object.keys(validatedFields).length > 0) {
-    merged.validated_fields = validatedFields;
-  }
-
-  return merged;
-}
-
-async function runWebSearchEnrichment(
-  anthropic: Anthropic,
-  args: {
-    productUrl: string;
-    sourceUrls: string[];
-    baseIntel: ProductIntel;
-    missingFields: ProductIntelField[];
-  }
-): Promise<{ enrichment: WebSearchEnrichment | null; usageEntries: BillingUsageEntry[] }> {
-  const { productUrl, sourceUrls, baseIntel, missingFields } = args;
-  if (missingFields.length === 0) return { enrichment: null, usageEntries: [] };
-
-  const validationPrompt = `Fix bad extraction and fill gaps.
-
-Product URL: ${productUrl}
-Sources: ${sourceUrls.map((url) => `- ${url}`).join("\n")}
-
-Extracted data:
-${JSON.stringify(baseIntel, null, 2)}
-
-Missing fields: ${missingFields.join(", ")}
-
-YOUR JOB:
-1. Find missing fields via web_search
-2. REPLACE vague extracted fields with specific data
-3. Verify numbers are real
-
-Return JSON:
-{
-  "resolved_fields": {
-    "field_name": "corrected or new value"
-  },
-  "validated_fields": {
-    "field_name": {
-      "status": "verified" | "corrected" | "contradicted" | "unverifiable",
-      "note": "what you changed or why it failed"
-    }
-  },
-  "citations": {
-    "field_name": [{"source_url": "url", "quote": "exact quote"}]
-  }
-}
-
-OVERRIDE EXTRACTED DATA IF:
-- format is vague ("supplement bottle" → find "90 capsules, 3 daily")
-- mechanismProcess explains outcome but not mechanics ("helps with energy" → find "contains 200mg caffeine + L-theanine; caffeine blocks adenosine receptors and theanine smooths stimulation")
-- key_features are benefits not specs ("anti-aging" → find "retinol 2.5%, vitamin C 15%")
-- usage lacks numbers ("as directed" → find "2 capsules daily with food")
-- specific_claims lack percentages ("effective" → find "73% improvement in 8 weeks")
-
-Put corrected values in resolved_fields. Mark status as "corrected" in validated_fields.
-
-SEARCH AGGRESSIVELY:
-- Try 3 variations before giving up:
-- For studies: "[brand] study", "[product] clinical trial", "[ingredient] research [condition]"
-- For specs: "[product] ingredients list", "[product] dosage", "[product] how to use"
-
-REJECT:
-- "#1" or "best-selling" without third-party ranking (Nielsen, Amazon category + date)
-- "X,000 reviews" without verification link
-- "Clinically proven" without study name
-
-Status definitions:
-- verified = data is correct as extracted
-- corrected = data was vague, you fixed it with specifics
-- contradicted = data is wrong, you found opposing evidence
-- unverifiable = tried 3 searches, found nothing
-
-Fix the garbage. Don't validate it.`;
-
-  const validationSystem = "You're a fact-checker with override authority. Use web_search. Return only valid JSON.";
-
-  const tools = [{ type: "web_search_20250305", name: "web_search" }] as const;
-  const messages: any[] = [{ role: "user", content: validationPrompt }];
-  let finalText = "";
-  const usageEntries: BillingUsageEntry[] = [];
-
-  for (let step = 0; step < WEB_SEARCH_TOOL_MAX_STEPS; step++) {
-    const response: any = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 2400,
-      system: validationSystem,
-      messages,
-      tools,
-    } as any);
-    const inputTokens = Number((response as any)?.usage?.input_tokens ?? 0);
-    const outputTokens = Number((response as any)?.usage?.output_tokens ?? 0);
-    const totalTokens = Math.max(0, Math.trunc(inputTokens + outputTokens));
-    if (totalTokens > 0) {
-      usageEntries.push({
-        metric: "tokens",
-        provider: "anthropic",
-        model: "claude-sonnet-4-6",
-        units: totalTokens,
-        costCents: computeAnthropicCostCents(
-          "claude-sonnet-4-6",
-          Math.max(0, Math.trunc(inputTokens)),
-          Math.max(0, Math.trunc(outputTokens)),
-        ),
-        metadata: {
-          inputTokens: Math.max(0, Math.trunc(inputTokens)),
-          outputTokens: Math.max(0, Math.trunc(outputTokens)),
-        },
-      });
-    }
-
-    const textBlocks = Array.isArray(response?.content)
-      ? response.content.filter((block: any) => block?.type === "text")
-      : [];
-    finalText =
-      textBlocks.map((block: any) => String(block.text ?? "")).join("\n").trim() ||
-      finalText;
-
-    if (response?.stop_reason !== "tool_use") {
-      if (!finalText) {
-        throw new Error("Web search enrichment response missing text content");
-      }
-      return {
-        enrichment: extractObjectJson<WebSearchEnrichment>(finalText),
-        usageEntries,
-      };
-    }
-
-    const toolUses = (response.content ?? []).filter(
-      (block: any) => block?.type === "tool_use" || block?.type === "server_tool_use"
-    );
-
-    if (toolUses.length === 0) {
-      throw new Error("Web search reported tool_use but no tool blocks were returned");
-    }
-
-    messages.push({ role: "assistant", content: response.content });
-    messages.push({
-      role: "user",
-      content: toolUses.map((toolUse: any) => ({
-        type: "tool_result",
-        tool_use_id: toolUse.id,
-        content: "proceed",
-      })),
-    });
-  }
-
-  throw new Error("Web search enrichment exceeded max tool loop steps");
-}
-
 async function fetchHtmlWithHttp(productUrl: string): Promise<string> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), HTML_FETCH_TIMEOUT_MS);
@@ -659,66 +486,41 @@ If you see marketing fluff, dig for the spec underneath it. Numbers over words. 
 
   const extractionSystem = "Return ONLY valid JSON. No markdown.";
 
-  const extraction = await anthropic.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 2000,
-    system: extractionSystem,
-    messages: [
-      {
-        role: "user",
-        content: extractionPrompt,
-      },
-    ],
-  });
   const usageEntries: BillingUsageEntry[] = [];
-  const extractionInputTokens = Number((extraction as any)?.usage?.input_tokens ?? 0);
-  const extractionOutputTokens = Number((extraction as any)?.usage?.output_tokens ?? 0);
-  const extractionTotalTokens = Math.max(
-    0,
-    Math.trunc(extractionInputTokens + extractionOutputTokens)
-  );
-  if (extractionTotalTokens > 0) {
-    usageEntries.push({
-      metric: "tokens",
-      provider: "anthropic",
-      model: "claude-sonnet-4-6",
-      units: extractionTotalTokens,
-      costCents: computeAnthropicCostCents(
-        "claude-sonnet-4-6",
-        Math.max(0, Math.trunc(extractionInputTokens)),
-        Math.max(0, Math.trunc(extractionOutputTokens)),
-      ),
-      metadata: {
-        inputTokens: Math.max(0, Math.trunc(extractionInputTokens)),
-        outputTokens: Math.max(0, Math.trunc(extractionOutputTokens)),
-      },
-    });
-  }
+  let baseProductIntel = normalizeProductIntel({ specific_claims: [] });
+  try {
+    const extraction = await Promise.race([
+      anthropic.messages.create({
+        model: PRODUCT_INTEL_ANTHROPIC_MODEL,
+        max_tokens: 2000,
+        system: extractionSystem,
+        messages: [
+          {
+            role: "user",
+            content: extractionPrompt,
+          },
+        ],
+      }),
+      new Promise<never>((_, reject) => {
+        setTimeout(() => {
+          reject(new Error("Product intel extraction timed out after 30 seconds"));
+        }, PRODUCT_INTEL_EXTRACTION_TIMEOUT_MS);
+      }),
+    ]);
+    appendAnthropicUsageEntry(usageEntries, extraction);
 
-  const text = extraction.content.find((c) => c.type === "text")?.text || "{}";
-  const baseProductIntel = normalizeProductIntel(extractJson(text));
-  const missingFields = getMissingFields(baseProductIntel);
-
-  let productIntel = baseProductIntel;
-  if (missingFields.length > 0) {
-    console.log("[Product Intel] Missing fields after HTML extraction:", missingFields);
-    try {
-      const enrichment = await runWebSearchEnrichment(anthropic, {
-        productUrl,
-        sourceUrls: validContents.map((entry) => entry.url),
-        baseIntel: baseProductIntel,
-        missingFields,
-      });
-      usageEntries.push(...enrichment.usageEntries);
-      if (enrichment.enrichment) {
-        productIntel = normalizeProductIntel(
-          mergeSearchEnrichment(baseProductIntel, enrichment.enrichment)
-        );
-      }
-    } catch (error) {
-      console.warn("[Product Intel] Web search enrichment failed:", error);
+    const text = extraction.content.find((c) => c.type === "text")?.text || "{}";
+    baseProductIntel = normalizeProductIntel(extractJson(text));
+  } catch (error) {
+    if (isTimeoutError(error)) {
+      console.warn(
+        "[Product Intel] Extraction timed out; continuing with specific_claims set to an empty array"
+      );
+    } else {
+      throw error;
     }
   }
+  const productIntel = baseProductIntel;
   console.log("[Product Intel] Parsed model response for URL:", productUrl);
 
   await prisma.researchRow.create({

@@ -6,6 +6,7 @@ import pLimit from "p-limit";
 import { guardedExternalCall } from "./externalCallGuard.ts";
 import { env, requireEnv } from "./configGuard.ts";
 import { log } from "@/lib/logger";
+import { getSignedObjectUrlFromPublicUrl } from "@/lib/s3Service";
 
 function parsePositiveInt(raw: string | undefined, fallback: number, min = 1): number {
   const value = Number(raw);
@@ -86,6 +87,7 @@ function extractMediaUrls(rawJson: unknown): string[] {
       : [];
 
   return uniqueStrings([
+    firstString(raw?.s3VideoUrl),
     firstString(raw?.video_info?.video_url?.["720p"]),
     firstString(raw?.video_info?.video_url?.["1080p"]),
     typeof nestedVideoUrl === "string" ? firstString(nestedVideoUrl) : null,
@@ -193,9 +195,19 @@ async function transcribeWithAssemblyAiCandidates(mediaUrls: string[]): Promise<
   mediaUrl: string;
   attempts: number;
 }> {
+  const signedCandidates = await Promise.all(
+    mediaUrls.map((value) => getSignedObjectUrlFromPublicUrl(value)),
+  );
+  const candidateUrls = Array.from(
+    new Set(
+      mediaUrls
+        .flatMap((value, index) => [signedCandidates[index], value])
+        .filter((value): value is string => Boolean(value && value.trim())),
+    ),
+  );
   let lastError: string = "AssemblyAI failed";
   let attempts = 0;
-  for (const mediaUrl of mediaUrls) {
+  for (const mediaUrl of candidateUrls) {
     try {
       attempts += 1;
       const result = await transcribeWithAssemblyAi(mediaUrl);

@@ -731,16 +731,7 @@ export async function runVideoGenerationJob(
       mergedVideoUrl,
       skipped: true,
       reason: 'already_generated',
-      usageEntries: [
-        {
-          metric: "videoJobs",
-          provider: "kie",
-          model: KIE_IMAGE_TO_VIDEO_MODEL,
-          units: 1,
-          costCents: 0,
-          metadata: { skipped: true, reason: "already_generated" },
-        },
-      ],
+      usageEntries: [],
     };
   }
 

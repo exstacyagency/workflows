@@ -1,16 +1,19 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { Prisma } from "@prisma/client";
+import { computeAnthropicCostCents } from "@/lib/billing/pricing";
 import { cfg } from "@/lib/config";
 import { prisma } from "@/lib/prisma";
 import { extractSwipePatterns } from "@/lib/swipePatternExtractor";
 
 const anthropic = new Anthropic({
   apiKey: cfg.raw("ANTHROPIC_API_KEY"),
-  timeout: 60000,
+  timeout: 90000,
 });
 
 const QUALITY_CONFIDENCE_THRESHOLD = 70;
 const MAX_ADS_FOR_ANALYSIS = 80;
+const DB_STEP_TIMEOUT_MS = 30_000;
+const ANTHROPIC_STEP_TIMEOUT_MS = 60_000;
 const PATTERN_ANALYSIS_SYSTEM_PROMPT =
   "You are a performance creative analyst. Your primary job is to identify transferable psychological mechanisms, not product-specific tactics. Abstract every recommendation so it can generalize across categories, and ground guidance in clear cognitive triggers (for example: pattern interrupt, loss aversion, social proof cascade, authority transfer, time compression, confession dissonance).";
 
@@ -156,13 +159,103 @@ function formatCompletenessReason(stats: AdCompleteness): string {
   return "Pattern analysis requirements not met.";
 }
 
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  label: string,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    promise.then(
+      (result) => {
+        clearTimeout(timeoutId);
+        resolve(result);
+      },
+      (error) => {
+        clearTimeout(timeoutId);
+        reject(error);
+      },
+    );
+  });
+}
+
+function truncateToLastCompleteElement(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+
+  const isArray = trimmed.startsWith("[");
+  const closingChar = isArray ? "]" : "}";
+  let depth = 0;
+  let inString = false;
+  let isEscaped = false;
+  let lastGoodIndex = -1;
+
+  for (let i = 0; i < trimmed.length; i += 1) {
+    const ch = trimmed[i];
+
+    if (isEscaped) {
+      isEscaped = false;
+      continue;
+    }
+
+    if (ch === "\\") {
+      isEscaped = true;
+      continue;
+    }
+
+    if (ch === "\"") {
+      inString = !inString;
+      continue;
+    }
+
+    if (inString) continue;
+
+    if (ch === "{" || ch === "[") {
+      depth += 1;
+      continue;
+    }
+
+    if (ch === "}" || ch === "]") {
+      depth -= 1;
+      if (depth <= 1) {
+        lastGoodIndex = i;
+      }
+    }
+  }
+
+  if (lastGoodIndex === -1) return null;
+
+  const salvaged = `${trimmed.slice(0, lastGoodIndex + 1).replace(/,\s*$/, "")}${closingChar}`;
+  try {
+    JSON.parse(salvaged);
+    return salvaged;
+  } catch {
+    return null;
+  }
+}
+
 function extractJsonFromText(text: string): any {
-  const cleaned = text.replace(/```json|```/g, "").trim();
-  const match = cleaned.match(/\{[\s\S]*\}/);
-  if (!match) {
+  const match =
+    text.match(/```json\s*([\s\S]*?)```/) ??
+    text.match(/(\[[\s\S]*\]|\{[\s\S]*\})/);
+  const raw = (match ? match[1] ?? match[0] : text).trim();
+
+  if (!raw) {
     throw new Error("Pattern analysis returned no JSON");
   }
-  return JSON.parse(match[0]);
+
+  try {
+    return JSON.parse(raw);
+  } catch (error) {
+    const truncated = truncateToLastCompleteElement(raw);
+    if (truncated !== null) {
+      return JSON.parse(truncated);
+    }
+    throw error;
+  }
 }
 
 function safeArray(value: unknown): any[] {
@@ -525,9 +618,11 @@ function mapHighlightToText(raw: Record<string, any>, second: number): string {
   return nearest?.text ?? "no text overlay";
 }
 
-function buildAnalysisPrompt(ads: AdForAnalysis[]): string {
-  const adBlocks = ads
-    .map((ad) => {
+function buildAnalysisPrompt(ads: AdForAnalysis[]): {
+  prompt: string;
+  adCharCounts: Array<{ adId: string; charCount: number }>;
+} {
+  const adBlocks = ads.map((ad) => {
     const raw = ad.rawJson;
     const title = extractAdTitle(raw);
     const ctr = extractCtr(raw);
@@ -550,7 +645,7 @@ function buildAnalysisPrompt(ads: AdForAnalysis[]): string {
           .join("\n")
       : "No OCR frames";
 
-      return `
+    const block = `
 AD_ID: ${ad.id}
 TITLE: ${title}
 CTR: ${ctr ?? "N/A"}
@@ -568,12 +663,17 @@ ${visualDescription || "Describe shot sequence based on OCR/transcript"}
 CONVERSION_MOMENTS:
 ${conversionLines}
 `;
-    })
-    .join("\n---\n");
 
-  return `Analyze these ${ads.length} TikTok ads. Extract psychologically grounded, cross-category mechanisms.
+    return {
+      adId: ad.id,
+      block,
+      charCount: block.length,
+    };
+  });
 
-${adBlocks}
+  const prompt = `Analyze these ${ads.length} TikTok ads. Extract psychologically grounded, cross-category mechanisms.
+
+${adBlocks.map((entry) => entry.block).join("\n---\n")}
 
 Output JSON:
 {
@@ -625,6 +725,11 @@ Output JSON:
 }
 
 Focus: Prioritize adaptable mechanisms over category-specific tactics. Explain why each mechanism works psychologically and keep formulas product-agnostic. For psychologicalMechanism and transferFormula, provide execution briefs — not just labels. A copywriter should be able to write from the brief alone without seeing the original ad.`;
+
+  return {
+    prompt,
+    adCharCounts: adBlocks.map(({ adId, charCount }) => ({ adId, charCount })),
+  };
 }
 
 async function loadAdsForRun(
@@ -710,31 +815,62 @@ export async function runPatternAnalysis(args: {
   completeness: AdCompleteness;
   patterns: ReturnType<typeof normalizePatternOutput>;
   summary: string;
+  usageEntries: Array<{
+    metric: string;
+    provider: string;
+    model: string;
+    units: number;
+    costCents: number;
+    metadata: Record<string, unknown>;
+  }>;
 }> {
   const { projectId, runId, jobId } = args;
   if (!cfg.raw("ANTHROPIC_API_KEY")) {
     throw new Error("ANTHROPIC_API_KEY not configured");
   }
 
-  const completeness = await getAdDataCompleteness({ projectId, runId });
+  const completeness = await withTimeout(
+    getAdDataCompleteness({ projectId, runId }),
+    DB_STEP_TIMEOUT_MS,
+    "Pattern analysis completeness check",
+  );
   if (!completeness.canRun) {
     throw new Error(completeness.reason ?? "Pattern analysis requirements not met");
   }
 
-  const ads = await loadAdsForRun({ projectId, runId }, { onlyViable: true });
+  const ads = await withTimeout(
+    loadAdsForRun({ projectId, runId }, { onlyViable: true }),
+    DB_STEP_TIMEOUT_MS,
+    "Pattern analysis ad loading",
+  );
   const completeAds = ads.slice(0, MAX_ADS_FOR_ANALYSIS);
 
   if (completeAds.length === 0) {
     throw new Error("No viable ads. Run quality gate first.");
   }
 
-  const analysisPrompt = buildAnalysisPrompt(completeAds);
+  const { prompt: analysisPrompt, adCharCounts } = buildAnalysisPrompt(completeAds);
+  console.log("[PatternAnalysis] Prompt stats:", {
+    adsIncluded: completeAds.length,
+    totalPromptChars: analysisPrompt.length,
+    perAdCharCounts: adCharCounts,
+  });
+  const model = "claude-sonnet-4-6";
   const response: any = await anthropic.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 4000,
+    model,
+    max_tokens: 16000,
     system: PATTERN_ANALYSIS_SYSTEM_PROMPT,
     messages: [{ role: "user", content: analysisPrompt }],
   });
+  console.log("[PatternAnalysis] Anthropic call returned", {
+    stopReason: response?.stop_reason ?? null,
+    contentBlockTypes: Array.isArray(response?.content)
+      ? response.content.map((block: any) => String(block?.type ?? "unknown"))
+      : [],
+  });
+  const inputTokens = Math.max(0, Math.trunc(Number(response?.usage?.input_tokens ?? 0)));
+  const outputTokens = Math.max(0, Math.trunc(Number(response?.usage?.output_tokens ?? 0)));
+  const totalTokens = inputTokens + outputTokens;
 
   const textBlocks = Array.isArray(response?.content)
     ? response.content.filter((block: any) => block?.type === "text")
@@ -847,32 +983,34 @@ export async function runPatternAnalysis(args: {
         AND a."swipeMetadata" IS NULL
         ${runId ? Prisma.sql`AND j."runId" = ${runId}` : Prisma.empty}
       ORDER BY a."createdAt" DESC
-      LIMIT 30
+      LIMIT 5
     `
   );
 
-  for (const ad of swipeAds) {
-    const raw = isPlainObject(ad.rawJson) ? (ad.rawJson as Record<string, any>) : {};
-    const transcript = asString(raw.transcript);
-    if (!transcript) continue;
+  await Promise.all(
+    swipeAds.map(async (ad) => {
+      const raw = isPlainObject(ad.rawJson) ? (ad.rawJson as Record<string, any>) : {};
+      const transcript = asString(raw.transcript);
+      if (!transcript) return;
 
-    try {
-      const patterns = await extractSwipePatterns(
-        transcript,
-        getSwipeDurationSeconds(raw, ad.duration),
-      );
-      const swipeMetadataJson = JSON.stringify(patterns);
-      await prisma.$executeRaw`
-        UPDATE "ad_asset"
-        SET "swipeMetadata" = ${swipeMetadataJson}::jsonb,
-            "updatedAt" = NOW()
-        WHERE "id" = ${ad.id}
-      `;
-      console.log("[PatternAnalysis] Extracted swipe patterns:", ad.id);
-    } catch (err) {
-      console.error("[PatternAnalysis] Swipe extraction failed:", ad.id, err);
-    }
-  }
+      try {
+        const patterns = await extractSwipePatterns(
+          transcript,
+          getSwipeDurationSeconds(raw, ad.duration),
+        );
+        const swipeMetadataJson = JSON.stringify(patterns);
+        await prisma.$executeRaw`
+          UPDATE "ad_asset"
+          SET "swipeMetadata" = ${swipeMetadataJson}::jsonb,
+              "updatedAt" = NOW()
+          WHERE "id" = ${ad.id}
+        `;
+        console.log("[PatternAnalysis] Extracted swipe patterns:", ad.id);
+      } catch (err) {
+        console.error("[PatternAnalysis] Swipe extraction failed:", ad.id, err);
+      }
+    }),
+  );
 
   return {
     ok: true,
@@ -881,5 +1019,21 @@ export async function runPatternAnalysis(args: {
     completeness,
     patterns,
     summary,
+    usageEntries:
+      totalTokens > 0
+        ? [
+            {
+              metric: "tokens",
+              provider: "anthropic",
+              model,
+              units: totalTokens,
+              costCents: computeAnthropicCostCents(model, inputTokens, outputTokens),
+              metadata: {
+                inputTokens,
+                outputTokens,
+              },
+            },
+          ]
+        : [],
   };
 }

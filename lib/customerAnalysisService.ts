@@ -547,10 +547,6 @@ export async function runCustomerAnalysis(args: {
 
   const { productProblemSolved } = await resolveProblemContext(projectId, args.productProblemSolved);
 
-  if (!productProblemSolved) {
-    throw new Error('Problem to Research is required. Provide it or run customer collection first.');
-  }
-
   console.log('[Analysis Debug] Querying research data...');
   const [mainProductReviews, competitorReviews] = await Promise.all([
     prisma.researchRow.findMany({

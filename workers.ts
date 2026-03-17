@@ -6,7 +6,6 @@ const runtimeMode = cfg.MODE || cfg.mode || "dev";
 console.log(`[BOOT] Runtime mode: ${runtimeMode}`);
 
 async function startWorkers() {
-	await import('./lib/workers/customerResearchWorker');
 	await import('./lib/workers/customerAnalysisWorker');
 	console.log('[Workers] All workers initialized');
 }

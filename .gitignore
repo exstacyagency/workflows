@@ -38,3 +38,4 @@ logs/anthropic/
 .vercel
 .codex-dumps/
 artifacts/
+reddit_scraper/node_modules/

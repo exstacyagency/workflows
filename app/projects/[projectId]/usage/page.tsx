@@ -18,10 +18,43 @@ interface Job {
   estimatedCost?: number | null;
   actualCost?: number | null;
   costBreakdown?: any;
+  payload?: Record<string, unknown> | null;
+  metadata?: Record<string, unknown> | null;
 }
 
 interface JobTypeBreakdown {
   [key: string]: number;
+}
+
+function getDisplayJobLabel(job: Job): string {
+  if (job.type === "AD_PERFORMANCE") {
+    const subtype = String(job.payload?.jobType || job.metadata?.jobType || "").trim();
+    if (subtype === "ad_ocr_collection") return "Extract OCR";
+    if (subtype === "ad_transcripts" || subtype === "ad_transcript_collection") {
+      return "Extract Transcripts";
+    }
+    return "Ad Collection";
+  }
+
+  return getJobTypeLabel(job.type);
+}
+
+function getBreakdownKey(job: Job): string {
+  if (job.type !== "AD_PERFORMANCE") return job.type;
+
+  const subtype = String(job.payload?.jobType || job.metadata?.jobType || "").trim();
+  if (subtype === "ad_ocr_collection") return "AD_PERFORMANCE:ad_ocr_collection";
+  if (subtype === "ad_transcripts" || subtype === "ad_transcript_collection") {
+    return "AD_PERFORMANCE:ad_transcripts";
+  }
+  return "AD_PERFORMANCE:ad_raw_collection";
+}
+
+function getBreakdownLabel(key: string): string {
+  if (key === "AD_PERFORMANCE:ad_ocr_collection") return "Extract OCR";
+  if (key === "AD_PERFORMANCE:ad_transcripts") return "Extract Transcripts";
+  if (key === "AD_PERFORMANCE:ad_raw_collection") return "Ad Collection";
+  return getJobTypeLabel(key);
 }
 
 export default function UsagePage() {
@@ -83,7 +116,8 @@ export default function UsagePage() {
   const totalSpend = filteredJobs.reduce((sum, j) => sum + (j.actualCost || 0), 0);
 
   const byJobType: JobTypeBreakdown = filteredJobs.reduce((acc, j) => {
-    acc[j.type] = (acc[j.type] || 0) + (j.actualCost || 0);
+    const key = getBreakdownKey(j);
+    acc[key] = (acc[key] || 0) + (j.actualCost || 0);
     return acc;
   }, {} as JobTypeBreakdown);
 
@@ -186,7 +220,7 @@ export default function UsagePage() {
                 >
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-sm font-medium text-slate-300">
-                      {getJobTypeLabel(type)}
+                      {getBreakdownLabel(type)}
                     </p>
                     <p className="text-sm font-bold text-emerald-400">{formatCost(cost)}</p>
                   </div>
@@ -241,7 +275,7 @@ export default function UsagePage() {
                       {formatDate(job.createdAt)}
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-300">
-                      {getJobTypeLabel(job.type)}
+                      {getDisplayJobLabel(job)}
                     </td>
                     <td className="px-4 py-3 text-sm font-mono text-slate-400">
                       {job.runId ? job.runId.slice(0, 8) + "..." : "-"}
