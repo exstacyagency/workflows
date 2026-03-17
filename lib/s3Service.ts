@@ -1,4 +1,5 @@
-import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { readFile } from "node:fs/promises";
 import { cfg } from "@/lib/config";
 
@@ -155,6 +156,56 @@ export async function uploadPublicObject(args: {
   );
 
   return buildPublicUrl(bucketTarget, args.key);
+}
+
+function getObjectKeyFromUrl(target: BucketTarget, value: string): string | null {
+  const normalized = String(value || "").trim();
+  if (!normalized) return null;
+
+  const { bucket, region, endpoint, publicBaseUrl } = getBucketConfig(target);
+  if (!bucket || !region) return null;
+
+  if (publicBaseUrl) {
+    const base = publicBaseUrl.replace(/\/+$/, "");
+    if (normalized.startsWith(`${base}/`)) {
+      return normalized.slice(base.length + 1);
+    }
+  }
+
+  if (endpoint) {
+    const endpointBase = endpoint.replace(/\/+$/, "");
+    const prefix = `${endpointBase}/${bucket}/`;
+    if (normalized.startsWith(prefix)) {
+      return normalized.slice(prefix.length);
+    }
+  }
+
+  const standardPrefix = `https://${bucket}.s3.${region}.amazonaws.com/`;
+  if (normalized.startsWith(standardPrefix)) {
+    return normalized.slice(standardPrefix.length);
+  }
+
+  return null;
+}
+
+export async function getSignedObjectUrlFromPublicUrl(
+  value: string,
+  bucketTarget: BucketTarget = "default",
+  expiresInSeconds = 60 * 10,
+): Promise<string | null> {
+  const client = getS3Client(bucketTarget);
+  const { bucket } = getBucketConfig(bucketTarget);
+  if (!client || !bucket) return null;
+
+  const key = getObjectKeyFromUrl(bucketTarget, value);
+  if (!key) return null;
+
+  const command = new GetObjectCommand({
+    Bucket: bucket,
+    Key: key,
+  });
+
+  return getSignedUrl(client, command, { expiresIn: expiresInSeconds });
 }
 
 export async function uploadProductSetupObject(args: {

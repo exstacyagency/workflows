@@ -45,6 +45,9 @@ type ApifyAd = {
 type NormalizedAd = {
   id: string;
   videoUrl: string;
+  s3VideoUrl?: string | null;
+  mirrorStatus?: "uploaded" | "download_failed" | "upload_failed" | "missing_source_url";
+  mirrorError?: string | null;
   retention3s: number;
   retention10s: number;
   retention3sCtr: number;
@@ -469,26 +472,84 @@ function sortByEngagement(ads: NormalizedAd[]): NormalizedAd[] {
     }));
 }
 
+type MirrorVideoResult = {
+  s3Url: string | null;
+  status: "uploaded" | "download_failed" | "upload_failed" | "missing_source_url";
+  error: string | null;
+};
+
 async function mirrorVideoToS3(
   videoUrl: string,
   adId: string,
-): Promise<string> {
-  if (!videoUrl) return videoUrl;
-  try {
-    const response = await fetch(videoUrl);
-    if (!response.ok) return videoUrl;
-    const buffer = Buffer.from(await response.arrayBuffer());
-    const key = `ad-assets/${adId}/source.mp4`;
-    const s3Url = await uploadPublicObject({
-      key,
-      body: buffer,
-      contentType: "video/mp4",
-    });
-    return s3Url ?? videoUrl;
-  } catch {
-    // Fall back to original URL - do not fail collection if storage fails.
-    return videoUrl;
+): Promise<MirrorVideoResult> {
+  if (!videoUrl) {
+    return {
+      s3Url: null,
+      status: "missing_source_url",
+      error: "No source video URL available",
+    };
   }
+  const attempts: Array<HeadersInit | undefined> = [
+    {
+      "user-agent":
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+      accept: "*/*",
+      referer: "https://www.tiktok.com/",
+    },
+    undefined,
+  ];
+
+  let lastDownloadError: string | null = null;
+
+  for (const headers of attempts) {
+    try {
+      const response = await fetch(videoUrl, {
+        method: "GET",
+        headers,
+        redirect: "follow",
+      });
+      if (!response.ok) {
+        lastDownloadError = `Failed to download video (${response.status})`;
+        continue;
+      }
+      const buffer = Buffer.from(await response.arrayBuffer());
+      const key = `ad-assets/${adId}/source.mp4`;
+      try {
+        const s3Url = await uploadPublicObject({
+          key,
+          body: buffer,
+          contentType: "video/mp4",
+        });
+        if (typeof s3Url === "string" && s3Url.trim()) {
+          return {
+            s3Url,
+            status: "uploaded",
+            error: null,
+          };
+        }
+        return {
+          s3Url: null,
+          status: "upload_failed",
+          error: "S3 upload returned no URL",
+        };
+      } catch (error: any) {
+        return {
+          s3Url: null,
+          status: "upload_failed",
+          error: String(error?.message ?? error ?? "S3 upload failed"),
+        };
+      }
+    } catch (error: any) {
+      lastDownloadError = String(error?.message ?? error ?? "Failed to download video");
+      // try next header variant
+    }
+  }
+
+  return {
+    s3Url: null,
+    status: "download_failed",
+    error: lastDownloadError,
+  };
 }
 
 /**
@@ -510,10 +571,15 @@ async function saveAdsToPrisma(options: {
   }
 
   const adsWithS3Urls = await Promise.all(
-    ads.map(async (ad) => ({
-      ...ad,
-      videoUrl: await mirrorVideoToS3(ad.videoUrl, ad.id),
-    })),
+    ads.map(async (ad) => {
+      const mirror = await mirrorVideoToS3(ad.videoUrl, ad.id);
+      return {
+        ...ad,
+        s3VideoUrl: mirror.s3Url,
+        mirrorStatus: mirror.status,
+        mirrorError: mirror.error,
+      };
+    }),
   );
 
   const data = adsWithS3Urls.map(ad => ({
@@ -531,6 +597,11 @@ async function saveAdsToPrisma(options: {
     engagement_score: ad.engagementScore,
     rawJson: {
       url: ad.videoUrl,
+      videoUrl: ad.videoUrl,
+      mediaUrl: ad.videoUrl,
+      ...(ad.s3VideoUrl ? { s3VideoUrl: ad.s3VideoUrl } : {}),
+      mirrorStatus: ad.mirrorStatus ?? null,
+      mirrorError: ad.mirrorError ?? null,
       metrics: {
         source: 'apify',
         source_type: ad.sourceType,

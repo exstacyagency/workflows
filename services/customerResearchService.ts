@@ -897,10 +897,6 @@ export async function runCustomerResearch(params: RunCustomerResearchParams) {
     );
     const shouldFetchReddit = normalizedProductProblem.length > 0;
 
-    if (!hasAmazonAsin && !shouldFetchReddit) {
-      throw new Error('Must provide either Amazon ASIN or Problem to Research');
-    }
-
     const effectiveMaxPosts = typeof maxPosts === "number" ? maxPosts : 50;
     const effectiveMaxCommentsPerPost =
       typeof maxCommentsPerPost === "number" ? maxCommentsPerPost : 50;

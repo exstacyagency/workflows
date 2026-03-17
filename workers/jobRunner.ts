@@ -704,27 +704,6 @@ async function runJob(
             resolvedCompetitor2Asin ||
             resolvedCompetitor3Asin
         );
-        const hasRedditKeywords =
-          Array.isArray(redditKeywords) && redditKeywords.some((k: any) => String(k).trim().length > 0);
-        const hasSearchIntent =
-          Array.isArray(searchIntent) && searchIntent.some((k: any) => String(k).trim().length > 0);
-        const hasSolutionKeywords =
-          Array.isArray(solutionKeywords) && solutionKeywords.some((k: any) => String(k).trim().length > 0);
-        const hasAdditionalProblems =
-          Array.isArray(additionalProblems) &&
-          additionalProblems.some((k: any) => String(k).trim().length > 0);
-        const hasProblem = Boolean(productProblemSolved && String(productProblemSolved).trim());
-
-        if (!hasAmazonAsin && !hasRedditKeywords && !hasSearchIntent && !hasSolutionKeywords && !hasAdditionalProblems && !hasProblem) {
-          await rollbackJobQuotaIfNeeded({ jobId, projectId: job.projectId, payload });
-          await markFailed({
-            jobId,
-            error:
-              "Invalid payload: provide mainProductAsin/competitorAsin or Reddit problem/search inputs (productProblemSolved, searchIntent, solutionKeywords, additionalProblems, redditKeywords)",
-          });
-          return;
-        }
-
         const result = await runCancelable(jobId, () => runCustomerResearch({
           projectId: job.projectId,
           jobId,
@@ -920,24 +899,39 @@ async function runJob(
       }
 
       case JobType.PATTERN_ANALYSIS: {
-        const runIdFromPayload = String(payload?.runId ?? "").trim() || null;
-        const runIdFromJob = String((job as any)?.runId ?? "").trim() || null;
-        const effectiveRunId = runIdFromPayload ?? runIdFromJob;
+        try {
+          console.log("PATTERN_ANALYSIS: starting execution");
+          const runIdFromPayload = String(payload?.runId ?? "").trim() || null;
+          const runIdFromJob = String((job as any)?.runId ?? "").trim() || null;
+          const effectiveRunId = runIdFromPayload ?? runIdFromJob;
 
-        // The claim query already transitions PENDING -> RUNNING.
-        // Avoid a duplicate RUNNING -> RUNNING transition here.
+          // The claim query already transitions PENDING -> RUNNING.
+          // Avoid a duplicate RUNNING -> RUNNING transition here.
 
-        const result = await runCancelable(jobId, () => runPatternAnalysis({
-          projectId: job.projectId,
-          runId: effectiveRunId,
-          jobId,
-        }));
+          const result = await runCancelable(jobId, () => {
+            console.log("PATTERN_ANALYSIS: inside runCancelable callback");
+            return runPatternAnalysis({
+              projectId: job.projectId,
+              runId: effectiveRunId,
+              jobId,
+            });
+          });
 
-        await markCompleted({
-          jobId,
-          result,
-          summary: `Patterns: ${result.patterns.hookPatterns.length} hooks`,
-        });
+          await markCompleted({
+            jobId,
+            result,
+            summary: `Patterns: ${result.patterns.hookPatterns.length} hooks`,
+          });
+        } catch (error: any) {
+          console.error("[WORKER] PATTERN_ANALYSIS failed:", {
+            jobId,
+            projectId: job.projectId,
+            runId: String(payload?.runId ?? (job as any)?.runId ?? "").trim() || null,
+            error: String(error?.message ?? error),
+            stack: error?.stack ?? null,
+          });
+          throw error;
+        }
         return;
       }
 

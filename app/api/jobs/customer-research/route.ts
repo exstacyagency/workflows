@@ -96,14 +96,6 @@ export async function POST(req: NextRequest) {
         resolvedCompetitor2Asin ||
         resolvedCompetitor3Asin
     );
-    const hasRedditData = Boolean(productProblemSolved?.trim());
-    if (!hasAmazonAsin && !hasRedditData) {
-      return NextResponse.json(
-        { error: "Provide either Amazon ASIN or Problem to Research for Reddit scraping" },
-        { status: 400 }
-      );
-    }
-
     const deny = await requireProjectOwner404(projectId);
     if (deny) return deny;
 

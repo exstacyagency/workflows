@@ -63,6 +63,7 @@ export default function ProductCollectionPage() {
   const projectId = params.projectId as string;
   const selectedProductFromUrl = searchParams.get("productId") || searchParams.get("product");
   const urlParam = searchParams.get("url");
+  const currentRunId = searchParams.get("runId");
 
   const [loading, setLoading] = useState(true);
   const [products, setProducts] = useState<ProductOption[]>([]);
@@ -326,6 +327,7 @@ export default function ProductCollectionPage() {
           productId: selectedProductId,
           productName: selectedProduct?.name,
           productUrl: productUrl.trim(),
+          ...(currentRunId ? { runId: currentRunId } : {}),
         }),
       });
 

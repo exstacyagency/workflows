@@ -4,7 +4,7 @@
 The only platform that connects ad intelligence and creative production end-to-end — built for DTC brands that compete on creative velocity.
 
 ## Short Description (for listing preview)
-Victora is a fully built, production-ready SaaS platform that runs an end-to-end advertising pipeline: from customer sentiment collection + analysis, ad collection + analysis, and product data collection to script generation, storyboard creation, and video ad output with built in editor. Security audited with billing infrastructure, job orchestration, quota enforcement, and multi-provider AI integrations production-hardened and included. Ready to deploy.
+Victora is a fully built, production-ready SaaS platform that runs an end-to-end advertising pipeline: from customer sentiment collection + analysis, ad collection + analysis, and product data collection to script generation, storyboard creation, and video ad output with built in editor. Security audited with billing infrastructure, job orchestration, quota enforcement, and multi-provider AI integrations production-hardened and included.
 
 ## Full Description
 
@@ -26,7 +26,7 @@ This is not a prototype or MVP. Victora is a production-ready platform with:
 
 **Research Pipeline**
 - Customer review ingestion across main product + up to 3 competitors
-- Conversation research with targeted community discovery and fallback to sitewide search
+- Conversation research with targeted community discovery
 - Competitor ad collection (copy, transcripts, OCR extraction)
 - Ad pattern analysis across collected creative data
 - Structured customer avatar generation
@@ -81,6 +81,7 @@ A buyer who builds this independently doesn't just spend more money; They spend 
 The difference isn't just what's built. It's what's possible on day one. A buyer isn't acquiring a tool they need to build a business around — they're acquiring the infrastructure to go straight to market in a category that's moving faster than most teams can build. What remains is execution.
 
 ### Growth Opportunities
+- **Credit System** - credit-based usage system that tracks and bills users based on the amount of credits they use. Make top-up credit packages available alongside monthly membership pricing. 
 - **Social Listening & Trend Detection** — real-time monitoring of emerging conversations to surface creative angles before competitors
 - **Creative Fatigue Detection** — analyze performance signals to identify when an ad concept is burning out and automatically flag it for refresh, so brands aren't running dead creative longer than they should
 - **Competitive Monitoring Agent** — scheduled agent that watches competitor ad libraries and alerts on new creative patterns

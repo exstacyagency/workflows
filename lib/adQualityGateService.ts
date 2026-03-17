@@ -32,12 +32,23 @@ type BillingUsageEntry = {
 };
 
 const DEFAULT_QUALITY_MODEL = "claude-sonnet-4-6";
+function normalizeQualityModel(value: string | null | undefined): string {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) return DEFAULT_QUALITY_MODEL;
+
+  if (
+    normalized === "claude-sonnet-4-5" ||
+    normalized === "claude-sonnet-4-5-20250929"
+  ) {
+    return DEFAULT_QUALITY_MODEL;
+  }
+
+  return normalized;
+}
+
 const QUALITY_MODEL = (() => {
   const configured = cfg.raw("ANTHROPIC_QUALITY_MODEL");
-  if (typeof configured === "string" && configured.trim().length > 0) {
-    return configured.trim();
-  }
-  return DEFAULT_QUALITY_MODEL;
+  return normalizeQualityModel(configured);
 })();
 const QUALITY_CONFIDENCE_THRESHOLD = 70;
 

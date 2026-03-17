@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { AdPlatform, JobStatus } from "@prisma/client";
 import { updateJobStatus } from "@/lib/jobs/updateJobStatus";
 import { uploadFrame } from "@/lib/s3Service";
+import { getSignedObjectUrlFromPublicUrl } from "@/lib/s3Service";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -95,6 +96,7 @@ function extractVideoUrls(rawJson: unknown): string[] {
   const raw = isPlainObject(rawJson) ? rawJson : {};
   const nestedVideoUrl = raw?.video_info?.video_url;
   const candidates = [
+    firstString(raw?.s3VideoUrl),
     firstString(raw?.video_info?.video_url?.["720p"]),
     firstString(raw?.video_info?.video_url?.["1080p"]),
     typeof nestedVideoUrl === "string" ? firstString(nestedVideoUrl) : null,
@@ -298,7 +300,17 @@ async function processSingleAd(assetId: string, apiKey: string, forceReprocess: 
     return { processed: false, reason: "already_processed", apiCalls: 0, framesExtracted: 0 };
   }
 
-  const videoUrls = extractVideoUrls(raw);
+  const rawVideoUrls = extractVideoUrls(raw);
+  const signedCandidates = await Promise.all(
+    rawVideoUrls.map((value) => getSignedObjectUrlFromPublicUrl(value)),
+  );
+  const videoUrls = Array.from(
+    new Set(
+      rawVideoUrls
+        .flatMap((value, index) => [signedCandidates[index], value])
+        .filter((value): value is string => Boolean(value && value.trim())),
+    ),
+  );
   if (videoUrls.length === 0) return { processed: false, reason: "missing_video_url", apiCalls: 0, framesExtracted: 0 };
 
   const highlightSeconds = parseHighlightSeconds(raw);
