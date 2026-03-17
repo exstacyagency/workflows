@@ -1,4 +1,5 @@
 // lib/config/runtime.ts
+import { validateEnvOnce } from "./validateEnv";
 
 /* eslint-disable no-restricted-properties */
 function getEnv(key: string): string {
@@ -19,6 +20,8 @@ const isProd = nodeEnv === "production";
 const isDev = nodeEnv === "development";
 const isGolden = getEnv("GOLDEN_MODE") === "1" || getEnv("IS_GOLDEN") === "1";
 const enableTestUsers = getEnv("ENABLE_TEST_USERS") === "true" || isDev;
+
+validateEnvOnce();
 
 export function getRuntimeConfig() {
   return {

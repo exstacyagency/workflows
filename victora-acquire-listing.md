@@ -81,16 +81,31 @@ A buyer who builds this independently doesn't just spend more money; They spend 
 The difference isn't just what's built. It's what's possible on day one. A buyer isn't acquiring a tool they need to build a business around — they're acquiring the infrastructure to go straight to market in a category that's moving faster than most teams can build. What remains is execution.
 
 ### Growth Opportunities
-- **Credit System** - credit-based usage system that tracks and bills users based on the amount of credits they use. Make top-up credit packages available alongside monthly membership pricing. 
-- **Social Listening & Trend Detection** — real-time monitoring of emerging conversations to surface creative angles before competitors
-- **Creative Fatigue Detection** — analyze performance signals to identify when an ad concept is burning out and automatically flag it for refresh, so brands aren't running dead creative longer than they should
-- **Competitive Monitoring Agent** — scheduled agent that watches competitor ad libraries and alerts on new creative patterns
-- **Winning Hook + Ad Library** — Over time, the template library compounds — retiring what's losing effectiveness and surfacing what's gaining momentum, so every new run launches from the strongest proven foundation available.
-- **A/B Creative Variants** — generate two or three versions of the same script with different visual treatments, pacing, or CTAs in a single run, ready to split test without duplicating the whole workflow
-- **Image & Commercial Ad Formats** — expand the full pipeline to cover static image ads with copy for social media feeds and retargeting, long-form commercial scripts and storyboards for brand storytelling, and standalone ad copy generation for any format — so the platform produces every asset in a brand's creative mix from the same research foundation, not just short-form video
-- **Brand Intelligence Layer** — build persistent memory across research runs so the platform accumulates a living model of each brand's audience, winning angles, and creative patterns. Every new run gets smarter than the last.
-- **Cross-Brand Pattern Recognition** — aggregate intelligence across all brands on the platform surfaces which hooks, visual treatments, and messaging angles are gaining traction category-wide — and which are becoming oversaturated — before any single brand commits spend. The more brands on the platform, the stronger the signal.
-- **Autonomous Orchestrator** — run the entire research and creative pipeline from anywhere. Review generated scripts, storyboards, and final video cuts on mobile with one-tap approve, request changes, or regenerate.
+- **Credit System** — usage-based billing with per-action credit consumption. Users purchase credits via one-time top-up packages or as part of a monthly membership tier.
+
+- **A/B Creative Variants** — generate multiple versions of the same script with different hooks, visual treatments, or CTAs in a single run. Split-test ready without duplicating the workflow.
+
+- **Brand Intelligence Layer** — persistent memory across research runs that builds a living model of each brand's audience, winning angles, and creative patterns. Every run gets smarter than the last.
+
+- **Cross-Brand Pattern Recognition** — aggregate signal across all brands on the platform to surface which hooks, treatments, and messaging angles are gaining traction category-wide before any single brand commits spend. The more brands on the platform, the stronger the signal.
+
+- **Creative Fatigue Detection** — analyze performance signals to flag when an ad concept is burning out and automatically surface it for refresh. Stops brands from running dead creative longer than they should.
+
+- **Compounding Hook Library** — a self-curating template vault that surfaces rising patterns and retires fading ones. Every new run launches from the strongest proven foundation available.
+
+- **Image & Commercial Ad Formats** — extend the full pipeline to cover static image ads, long-form commercial scripts, and standalone copy — every asset format from the same research foundation.
+
+- **Social Listening & Trend Detection** — real-time monitoring of emerging conversations to surface creative angles before competitors.
+
+- **Competitive Monitoring Agent** — scheduled agent that watches competitor ad libraries and alerts on new creative patterns as they emerge.
+
+### Platform Infrastructure Opportunities
+
+- **Autonomous Infrastructure** — self-managing backend that handles billing settlement, quota enforcement, spend cap checks, job lifecycle management, and failure recovery without manual intervention. Workers claim, execute, and resolve jobs atomically with automatic retry logic, dead-letter handling, and cost ledgering on every provider call.
+
+- **Autonomous Orchestrator** — run the full research and creative pipeline remotely. Review scripts, storyboards, and video cuts on mobile with one-tap approve, change request, or regenerate.
+
+- **Autonomous Social Agent** — a deployed agent that operates brand X accounts autonomously. Builds organic social presence, engages with relevant conversations, and promotes the platform through natural interaction — not scheduled posts. Runs continuously without operator input.
 
 ### What's Included in the Sale
 - Complete, production-ready codebase — Next.js 15 app, background worker, and all supporting infrastructure code
