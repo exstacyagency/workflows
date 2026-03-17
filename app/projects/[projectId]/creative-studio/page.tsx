@@ -4085,7 +4085,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
             </select>
             {selectedStoryboardCharacterId && (
               <p className="text-xs text-slate-500">
-                Selected character will be applied to Creator Present storyboard panels (ON_CAMERA) by default.
+                Selected character will be applied to On Camera storyboard panels (ON_CAMERA) by default.
               </p>
             )}
           </div>
@@ -5192,7 +5192,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                             >
                               <p style={{ margin: 0, color: "#e2e8f0", fontSize: 13, fontWeight: 600 }}>
                                 {panel.panelType === "B_ROLL_ONLY"
-                                  ? "B-ROLL SEQUENCE"
+                                  ? "CUTAWAY"
                                   : panel.beatLabel || `Beat ${panelIndex + 1}`}
                               </p>
                               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -5329,9 +5329,9 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                                       fontSize: 12,
                                     }}
                                   >
-                                    <option value="ON_CAMERA">Creator Present</option>
-                                    <option value="PRODUCT_ONLY">Product Demo (hand/arm only)</option>
-                                    <option value="B_ROLL_ONLY">B-roll Only</option>
+                                    <option value="ON_CAMERA">On Camera</option>
+                                    <option value="PRODUCT_ONLY">Product Shot</option>
+                                    <option value="B_ROLL_ONLY">Cutaway</option>
                                   </select>
                                 </div>
                                 <div>
@@ -5463,6 +5463,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                               <div style={{ display: "grid", gap: 6, fontSize: 12, color: "#cbd5e1" }}>
                                 {panel.panelType === "B_ROLL_ONLY" ? (
                                   <>
+                                    <div><strong style={{ color: "#f1f5f9" }}>VO:</strong> {panel.vo || "Not provided"}</div>
                                     <div><strong style={{ color: "#f1f5f9" }}>Character Name:</strong> {panel.characterName || "Not provided"}</div>
                                     <div><strong style={{ color: "#f1f5f9" }}>Character Description:</strong> {panel.characterDescription || "Not provided"}</div>
                                     <div>
@@ -5482,6 +5483,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                                   </>
                                 ) : (
                                   <>
+                                    <div><strong style={{ color: "#f1f5f9" }}>VO:</strong> {panel.vo || "Not provided"}</div>
                                     <div><strong style={{ color: "#f1f5f9" }}>Character Name:</strong> {panel.characterName || "Not provided"}</div>
                                     <div><strong style={{ color: "#f1f5f9" }}>Character Description:</strong> {panel.characterDescription || "Not provided"}</div>
                                     <div><strong style={{ color: "#f1f5f9" }}>Character Action:</strong> {panel.characterAction || "Not provided"}</div>
@@ -6069,10 +6071,13 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
             style={{
               width: "100%",
               maxWidth: 720,
+              maxHeight: "90vh",
               backgroundColor: "#0f172a",
               border: "1px solid #334155",
               borderRadius: 12,
               padding: 20,
+              overflowY: "auto",
+              boxSizing: "border-box",
             }}
           >
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
@@ -6416,42 +6421,28 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                             Manually create script
                           </label>
 
-                          {(scriptGenerationStrategy === "swipe_template" ||
-                            scriptGenerationStrategy === "upload_template") && (
+                          {scriptGenerationStrategy === "swipe_template" && (
                             <div style={{ marginTop: 10 }}>
                               {(() => {
                                 const recommendation = scriptRunSummary?.swipeRecommendation;
-                                const candidates =
-                                  scriptGenerationStrategy === "upload_template"
-                                    ? scriptSwipeFileCandidates
-                                    : recommendation?.candidates ?? [];
+                                const candidates = recommendation?.candidates ?? [];
                                 if (candidates.length === 0) {
                                   return (
                                     <p style={{ margin: 0, color: "#fde68a", fontSize: 12 }}>
-                                      {scriptGenerationStrategy === "upload_template"
-                                        ? "No uploaded transcript templates in this run yet. Upload one below."
-                                        : "No swipe-eligible ads found. Ads need a transcript to use as a script template."}
+                                      No swipe-eligible ads found. Ads need a transcript to use as a script template.
                                     </p>
                                   );
                                 }
                                 return (
                                   <>
-                                    {scriptGenerationStrategy === "swipe_template" ? (
-                                      <>
-                                        <p style={{ margin: "0 0 6px 0", color: "#94a3b8", fontSize: 12 }}>
-                                          Recommended by engagement metrics. Only ads that passed quality assessment are shown.
-                                        </p>
-                                        {recommendation?.sourceMode === "run_ad" ? (
-                                          <p style={{ margin: "0 0 8px 0", color: "#fde68a", fontSize: 12 }}>
-                                            No explicit swipe-file templates were found in this run. Showing top quality-passed ads from this run as template candidates.
-                                          </p>
-                                        ) : null}
-                                      </>
-                                    ) : (
-                                      <p style={{ margin: "0 0 6px 0", color: "#94a3b8", fontSize: 12 }}>
-                                        Uploaded transcript templates for this run.
+                                    <p style={{ margin: "0 0 6px 0", color: "#94a3b8", fontSize: 12 }}>
+                                      Recommended by engagement metrics. Only ads that passed quality assessment are shown.
+                                    </p>
+                                    {recommendation?.sourceMode === "run_ad" ? (
+                                      <p style={{ margin: "0 0 8px 0", color: "#fde68a", fontSize: 12 }}>
+                                        No explicit swipe-file templates were found in this run. Showing top quality-passed ads from this run as template candidates.
                                       </p>
-                                    )}
+                                    ) : null}
                                     <select
                                       value={selectedSwipeTemplateAdId}
                                       onChange={(e) => setSelectedSwipeTemplateAdId(e.target.value)}
@@ -6471,8 +6462,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                                         const labelTitle = (candidate.title || "Untitled ad").slice(0, 80);
                                         return (
                                           <option key={candidate.assetId} value={candidate.assetId}>
-                                            {scriptGenerationStrategy === "swipe_template" &&
-                                            recommendation?.recommendedAdId === candidate.assetId
+                                            {recommendation?.recommendedAdId === candidate.assetId
                                               ? "★ "
                                               : ""}
                                             {labelTitle} · score {candidate.score.toFixed(3)}
@@ -6480,197 +6470,297 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                                         );
                                       })}
                                     </select>
-                                    {(() => {
-                                      const active =
-                                        scriptGenerationStrategy === "upload_template"
-                                          ? selectedSwipeFileCandidate
-                                          : selectedSwipeCandidate;
-                                      if (!active) return null;
-                                      return (
-                                        <div
-                                          style={{
-                                            marginTop: 8,
-                                            border: "1px solid #334155",
-                                            borderRadius: 10,
-                                            backgroundColor: "#020617",
-                                            padding: "10px 12px",
-                                          }}
-                                        >
-                                          <p style={{ margin: 0, color: "#cbd5e1", fontSize: 12, fontWeight: 700 }}>
-                                            Selected Swipe Preview
-                                          </p>
-                                          <p style={{ margin: "6px 0 0 0", color: "#94a3b8", fontSize: 12 }}>
-                                            {active.reasons.join(" · ")}
-                                          </p>
+                                    {scriptGenerationStrategy === "swipe_template" &&
+                                      (() => {
+                                        const active = selectedSwipeCandidate;
+                                        if (!active) return null;
+                                        return (
                                           <div
                                             style={{
                                               marginTop: 8,
-                                              display: "grid",
-                                              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                                              gap: 8,
+                                              border: "1px solid #334155",
+                                              borderRadius: 10,
+                                              backgroundColor: "#020617",
+                                              padding: "10px 12px",
                                             }}
                                           >
-                                            <div style={{ color: "#e2e8f0", fontSize: 12 }}>
-                                              <span style={{ color: "#94a3b8" }}>Score:</span>{" "}
-                                              {formatSwipeMetricNumber(active.score, 4)}
+                                            <p style={{ margin: 0, color: "#cbd5e1", fontSize: 12, fontWeight: 700 }}>
+                                              Selected Swipe Preview
+                                            </p>
+                                            <p style={{ margin: "6px 0 0 0", color: "#94a3b8", fontSize: 12 }}>
+                                              {active.reasons.join(" · ")}
+                                            </p>
+                                            <div
+                                              style={{
+                                                marginTop: 8,
+                                                display: "grid",
+                                                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                                                gap: 8,
+                                              }}
+                                            >
+                                              <div style={{ color: "#e2e8f0", fontSize: 12 }}>
+                                                <span style={{ color: "#94a3b8" }}>Score:</span>{" "}
+                                                {formatSwipeMetricNumber(active.score, 4)}
+                                              </div>
+                                              <div style={{ color: "#e2e8f0", fontSize: 12 }}>
+                                                <span style={{ color: "#94a3b8" }}>Engagement:</span>{" "}
+                                                {formatSwipeMetricNumber(active.metrics.engagementScore)}
+                                              </div>
+                                              <div style={{ color: "#e2e8f0", fontSize: 12 }}>
+                                                <span style={{ color: "#94a3b8" }}>3s retention:</span>{" "}
+                                                {formatSwipeMetricPercent(active.metrics.retention3s)}
+                                              </div>
+                                              <div style={{ color: "#e2e8f0", fontSize: 12 }}>
+                                                <span style={{ color: "#94a3b8" }}>10s retention:</span>{" "}
+                                                {formatSwipeMetricPercent(active.metrics.retention10s)}
+                                              </div>
+                                              <div style={{ color: "#e2e8f0", fontSize: 12 }}>
+                                                <span style={{ color: "#94a3b8" }}>CTR:</span>{" "}
+                                                {formatSwipeMetricPercent(active.metrics.ctr, 2)}
+                                              </div>
+                                              <div style={{ color: "#e2e8f0", fontSize: 12 }}>
+                                                <span style={{ color: "#94a3b8" }}>Views:</span>{" "}
+                                                {active.metrics.views !== null
+                                                  ? Math.round(active.metrics.views).toLocaleString()
+                                                  : "—"}
+                                              </div>
                                             </div>
-                                            <div style={{ color: "#e2e8f0", fontSize: 12 }}>
-                                              <span style={{ color: "#94a3b8" }}>Engagement:</span>{" "}
-                                              {formatSwipeMetricNumber(active.metrics.engagementScore)}
-                                            </div>
-                                            <div style={{ color: "#e2e8f0", fontSize: 12 }}>
-                                              <span style={{ color: "#94a3b8" }}>3s retention:</span>{" "}
-                                              {formatSwipeMetricPercent(active.metrics.retention3s)}
-                                            </div>
-                                            <div style={{ color: "#e2e8f0", fontSize: 12 }}>
-                                              <span style={{ color: "#94a3b8" }}>10s retention:</span>{" "}
-                                              {formatSwipeMetricPercent(active.metrics.retention10s)}
-                                            </div>
-                                            <div style={{ color: "#e2e8f0", fontSize: 12 }}>
-                                              <span style={{ color: "#94a3b8" }}>CTR:</span>{" "}
-                                              {formatSwipeMetricPercent(active.metrics.ctr, 2)}
-                                            </div>
-                                            <div style={{ color: "#e2e8f0", fontSize: 12 }}>
-                                              <span style={{ color: "#94a3b8" }}>Views:</span>{" "}
-                                              {active.metrics.views !== null
-                                                ? Math.round(active.metrics.views).toLocaleString()
-                                                : "—"}
-                                            </div>
-                                          </div>
-                                          {active.transcriptSnippet ? (
-                                            <div style={{ marginTop: 8 }}>
-                                              <p
-                                                style={{
-                                                  margin: "0 0 4px 0",
-                                                  color: "#94a3b8",
-                                                  fontSize: 11,
-                                                  fontWeight: 600,
-                                                }}
-                                              >
-                                                Transcript
-                                              </p>
-                                              <p style={{ margin: 0, color: "#e2e8f0", fontSize: 12, lineHeight: 1.4 }}>
-                                                {active.transcriptSnippet}
-                                              </p>
-                                            </div>
-                                          ) : null}
-                                          <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", gap: 8 }}>
-                                            <span style={{ color: "#64748b", fontSize: 11 }}>
-                                              Asset ID: {active.assetId.slice(0, 8)}...
-                                            </span>
-                                            {active.sourceUrl ? (
-                                              <a
-                                                href={active.sourceUrl}
-                                                target="_blank"
-                                                rel="noreferrer"
-                                                style={{ color: "#38bdf8", fontSize: 11, textDecoration: "none" }}
-                                              >
-                                                Open source video
-                                              </a>
+                                            {active.transcriptSnippet ? (
+                                              <div style={{ marginTop: 8 }}>
+                                                <p
+                                                  style={{
+                                                    margin: "0 0 4px 0",
+                                                    color: "#94a3b8",
+                                                    fontSize: 11,
+                                                    fontWeight: 600,
+                                                  }}
+                                                >
+                                                  Transcript
+                                                </p>
+                                                <p style={{ margin: 0, color: "#e2e8f0", fontSize: 12, lineHeight: 1.4 }}>
+                                                  {active.transcriptSnippet}
+                                                </p>
+                                              </div>
                                             ) : null}
+                                            <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", gap: 8 }}>
+                                              <span style={{ color: "#64748b", fontSize: 11 }}>
+                                                Asset ID: {active.assetId.slice(0, 8)}...
+                                              </span>
+                                              {active.sourceUrl ? (
+                                                <a
+                                                  href={active.sourceUrl}
+                                                  target="_blank"
+                                                  rel="noreferrer"
+                                                  style={{ color: "#38bdf8", fontSize: 11, textDecoration: "none" }}
+                                                >
+                                                  Open source video
+                                                </a>
+                                              ) : null}
+                                            </div>
                                           </div>
-                                        </div>
-                                      );
-                                    })()}
+                                        );
+                                      })()}
                                   </>
                                 );
                               })()}
-                              <div
+                              {scriptGenerationStrategy === "upload_template" && (
+                                <div
+                                  style={{
+                                    marginTop: 10,
+                                    border: "1px solid #334155",
+                                    borderRadius: 10,
+                                    backgroundColor: "#020617",
+                                    padding: "10px 12px",
+                                  }}
+                                >
+                                  <p style={{ margin: 0, color: "#cbd5e1", fontSize: 12, fontWeight: 700 }}>
+                                    Upload Transcript as Template
+                                  </p>
+                                  <p style={{ margin: "6px 0 8px 0", color: "#94a3b8", fontSize: 12 }}>
+                                    Add your own transcript and use it as a swipe template candidate for this run.
+                                  </p>
+                                  <input
+                                    type="text"
+                                    value={manualSwipeTemplateTitle}
+                                    onChange={(e) => setManualSwipeTemplateTitle(e.target.value)}
+                                    placeholder="Template title (optional)"
+                                    disabled={scriptModalSubmitting || manualSwipeTemplateUploading}
+                                    style={{
+                                      width: "100%",
+                                      borderRadius: 8,
+                                      border: "1px solid #334155",
+                                      backgroundColor: "#0b1220",
+                                      color: "#e2e8f0",
+                                      padding: "8px 10px",
+                                      fontSize: 12,
+                                      boxSizing: "border-box",
+                                    }}
+                                  />
+                                  <textarea
+                                    value={manualSwipeTemplateTranscript}
+                                    onChange={(e) => setManualSwipeTemplateTranscript(e.target.value)}
+                                    placeholder="Paste transcript (minimum 100 characters)"
+                                    rows={4}
+                                    disabled={scriptModalSubmitting || manualSwipeTemplateUploading}
+                                    style={{
+                                      marginTop: 8,
+                                      width: "100%",
+                                      borderRadius: 8,
+                                      border: "1px solid #334155",
+                                      backgroundColor: "#0b1220",
+                                      color: "#e2e8f0",
+                                      padding: "8px 10px",
+                                      fontSize: 12,
+                                      boxSizing: "border-box",
+                                      resize: "vertical",
+                                    }}
+                                  />
+                                  <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", gap: 8 }}>
+                                    <span style={{ color: "#64748b", fontSize: 11 }}>
+                                      {manualSwipeTemplateTranscript.trim().length} chars
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => void handleUploadManualSwipeTemplateTranscript()}
+                                      disabled={
+                                        scriptModalSubmitting ||
+                                        manualSwipeTemplateUploading ||
+                                        manualSwipeTemplateTranscript.trim().length < 100 ||
+                                        !selectedScriptResearchRun?.runId
+                                      }
+                                      style={{
+                                        border: "none",
+                                        backgroundColor:
+                                          scriptModalSubmitting ||
+                                          manualSwipeTemplateUploading ||
+                                          manualSwipeTemplateTranscript.trim().length < 100 ||
+                                          !selectedScriptResearchRun?.runId
+                                            ? "#1e293b"
+                                            : "#0ea5e9",
+                                        color:
+                                          scriptModalSubmitting ||
+                                          manualSwipeTemplateUploading ||
+                                          manualSwipeTemplateTranscript.trim().length < 100 ||
+                                          !selectedScriptResearchRun?.runId
+                                            ? "#64748b"
+                                            : "#ffffff",
+                                        padding: "6px 10px",
+                                        borderRadius: 8,
+                                        fontSize: 12,
+                                        fontWeight: 600,
+                                        cursor:
+                                          scriptModalSubmitting ||
+                                          manualSwipeTemplateUploading ||
+                                          manualSwipeTemplateTranscript.trim().length < 100 ||
+                                          !selectedScriptResearchRun?.runId
+                                            ? "not-allowed"
+                                            : "pointer",
+                                      }}
+                                    >
+                                      {manualSwipeTemplateUploading ? "Uploading..." : "Add Template"}
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {scriptGenerationStrategy === "upload_template" && (
+                            <div
+                              style={{
+                                marginTop: 10,
+                                border: "1px solid #334155",
+                                borderRadius: 10,
+                                backgroundColor: "#020617",
+                                padding: "10px 12px",
+                              }}
+                            >
+                              <p style={{ margin: 0, color: "#cbd5e1", fontSize: 12, fontWeight: 700 }}>
+                                Upload Transcript as Template
+                              </p>
+                              <p style={{ margin: "6px 0 8px 0", color: "#94a3b8", fontSize: 12 }}>
+                                Add your own transcript and use it as the template for this run.
+                              </p>
+                              <input
+                                type="text"
+                                value={manualSwipeTemplateTitle}
+                                onChange={(e) => setManualSwipeTemplateTitle(e.target.value)}
+                                placeholder="Template title (optional)"
+                                disabled={scriptModalSubmitting || manualSwipeTemplateUploading}
                                 style={{
-                                  marginTop: 10,
+                                  width: "100%",
+                                  borderRadius: 8,
                                   border: "1px solid #334155",
-                                  borderRadius: 10,
-                                  backgroundColor: "#020617",
-                                  padding: "10px 12px",
+                                  backgroundColor: "#0b1220",
+                                  color: "#e2e8f0",
+                                  padding: "8px 10px",
+                                  fontSize: 12,
+                                  boxSizing: "border-box",
                                 }}
-                              >
-                                <p style={{ margin: 0, color: "#cbd5e1", fontSize: 12, fontWeight: 700 }}>
-                                  Upload Transcript as Template
-                                </p>
-                                <p style={{ margin: "6px 0 8px 0", color: "#94a3b8", fontSize: 12 }}>
-                                  Add your own transcript and use it as a swipe template candidate for this run.
-                                </p>
-                                <input
-                                  type="text"
-                                  value={manualSwipeTemplateTitle}
-                                  onChange={(e) => setManualSwipeTemplateTitle(e.target.value)}
-                                  placeholder="Template title (optional)"
-                                  disabled={scriptModalSubmitting || manualSwipeTemplateUploading}
+                              />
+                              <textarea
+                                value={manualSwipeTemplateTranscript}
+                                onChange={(e) => setManualSwipeTemplateTranscript(e.target.value)}
+                                placeholder="Paste transcript (minimum 100 characters)"
+                                rows={4}
+                                disabled={scriptModalSubmitting || manualSwipeTemplateUploading}
+                                style={{
+                                  marginTop: 8,
+                                  width: "100%",
+                                  borderRadius: 8,
+                                  border: "1px solid #334155",
+                                  backgroundColor: "#0b1220",
+                                  color: "#e2e8f0",
+                                  padding: "8px 10px",
+                                  fontSize: 12,
+                                  boxSizing: "border-box",
+                                  resize: "vertical",
+                                }}
+                              />
+                              <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", gap: 8 }}>
+                                <span style={{ color: "#64748b", fontSize: 11 }}>
+                                  {manualSwipeTemplateTranscript.trim().length} chars
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => void handleUploadManualSwipeTemplateTranscript()}
+                                  disabled={
+                                    scriptModalSubmitting ||
+                                    manualSwipeTemplateUploading ||
+                                    manualSwipeTemplateTranscript.trim().length < 100 ||
+                                    !selectedScriptResearchRun?.runId
+                                  }
                                   style={{
-                                    width: "100%",
-                                    borderRadius: 8,
-                                    border: "1px solid #334155",
-                                    backgroundColor: "#0b1220",
-                                    color: "#e2e8f0",
-                                    padding: "8px 10px",
-                                    fontSize: 12,
-                                    boxSizing: "border-box",
-                                  }}
-                                />
-                                <textarea
-                                  value={manualSwipeTemplateTranscript}
-                                  onChange={(e) => setManualSwipeTemplateTranscript(e.target.value)}
-                                  placeholder="Paste transcript (minimum 100 characters)"
-                                  rows={4}
-                                  disabled={scriptModalSubmitting || manualSwipeTemplateUploading}
-                                  style={{
-                                    marginTop: 8,
-                                    width: "100%",
-                                    borderRadius: 8,
-                                    border: "1px solid #334155",
-                                    backgroundColor: "#0b1220",
-                                    color: "#e2e8f0",
-                                    padding: "8px 10px",
-                                    fontSize: 12,
-                                    boxSizing: "border-box",
-                                    resize: "vertical",
-                                  }}
-                                />
-                                <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", gap: 8 }}>
-                                  <span style={{ color: "#64748b", fontSize: 11 }}>
-                                    {manualSwipeTemplateTranscript.trim().length} chars
-                                  </span>
-                                  <button
-                                    type="button"
-                                    onClick={() => void handleUploadManualSwipeTemplateTranscript()}
-                                    disabled={
+                                    border: "none",
+                                    backgroundColor:
                                       scriptModalSubmitting ||
                                       manualSwipeTemplateUploading ||
                                       manualSwipeTemplateTranscript.trim().length < 100 ||
                                       !selectedScriptResearchRun?.runId
-                                    }
-                                    style={{
-                                      border: "none",
-                                      backgroundColor:
-                                        scriptModalSubmitting ||
-                                        manualSwipeTemplateUploading ||
-                                        manualSwipeTemplateTranscript.trim().length < 100 ||
-                                        !selectedScriptResearchRun?.runId
-                                          ? "#1e293b"
-                                          : "#0ea5e9",
-                                      color:
-                                        scriptModalSubmitting ||
-                                        manualSwipeTemplateUploading ||
-                                        manualSwipeTemplateTranscript.trim().length < 100 ||
-                                        !selectedScriptResearchRun?.runId
-                                          ? "#64748b"
-                                          : "#ffffff",
-                                      padding: "6px 10px",
-                                      borderRadius: 8,
-                                      fontSize: 12,
-                                      fontWeight: 600,
-                                      cursor:
-                                        scriptModalSubmitting ||
-                                        manualSwipeTemplateUploading ||
-                                        manualSwipeTemplateTranscript.trim().length < 100 ||
-                                        !selectedScriptResearchRun?.runId
-                                          ? "not-allowed"
-                                          : "pointer",
-                                    }}
-                                  >
-                                    {manualSwipeTemplateUploading ? "Uploading..." : "Add Template"}
-                                  </button>
-                                </div>
+                                        ? "#1e293b"
+                                        : "#0ea5e9",
+                                    color:
+                                      scriptModalSubmitting ||
+                                      manualSwipeTemplateUploading ||
+                                      manualSwipeTemplateTranscript.trim().length < 100 ||
+                                      !selectedScriptResearchRun?.runId
+                                        ? "#64748b"
+                                        : "#ffffff",
+                                    padding: "6px 10px",
+                                    borderRadius: 8,
+                                    fontSize: 12,
+                                    fontWeight: 600,
+                                    cursor:
+                                      scriptModalSubmitting ||
+                                      manualSwipeTemplateUploading ||
+                                      manualSwipeTemplateTranscript.trim().length < 100 ||
+                                      !selectedScriptResearchRun?.runId
+                                        ? "not-allowed"
+                                        : "pointer",
+                                  }}
+                                >
+                                  {manualSwipeTemplateUploading ? "Uploading..." : "Add Template"}
+                                </button>
                               </div>
                             </div>
                           )}
