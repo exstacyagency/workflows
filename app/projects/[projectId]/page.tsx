@@ -112,8 +112,10 @@ export default async function ProjectDashboardPage({ params }: Params) {
     { label: 'Total Jobs', value: project._count.jobs.toString() },
     { label: 'Research Rows', value: project._count.researchRows.toString() },
     { label: 'Customer Avatars', value: project._count.customerAvatars.toString() },
-    { label: 'Product Intel Snapshots', value: project._count.productIntelligences.toString() },
+    { label: 'Video Generations', value: project._count.productIntelligences.toString() },
   ];
+
+  const primaryProductId = products[0]?.id ?? null;
 
   return (
     <div className="app-shell space-y-6">
@@ -155,45 +157,117 @@ export default async function ProjectDashboardPage({ params }: Params) {
         initialDescription={project.description}
       />
 
-      <section className="app-grid app-grid--two">
-        <div className="app-surface space-y-3">
-          <div className="app-panel-header">
-            <h2 className="app-section-title text-white">Recent Jobs</h2>
-            <span className="app-status-line">Latest 12 runs</span>
+      <section className="app-surface space-y-3">
+        <div className="app-panel-header">
+          <div>
+            <h2 className="app-section-title text-white">Research Hub</h2>
+            <p className="text-sm text-muted mt-1 italic">
+              Explore customer research, ad analysis, and product intelligence for this project.
+            </p>
           </div>
-          {recentJobs.length === 0 ? (
-            <p className="text-xs text-muted italic">Jobs will appear once workflows begin.</p>
-          ) : (
-            <div className="app-list">
-              {recentJobs.map(job => (
-                <div key={job.id} className="app-list-item">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm font-medium text-white tracking-tight">{getJobTypeLabel(job.type)}</p>
-                    {statusBadge(
-                      job.status === JobStatus.RUNNING
-                        ? 'running'
-                        : job.status === JobStatus.FAILED
-                          ? 'failed'
-                          : job.status === JobStatus.COMPLETED
-                            ? 'completed'
-                            : 'pending'
-                    )}
-                  </div>
-                  <p className="text-[10px] text-muted font-mono uppercase opacity-60">
-                    Started {dateFormatter.format(job.createdAt)} · Updated {dateFormatter.format(job.updatedAt)}
-                  </p>
-                  {job.resultSummary && (
-                    <p className="text-xs text-muted mt-2 font-mono bg-black/20 p-2 rounded-card border border-line/30">
-                      {typeof job.resultSummary === "string"
-                        ? job.resultSummary
-                        : JSON.stringify(job.resultSummary)}
-                    </p>
+        </div>
+        <div className="flex items-center justify-between gap-4">
+          <p className="app-status-line">
+            Open the research workspace to run collection, analysis, and review completed outputs.
+          </p>
+          <a
+            href={
+              primaryProductId
+                ? `/projects/${projectId}/research-hub?productId=${primaryProductId}`
+                : `/projects/${projectId}/research-hub`
+            }
+            className="app-button app-button--primary text-sm font-medium"
+          >
+            Open Research Hub
+          </a>
+        </div>
+      </section>
+
+      <section className="app-surface space-y-3">
+        <div className="app-panel-header">
+          <div>
+            <h2 className="app-section-title text-white">Creative Studio</h2>
+            <p className="text-sm text-muted mt-1 italic">
+              Turn approved research into scripts, storyboards, prompts, and videos.
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center justify-between gap-4">
+          <p className="app-status-line">
+            Jump into the production pipeline to create and manage creative assets for this project.
+          </p>
+          <a
+            href={
+              primaryProductId
+                ? `/projects/${projectId}/creative-studio?productId=${primaryProductId}`
+                : `/projects/${projectId}/creative-studio`
+            }
+            className="app-button app-button--primary text-sm font-medium"
+          >
+            Open Creative Studio
+          </a>
+        </div>
+      </section>
+
+      <section className="app-surface space-y-3">
+        <div className="app-panel-header">
+          <div>
+            <h2 className="app-section-title text-white">Usage and Cost</h2>
+            <p className="text-sm text-muted mt-1 italic">
+              Review spend, settled provider usage, and project-level execution costs.
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center justify-between gap-4">
+          <p className="app-status-line">
+            Monitor billing activity and cost breakdowns across every job run for this project.
+          </p>
+          <a
+            href={`/projects/${projectId}/usage`}
+            className="app-button app-button--primary text-sm font-medium"
+          >
+            Open Usage & Costs
+          </a>
+        </div>
+      </section>
+
+      <section className="app-surface space-y-3 overflow-hidden">
+        <div className="app-panel-header">
+          <h2 className="app-section-title text-white">Recent Jobs</h2>
+          <span className="app-status-line">Latest 12 runs</span>
+        </div>
+        {recentJobs.length === 0 ? (
+          <p className="text-xs text-muted italic">Jobs will appear once workflows begin.</p>
+        ) : (
+          <div className="app-list">
+            {recentJobs.map(job => (
+              <div key={job.id} className="app-list-item">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-medium text-white tracking-tight">{getJobTypeLabel(job.type)}</p>
+                  {statusBadge(
+                    job.status === JobStatus.RUNNING
+                      ? 'running'
+                      : job.status === JobStatus.FAILED
+                        ? 'failed'
+                        : job.status === JobStatus.COMPLETED
+                          ? 'completed'
+                          : 'pending'
                   )}
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
+                <p className="text-[10px] text-muted font-mono uppercase opacity-60">
+                  Started {dateFormatter.format(job.createdAt)} · Updated {dateFormatter.format(job.updatedAt)}
+                </p>
+                {job.resultSummary && (
+                  <p className="text-xs text-muted mt-2 font-mono bg-panel p-2 rounded-card border border-line/30">
+                    {typeof job.resultSummary === "string"
+                      ? job.resultSummary
+                      : JSON.stringify(job.resultSummary)}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </section>
     </div>
   );

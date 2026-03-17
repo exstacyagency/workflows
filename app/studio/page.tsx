@@ -106,7 +106,7 @@ export default function StudioHomePage() {
       <section className="rounded-xl border border-line bg-panel p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-white">
-            FrameForge AI · Studio Command Center
+            Victora · Studio Command Center
           </h1>
           <WhoAmI />
           <p className="text-sm text-muted mt-1">

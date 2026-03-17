@@ -1097,7 +1097,7 @@ export default function ResearchHubPage() {
     <div className="px-8 py-8 max-w-7xl mx-auto space-y-10">
       {/* New Run Confirmation Modal */}
       {showNewRunModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-overlay backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="rounded-card border border-line bg-panel p-8 shadow-panel max-w-md w-full space-y-6">
             <div className="space-y-2 text-center">
               <h2 className="text-xl font-bold text-white tracking-tight">Initialise New Trace?</h2>
@@ -1133,14 +1133,16 @@ export default function ResearchHubPage() {
           </Link>
           <div className="flex items-center gap-4">
             <h1 className="text-4xl font-bold text-white tracking-tight">
-              Research Core{selectedProduct ? <span className="text-accent ml-3">/ {selectedProduct.name}</span> : ""}
+              Research Hub{selectedProduct ? <span className="text-accent ml-3">/ {selectedProduct.name}</span> : ""}
             </h1>
-            <div className={`status-chip ${anyRunning ? 'info pulse' : 'subtle'}`}>
-              {anyRunning ? 'ACTIVE_SCAN' : 'SYSTEM_READY'}
-            </div>
+            {anyRunning && (
+              <div className="status-chip info pulse">
+                ACTIVE_SCAN
+              </div>
+            )}
           </div>
           <p className="text-sm text-muted max-w-xl font-mono uppercase tracking-widest opacity-60">
-            Multi-track audience research, creative analysis, and ad strategy.
+            Multi-track customer research, ad research, and product research.
           </p>
         </div>
 
@@ -1186,12 +1188,6 @@ export default function ResearchHubPage() {
                       ))}
                     </select>
                   </div>
-                  {selectedProduct && (
-                    <div className="p-4 rounded-card border border-accent-2/10 bg-accent-2/5 space-y-1">
-                      <p className="text-[10px] font-mono text-accent-2 uppercase tracking-widest opacity-60">Product Angle</p>
-                      <p className="text-xs text-muted leading-relaxed italic">{selectedProduct.productProblemSolved}</p>
-                    </div>
-                  )}
                 </div>
               ) : (
                 <p className="text-sm text-danger/80 font-mono uppercase tracking-widest py-4 border border-danger/20 bg-danger/5 rounded-card text-center">
@@ -1356,7 +1352,7 @@ export default function ResearchHubPage() {
 	                    return (
                       <div
                         key={stepWithStatus.id}
-                        className="flex items-start gap-4 p-4 rounded-lg bg-panel/80 border border-line"
+                        className="flex items-start gap-4 rounded-card border border-line bg-panel p-4"
                       >
                         {/* Step Info */}
                         <div className="flex-1 min-w-0">
@@ -1401,7 +1397,7 @@ export default function ResearchHubPage() {
                               onClick={() => {
                                 router.push(historyUrl);
                               }}
-                              className="text-muted/80 hover:text-muted text-xs underline"
+                              className="inline-flex items-center rounded-pill border border-line bg-panel px-4 py-2 text-xs text-muted transition-colors hover:text-white/90"
                             >
                               {currentRunId ? "View Run History" : "View All History"}
                             </button>
@@ -1413,14 +1409,14 @@ export default function ResearchHubPage() {
                                 {selectedRunCustomerJob ? (
                                   <Link
                                     href={`/projects/${projectId}/research/data/${selectedRunCustomerJob.id}?runId=${selectedRunCustomerJob.runId ?? selectedRunCustomerJob.id}`}
-                                    className="inline-block px-4 py-2 bg-accent text-white rounded hover:bg-accent/90 text-xs"
+                                    className="inline-flex items-center rounded-pill border border-line bg-panel px-4 py-2 text-xs text-muted transition-colors hover:text-white/90"
                                   >
                                     View Raw Data
                                   </Link>
                                 ) : (
                                   <button
                                     disabled
-                                    className="px-4 py-2 bg-bg-elevated text-muted/80 rounded opacity-50 cursor-not-allowed text-xs"
+                                    className="inline-flex cursor-not-allowed items-center rounded-pill border border-line bg-panel px-4 py-2 text-xs text-muted/60 opacity-50"
                                     title={!selectedRun ? "Select a run first" : "Customer Collection must be completed"}
                                   >
                                     View Raw Data
@@ -1434,7 +1430,7 @@ export default function ResearchHubPage() {
                               {selectedRunId && analysisStatusJob?.status === "COMPLETED" && (
                                 <Link
                                   href={`/projects/${projectId}/research-hub/analysis/data/${analysisStatusJob.id}`}
-                                  className="inline-block px-4 py-2 bg-accent text-white rounded hover:bg-accent/90 text-xs"
+                                  className="inline-flex items-center rounded-pill border border-line bg-panel px-4 py-2 text-xs text-muted transition-colors hover:text-white/90"
                                 >
                                   View Results
                                 </Link>
@@ -1446,7 +1442,7 @@ export default function ResearchHubPage() {
 	                              {stepWithStatus.id === "product-collection" && stepRawDataHref && (
 	                                <Link
 	                                  href={stepRawDataHref}
-	                                  className="inline-block px-4 py-2 bg-accent text-white rounded hover:bg-accent/90 text-xs"
+		                                className="inline-flex items-center rounded-pill border border-line bg-panel px-4 py-2 text-xs text-muted transition-colors hover:text-white/90"
 	                                >
 	                                  View Raw Data
 	                                </Link>
@@ -1464,7 +1460,7 @@ export default function ResearchHubPage() {
                                     const runQuery = runId ? `&runId=${runId}` : "";
                                     router.push(`/projects/${projectId}/research-hub/data?jobType=${jobType}${runQuery}`);
                                   }}
-                                  className="px-2 py-1 text-xs text-muted border border-line rounded hover:border-muted/60 hover:text-white/90"
+                                  className="inline-flex items-center rounded-pill border border-line bg-panel px-4 py-2 text-xs text-muted transition-colors hover:text-white/90"
                                 >
                                   View Data
                                 </button>
@@ -1475,10 +1471,10 @@ export default function ResearchHubPage() {
                             <button
                               onClick={() => runStep(stepWithStatus, track.key)}
                               disabled={!canRunAnalysis || isRunning}
-                              className={`px-4 py-2 rounded text-sm font-medium flex items-center gap-2 ${
+                              className={`inline-flex items-center gap-2 rounded-pill px-4 py-2 text-sm font-bold ${
                                 !canRunAnalysis || isRunning
-                                  ? "bg-bg-elevated text-muted/60 cursor-not-allowed"
-                                  : `bg-${track.color}-500 hover:bg-${track.color}-400 text-white`
+                                  ? "cursor-not-allowed bg-panel-strong text-muted/60"
+                                  : "app-gold-gradient text-[#111]"
                               }`}
                               title={!canRunAnalysis ? "Complete Customer Collection first" : undefined}
                             >
@@ -1490,10 +1486,10 @@ export default function ResearchHubPage() {
                                 <button
                                   onClick={() => runStep(stepWithStatus, track.key)}
                                   disabled={isRunning || isCollecting}
-                                  className={`px-3 py-1 text-sm rounded ${
+                                  className={`inline-flex items-center rounded-pill px-4 py-2 text-sm font-bold ${
                                     isRunning || isCollecting
-                                      ? "bg-panel-strong text-muted/50 cursor-not-allowed"
-                                      : "bg-accent hover:bg-accent/90 text-bg"
+                                      ? "cursor-not-allowed bg-panel-strong text-muted/50"
+                                      : "app-gold-gradient text-[#111]"
                                   }`}
                                 >
                                   Run
@@ -1505,7 +1501,7 @@ export default function ResearchHubPage() {
                                   stepWithStatus.lastJob && (
                                   <button
                                     onClick={() => handleViewStepData(stepWithStatus)}
-                                    className="px-2 py-1 text-xs text-muted/80 hover:text-white/90 border border-line rounded"
+                                    className="inline-flex items-center rounded-pill border border-line bg-panel px-4 py-2 text-xs text-muted transition-colors hover:text-white/90"
                                   >
                                     View Data
                                   </button>
@@ -1525,10 +1521,10 @@ export default function ResearchHubPage() {
                                       (stepWithStatus.label === "Customer Analysis" && !canRunAnalysis) ||
                                       (stepWithStatus.label === "Customer Analysis" && analysisRunning)
                                     }
-                                    className={`px-3 py-1 text-sm rounded ${
+                                    className={`inline-flex items-center rounded-pill px-4 py-2 text-sm font-bold ${
                                       locked || isRunning || (isCustomerCollectionStep && hasRunningJob) || (stepWithStatus.label === "Customer Analysis" && (analysisRunning || !canRunAnalysis))
-                                        ? "bg-panel-strong text-muted/50 cursor-not-allowed"
-                                        : "bg-accent hover:bg-accent/90 text-bg"
+                                        ? "cursor-not-allowed bg-panel-strong text-muted/50"
+                                        : "app-gold-gradient text-[#111]"
                                     }`}
                                   >
                                     {isRunning
@@ -1616,6 +1612,54 @@ export default function ResearchHubPage() {
         })}
       </div>
 
+      <section className="app-surface space-y-3 mt-8">
+        <div className="app-panel-header">
+          <div>
+            <h2 className="app-section-title text-white">Creative Studio</h2>
+            <p className="text-sm text-muted mt-1 italic">
+              Move approved research into script generation, storyboards, and production output.
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center justify-between gap-4">
+          <p className="app-status-line">
+            Open Creative Studio to turn the current project context into production-ready creative assets.
+          </p>
+          <Link
+            href={
+              selectedProductId
+                ? `/projects/${projectId}/creative-studio?productId=${selectedProductId}`
+                : `/projects/${projectId}/creative-studio`
+            }
+            className="app-button app-button--primary text-sm font-medium"
+          >
+            Open Creative Studio
+          </Link>
+        </div>
+      </section>
+
+      <section className="app-surface space-y-3">
+        <div className="app-panel-header">
+          <div>
+            <h2 className="app-section-title text-white">Usage and Cost</h2>
+            <p className="text-sm text-muted mt-1 italic">
+              Review provider usage, spend, and settled job costs for this project.
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center justify-between gap-4">
+          <p className="app-status-line">
+            Track cost breakdowns and usage activity without leaving the current project scope.
+          </p>
+          <Link
+            href={`/projects/${projectId}/usage`}
+            className="app-button app-button--primary text-sm font-medium"
+          >
+            Open Usage & Costs
+          </Link>
+        </div>
+      </section>
+
       {/* Recent Jobs */}
       <div className="mt-8 border-t border-line pt-6">
         <h2 className="app-section-title mb-4 text-white/90">Recent Jobs</h2>
@@ -1664,28 +1708,6 @@ export default function ResearchHubPage() {
         </div>
       </div>
 
-      {/* Next Step CTA */}
-      <div className="app-surface mt-8">
-        <h3 className="app-section-title text-white mb-2">Ready for Production?</h3>
-        <p className="text-sm text-muted/80 mb-4">
-          Once you&apos;ve completed your research, head to the Creative Studio to generate
-          ad scripts and videos.
-        </p>
-        <div className="flex gap-3">
-          <Link
-            href={`/projects/${projectId}/creative-studio`}
-            className="app-button app-button--primary text-sm font-medium"
-          >
-            Go to Creative Studio →
-          </Link>
-          <Link
-            href={`/projects/${projectId}/usage`}
-            className="app-button app-button--muted text-sm font-medium"
-          >
-            View Usage & Costs →
-          </Link>
-        </div>
-      </div>
     </div>
   );
 }
@@ -1791,7 +1813,7 @@ function CustomerResearchModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-overlay flex items-center justify-center z-50 p-4">
       <div className="bg-panel rounded-lg border border-line max-w-lg w-full max-h-[90vh] overflow-y-auto">
         <div className="p-6">
           <h2 className="text-xl font-bold text-white mb-2">
@@ -2206,7 +2228,7 @@ function AdCollectionModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-overlay flex items-center justify-center z-50 p-4">
       <div className="bg-panel rounded-lg border border-line max-w-lg w-full">
         <div className="p-6">
           <h2 className="text-xl font-bold text-white mb-2">Industry Selection</h2>
@@ -2448,7 +2470,7 @@ function ProductCollectionModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-overlay flex items-center justify-center z-50 p-4">
       <div className="bg-panel rounded-lg border border-line max-w-lg w-full max-h-[90vh] overflow-y-auto">
         <div className="p-6">
           <h2 className="text-xl font-bold text-white mb-2">Product Information</h2>

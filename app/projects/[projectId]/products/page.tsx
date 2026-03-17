@@ -270,7 +270,7 @@ export default function ProjectProductsPage() {
 
   return (
     <div className="min-h-screen bg-bg text-white pb-20">
-      <div className="border-b border-line bg-panel/50 backdrop-blur-md px-8 py-6 sticky top-0 z-30">
+      <div className="border-b border-line bg-transparent backdrop-blur-md px-8 py-6 sticky top-0 z-30">
         <div className="flex items-center justify-between gap-6">
           <div className="space-y-4">
             <Link
@@ -318,13 +318,13 @@ export default function ProjectProductsPage() {
             {sortedProducts.map((product) => (
               <div
                 key={product.id}
-                className={`rounded-card border transition-all duration-300 ${
+                className={`rounded-card border backdrop-blur-panel transition-all duration-300 ${
                   editingProductId === product.id 
-                    ? "border-accent/40 bg-panel shadow-panel" 
-                    : "border-line bg-panel/50 hover:bg-panel/70 hover:border-line/60"
+                    ? "border-line bg-panel shadow-panel" 
+                    : "border-line bg-panel shadow-panel hover:border-line/60"
                 }`}
               >
-                <div className="px-6 py-4 border-b border-line/50 bg-bg-elevated/30 flex items-center justify-between">
+                <div className="px-6 py-4 border-b border-line/50 bg-bg-elevated flex items-center justify-between">
                   <div className="flex items-center gap-4">
                     <span className="text-[9px] font-mono text-white/30 uppercase tracking-[0.2em] font-bold">Product Record</span>
                     <div className="h-3 w-px bg-line/50" />
@@ -350,16 +350,16 @@ export default function ProjectProductsPage() {
                       </div>
 
                       {product.productProblemSolved && (
-                        <div className="p-4 rounded border border-line/30 bg-bg/40">
+                        <div className="p-4 rounded border border-line/30 bg-transparent">
                           <p className="text-[9px] font-mono text-accent uppercase tracking-widest mb-1 opacity-70">Primary Problem</p>
-                          <p className="text-[13px] text-muted leading-relaxed line-clamp-2 italic">"{product.productProblemSolved}"</p>
+                          <p className="text-[13px] text-muted leading-relaxed line-clamp-2 italic">&quot;{product.productProblemSolved}&quot;</p>
                         </div>
                       )}
 
                       <div className="flex flex-wrap gap-3 pt-2">
                         <button
                           onClick={() => editingProductId === product.id ? cancelEditProduct() : beginEditProduct(product)}
-                          className={`btn ${editingProductId === product.id ? 'btn-primary' : 'btn-secondary'} !min-h-[36px] px-6 text-[9px] uppercase font-bold tracking-widest`}
+                          className="inline-flex items-center rounded-pill border border-line bg-panel px-5 py-2 text-[0.82rem] text-text transition-all hover:bg-panel-strong"
                         >
                           {editingProductId === product.id ? "Close Editor" : "Edit Product"}
                         </button>
@@ -368,19 +368,19 @@ export default function ProjectProductsPage() {
 
                         <Link
                           href={`/products/${product.id}`}
-                          className="btn btn-secondary !min-h-[36px] px-6 text-[9px] uppercase font-bold tracking-widest hover:border-accent-2/50"
+                          className="inline-flex items-center rounded-pill border border-line bg-panel px-5 py-2 text-[0.82rem] text-text transition-all hover:bg-panel-strong"
                         >
                           Product Setup
                         </Link>
                         <Link
                           href={`/projects/${projectId}/research-hub?productId=${product.id}`}
-                          className="btn btn-secondary !min-h-[36px] px-6 text-[9px] uppercase font-bold tracking-widest hover:border-accent/50"
+                          className="inline-flex items-center rounded-pill border border-line bg-panel px-5 py-2 text-[0.82rem] text-text transition-all hover:bg-panel-strong"
                         >
                           Research Hub
                         </Link>
                         <Link
                           href={`/projects/${projectId}/creative-studio?productId=${product.id}`}
-                          className="btn btn-secondary !min-h-[36px] px-6 text-[9px] uppercase font-bold tracking-widest hover:border-accent-2/50"
+                          className="inline-flex items-center rounded-pill border border-line bg-panel px-5 py-2 text-[0.82rem] text-text transition-all hover:bg-panel-strong"
                         >
                           Creative Studio
                         </Link>
@@ -388,7 +388,7 @@ export default function ProjectProductsPage() {
                         <button
                           onClick={() => void handleDeleteProduct(product.id)}
                           disabled={deletingProductId === product.id}
-                          className="btn btn-danger !min-h-[36px] px-6 text-[9px] uppercase font-bold tracking-widest ml-auto"
+                          className="ml-auto inline-flex items-center rounded-pill border border-line bg-panel px-5 py-2 text-[0.82rem] text-text transition-all hover:bg-panel-strong disabled:opacity-50"
                         >
                           {deletingProductId === product.id ? "Wiping..." : "Purge_Asset"}
                         </button>
@@ -401,7 +401,7 @@ export default function ProjectProductsPage() {
                           <img 
                             src={product.productReferenceImageUrl} 
                             alt={product.name}
-                            className="w-full h-full object-cover opacity-60 grayscale group-hover:grayscale-0 group-hover:opacity-100 transition-all duration-700 scale-100 group-hover:scale-110"
+                            className="w-full h-full object-cover transition-all duration-700 scale-100 group-hover:scale-110"
                           />
                           <div className="absolute inset-0 bg-accent-2/10 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
                         </>
@@ -424,7 +424,7 @@ export default function ProjectProductsPage() {
                               <input
                                 value={editingDraft.name}
                                 onChange={(event) => setEditingDraft((prev) => prev ? { ...prev, name: event.target.value } : prev)}
-                                className="w-full h-12 bg-black/40 border-line rounded-card px-4 text-sm font-medium text-white focus:border-accent/60 focus:ring-1 focus:ring-accent/60 outline-none transition-all"
+                                className="w-full h-12 bg-panel border-line rounded-card px-4 text-sm font-medium text-white focus:border-accent/60 focus:ring-1 focus:ring-accent/60 outline-none transition-all"
                                 placeholder="Universal Identity..."
                               />
                             </div>

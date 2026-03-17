@@ -23,7 +23,6 @@ interface Job {
 interface JobGroup {
   runId: string | null;
   runLabel: string;
-  color: string;
   jobs: Job[];
   runNumber?: number;
 }
@@ -113,22 +112,14 @@ export default function CustomerAnalysisJobsPage() {
     }))
     .reverse();
 
-  const colors = [
-    "bg-success/10 border-success/30",
-    "bg-accent/10 border-accent-2/30",
-    "bg-accent/10 border-accent/30",
-    "bg-accent/10 border-accent/30",
-    "bg-accent/10 border-accent/30",
-    "bg-accent-2/10 border-accent-2/30",
-  ];
-
-  const groupedJobs: JobGroup[] = sortedRuns.map((run, index) => ({
+  const groupedJobs: JobGroup[] = sortedRuns.map((run) => ({
     runId: run.runId === "unknown" ? null : run.runId,
     runLabel: `Run #${run.runNumber} (${formatDate(run.createdAt).split(",")[0]})`,
-    color: colors[index % colors.length],
     jobs: run.jobs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
     runNumber: run.runNumber,
-  }));  const StatusBadge = ({ status }: { status: JobStatus }) => {
+  }));
+
+  const StatusBadge = ({ status }: { status: JobStatus }) => {
     return (
       <span className={`status-chip ${
         status === 'COMPLETED' ? 'success' :
@@ -143,37 +134,10 @@ export default function CustomerAnalysisJobsPage() {
 
   if (loading) {
     return (
-      <div className="px-6 py-12 flex flex-col items-center justify-center min-h-[60vh] space-y-4">
-        <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
-        <p className="text-xs font-mono text-muted uppercase tracking-widest">Loading analysis runs...</p>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="px-6 py-6 max-w-7xl mx-auto space-y-6">
-        <div className="mb-6">
-          <Link
-            href={`/projects/${projectId}/research-hub`}
-            className="text-[11px] font-mono text-muted hover:text-white uppercase tracking-wider transition-colors"
-          >
-            ← Back to Research Hub
-          </Link>
-        </div>
-        <div className="rounded-card border border-danger/20 bg-danger/5 p-8 text-center space-y-4">
-          <h2 className="text-xl font-bold text-danger tracking-tight">Error Loading Jobs</h2>
-          <p className="text-sm text-muted font-mono">{error}</p>
-          <button onClick={loadJobs} className="btn btn-secondary">Retry Connection</button>
-        </div>
-      </div>
-    );
-   if (loading) {
-    return (
-      <div className="min-h-screen bg-bg text-white px-8 py-8">
-        <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
-          <div className="w-8 h-8 border-2 border-accent/20 border-t-accent rounded-full animate-spin" />
-          <p className="text-[10px] font-mono text-muted uppercase tracking-[0.3em] animate-pulse">Fetching analysis history...</p>
+      <div className="min-h-screen bg-bg px-8 py-8 text-white">
+        <div className="flex min-h-[60vh] flex-col items-center justify-center space-y-4">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent/20 border-t-accent" />
+          <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-muted">Fetching analysis history...</p>
         </div>
       </div>
     );
@@ -181,7 +145,7 @@ export default function CustomerAnalysisJobsPage() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-bg text-white px-8 py-8 space-y-6">
+      <div className="min-h-screen bg-bg px-8 py-8 text-white space-y-6">
         <Link
           href={`/projects/${projectId}/research-hub`}
           className="text-[11px] font-mono text-muted hover:text-white uppercase tracking-widest transition-colors inline-block"
@@ -232,31 +196,32 @@ export default function CustomerAnalysisJobsPage() {
           <div className="space-y-12">
             {groupedJobs.map((group) => (
               <div key={group.runId || "no-run"} className="space-y-6">
-                <div className="flex items-center gap-4">
-                  <div className="h-px w-8 bg-accent/30" />
-                  <h2 className="text-[10px] font-mono text-accent uppercase tracking-[0.4em] font-bold">
+                <div className="flex items-center justify-between rounded-pill border border-line bg-bg-elevated px-5 py-3 shadow-panel backdrop-blur-panel">
+                  <h2 className="text-sm font-bold uppercase tracking-tight text-white">
                     {group.runLabel}
                   </h2>
-                  <div className="h-px flex-1 bg-line/30" />
+                  <p className="text-[10px] font-mono uppercase text-muted opacity-70">
+                    {group.jobs.length} {group.jobs.length === 1 ? "job" : "jobs"}
+                  </p>
                 </div>
 
                 <div className="rounded-card border border-line bg-panel overflow-hidden shadow-panel backdrop-blur-panel">
-                  <div className="px-6 py-3 border-b border-line bg-bg-elevated/30">
+                  <div className="border-b border-line bg-panel px-6 py-3">
                     <h3 className="text-[9px] font-mono text-accent uppercase tracking-[0.2em] font-bold">Synthesis_Cycle_Log</h3>
                   </div>
                   <table className="w-full text-left border-collapse">
-                    <thead className="bg-bg-elevated/10 border-b border-line">
+                    <thead className="border-b border-line bg-panel">
                       <tr>
-                        <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-48">Timestamp</th>
-                        <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-32">State_Vector</th>
-                        <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-32">Process_Time</th>
-                        <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em]">Context_Summary</th>
-                        <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-32 text-right">Actions</th>
+                        <th className="w-48 px-5 py-4 text-[0.76rem] font-mono uppercase tracking-[0.12em] text-muted">Created</th>
+                        <th className="w-32 px-5 py-4 text-[0.76rem] font-mono uppercase tracking-[0.12em] text-muted">Status</th>
+                        <th className="w-32 px-5 py-4 text-[0.76rem] font-mono uppercase tracking-[0.12em] text-muted">Duration</th>
+                        <th className="px-5 py-4 text-[0.76rem] font-mono uppercase tracking-[0.12em] text-muted">Summary</th>
+                        <th className="w-32 px-5 py-4 text-right text-[0.76rem] font-mono uppercase tracking-[0.12em] text-muted">Actions</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-line/30">
+                    <tbody className="divide-y divide-line">
                       {group.jobs.map((job) => (
-                        <tr key={job.id} className="hover:bg-panel/[0.02] transition-colors group">
+                        <tr key={job.id} className="bg-panel-row transition-colors">
                           <td className="px-5 py-4 font-mono text-[11px] text-muted uppercase">
                             {formatDate(job.createdAt)}
                           </td>
@@ -267,7 +232,7 @@ export default function CustomerAnalysisJobsPage() {
                             {formatDuration(job.createdAt, job.updatedAt)}
                           </td>
                           <td className="px-5 py-4">
-                            <div className="rounded-inner border border-line/40 bg-[rgba(255,255,255,0.025)] px-4 py-3 text-[13px] font-medium leading-relaxed text-white/80">
+                            <div className="rounded-inner border border-line/40 bg-panel-row px-4 py-3 text-[13px] font-medium leading-relaxed text-white/80">
                               {formatSummary(job.resultSummary)}
                             </div>
                           </td>
@@ -275,9 +240,9 @@ export default function CustomerAnalysisJobsPage() {
                             {job.status === "COMPLETED" ? (
                               <Link
                                 href={`/projects/${projectId}/research-hub/analysis/data/${job.id}`}
-                                className="btn btn-secondary !min-h-[32px] px-4 text-[9px] font-bold uppercase tracking-widest"
+                                className="text-[11px] font-mono uppercase tracking-wider text-accent-2 underline decoration-accent-2/30 underline-offset-4 transition-all hover:text-white hover:decoration-white"
                               >
-                                Exploration_Node ↗
+                                View Data →
                               </Link>
                             ) : (
                               <span className="text-[9px] font-mono text-muted/20 uppercase tracking-widest">—</span>

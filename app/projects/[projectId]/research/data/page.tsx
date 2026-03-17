@@ -715,14 +715,14 @@ export default function AllResearchDataPage() {
             <div className="rounded-card border border-line bg-panel overflow-hidden shadow-panel backdrop-blur-panel">
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
-                  <thead className="bg-bg-elevated/30 border-b border-line shadow-sm">
+                  <thead className="bg-bg-elevated border-b border-line shadow-sm">
                     <tr>
                       <th className="p-5 w-10">
                         <input
                           type="checkbox"
                           checked={allFilteredSelected}
                           onChange={toggleSelectAllFiltered}
-                          className="h-3.5 w-3.5 rounded-sm bg-black/40 border-line checked:bg-accent-2 checked:border-accent-2 transition-all cursor-pointer"
+                          className="h-3.5 w-3.5 rounded-sm bg-panel border-line checked:bg-accent-2 checked:border-accent-2 transition-all cursor-pointer"
                         />
                       </th>
                       <th className="p-5 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-24">ENTITY TYPE</th>
@@ -747,7 +747,7 @@ export default function AllResearchDataPage() {
                                 type="checkbox"
                                 checked={selectedRowIds.includes(row.id)}
                                 onChange={() => toggleSelectRow(row.id)}
-                                className="h-3.5 w-3.5 rounded-sm bg-black/40 border-line checked:bg-accent-2 checked:border-accent-2 transition-all cursor-pointer"
+                                className="h-3.5 w-3.5 rounded-sm bg-panel border-line checked:bg-accent-2 checked:border-accent-2 transition-all cursor-pointer"
                               />
                             </td>
                             <td className="p-5">
@@ -859,7 +859,7 @@ export default function AllResearchDataPage() {
                                     <div className="space-y-6">
                                       <div className="space-y-4">
                                         <h4 className="text-[10px] font-mono text-accent-2 uppercase tracking-[0.3em] font-black">Row Metadata</h4>
-                                        <div className="bg-black/60 p-6 rounded-card border border-line overflow-hidden group/meta">
+                                        <div className="bg-panel p-6 rounded-card border border-line overflow-hidden group/meta">
                                           <pre className="text-[11px] text-muted-2 leading-loose font-mono max-h-[400px] overflow-y-auto custom-scrollbar">
                                             {JSON.stringify(row.metadata, null, 2)}
                                           </pre>

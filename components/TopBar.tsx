@@ -19,7 +19,7 @@ export default function TopBar() {
   ];
 
   return (
-    <header className="h-14 px-5 border-b border-line bg-black/66 backdrop-blur-panel sticky top-0 z-20 flex items-center justify-between">
+    <header className="h-14 px-5 border-b border-line bg-transparent backdrop-blur-panel sticky top-0 z-20 flex items-center justify-between">
       {/* Breadcrumbs */}
       <div className="flex items-center gap-1 text-xs text-muted">
         {crumbs.map((crumb, idx) => {

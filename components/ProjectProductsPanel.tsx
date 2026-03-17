@@ -90,7 +90,7 @@ export function ProjectProductsPanel({ projectId, initialProducts }: Props) {
               value={selectedProductId}
               onChange={(e) => setSelectedProductId(e.target.value)}
               disabled={!hasProducts}
-              className="rounded-pill border border-line bg-[rgba(255,255,255,0.03)] px-3 py-1 text-xs text-text disabled:opacity-50 outline-none focus:border-accent/40 transition-colors"
+              className="rounded-pill border border-line bg-panel px-3 py-1 text-xs text-text disabled:opacity-50 outline-none focus:border-accent/40 transition-colors"
             >
               {!hasProducts && <option value="">No products yet</option>}
               {sortedProducts.map((product) => (
@@ -99,38 +99,6 @@ export function ProjectProductsPanel({ projectId, initialProducts }: Props) {
                 </option>
               ))}
             </select>
-            <div className="flex items-center gap-2">
-              <Link
-                href={
-                  selectedProductId
-                    ? `/projects/${projectId}/research-hub?productId=${selectedProductId}`
-                    : "#"
-                }
-                className={`inline-flex items-center rounded-pill px-3 py-1 text-xs font-medium transition-all ${
-                  selectedProductId
-                    ? "border border-accent/30 bg-accent/5 text-accent hover:bg-accent/10"
-                    : "bg-panel text-muted cursor-not-allowed pointer-events-none opacity-50"
-                }`}
-                aria-disabled={!selectedProductId}
-              >
-                Research hub
-              </Link>
-              <Link
-                href={
-                  selectedProductId
-                    ? `/projects/${projectId}/creative-studio?productId=${selectedProductId}`
-                    : "#"
-                }
-                className={`inline-flex items-center rounded-pill px-3 py-1 text-xs font-medium transition-all ${
-                  selectedProductId
-                    ? "border border-accent/30 bg-accent/5 text-accent hover:bg-accent/10"
-                    : "border border-line bg-panel text-muted cursor-not-allowed pointer-events-none opacity-50"
-                }`}
-                aria-disabled={!selectedProductId}
-              >
-                creative studio
-              </Link>
-            </div>
           </div>
           <div className="flex items-center gap-2">
             <Link
@@ -143,24 +111,18 @@ export function ProjectProductsPanel({ projectId, initialProducts }: Props) {
         </div>
       </div>
 
-      {!hasProducts ? (
-        <div className="rounded-card border border-line bg-[rgba(255,255,255,0.03)] p-6 text-center">
+      {!hasProducts && (
+        <div className="rounded-card border border-line bg-panel p-6 text-center">
           <p className="text-sm text-text mb-2">No products created yet.</p>
           <p className="text-xs text-muted mb-4 italic">
             Add your first product to start research and creative workflows.
-          </p>
-        </div>
-      ) : (
-        <div className="rounded-card border border-line bg-[rgba(255,255,255,0.03)] p-4">
-          <p className="text-xs text-muted italic">
-            Click <span className="text-accent-2 font-mono">View All Products</span> to manage and delete products.
           </p>
         </div>
       )}
 
       <details
         ref={createDetailsRef}
-        className="rounded-card border border-line bg-[rgba(255,255,255,0.03)] overflow-hidden"
+        className="rounded-card border border-line bg-panel overflow-hidden"
       >
         <summary className="list-none select-none px-4 py-3 cursor-pointer hover:bg-panel/[0.02] transition-colors">
           <span className="inline-flex items-center justify-center rounded-pill bg-accent hover:bg-accent/90 px-4 py-2 text-xs font-bold text-bg shadow-[0_0_15px_rgba(232,209,122,0.15)] transition-all">
@@ -175,7 +137,7 @@ export function ProjectProductsPanel({ projectId, initialProducts }: Props) {
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full rounded-pill border border-line bg-[rgba(255,255,255,0.03)] px-4 py-2 text-sm text-white placeholder:text-muted/40 outline-none focus:border-accent/40 transition-colors"
+                className="w-full rounded-pill border border-line bg-panel px-4 py-2 text-sm text-white placeholder:text-muted/40 outline-none focus:border-accent/40 transition-colors"
                 placeholder="e.g., ClearGlow Serum"
                 required
               />

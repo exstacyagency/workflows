@@ -8,8 +8,8 @@
   /* Backgrounds */
   --bg: rgb(9, 9, 11);
   --bg-elevated: rgba(255, 255, 255, 0.04);
-  --panel: rgba(255, 255, 255, 0.06);
-  --panel-strong: rgba(255, 255, 255, 0.10);
+  --panel: rgba(255, 255, 255, 0.03);
+  --panel-strong: rgba(255, 255, 255, 0.06);
 
   /* Borders */
   --line: rgba(255, 255, 255, 0.10);
@@ -221,7 +221,7 @@ h2 {
 .nav-cta:hover,
 .app-button:hover {
   transform: translateY(-1px);
-  border-color: rgba(255, 255, 255, 0.22);
+  border-color: var(--line);
 }
 
 .btn-primary,
@@ -230,6 +230,14 @@ h2 {
   color: rgb(17, 17, 17);
   border-color: transparent;
   font-weight: 700;
+}
+
+.app-gold-gradient {
+  background: linear-gradient(135deg, var(--accent), rgb(244, 233, 181));
+}
+
+.app-accent-halo {
+  background: radial-gradient(circle at 50% 50%, var(--accent), transparent 70%);
 }
 
 .btn-secondary,
@@ -711,7 +719,7 @@ h2 {
 
 .app-button:hover {
   transform: translateY(-1px);
-  border-color: rgba(255, 255, 255, 0.22);
+  border-color: var(--line);
 }
 
 .app-button--primary {

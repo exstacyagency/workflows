@@ -30,7 +30,6 @@ interface Job {
 interface JobGroup {
   runId: string | null;
   runLabel: string;
-  color: string;
   jobs: Job[];
   runNumber?: number;
 }
@@ -113,20 +112,9 @@ export default function JobListPage() {
     }))
     .reverse();
 
-  // Generate colors for each run
-  const colors = [
-    "bg-success/10 border-success/30",
-    "bg-accent/10 border-accent-2/30",
-    "bg-accent/10 border-accent/30",
-    "bg-accent/10 border-accent/30",
-    "bg-accent/10 border-accent/30",
-    "bg-accent-2/10 border-accent-2/30",
-  ];
-
-  const groupedJobs: JobGroup[] = sortedRuns.map((run, index) => ({
+  const groupedJobs: JobGroup[] = sortedRuns.map((run) => ({
     runId: run.runId === "unknown" ? null : run.runId,
     runLabel: `Run #${run.runNumber} (${formatDate(run.createdAt).split(",")[0]})`,
-    color: colors[index % colors.length],
     jobs: run.jobs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
     runNumber: run.runNumber,
   }));
@@ -205,7 +193,7 @@ export default function JobListPage() {
           {groupedJobs.map((group) => (
             <div key={group.runId || 'no-run'} className="space-y-4">
               {/* Group Header */}
-              <div className={`rounded-card border ${group.color} px-5 py-3 shadow-panel backdrop-blur-panel flex items-center justify-between`}>
+              <div className="flex items-center justify-between rounded-pill border border-line bg-bg-elevated px-5 py-3 shadow-panel backdrop-blur-panel">
                 <h2 className="text-sm font-bold text-white uppercase tracking-tight">{group.runLabel}</h2>
                 <p className="text-[10px] font-mono text-muted uppercase opacity-70">{group.jobs.length} {group.jobs.length === 1 ? 'job' : 'jobs'}</p>
               </div>
@@ -213,18 +201,18 @@ export default function JobListPage() {
               {/* Jobs Table */}
               <div className="rounded-card border border-line bg-panel overflow-hidden shadow-panel backdrop-blur-panel">
                 <table className="w-full">
-                  <thead className="bg-bg-elevated/50 border-b border-line">
+                  <thead className="border-b border-line bg-panel">
                     <tr>
-                      <th className="px-5 py-3 text-left text-[10px] font-mono text-muted uppercase tracking-widest">
+                      <th className="px-5 py-3 text-left text-[0.76rem] font-mono uppercase tracking-[0.12em] text-muted">
                         Created
                       </th>
-                      <th className="px-5 py-3 text-left text-[10px] font-mono text-muted uppercase tracking-widest">
+                      <th className="px-5 py-3 text-left text-[0.76rem] font-mono uppercase tracking-[0.12em] text-muted">
                         Status
                       </th>
-                      <th className="px-5 py-3 text-left text-[10px] font-mono text-muted uppercase tracking-widest">
+                      <th className="px-5 py-3 text-left text-[0.76rem] font-mono uppercase tracking-[0.12em] text-muted">
                         Duration
                       </th>
-                      <th className="px-5 py-3 text-right text-[10px] font-mono text-muted uppercase tracking-widest">
+                      <th className="px-5 py-3 text-right text-[0.76rem] font-mono uppercase tracking-[0.12em] text-muted">
                         Actions
                       </th>
                     </tr>
@@ -233,7 +221,7 @@ export default function JobListPage() {
                     {group.jobs.map((job) => (
                       <tr
                         key={job.id}
-                        className="hover:bg-bg-elevated/40 transition-colors group"
+                        className="bg-panel-row transition-colors"
                       >
                         <td className="px-5 py-4 text-xs text-text font-mono">
                           {formatDate(job.createdAt)}
@@ -250,7 +238,7 @@ export default function JobListPage() {
                               href={`/projects/${projectId}/research/data/${job.id}${
                                 job.runId ? `?runId=${job.runId}` : ""
                               }`}
-                              className="text-accent-2 hover:text-white text-[11px] font-mono uppercase tracking-wider underline underline-offset-4 decoration-accent-2/30 hover:decoration-white transition-all"
+                              className="text-[11px] font-mono uppercase tracking-wider text-accent-2 underline decoration-accent-2/30 underline-offset-4 transition-all hover:text-white hover:decoration-white"
                             >
                               View Data →
                             </Link>

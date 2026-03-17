@@ -65,7 +65,7 @@ function ApiSignInPageInner() {
         )}
         <form onSubmit={onSubmit} className="space-y-3">
           <input
-            className="w-full rounded-pill bg-black/40 border border-line px-4 py-2 text-sm text-white placeholder:text-muted/40 outline-none focus:border-accent/40 transition-colors"
+            className="w-full rounded-pill bg-panel border border-line px-4 py-2 text-sm text-white placeholder:text-muted/40 outline-none focus:border-accent/40 transition-colors"
             placeholder="Email"
             type="email"
             value={email}
@@ -73,7 +73,7 @@ function ApiSignInPageInner() {
             required
           />
           <input
-            className="w-full rounded-pill bg-black/40 border border-line px-4 py-2 text-sm text-white placeholder:text-muted/40 outline-none focus:border-accent/40 transition-colors"
+            className="w-full rounded-pill bg-panel border border-line px-4 py-2 text-sm text-white placeholder:text-muted/40 outline-none focus:border-accent/40 transition-colors"
             placeholder="Password"
             type="password"
             value={password}

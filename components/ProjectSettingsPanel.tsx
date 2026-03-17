@@ -72,7 +72,6 @@ export function ProjectSettingsPanel({
     <section className="rounded-card border border-line bg-panel p-5 space-y-4 shadow-panel backdrop-blur-panel">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold text-white tracking-tight">Project Settings</h2>
-        <span className="eyebrow !mb-0 text-[0.72rem]">Identifiers Only</span>
       </div>
 
       {error && <p className="text-xs text-accent font-mono">{error}</p>}
@@ -84,7 +83,7 @@ export function ProjectSettingsPanel({
           <input
             value={name}
             onChange={(event) => setName(event.target.value)}
-            className="w-full rounded-pill border border-line bg-[rgba(255,255,255,0.03)] px-4 py-2 text-sm text-white placeholder:text-muted/40 outline-none focus:border-accent/40 transition-colors"
+            className="w-full rounded-pill border border-line bg-panel px-4 py-2 text-sm text-white placeholder:text-muted/40 outline-none focus:border-accent/40 transition-colors"
             placeholder="Project name"
           />
         </div>
@@ -93,7 +92,7 @@ export function ProjectSettingsPanel({
           <textarea
             value={description}
             onChange={(event) => setDescription(event.target.value)}
-            className="w-full rounded-card border border-line bg-[rgba(255,255,255,0.03)] px-4 py-2 text-sm text-white placeholder:text-muted/40 outline-none focus:border-accent/40 transition-colors min-h-[80px]"
+            className="w-full rounded-card border border-line bg-panel px-4 py-2 text-sm text-white placeholder:text-muted/40 outline-none focus:border-accent/40 transition-colors min-h-[80px]"
             placeholder="Optional project description"
           />
         </div>

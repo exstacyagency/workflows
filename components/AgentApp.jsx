@@ -120,7 +120,7 @@ function Dot({ status }) {
 // ─── Sidebar ─────────────────────────────────────────────────────────────────
 function AgentSidebar({ agents, activeAgent, setActiveAgent }) {
   return (
-    <div className="w-[52px] bg-black/40 backdrop-blur-panel border-r border-line flex flex-col items-center py-4 gap-2 flex-shrink-0">
+    <div className="w-[52px] bg-panel backdrop-blur-panel border-r border-line flex flex-col items-center py-4 gap-2 flex-shrink-0">
       <div className="w-7 h-7 rounded-md bg-gradient-to-br from-accent to-[rgb(244,233,181)] mb-3 shadow-[0_0_15px_rgba(232,209,122,0.3)]" />
       {agents.map(a => (
         <button 
@@ -255,7 +255,7 @@ function Chat({ agent }) {
           </div>
         ))}
       </div>
-      <div className="px-6 py-4 border-t border-line flex gap-3 bg-black/20">
+      <div className="px-6 py-4 border-t border-line flex gap-3 bg-panel">
         <input 
           value={input} 
           onChange={e => setInput(e.target.value)} 
@@ -425,7 +425,7 @@ function Workers() {
           </div>
         ))}
       </div>
-      <div className="flex-1 flex items-center justify-center bg-black/5">
+      <div className="flex-1 flex items-center justify-center bg-panel-row">
         <span className="text-muted/20 text-[13px] italic font-mono">Select a worker to view details</span>
       </div>
     </div>
@@ -513,7 +513,7 @@ function CortexTab({ agent }) {
           </div>
           <input 
             placeholder="Message the cortex..." 
-            className="w-full bg-black/40 border border-line rounded-pill px-3 py-2 text-white text-[12px] outline-none focus:border-accent/40 transition-colors" 
+            className="w-full bg-panel border border-line rounded-pill px-3 py-2 text-white text-[12px] outline-none focus:border-accent/40 transition-colors" 
           />
         </div>
       </div>
@@ -547,7 +547,7 @@ function Skills({ agent }) {
         </div>
         <input 
           placeholder="owner/repo or owner/repo/skill-name" 
-          className="w-[280px] bg-black/40 border border-line rounded-pill px-3 py-[7px] text-white text-[12px] outline-none focus:border-accent/40 transition-colors font-mono" 
+          className="w-[280px] bg-panel border border-line rounded-pill px-3 py-[7px] text-white text-[12px] outline-none focus:border-accent/40 transition-colors font-mono" 
         />
         <button className="btn btn-primary !min-h-[36px] px-4 text-xs">↓ Install</button>
       </div>
@@ -611,7 +611,7 @@ function Config() {
   const [active, setActive] = useState("Soul");
   return (
     <div className="flex h-full overflow-hidden font-sans">
-      <div className="w-[180px] border-r border-line py-4 overflow-y-auto flex-shrink-0 bg-black/10">
+      <div className="w-[180px] border-r border-line py-4 overflow-y-auto flex-shrink-0 bg-panel-row">
         {Object.entries(CONFIG_SECTIONS).map(([section, items]) => (
           <div key={section} className="mb-4">
             <div className="text-muted/30 text-[9px] font-mono tracking-[0.2em] px-4 pb-2 text-uppercase opacity-80">{section}</div>
@@ -631,7 +631,7 @@ function Config() {
         ))}
       </div>
       <div className="flex-1 flex flex-col overflow-hidden">
-        <div className="flex items-center gap-3 px-6 py-3 border-b border-line bg-black/5">
+        <div className="flex items-center gap-3 px-6 py-3 border-b border-line bg-panel-row">
           <span className="text-white text-[13px] font-medium tracking-tight">{active}</span>
           {active === "Soul" && <span className="text-muted/40 text-[11px] font-mono italic opacity-60">SOUL.md</span>}
           <div className="ml-auto flex gap-2">
@@ -640,7 +640,7 @@ function Config() {
             <span className="text-muted/20 text-[10px] align-self-center font-mono italic ml-2">Cmd+S to save</span>
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto p-6 bg-black/20">
+        <div className="flex-1 overflow-y-auto p-6 bg-panel">
           <pre className="text-muted text-[12px] font-mono leading-[1.8] whitespace-pre-wrap">{SOUL_MD}</pre>
         </div>
       </div>
@@ -678,14 +678,14 @@ export default function AgentApp() {
       <AgentSidebar agents={AGENTS} activeAgent={activeAgent} setActiveAgent={id => { setActiveAgent(id); setActiveTab("Overview"); }} />
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Agent header */}
-        <div className="px-6 py-[12px] border-b border-line flex items-center gap-3 flex-shrink-0 bg-black/40 backdrop-blur-panel">
+        <div className="px-6 py-[12px] border-b border-line flex items-center gap-3 flex-shrink-0 bg-panel backdrop-blur-panel">
           <span className="text-white text-sm font-bold tracking-tight">{agent.name}</span>
           <Dot status={agent.status} />
           <button className="ml-auto py-1 px-3 rounded-md bg-bg-elevated border border-line text-muted/40 text-[11px] hover:text-accent hover:border-accent/30 transition-all">Delete</button>
         </div>
         <AgentTabBar active={activeTab} setActive={setActiveTab} agentAccent={ac} />
         <div className="flex-1 overflow-hidden relative">
-          <div className="absolute inset-0 pointer-events-none opacity-[0.03] bg-[radial-gradient(circle_at_50%_50%,var(--accent),transparent_70%)]" />
+          <div className="app-accent-halo absolute inset-0 pointer-events-none opacity-[0.03]" />
           {renderTab()}
         </div>
       </div>

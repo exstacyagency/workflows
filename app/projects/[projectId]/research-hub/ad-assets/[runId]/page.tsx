@@ -282,7 +282,6 @@ export default function AdAssetsViewerPage() {
     downloadCsv(`${suffix}-${runId}-${timestamp}.csv`, columns, exportRows);
   }
 
-  return (
   if (loading) {
     return (
       <div className="min-h-screen bg-bg text-white px-8 py-8">
@@ -347,7 +346,7 @@ export default function AdAssetsViewerPage() {
 
       <div className="px-8 py-10">
         <div className="rounded-card border border-line bg-panel overflow-hidden shadow-panel">
-          <div className="px-6 py-4 border-b border-line bg-bg-elevated/30 flex items-center justify-between">
+          <div className="px-6 py-4 border-b border-line bg-bg-elevated flex items-center justify-between">
             <h2 className="text-[10px] font-mono text-white/50 uppercase tracking-[0.2em] font-bold">Ad Assets</h2>
             {highlightOcr && (
               <div className="flex items-center gap-4 text-[9px] font-mono uppercase tracking-widest">
@@ -364,7 +363,7 @@ export default function AdAssetsViewerPage() {
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse min-w-[1650px]">
-              <thead className="bg-bg-elevated/10 border-b border-line">
+              <thead className="bg-bg-elevated border-b border-line">
                 <tr>
                   <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-40">Timestamp</th>
                   <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-32">Asset_ID</th>
@@ -505,7 +504,7 @@ export default function AdAssetsViewerPage() {
                                       href={frame.imageUrl}
                                       target="_blank"
                                       rel="noreferrer"
-                                      className="relative aspect-video w-full rounded border border-line overflow-hidden bg-black/40 group/img"
+                                      className="relative aspect-video w-full rounded border border-line overflow-hidden bg-panel group/img"
                                     >
                                       {/* eslint-disable-next-line @next/next/no-img-element */}
                                       <img
