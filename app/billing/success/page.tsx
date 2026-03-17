@@ -7,30 +7,30 @@ export default function BillingSuccessPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6">
-      <div className="max-w-lg w-full rounded-2xl border border-white/10 bg-black/30 p-6">
-        <h1 className="text-2xl font-semibold">Payment successful</h1>
-        <p className="mt-2 text-sm text-white/70">
+    <div className="min-h-screen bg-bg flex items-center justify-center p-6 transition-all duration-500">
+      <div className="max-w-lg w-full rounded-card border border-line bg-panel p-8 space-y-6 shadow-panel backdrop-blur-panel">
+        <h1 className="text-2xl font-semibold tracking-tight text-white">Payment successful</h1>
+        <p className="text-[15px] text-muted leading-relaxed">
           Your subscription is now active. You can return to the studio.
         </p>
 
-        <div className="mt-6 flex gap-3">
+        <div className="flex gap-3">
           <a
             href="/studio"
-            className="inline-flex items-center justify-center rounded-xl bg-white text-black px-4 py-2 text-sm font-medium"
+            className="btn btn-primary flex-1"
           >
             Go to Studio
           </a>
           <a
             href="/projects"
-            className="inline-flex items-center justify-center rounded-xl border border-white/20 px-4 py-2 text-sm font-medium"
+            className="btn btn-secondary flex-1"
           >
             View Projects
           </a>
         </div>
 
-        <p className="mt-4 text-xs text-white/50">
-          Note: it can take a few seconds for billing status to update.
+        <p className="text-[11px] font-mono text-muted/40 uppercase tracking-widest text-center mt-2">
+          Note: it can take a few seconds for billing status to update
         </p>
       </div>
     </div>

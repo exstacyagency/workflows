@@ -266,25 +266,25 @@ export default function CustomerProfilePage() {
   const editResearchHref = selectedProjectId ? `/projects/${selectedProjectId}/research` : '#';
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-50 px-4 py-8">
+    <main className="min-h-screen bg-bg text-white px-4 py-8">
       <div className="max-w-5xl mx-auto space-y-8">
         <header className="space-y-2">
           <h1 className="text-3xl font-semibold">Step 3 – Customer profile</h1>
-          <p className="text-slate-300 text-sm">
+          <p className="text-muted text-sm">
             Use your Phase 1A research (Reddit + Amazon) to generate a structured
             customer avatar and product intelligence for a selected project.
           </p>
         </header>
 
         {/* Controls */}
-        <section className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 space-y-4">
+        <section className="bg-panel border border-line rounded-xl p-4 space-y-4">
           <div className="grid gap-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-200">
+              <label className="text-sm font-medium text-white/90">
                 Project
               </label>
               <select
-                className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm"
+                className="w-full rounded-lg bg-bg border border-line px-3 py-2 text-sm"
                 value={selectedProjectId}
                 onChange={e => setSelectedProjectId(e.target.value)}
               >
@@ -299,11 +299,11 @@ export default function CustomerProfilePage() {
           </div>
 
           <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-200">
-                Problem it solves <span className="text-slate-500 text-xs">(optional)</span>
+              <label className="text-sm font-medium text-white/90">
+                Problem it solves <span className="text-muted/60 text-xs">(optional)</span>
               </label>
             <textarea
-              className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm min-h-[80px]"
+              className="w-full rounded-lg bg-bg border border-line px-3 py-2 text-sm min-h-[80px]"
               value={productProblem}
               onChange={e => setProductProblem(e.target.value)}
               placeholder="Describe the main problem this product solves in the customer's life."
@@ -313,46 +313,46 @@ export default function CustomerProfilePage() {
           <button
             onClick={runCustomerAnalysis}
             disabled={loading}
-            className="inline-flex items-center px-4 py-2 rounded-lg bg-sky-500 hover:bg-sky-400 disabled:opacity-50 text-sm font-medium"
+            className="inline-flex items-center px-4 py-2 rounded-pill bg-accent hover:bg-accent/90 text-bg disabled:opacity-50 text-sm font-medium"
           >
             {loading ? 'Running analysis…' : 'Generate avatar + product intelligence'}
           </button>
 
           {error && (
-            <p className="text-sm text-red-400">
+            <p className="text-sm text-accent">
               {error}
             </p>
           )}
           {statusMessage && (
-            <p className="text-sm text-emerald-400">
+            <p className="text-sm text-success">
               {statusMessage}
             </p>
           )}
 
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-muted/60">
             Note: this requires Phase 1A research rows and valid Anthropic credentials. Leave the problem field blank to reuse the value captured
             during customer research.
           </p>
         </section>
 
         {hasAnalysis && (
-          <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 space-y-3">
+          <section className="rounded-xl border border-line bg-panel p-4 space-y-3">
             <div>
-              <h2 className="text-sm font-semibold text-slate-100">Next steps</h2>
-              <p className="text-xs text-slate-400">
+              <h2 className="text-sm font-semibold text-white">Next steps</h2>
+              <p className="text-xs text-muted/80">
                 Move into pattern analysis or jump straight to script work now that Phase 1B is complete.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
               <Link
                 href={adResearchHref}
-                className="inline-flex items-center justify-center rounded-md bg-sky-500 hover:bg-sky-400 px-4 py-2 text-sm font-medium text-white"
+                className="inline-flex items-center justify-center rounded-pill bg-accent hover:bg-accent/90 px-4 py-2 text-sm font-medium text-bg"
               >
                 Continue to Ad Collection
               </Link>
               <Link
                 href={scriptHref}
-                className="inline-flex items-center justify-center rounded-md border border-slate-700 px-4 py-2 text-sm font-medium text-slate-100 hover:bg-slate-800"
+                className="inline-flex items-center justify-center rounded-md border border-line px-4 py-2 text-sm font-medium text-white hover:bg-bg-elevated"
               >
                 Generate Script
               </Link>
@@ -360,14 +360,14 @@ export default function CustomerProfilePage() {
                 <button
                   type="button"
                   onClick={() => setShowMoreActions(v => !v)}
-                  className="inline-flex items-center rounded-md border border-slate-700 px-3 py-2 text-sm text-slate-100 hover:bg-slate-800"
+                  className="inline-flex items-center rounded-md border border-line px-3 py-2 text-sm text-white hover:bg-bg-elevated"
                 >
                   More actions ▾
                 </button>
                 {showMoreActions && (
-                  <div className="absolute right-0 mt-2 w-48 rounded-md border border-slate-800 bg-slate-950/95 shadow-lg">
+                  <div className="absolute right-0 mt-2 w-48 rounded-md border border-line bg-bg/95 shadow-lg">
                     <button
-                      className="w-full text-left px-3 py-2 text-sm text-slate-100 hover:bg-slate-800"
+                      className="w-full text-left px-3 py-2 text-sm text-white hover:bg-bg-elevated"
                       onClick={() => {
                         setShowMoreActions(false);
                         if (editResearchHref !== '#') {
@@ -387,10 +387,10 @@ export default function CustomerProfilePage() {
         {/* Results */}
         <section className="grid gap-4 md:grid-cols-2">
           {/* Avatar card */}
-          <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 space-y-3">
+          <div className="bg-panel border border-line rounded-xl p-4 space-y-3">
             <h2 className="text-lg font-semibold">Customer avatar</h2>
             {!avatar && (
-              <p className="text-sm text-slate-400">
+              <p className="text-sm text-muted/80">
                 Run analysis to see the avatar for this project.
               </p>
             )}
@@ -423,7 +423,7 @@ export default function CustomerProfilePage() {
                 <button
                   onClick={() => downloadJson('avatar', avatar.id)}
                   disabled={!avatar.hasRaw || downloading === 'avatar'}
-                  className="mt-2 text-xs inline-flex items-center px-3 py-1.5 rounded-md border border-slate-700 text-slate-200 hover:bg-slate-800 disabled:opacity-40"
+                  className="mt-2 text-xs inline-flex items-center px-3 py-1.5 rounded-md border border-line text-white/90 hover:bg-bg-elevated disabled:opacity-40"
                 >
                   {downloading === 'avatar' ? 'Preparing download…' : 'Download JSON'}
                 </button>
@@ -432,10 +432,10 @@ export default function CustomerProfilePage() {
           </div>
 
           {/* Product intelligence card */}
-          <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 space-y-3">
+          <div className="bg-panel border border-line rounded-xl p-4 space-y-3">
             <h2 className="text-lg font-semibold">Product intelligence</h2>
             {!productIntel && (
-              <p className="text-sm text-slate-400">
+              <p className="text-sm text-muted/80">
                 Run analysis to see product intelligence for this project.
               </p>
             )}
@@ -464,7 +464,7 @@ export default function CustomerProfilePage() {
                 <button
                   onClick={() => downloadJson('intel', productIntel.id)}
                   disabled={!productIntel.hasRaw || downloading === 'intel'}
-                  className="mt-2 text-xs inline-flex items-center px-3 py-1.5 rounded-md border border-slate-700 text-slate-200 hover:bg-slate-800 disabled:opacity-40"
+                  className="mt-2 text-xs inline-flex items-center px-3 py-1.5 rounded-md border border-line text-white/90 hover:bg-bg-elevated disabled:opacity-40"
                 >
                   {downloading === 'intel' ? 'Preparing download…' : 'Download JSON'}
                 </button>
@@ -473,39 +473,39 @@ export default function CustomerProfilePage() {
           </div>
         </section>
 
-        <section className="bg-slate-900/50 border border-slate-800 rounded-xl p-4 space-y-4">
+        <section className="bg-panel/80 border border-line rounded-xl p-4 space-y-4">
           <h2 className="text-lg font-semibold">Snapshot history</h2>
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-slate-200">Customer avatars</h3>
-                <span className="text-xs text-slate-500">{avatarHistory.length} total</span>
+                <h3 className="text-sm font-semibold text-white/90">Customer avatars</h3>
+                <span className="text-xs text-muted/60">{avatarHistory.length} total</span>
               </div>
               {avatarHistory.length === 0 ? (
-                <p className="text-xs text-slate-500">No avatars captured yet.</p>
+                <p className="text-xs text-muted/60">No avatars captured yet.</p>
               ) : (
                 avatarHistory.map(item => (
-                  <div key={item.id} className="rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2 space-y-1">
-                    <div className="flex items-center justify-between text-xs text-slate-400">
+                  <div key={item.id} className="rounded-lg border border-line bg-bg/60 px-3 py-2 space-y-1">
+                    <div className="flex items-center justify-between text-xs text-muted/80">
                       <span>{formatDate(item.createdAt)}</span>
-                      <span className={item.archivedAt ? 'text-amber-400' : 'text-emerald-400'}>
+                      <span className={item.archivedAt ? 'text-accent' : 'text-success'}>
                         {item.archivedAt ? 'Archived' : 'Active'}
                       </span>
                     </div>
-                    <p className="text-xs text-slate-400">
+                    <p className="text-xs text-muted/80">
                       Pain: {item.primaryPain ?? '—'}
                     </p>
                     <div className="flex flex-wrap gap-2 text-[11px]">
                       <button
                         onClick={() => downloadJson('avatar', item.id)}
-                        className="px-2 py-1 rounded-md border border-slate-700 text-slate-200 hover:bg-slate-800"
+                        className="px-2 py-1 rounded-md border border-line text-white/90 hover:bg-bg-elevated"
                       >
                         Download
                       </button>
                       {item.archivedAt ? (
                         <button
                           onClick={() => mutateSnapshot('avatar', item.id, 'restore')}
-                          className="px-2 py-1 rounded-md border border-slate-700 text-slate-200 hover:bg-slate-800"
+                          className="px-2 py-1 rounded-md border border-line text-white/90 hover:bg-bg-elevated"
                         >
                           Restore
                         </button>
@@ -513,14 +513,14 @@ export default function CustomerProfilePage() {
                         <button
                           onClick={() => mutateSnapshot('avatar', item.id, 'archive')}
                           disabled={activeAvatarCount <= 1}
-                          className="px-2 py-1 rounded-md border border-slate-700 text-slate-200 hover:bg-slate-800 disabled:opacity-40"
+                          className="px-2 py-1 rounded-md border border-line text-white/90 hover:bg-bg-elevated disabled:opacity-40"
                         >
                           Archive
                         </button>
                       )}
                       <button
                         onClick={() => mutateSnapshot('avatar', item.id, 'delete')}
-                        className="px-2 py-1 rounded-md border border-red-700 text-red-200 hover:bg-red-900"
+                        className="px-2 py-1 rounded-md border border-accent/30 text-accent hover:bg-accent/20"
                       >
                         Delete
                       </button>
@@ -532,34 +532,34 @@ export default function CustomerProfilePage() {
 
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-slate-200">Product intelligence</h3>
-                <span className="text-xs text-slate-500">{productHistory.length} total</span>
+                <h3 className="text-sm font-semibold text-white/90">Product intelligence</h3>
+                <span className="text-xs text-muted/60">{productHistory.length} total</span>
               </div>
               {productHistory.length === 0 ? (
-                <p className="text-xs text-slate-500">No product intelligence captured yet.</p>
+                <p className="text-xs text-muted/60">No product intelligence captured yet.</p>
               ) : (
                 productHistory.map(item => (
-                  <div key={item.id} className="rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2 space-y-1">
-                    <div className="flex items-center justify-between text-xs text-slate-400">
+                  <div key={item.id} className="rounded-lg border border-line bg-bg/60 px-3 py-2 space-y-1">
+                    <div className="flex items-center justify-between text-xs text-muted/80">
                       <span>{formatDate(item.createdAt)}</span>
-                      <span className={item.archivedAt ? 'text-amber-400' : 'text-emerald-400'}>
+                      <span className={item.archivedAt ? 'text-accent' : 'text-success'}>
                         {item.archivedAt ? 'Archived' : 'Active'}
                       </span>
                     </div>
-                    <p className="text-xs text-slate-400">
+                    <p className="text-xs text-muted/80">
                       Hero ingredient: {item.heroIngredient ?? '—'}
                     </p>
                     <div className="flex flex-wrap gap-2 text-[11px]">
                       <button
                         onClick={() => downloadJson('intel', item.id)}
-                        className="px-2 py-1 rounded-md border border-slate-700 text-slate-200 hover:bg-slate-800"
+                        className="px-2 py-1 rounded-md border border-line text-white/90 hover:bg-bg-elevated"
                       >
                         Download
                       </button>
                       {item.archivedAt ? (
                         <button
                           onClick={() => mutateSnapshot('intel', item.id, 'restore')}
-                          className="px-2 py-1 rounded-md border border-slate-700 text-slate-200 hover:bg-slate-800"
+                          className="px-2 py-1 rounded-md border border-line text-white/90 hover:bg-bg-elevated"
                         >
                           Restore
                         </button>
@@ -567,14 +567,14 @@ export default function CustomerProfilePage() {
                         <button
                           onClick={() => mutateSnapshot('intel', item.id, 'archive')}
                           disabled={activeProductCount <= 1}
-                          className="px-2 py-1 rounded-md border border-slate-700 text-slate-200 hover:bg-slate-800 disabled:opacity-40"
+                          className="px-2 py-1 rounded-md border border-line text-white/90 hover:bg-bg-elevated disabled:opacity-40"
                         >
                           Archive
                         </button>
                       )}
                       <button
                         onClick={() => mutateSnapshot('intel', item.id, 'delete')}
-                        className="px-2 py-1 rounded-md border border-red-700 text-red-200 hover:bg-red-900"
+                        className="px-2 py-1 rounded-md border border-accent/30 text-accent hover:bg-accent/20"
                       >
                         Delete
                       </button>
@@ -584,7 +584,7 @@ export default function CustomerProfilePage() {
               )}
             </div>
           </div>
-          <p className="text-[11px] text-slate-500">
+          <p className="text-[11px] text-muted/60">
             Archived snapshots older than 90 days are automatically removed.
           </p>
         </section>

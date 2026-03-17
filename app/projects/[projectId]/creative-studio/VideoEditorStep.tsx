@@ -131,13 +131,13 @@ function TrimScrubber({
   return (
     <div style={{ padding: "0 2px", userSelect: "none" }}>
       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-        <span style={{ fontSize: 10, color: "#6b7280", fontVariantNumeric: "tabular-nums" }}>
+        <span style={{ fontSize: 10, color: "rgb(107, 114, 128)", fontVariantNumeric: "tabular-nums" }}>
           {clip.trimStart.toFixed(2)}s
         </span>
-        <span style={{ fontSize: 10, color: "#f59e0b", fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>
+        <span style={{ fontSize: 10, color: "rgb(245, 158, 11)", fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>
           {(clip.trimEnd - clip.trimStart).toFixed(2)}s kept
         </span>
-        <span style={{ fontSize: 10, color: "#6b7280", fontVariantNumeric: "tabular-nums" }}>
+        <span style={{ fontSize: 10, color: "rgb(107, 114, 128)", fontVariantNumeric: "tabular-nums" }}>
           {clip.trimEnd.toFixed(2)}s
         </span>
       </div>
@@ -148,9 +148,9 @@ function TrimScrubber({
         style={{
           position: "relative",
           height: 40,
-          background: "#0d1117",
+          background: "rgb(13, 17, 23)",
           borderRadius: 6,
-          border: "1px solid #1f2937",
+          border: "1px solid rgb(31, 41, 55)",
           cursor: "crosshair",
           overflow: "visible",
         }}
@@ -159,7 +159,7 @@ function TrimScrubber({
           position: "absolute",
           inset: 0,
           borderRadius: 5,
-          background: "repeating-linear-gradient(90deg, #111827 0px, #111827 2px, #0d1117 2px, #0d1117 10px)",
+          background: "repeating-linear-gradient(90deg, rgb(17, 24, 39) 0px, rgb(17, 24, 39) 2px, rgb(13, 17, 23) 2px, rgb(13, 17, 23) 10px)",
           pointerEvents: "none",
         }} />
         <div style={{
@@ -179,7 +179,7 @@ function TrimScrubber({
           left: `${toPercent(clip.trimStart)}%`,
           width: `${toPercent(clip.trimEnd) - toPercent(clip.trimStart)}%`,
           top: 0, bottom: 0,
-          border: "2px solid #f59e0b", borderLeft: "none", borderRight: "none",
+          border: "2px solid rgb(245, 158, 11)", borderLeft: "none", borderRight: "none",
           background: "rgba(245, 158, 11, 0.07)",
           zIndex: 2, pointerEvents: "none",
         }} />
@@ -194,11 +194,11 @@ function TrimScrubber({
           }}
         >
           <div style={{
-            width: 11, height: "100%", background: "#f59e0b",
+            width: 11, height: "100%", background: "rgb(245, 158, 11)",
             borderRadius: "4px 0 0 4px", display: "flex", alignItems: "center", justifyContent: "center", gap: 2,
           }}>
-            <div style={{ width: 1.5, height: 14, background: "#92400e", borderRadius: 1 }} />
-            <div style={{ width: 1.5, height: 14, background: "#92400e", borderRadius: 1 }} />
+            <div style={{ width: 1.5, height: 14, background: "rgb(146, 64, 14)", borderRadius: 1 }} />
+            <div style={{ width: 1.5, height: 14, background: "rgb(146, 64, 14)", borderRadius: 1 }} />
           </div>
         </div>
 
@@ -212,11 +212,11 @@ function TrimScrubber({
           }}
         >
           <div style={{
-            width: 11, height: "100%", background: "#f59e0b",
+            width: 11, height: "100%", background: "rgb(245, 158, 11)",
             borderRadius: "0 4px 4px 0", display: "flex", alignItems: "center", justifyContent: "center", gap: 2,
           }}>
-            <div style={{ width: 1.5, height: 14, background: "#92400e", borderRadius: 1 }} />
-            <div style={{ width: 1.5, height: 14, background: "#92400e", borderRadius: 1 }} />
+            <div style={{ width: 1.5, height: 14, background: "rgb(146, 64, 14)", borderRadius: 1 }} />
+            <div style={{ width: 1.5, height: 14, background: "rgb(146, 64, 14)", borderRadius: 1 }} />
           </div>
         </div>
 
@@ -225,14 +225,14 @@ function TrimScrubber({
           onMouseDown={(e) => handleMouseDown(e, "playhead")}
           style={{
             position: "absolute", left: `${toPercent(clampedTime)}%`,
-            top: -5, bottom: -5, width: 2, background: "#ffffff",
+            top: -5, bottom: -5, width: 2, background: "rgb(255, 255, 255)",
             transform: "translateX(-1px)", zIndex: 20, cursor: "col-resize",
           }}
         >
           <div style={{
             position: "absolute", top: 3, left: "50%",
             transform: "translateX(-50%) rotate(45deg)",
-            width: 7, height: 7, background: "#ffffff", borderRadius: 1,
+            width: 7, height: 7, background: "rgb(255, 255, 255)", borderRadius: 1,
           }} />
         </div>
       </div>
@@ -243,9 +243,9 @@ function TrimScrubber({
             position: "absolute", left: `${(i / clip.durationSec) * 100}%`,
             transform: "translateX(-50%)", display: "flex", flexDirection: "column", alignItems: "center",
           }}>
-            <div style={{ width: 1, height: i % 2 === 0 ? 5 : 3, background: "#374151" }} />
+            <div style={{ width: 1, height: i % 2 === 0 ? 5 : 3, background: "rgb(55, 65, 81)" }} />
             {i % 2 === 0 && (
-              <span style={{ fontSize: 9, color: "#4b5563", fontVariantNumeric: "tabular-nums", marginTop: 1 }}>
+              <span style={{ fontSize: 9, color: "rgb(75, 85, 99)", fontVariantNumeric: "tabular-nums", marginTop: 1 }}>
                 {i}s
               </span>
             )}
@@ -258,8 +258,8 @@ function TrimScrubber({
           onClick={() => onTrimChange(0, clip.durationSec)}
           style={{
             padding: "3px 8px", background: "transparent",
-            border: "1px solid #374151", borderRadius: 4,
-            color: "#6b7280", fontSize: 10, cursor: "pointer",
+            border: "1px solid rgb(55, 65, 81)", borderRadius: 4,
+            color: "rgb(107, 114, 128)", fontSize: 10, cursor: "pointer",
           }}
         >
           Reset trim
@@ -538,7 +538,7 @@ export function VideoEditorStep({ storyboardId, projectId, scenes, onComplete }:
       <div style={{ display: "flex", flexDirection: "column", gap: 4, overflowY: "auto" }}>
         <div style={{
           fontSize: 10, fontWeight: 700, letterSpacing: "0.1em",
-          color: "#4b5563", textTransform: "uppercase", marginBottom: 8, paddingLeft: 2,
+          color: "rgb(75, 85, 99)", textTransform: "uppercase", marginBottom: 8, paddingLeft: 2,
         }}>
           Select a clip to edit
         </div>
@@ -557,8 +557,8 @@ export function VideoEditorStep({ storyboardId, projectId, scenes, onComplete }:
                 textAlign: "left",
                 padding: "10px 12px",
                 borderRadius: 7,
-                border: `2px solid ${isActive ? "#3b82f6" : "#1f2937"}`,
-                background: isActive ? "#0e1e36" : "#0d1117",
+                border: `2px solid ${isActive ? "rgb(59, 130, 246)" : "rgb(31, 41, 55)"}`,
+                background: isActive ? "rgb(14, 30, 54)" : "rgb(13, 17, 23)",
                 cursor: "pointer",
                 transition: "border-color 0.12s, background 0.12s",
                 position: "relative",
@@ -568,23 +568,23 @@ export function VideoEditorStep({ storyboardId, projectId, scenes, onComplete }:
               {isActive && (
                 <div style={{
                   position: "absolute", left: 0, top: "15%", bottom: "15%",
-                  width: 3, background: "#3b82f6", borderRadius: "0 2px 2px 0",
+                  width: 3, background: "rgb(59, 130, 246)", borderRadius: "0 2px 2px 0",
                 }} />
               )}
 
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
                 <div style={{
                   width: 20, height: 20, borderRadius: 4, flexShrink: 0,
-                  background: isActive ? "#1d4ed8" : "#1a2030",
+                  background: isActive ? "rgb(29, 78, 216)" : "rgb(26, 32, 48)",
                   display: "flex", alignItems: "center", justifyContent: "center",
                   fontSize: 10, fontWeight: 700,
-                  color: isActive ? "#fff" : "#6b7280",
+                  color: isActive ? "rgb(255, 255, 255)" : "rgb(107, 114, 128)",
                 }}>
                   {index + 1}
                 </div>
                 <span style={{
                   fontSize: 12, fontWeight: 600,
-                  color: isActive ? "#e5e7eb" : "#9ca3af",
+                  color: isActive ? "rgb(229, 231, 235)" : "rgb(156, 163, 175)",
                   whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
                   flex: 1, minWidth: 0,
                 }}>
@@ -593,7 +593,7 @@ export function VideoEditorStep({ storyboardId, projectId, scenes, onComplete }:
               </div>
 
               <div style={{
-                fontSize: 10, color: "#4b5563",
+                fontSize: 10, color: "rgb(75, 85, 99)",
                 whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
                 paddingLeft: 28,
               }}>
@@ -601,13 +601,13 @@ export function VideoEditorStep({ storyboardId, projectId, scenes, onComplete }:
               </div>
 
               <div style={{ display: "flex", justifyContent: "space-between", marginTop: 5, paddingLeft: 28 }}>
-                <span style={{ fontSize: 10, color: isTrimmed ? "#f59e0b" : "#374151", fontVariantNumeric: "tabular-nums" }}>
+                <span style={{ fontSize: 10, color: isTrimmed ? "rgb(245, 158, 11)" : "rgb(55, 65, 81)", fontVariantNumeric: "tabular-nums" }}>
                   {isTrimmed
                     ? `${(clip.trimEnd - clip.trimStart).toFixed(1)}s / ${clip.durationSec}s`
                     : `${clip.durationSec}s`}
                 </span>
                 {isTrimmed && (
-                  <span style={{ fontSize: 8, color: "#d97706", fontWeight: 700 }}>TRIMMED</span>
+                  <span style={{ fontSize: 8, color: "rgb(217, 119, 6)", fontWeight: 700 }}>TRIMMED</span>
                 )}
               </div>
             </button>
@@ -627,8 +627,8 @@ export function VideoEditorStep({ storyboardId, projectId, scenes, onComplete }:
                 maxHeight: 440,
                 borderRadius: 12,
                 overflow: "hidden",
-                background: "#000",
-                border: "1px solid #1f2937",
+                background: "rgb(0, 0, 0)",
+                border: "1px solid rgb(31, 41, 55)",
                 boxShadow: "0 4px 24px rgba(0,0,0,0.5)",
               }}>
                 <video
@@ -643,7 +643,7 @@ export function VideoEditorStep({ storyboardId, projectId, scenes, onComplete }:
                 <div style={{
                   position: "absolute", top: 10, left: 10,
                   padding: "3px 8px", background: "rgba(0,0,0,0.65)",
-                  borderRadius: 5, fontSize: 11, color: "#e5e7eb", fontWeight: 600,
+                  borderRadius: 5, fontSize: 11, color: "rgb(229, 231, 235)", fontWeight: 600,
                   backdropFilter: "blur(4px)", pointerEvents: "none",
                 }}>
                   {activeClip.beatLabel || `Scene ${activeClip.sceneNumber}`}
@@ -654,15 +654,15 @@ export function VideoEditorStep({ storyboardId, projectId, scenes, onComplete }:
             {/* Scrubber */}
             <div style={{
               padding: "14px 16px 10px",
-              background: "#0a0d14",
+              background: "rgb(10, 13, 20)",
               borderRadius: 10,
-              border: "1px solid #1a2030",
+              border: "1px solid rgb(26, 32, 48)",
             }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
-                <span style={{ fontSize: 10, fontWeight: 700, color: "#4b5563", letterSpacing: "0.1em", textTransform: "uppercase" }}>
+                <span style={{ fontSize: 10, fontWeight: 700, color: "rgb(75, 85, 99)", letterSpacing: "0.1em", textTransform: "uppercase" }}>
                   ✂ Trim
                 </span>
-                <span style={{ fontSize: 10, color: "#374151", fontVariantNumeric: "tabular-nums" }}>
+                <span style={{ fontSize: 10, color: "rgb(55, 65, 81)", fontVariantNumeric: "tabular-nums" }}>
                   playhead {currentTime.toFixed(2)}s
                 </span>
               </div>
@@ -676,9 +676,9 @@ export function VideoEditorStep({ storyboardId, projectId, scenes, onComplete }:
 
             {activeClip.vo && (
               <div style={{
-                padding: "9px 13px", background: "#0d1117",
-                border: "1px solid #1a2030", borderRadius: 7,
-                fontSize: 11, color: "#4b5563", lineHeight: 1.5, fontStyle: "italic",
+                padding: "9px 13px", background: "rgb(13, 17, 23)",
+                border: "1px solid rgb(26, 32, 48)", borderRadius: 7,
+                fontSize: 11, color: "rgb(75, 85, 99)", lineHeight: 1.5, fontStyle: "italic",
               }}>
                 &quot;{activeClip.vo}&quot;
               </div>
@@ -687,7 +687,7 @@ export function VideoEditorStep({ storyboardId, projectId, scenes, onComplete }:
         ) : (
           <div style={{
             flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
-            border: "1px dashed #1a2030", borderRadius: 12, color: "#374151", fontSize: 13,
+            border: "1px dashed rgb(26, 32, 48)", borderRadius: 12, color: "rgb(55, 65, 81)", fontSize: 13,
           }}>
             Select a clip from the left to edit
           </div>
@@ -698,23 +698,23 @@ export function VideoEditorStep({ storyboardId, projectId, scenes, onComplete }:
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
 
         {activeClip && (
-          <div style={{ padding: "12px 14px", background: "#0d1117", borderRadius: 8, border: "1px solid #1a2030" }}>
-            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", color: "#374151", textTransform: "uppercase", marginBottom: 8 }}>
+          <div style={{ padding: "12px 14px", background: "rgb(13, 17, 23)", borderRadius: 8, border: "1px solid rgb(26, 32, 48)" }}>
+            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", color: "rgb(55, 65, 81)", textTransform: "uppercase", marginBottom: 8 }}>
               Active Clip
             </div>
-            <div style={{ fontSize: 12, color: "#e5e7eb", fontWeight: 600, marginBottom: 10 }}>
+            <div style={{ fontSize: 12, color: "rgb(229, 231, 235)", fontWeight: 600, marginBottom: 10 }}>
               {activeClip.beatLabel || `Scene ${activeClip.sceneNumber}`}
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-              <div style={{ background: "#111827", borderRadius: 5, padding: "6px 8px" }}>
-                <div style={{ fontSize: 9, color: "#374151", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 2 }}>Full</div>
-                <div style={{ fontSize: 13, color: "#9ca3af", fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>
+              <div style={{ background: "rgb(17, 24, 39)", borderRadius: 5, padding: "6px 8px" }}>
+                <div style={{ fontSize: 9, color: "rgb(55, 65, 81)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 2 }}>Full</div>
+                <div style={{ fontSize: 13, color: "rgb(156, 163, 175)", fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>
                   {activeClip.durationSec}s
                 </div>
               </div>
-              <div style={{ background: "#111827", borderRadius: 5, padding: "6px 8px" }}>
-                <div style={{ fontSize: 9, color: "#374151", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 2 }}>Kept</div>
-                <div style={{ fontSize: 13, color: "#f59e0b", fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>
+              <div style={{ background: "rgb(17, 24, 39)", borderRadius: 5, padding: "6px 8px" }}>
+                <div style={{ fontSize: 9, color: "rgb(55, 65, 81)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 2 }}>Kept</div>
+                <div style={{ fontSize: 13, color: "rgb(245, 158, 11)", fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>
                   {(activeClip.trimEnd - activeClip.trimStart).toFixed(1)}s
                 </div>
               </div>
@@ -723,9 +723,9 @@ export function VideoEditorStep({ storyboardId, projectId, scenes, onComplete }:
               onClick={() => toggleIncluded(activeClip.sceneId)}
               style={{
                 marginTop: 10, width: "100%", padding: "7px 0", borderRadius: 6,
-                border: `1px solid ${activeClip.included ? "#166534" : "#374151"}`,
-                background: activeClip.included ? "#052e16" : "transparent",
-                color: activeClip.included ? "#4ade80" : "#6b7280",
+                border: `1px solid ${activeClip.included ? "rgb(22, 101, 52)" : "rgb(55, 65, 81)"}`,
+                background: activeClip.included ? "rgb(5, 46, 22)" : "transparent",
+                color: activeClip.included ? "rgb(74, 222, 128)" : "rgb(107, 114, 128)",
                 fontSize: 12, fontWeight: 600, cursor: "pointer",
               }}
             >
@@ -734,30 +734,30 @@ export function VideoEditorStep({ storyboardId, projectId, scenes, onComplete }:
           </div>
         )}
 
-        <div style={{ padding: "12px 14px", background: "#0d1117", borderRadius: 8, border: "1px solid #1a2030", fontSize: 12, color: "#6b7280" }}>
-          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", color: "#374151", textTransform: "uppercase", marginBottom: 10 }}>
+        <div style={{ padding: "12px 14px", background: "rgb(13, 17, 23)", borderRadius: 8, border: "1px solid rgb(26, 32, 48)", fontSize: 12, color: "rgb(107, 114, 128)" }}>
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", color: "rgb(55, 65, 81)", textTransform: "uppercase", marginBottom: 10 }}>
             Export Summary
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
             <span>Clips included</span>
-            <span style={{ color: "#e5e7eb", fontWeight: 600 }}>{includedClips.length} / {clips.length}</span>
+            <span style={{ color: "rgb(229, 231, 235)", fontWeight: 600 }}>{includedClips.length} / {clips.length}</span>
           </div>
           <div style={{ display: "flex", justifyContent: "space-between" }}>
             <span>Est. duration</span>
-            <span style={{ color: "#e5e7eb", fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
+            <span style={{ color: "rgb(229, 231, 235)", fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
               {totalTrimmedDuration.toFixed(1)}s
             </span>
           </div>
         </div>
 
         {error && (
-          <div style={{ padding: "10px 12px", background: "#1a0a0a", border: "1px solid #7f1d1d", borderRadius: 8, color: "#f87171", fontSize: 12 }}>
+          <div style={{ padding: "10px 12px", background: "rgb(26, 10, 10)", border: "1px solid rgb(127, 29, 29)", borderRadius: 8, color: "rgb(248, 113, 113)", fontSize: 12 }}>
             {error}
           </div>
         )}
 
         {mergedUrl && (
-          <div style={{ padding: "12px 14px", background: "#052e16", border: "1px solid #166534", borderRadius: 8, fontSize: 12, color: "#4ade80" }}>
+          <div style={{ padding: "12px 14px", background: "rgb(5, 46, 22)", border: "1px solid rgb(22, 101, 52)", borderRadius: 8, fontSize: 12, color: "rgb(74, 222, 128)" }}>
             <div style={{ fontWeight: 600, marginBottom: 8 }}>✓ Merged successfully</div>
             <a
               href={mergedUrl}
@@ -765,8 +765,8 @@ export function VideoEditorStep({ storyboardId, projectId, scenes, onComplete }:
               rel="noopener noreferrer"
               download
               style={{
-                display: "block", padding: "8px 0", background: "#16a34a",
-                color: "#fff", borderRadius: 6, textDecoration: "none",
+                display: "block", padding: "8px 0", background: "rgb(22, 163, 74)",
+                color: "rgb(255, 255, 255)", borderRadius: 6, textDecoration: "none",
                 fontSize: 12, fontWeight: 600, textAlign: "center",
               }}
             >
@@ -780,9 +780,9 @@ export function VideoEditorStep({ storyboardId, projectId, scenes, onComplete }:
           disabled={merging || includedClips.length === 0}
           style={{
             padding: "13px 0", borderRadius: 8,
-            background: merging ? "#1f2937" : includedClips.length === 0 ? "#0d1117" : "#2563eb",
-            border: `1px solid ${merging || includedClips.length === 0 ? "#1f2937" : "#3b82f6"}`,
-            color: includedClips.length === 0 ? "#374151" : "#fff",
+            background: merging ? "rgb(31, 41, 55)" : includedClips.length === 0 ? "rgb(13, 17, 23)" : "rgb(37, 99, 235)",
+            border: `1px solid ${merging || includedClips.length === 0 ? "rgb(31, 41, 55)" : "rgb(59, 130, 246)"}`,
+            color: includedClips.length === 0 ? "rgb(55, 65, 81)" : "rgb(255, 255, 255)",
             fontSize: 14, fontWeight: 700,
             cursor: merging || includedClips.length === 0 ? "not-allowed" : "pointer",
           }}
@@ -797,8 +797,8 @@ export function VideoEditorStep({ storyboardId, projectId, scenes, onComplete }:
             padding: "10px 0",
             borderRadius: 8,
             background: "transparent",
-            border: "1px solid #334155",
-            color: "#94a3b8",
+            border: "1px solid rgb(51, 65, 85)",
+            color: "rgb(148, 163, 184)",
             fontSize: 12,
             fontWeight: 600,
             cursor: "pointer",
@@ -808,7 +808,7 @@ export function VideoEditorStep({ storyboardId, projectId, scenes, onComplete }:
         </button>
 
         {includedClips.length === 0 && (
-          <div style={{ fontSize: 11, color: "#374151", textAlign: "center" }}>
+          <div style={{ fontSize: 11, color: "rgb(55, 65, 81)", textAlign: "center" }}>
             Include at least one clip to merge
           </div>
         )}

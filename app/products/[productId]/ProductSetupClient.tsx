@@ -422,17 +422,17 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
         {/* Preset grid */}
         <div>
           <div className="space-y-1 mb-3">
-            <label className="text-xs text-slate-400">Character Name (optional)</label>
+            <label className="text-xs text-muted/80">Character Name (optional)</label>
             <input
               type="text"
               value={newCharacterName}
               onChange={(e) => setNewCharacterName(e.target.value)}
               placeholder="e.g. Maya"
               maxLength={120}
-              className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-sky-500 focus:outline-none"
+              className="w-full rounded-md border border-line bg-panel px-3 py-2 text-sm text-white placeholder:text-muted/60 focus:border-accent-2 focus:outline-none"
             />
           </div>
-          <p className="text-xs text-slate-400 mb-2">Character archetype</p>
+          <p className="text-xs text-muted/80 mb-2">Character archetype</p>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             {CHARACTER_PRESETS.map((preset) => (
               <button
@@ -441,12 +441,12 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
                 onClick={() => setSelectedPresetId(preset.id)}
                 className={`rounded-lg border p-3 text-left transition-colors ${
                   selectedPresetId === preset.id
-                    ? "border-sky-500 bg-sky-500/10 text-sky-300"
-                    : "border-slate-700 bg-slate-900 text-slate-300 hover:border-slate-600"
+                    ? "border-accent-2 bg-accent/10 text-accent-2"
+                    : "border-line bg-panel text-muted hover:border-muted/40"
                 }`}
               >
                 <p className="text-xs font-medium leading-tight">{preset.label}</p>
-                <p className="text-[10px] text-slate-500 mt-0.5 leading-tight">{preset.description}</p>
+                <p className="text-[10px] text-muted/60 mt-0.5 leading-tight">{preset.description}</p>
               </button>
             ))}
           </div>
@@ -454,17 +454,17 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
 
         {/* Custom fields */}
         {isCustom && (
-          <div className="space-y-2 rounded-lg border border-slate-800 bg-slate-950/40 p-4">
-            <p className="text-xs text-slate-400 mb-3">All fields required</p>
+          <div className="space-y-2 rounded-lg border border-line bg-bg/40 p-4">
+            <p className="text-xs text-muted/80 mb-3">All fields required</p>
             {CUSTOM_FIELDS.map(({ key, placeholder }) => (
               <div key={key} className="flex items-start gap-3">
-                <label className="w-24 shrink-0 pt-2 text-[11px] text-slate-400">{key}</label>
+                <label className="w-24 shrink-0 pt-2 text-[11px] text-muted/80">{key}</label>
                 <input
                   type="text"
                   value={customFields[key] ?? ""}
                   onChange={(e) => setCustomFields((prev) => ({ ...prev, [key]: e.target.value }))}
                   placeholder={placeholder}
-                  className="flex-1 rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-slate-100 placeholder:text-slate-600 focus:border-sky-500 focus:outline-none"
+                  className="flex-1 rounded-md border border-line bg-panel px-3 py-2 text-xs text-white placeholder:text-muted/60 focus:border-accent-2 focus:outline-none"
                 />
               </div>
             ))}
@@ -473,17 +473,17 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
 
         {/* Anchor preview */}
         {resolvedAnchor && (
-          <div className="rounded-lg border border-slate-800 bg-slate-950/40">
+          <div className="rounded-lg border border-line bg-bg/40">
             <button
               type="button"
               onClick={() => setAnchorPreviewOpen((v) => !v)}
-              className="flex w-full items-center justify-between px-4 py-2 text-xs text-slate-400 hover:text-slate-300"
+              className="flex w-full items-center justify-between px-4 py-2 text-xs text-muted/80 hover:text-muted"
             >
               <span>Anchor preview</span>
               <span>{anchorPreviewOpen ? "▲" : "▼"}</span>
             </button>
             {anchorPreviewOpen && (
-              <pre className="px-4 pb-4 text-[10px] text-slate-400 whitespace-pre-wrap leading-relaxed">
+              <pre className="px-4 pb-4 text-[10px] text-muted/80 whitespace-pre-wrap leading-relaxed">
                 {resolvedAnchor}
               </pre>
             )}
@@ -491,7 +491,7 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
         )}
 
         {missingFields.length > 0 && (
-          <p className="text-xs text-amber-300">
+          <p className="text-xs text-accent">
             Missing: {missingFields.join(", ")}
           </p>
         )}
@@ -500,19 +500,19 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
   }
 
   function StageList() {
-    if (stages.length === 0) return <p className="text-xs text-slate-500">No pipeline jobs yet.</p>;
+    if (stages.length === 0) return <p className="text-xs text-muted/60">No pipeline jobs yet.</p>;
     return (
       <div className="space-y-2">
         {stages.map((stage) => (
-          <div key={stage.type} className="rounded-md border border-slate-800 bg-slate-950/50 p-3">
+          <div key={stage.type} className="rounded-md border border-line bg-bg/50 p-3">
             <div className="flex items-center justify-between gap-3">
-              <p className="text-sm text-slate-200">{stage.label}</p>
+              <p className="text-sm text-white/90">{stage.label}</p>
               <div className="flex items-center gap-2">
                 <p className={`text-xs ${
-                  stage.status === "COMPLETED" ? "text-emerald-300"
-                  : stage.status === "FAILED" ? "text-red-300"
-                  : stage.status === "RUNNING" ? "text-sky-300"
-                  : "text-slate-400"
+                  stage.status === "COMPLETED" ? "text-success"
+                  : stage.status === "FAILED" ? "text-accent"
+                  : stage.status === "RUNNING" ? "text-accent-2"
+                  : "text-muted/80"
                 }`}>
                   {stageStatusText(stage)}
                 </p>
@@ -522,14 +522,14 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
                     type="button"
                     onClick={() => void handleCancelCharacterJob(stage.jobId!)}
                     disabled={cancellingCharacterJobId === stage.jobId}
-                    className="inline-flex items-center rounded border border-red-800 bg-red-950 px-2 py-1 text-[11px] font-medium text-red-300 hover:bg-red-900 disabled:opacity-60"
+                    className="inline-flex items-center rounded border border-accent/30 bg-accent/10 px-2 py-1 text-[11px] font-medium text-accent hover:bg-accent/20 disabled:opacity-60"
                   >
                     {cancellingCharacterJobId === stage.jobId ? "Cancelling..." : "Cancel"}
                   </button>
                   )}
               </div>
             </div>
-            {stage.error && <p className="mt-2 text-xs text-red-300">{stage.error}</p>}
+            {stage.error && <p className="mt-2 text-xs text-accent">{stage.error}</p>}
           </div>
         ))}
       </div>
@@ -539,18 +539,18 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
   return (
     <div className="px-6 py-6 space-y-6">
       {/* Header */}
-      <section className="rounded-xl border border-slate-800 bg-slate-900/80 p-5">
+      <section className="rounded-xl border border-line bg-panel p-5">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-[11px] uppercase tracking-widest text-slate-500">Product Setup</p>
-            <h1 className="text-2xl font-semibold text-slate-50">{product.name}</h1>
-            <p className="text-sm text-slate-400 mt-1">
+            <p className="text-[11px] uppercase tracking-widest text-muted/60">Product Setup</p>
+            <h1 className="text-2xl font-semibold text-white">{product.name}</h1>
+            <p className="text-sm text-muted/80 mt-1">
               Select a character archetype and run the 3-stage pipeline to create a reusable Sora character.
             </p>
           </div>
           <Link
             href={`/projects/${product.project.id}/products`}
-            className="inline-flex items-center rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-medium text-slate-200 hover:bg-slate-800"
+            className="inline-flex items-center rounded-md border border-line bg-panel px-3 py-2 text-xs font-medium text-white/90 hover:bg-bg-elevated"
           >
             Back to Products
           </Link>
@@ -558,24 +558,24 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
       </section>
 
       {error && (
-        <section className="rounded-lg border border-red-500/50 bg-red-500/10 p-4">
-          <p className="text-sm text-red-300">{error}</p>
+        <section className="rounded-lg border border-accent/30 bg-accent/10 p-4">
+          <p className="text-sm text-accent">{error}</p>
         </section>
       )}
 
-      <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-5 space-y-4">
-        <h2 className="text-sm font-semibold text-slate-100">Character Generation</h2>
+      <section className="rounded-xl border border-line bg-panel p-5 space-y-4">
+        <h2 className="text-sm font-semibold text-white">Character Generation</h2>
 
         {!effectiveCharacterId ? (
           <>
-            <div className="space-y-4 rounded-lg border border-slate-800 bg-slate-950/40 p-4">
+            <div className="space-y-4 rounded-lg border border-line bg-bg/40 p-4">
               {/* Run selector */}
               <div className="space-y-1">
-                <label className="text-xs text-slate-400">Attach to Run</label>
+                <label className="text-xs text-muted/80">Attach to Run</label>
                 <select
                   value={selectedRunId ?? ""}
                   onChange={(e) => handleRunChange(e.target.value || null)}
-                  className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
+                  className="w-full rounded-md border border-line bg-panel px-3 py-2 text-sm text-white focus:border-accent-2 focus:outline-none"
                 >
                   <option value="">No active run (create new)</option>
                   {product.runs.map((r) => (
@@ -590,7 +590,7 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
                 type="button"
                 onClick={() => void handleGenerateCharacter()}
                 disabled={!canGenerate}
-                className="inline-flex items-center rounded-md bg-sky-500 hover:bg-sky-400 px-3 py-2 text-xs font-medium text-white disabled:opacity-60"
+                className="inline-flex items-center rounded-pill bg-accent hover:bg-accent/90 px-3 py-2 text-xs font-medium text-bg disabled:opacity-60"
               >
                 {isGenerating ? "Starting..." : "Generate Character"}
               </button>
@@ -599,7 +599,7 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
 
             <StageList />
             {hasFailedStage && (
-              <p className="text-xs text-amber-300">
+              <p className="text-xs text-accent">
                 A stage failed. Reset and rerun, or retry after fixing configuration.
               </p>
             )}
@@ -607,8 +607,8 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
         ) : (
           <div className="space-y-4">
             {resolvedAvatarImageUrl && (
-              <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
-                <p className="mb-2 text-xs text-slate-400">Current avatar</p>
+              <div className="rounded-lg border border-line bg-bg/40 p-3">
+                <p className="mb-2 text-xs text-muted/80">Current avatar</p>
                 <button
                   type="button"
                   onClick={() =>
@@ -617,7 +617,7 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
                       name: product.characters[0]?.name ?? product.name,
                     })
                   }
-                  className="inline-flex rounded border border-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                  className="inline-flex rounded border border-line focus:outline-none focus:ring-2 focus:ring-accent/20"
                 >
                   <img
                     src={resolvedAvatarImageUrl}
@@ -630,14 +630,14 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
             )}
 
             <div className="flex items-center justify-between">
-              <p className="text-sm font-medium text-emerald-300">
+              <p className="text-sm font-medium text-success">
                 {product.characters.length} Character{product.characters.length !== 1 ? "s" : ""} Ready
               </p>
               <div className="flex gap-2">
                 <button
                   type="button"
                   onClick={() => setAddingCharacter((v) => !v)}
-                  className="inline-flex items-center rounded-md bg-sky-500 hover:bg-sky-400 px-3 py-2 text-xs font-medium text-white"
+                  className="inline-flex items-center rounded-pill bg-accent hover:bg-accent/90 px-3 py-2 text-xs font-medium text-bg"
                 >
                   + Add Character
                 </button>
@@ -645,7 +645,7 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
                   type="button"
                   onClick={() => void handleReset()}
                   disabled={isResetting}
-                  className="inline-flex items-center rounded-md border border-red-800 bg-red-950 px-3 py-2 text-xs font-medium text-red-300 hover:bg-red-900 disabled:opacity-60"
+                  className="inline-flex items-center rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-xs font-medium text-accent hover:bg-accent/20 disabled:opacity-60"
                 >
                   {isResetting ? "Resetting..." : "Reset All"}
                 </button>
@@ -654,11 +654,11 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
 
             {/* Run selector */}
             <div className="space-y-1">
-              <label className="text-xs text-slate-400">Attach to Run</label>
+              <label className="text-xs text-muted/80">Attach to Run</label>
               <select
                 value={selectedRunId ?? ""}
                 onChange={(e) => handleRunChange(e.target.value || null)}
-                className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
+                className="w-full rounded-md border border-line bg-panel px-3 py-2 text-sm text-white focus:border-accent-2 focus:outline-none"
               >
                 <option value="">No active run (create new)</option>
                 {product.runs.map((r) => (
@@ -669,8 +669,8 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
 
             {/* Character list */}
             <div className="space-y-3">
-              <div className="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950/40 p-3">
-                <label className="inline-flex items-center gap-2 text-xs text-slate-300">
+              <div className="flex items-center justify-between rounded-lg border border-line bg-bg/40 p-3">
+                <label className="inline-flex items-center gap-2 text-xs text-muted">
                   <input
                     type="checkbox"
                     checked={allCharactersSelected}
@@ -684,14 +684,14 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
                   type="button"
                   onClick={() => void handleDeleteSelectedCharacters()}
                   disabled={selectedCharacterIds.length === 0 || isDeletingCharacters}
-                  className="inline-flex items-center rounded-md border border-red-800 bg-red-950 px-3 py-2 text-xs font-medium text-red-300 hover:bg-red-900 disabled:opacity-60"
+                  className="inline-flex items-center rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-xs font-medium text-accent hover:bg-accent/20 disabled:opacity-60"
                 >
                   {isDeletingCharacters ? "Deleting..." : `Delete Selected (${selectedCharacterIds.length})`}
                 </button>
               </div>
 
               {product.characters.map((char) => (
-                <div key={char.id} className="rounded-lg border border-slate-800 bg-slate-950/50 p-4 space-y-2">
+                <div key={char.id} className="rounded-lg border border-line bg-bg/50 p-4 space-y-2">
                   <div className="flex items-center justify-between gap-3">
                     <label className="inline-flex items-center gap-2">
                       <input
@@ -711,20 +711,20 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
                         type="text"
                         value={editingCharacterName}
                         onChange={(e) => setEditingCharacterName(e.target.value)}
-                        className="flex-1 rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
+                        className="flex-1 rounded-md border border-line bg-panel px-2 py-1 text-sm text-white focus:border-accent-2 focus:outline-none"
                         maxLength={120}
                       />
                     ) : (
-                      <p className="text-sm font-medium text-slate-100 flex-1">{char.name}</p>
+                      <p className="text-sm font-medium text-white flex-1">{char.name}</p>
                     )}
-                    <p className="text-xs text-slate-500">{new Date(char.createdAt).toLocaleString()}</p>
+                    <p className="text-xs text-muted/60">{new Date(char.createdAt).toLocaleString()}</p>
                     {editingCharacterId === char.id ? (
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
                           onClick={() => void handleRenameCharacter(char.id)}
                           disabled={renamingCharacterId === char.id}
-                          className="inline-flex items-center rounded-md bg-sky-500 hover:bg-sky-400 px-2 py-1 text-[11px] font-medium text-white disabled:opacity-60"
+                          className="inline-flex items-center rounded-pill bg-accent hover:bg-accent/90 px-2 py-1 text-[11px] font-medium text-bg disabled:opacity-60"
                         >
                           {renamingCharacterId === char.id ? "Saving..." : "Save"}
                         </button>
@@ -732,7 +732,7 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
                           type="button"
                           onClick={cancelCharacterRename}
                           disabled={renamingCharacterId === char.id}
-                          className="inline-flex items-center rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-[11px] font-medium text-slate-200 hover:bg-slate-800 disabled:opacity-60"
+                          className="inline-flex items-center rounded-md border border-line bg-panel px-2 py-1 text-[11px] font-medium text-white/90 hover:bg-bg-elevated disabled:opacity-60"
                         >
                           Cancel
                         </button>
@@ -741,7 +741,7 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
                       <button
                         type="button"
                         onClick={() => beginCharacterRename(char.id, char.name)}
-                        className="inline-flex items-center rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-[11px] font-medium text-slate-200 hover:bg-slate-800"
+                        className="inline-flex items-center rounded-md border border-line bg-panel px-2 py-1 text-[11px] font-medium text-white/90 hover:bg-bg-elevated"
                       >
                         Rename
                       </button>
@@ -751,7 +751,7 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
                     <button
                       type="button"
                       onClick={() => setAvatarPreview({ url: char.seedVideoUrl!, name: char.name })}
-                      className="inline-flex rounded border border-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                      className="inline-flex rounded border border-line focus:outline-none focus:ring-2 focus:ring-accent/20"
                     >
                       <img
                         src={char.seedVideoUrl}
@@ -764,8 +764,8 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
                   )}
                   <div className="space-y-1 pt-1">
                     {CHARACTER_PROFILE_KEYS.map((key) => (
-                      <p key={key} className="text-xs text-slate-400">
-                        <span className="text-slate-500">{key}</span>{" "}
+                      <p key={key} className="text-xs text-muted/80">
+                        <span className="text-muted/60">{key}</span>{" "}
                         {getCharacterProfileField(char.creatorVisualPrompt, key)}
                       </p>
                     ))}
@@ -776,28 +776,28 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
 
             {/* Add character panel */}
             {addingCharacter && (
-              <div className="space-y-4 rounded-lg border border-slate-800 bg-slate-950/40 p-4">
-                <p className="text-xs text-slate-400">Generate an additional character for this product.</p>
+              <div className="space-y-4 rounded-lg border border-line bg-bg/40 p-4">
+                <p className="text-xs text-muted/80">Generate an additional character for this product.</p>
                 <CharacterSelector />
                 <div className="flex gap-2">
                   <button
                     type="button"
                     onClick={() => void handleGenerateCharacter()}
                     disabled={!canGenerate}
-                    className="inline-flex items-center rounded-md bg-sky-500 hover:bg-sky-400 px-3 py-2 text-xs font-medium text-white disabled:opacity-60"
+                    className="inline-flex items-center rounded-pill bg-accent hover:bg-accent/90 px-3 py-2 text-xs font-medium text-bg disabled:opacity-60"
                   >
                     {isGenerating ? "Starting..." : "Generate"}
                   </button>
                   <button
                     type="button"
                     onClick={() => setAddingCharacter(false)}
-                    className="inline-flex items-center rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-medium text-slate-200 hover:bg-slate-800"
+                    className="inline-flex items-center rounded-md border border-line bg-panel px-3 py-2 text-xs font-medium text-white/90 hover:bg-bg-elevated"
                   >
                     Cancel
                   </button>
                 </div>
                 {hasInFlightStage && (
-                  <p className="text-xs text-amber-300">Pipeline already running — wait for it to finish.</p>
+                  <p className="text-xs text-accent">Pipeline already running — wait for it to finish.</p>
                 )}
               </div>
             )}
@@ -828,25 +828,25 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
                 width: "100%",
                 maxWidth: 360,
                 borderRadius: 12,
-                border: "1px solid #334155",
-                backgroundColor: "#020617",
+                border: "1px solid rgb(51, 65, 85)",
+                backgroundColor: "rgb(2, 6, 23)",
                 padding: 12,
                 boxSizing: "border-box",
               }}
               onClick={(event) => event.stopPropagation()}
             >
               <div style={{ marginBottom: 8, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <p style={{ margin: 0, fontSize: 14, fontWeight: 500, color: "#e2e8f0" }}>{avatarPreview.name}</p>
+                <p style={{ margin: 0, fontSize: 14, fontWeight: 500, color: "rgb(226, 232, 240)" }}>{avatarPreview.name}</p>
                 <button
                   type="button"
                   onClick={() => setAvatarPreview(null)}
                   style={{
                     borderRadius: 6,
-                    border: "1px solid #334155",
-                    backgroundColor: "#0f172a",
+                    border: "1px solid rgb(51, 65, 85)",
+                    backgroundColor: "rgb(15, 23, 42)",
                     padding: "4px 8px",
                     fontSize: 12,
-                    color: "#e2e8f0",
+                    color: "rgb(226, 232, 240)",
                     cursor: "pointer",
                   }}
                 >
@@ -863,7 +863,7 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
                   width: "auto",
                   maxWidth: "100%",
                   borderRadius: 8,
-                  border: "1px solid #334155",
+                  border: "1px solid rgb(51, 65, 85)",
                 }}
               />
             </div>

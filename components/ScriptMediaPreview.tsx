@@ -69,21 +69,21 @@ export function ScriptMediaPreview({ script }: Props) {
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between text-[11px] text-slate-500">
-        <span className="font-semibold text-slate-200">
+      <div className="flex items-center justify-between text-[11px] text-muted font-mono">
+        <span className="font-semibold text-text">
           Script #{script.id.slice(0, 6)}
         </span>
-        <span suppressHydrationWarning>{displayTime}</span>
+        <span suppressHydrationWarning className="opacity-70">{displayTime}</span>
       </div>
-      <p className="text-xs text-slate-400">
-        Status: <span className="text-slate-200">{script.status ?? "pending"}</span>
+      <p className="text-xs text-muted">
+        Status: <span className="text-accent-2 font-mono">{script.status ?? "pending"}</span>
         {typeof script.wordCount === "number" && (
-          <span className="ml-2 text-slate-500">· {script.wordCount} words</span>
+          <span className="ml-2 opacity-50 font-mono">· {script.wordCount} words</span>
         )}
       </p>
 
       {!mediaKey ? (
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-muted/60 italic font-mono">
           No merged video available for this script yet.
         </p>
       ) : (
@@ -91,17 +91,17 @@ export function ScriptMediaPreview({ script }: Props) {
           type="button"
           onClick={handleGetVideo}
           disabled={loading}
-          className="text-xs px-3 py-1.5 rounded-md bg-slate-800 hover:bg-slate-700 disabled:opacity-50 border border-slate-700"
+          className="text-xs px-3 py-1.5 rounded-md bg-bg-elevated hover:bg-panel-strong disabled:opacity-50 border border-line text-muted hover:text-white font-mono transition-all"
         >
           {loading ? "Fetching link…" : "Get video link"}
         </button>
       )}
-      {error && <p className="text-xs text-red-400">{error}</p>}
+      {error && <p className="text-xs text-accent">{error}</p>}
       {warning && (
-        <div className="text-xs text-amber-300 bg-amber-500/10 border border-amber-300/30 rounded-md p-3 space-y-1">
-          <p className="font-semibold">{warning}</p>
+        <div className="text-[11px] text-accent bg-accent/5 border border-accent/20 rounded-card p-4 space-y-2 backdrop-blur-panel">
+          <p className="font-bold uppercase tracking-tight opacity-90">{warning}</p>
           {warningKey && (
-            <p className="font-mono text-amber-200 break-all">{warningKey}</p>
+            <p className="font-mono text-accent/70 break-all leading-relaxed">{warningKey}</p>
           )}
         </div>
       )}

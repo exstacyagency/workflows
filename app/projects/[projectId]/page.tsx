@@ -10,10 +10,10 @@ export const revalidate = 0;
 
 function statusBadge(status: 'pending' | 'running' | 'failed' | 'completed') {
   const colorMap: Record<typeof status, string> = {
-    pending: 'bg-slate-800/80 text-slate-300 border border-slate-700',
-    running: 'bg-sky-500/10 text-sky-300 border border-sky-500/50',
-    failed: 'bg-red-500/10 text-red-300 border border-red-500/50',
-    completed: 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/50',
+    pending: 'status-chip info opacity-60',
+    running: 'status-chip info',
+    failed: 'status-chip danger',
+    completed: 'status-chip success',
   };
   const labelMap: Record<typeof status, string> = {
     pending: 'Pending',
@@ -21,7 +21,7 @@ function statusBadge(status: 'pending' | 'running' | 'failed' | 'completed') {
     failed: 'Needs Attention',
     completed: 'Completed',
   };
-  return <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${colorMap[status]}`}>{labelMap[status]}</span>;
+  return <span className={colorMap[status]}>{labelMap[status]}</span>;
 }
 
 const dateFormatter = new Intl.DateTimeFormat('en-US', {
@@ -116,26 +116,26 @@ export default async function ProjectDashboardPage({ params }: Params) {
   ];
 
   return (
-    <div className="px-6 py-6 space-y-6">
-      <section className="rounded-xl border border-slate-800 bg-slate-900/80 p-5">
+    <div className="app-shell space-y-6">
+      <section className="app-surface app-header">
         <div>
-          <p className="text-[11px] uppercase tracking-widest text-slate-500">Project</p>
-          <h1 className="text-2xl font-semibold text-slate-50">{project.name}</h1>
-          <p className="text-sm text-slate-400 mt-1">
+          <span className="app-kicker">Project Overview</span>
+          <h1 className="app-heading">{project.name}</h1>
+          <p className="app-subheading">
             {project.description || 'No description provided yet.'}
           </p>
-          <div className="text-[11px] text-slate-500 mt-3">
-            ID: <span className="font-mono">{project.id}</span> · Updated{' '}
+          <div className="app-status-line mt-4">
+            ID: <span className="mono-text">{project.id}</span> · Updated{' '}
             {dateFormatter.format(project.updatedAt)}
           </div>
         </div>
       </section>
 
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <section className="app-grid app-grid--stats">
         {stats.map(stat => (
-          <div key={stat.label} className="rounded-xl border border-slate-800 bg-slate-950/70 px-4 py-3">
-            <p className="text-[11px] uppercase tracking-wide text-slate-500">{stat.label}</p>
-            <p className="text-2xl font-semibold text-slate-50 mt-1">{stat.value}</p>
+          <div key={stat.label} className="app-stat">
+            <p className="app-stat-label">{stat.label}</p>
+            <p className="app-stat-value">{stat.value}</p>
           </div>
         ))}
       </section>
@@ -155,20 +155,20 @@ export default async function ProjectDashboardPage({ params }: Params) {
         initialDescription={project.description}
       />
 
-      <section className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-5 space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-slate-100">Recent Jobs</h2>
-            <span className="text-[11px] text-slate-500">Latest 12 runs</span>
+      <section className="app-grid app-grid--two">
+        <div className="app-surface space-y-3">
+          <div className="app-panel-header">
+            <h2 className="app-section-title text-white">Recent Jobs</h2>
+            <span className="app-status-line">Latest 12 runs</span>
           </div>
           {recentJobs.length === 0 ? (
-            <p className="text-xs text-slate-400">Jobs will appear once workflows begin.</p>
+            <p className="text-xs text-muted italic">Jobs will appear once workflows begin.</p>
           ) : (
-            <div className="space-y-2">
+            <div className="app-list">
               {recentJobs.map(job => (
-                <div key={job.id} className="rounded-lg border border-slate-800 bg-slate-950/70 px-4 py-3">
+                <div key={job.id} className="app-list-item">
                   <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm font-medium text-slate-50">{getJobTypeLabel(job.type)}</p>
+                    <p className="text-sm font-medium text-white tracking-tight">{getJobTypeLabel(job.type)}</p>
                     {statusBadge(
                       job.status === JobStatus.RUNNING
                         ? 'running'
@@ -179,11 +179,11 @@ export default async function ProjectDashboardPage({ params }: Params) {
                             : 'pending'
                     )}
                   </div>
-                  <p className="text-xs text-slate-400">
+                  <p className="text-[10px] text-muted font-mono uppercase opacity-60">
                     Started {dateFormatter.format(job.createdAt)} · Updated {dateFormatter.format(job.updatedAt)}
                   </p>
                   {job.resultSummary && (
-                    <p className="text-xs text-slate-300 mt-1">
+                    <p className="text-xs text-muted mt-2 font-mono bg-black/20 p-2 rounded-card border border-line/30">
                       {typeof job.resultSummary === "string"
                         ? job.resultSummary
                         : JSON.stringify(job.resultSummary)}

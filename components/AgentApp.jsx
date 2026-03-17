@@ -1,17 +1,7 @@
 "use client";
 import { useState } from "react";
 
-// ─── Fonts via CSS ────────────────────────────────────────────────────────────
-const GLOBAL_STYLE = `
-  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500&display=swap');
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body, #__next { height: 100%; background: #0a0a0a; color: #c8c8c8; font-family: 'IBM Plex Sans', sans-serif; }
-  ::-webkit-scrollbar { width: 3px; height: 3px; }
-  ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 2px; }
-  button { cursor: pointer; font-family: inherit; }
-  input, textarea, select { font-family: inherit; }
-`;
+// ─── Styles are now in globals.css ──────────────────────────────────────────
 
 // ─── Mock Data ────────────────────────────────────────────────────────────────
 const AGENTS = [
@@ -22,11 +12,11 @@ const AGENTS = [
 ];
 
 const SLOT_ACCENT = {
-  orchestrator: "#4ade80",
-  worker_a:     "#38bdf8",
-  worker_b:     "#fb923c",
-  cortex:       "#a78bfa",
-  default:      "#6b7280",
+  orchestrator: "var(--success)",
+  worker_a:     "var(--accent-2)",
+  worker_b:     "var(--accent)",
+  cortex:       "rgb(167, 139, 250)", // Keep specific violet for Cortex but use RGB
+  default:      "var(--muted)",
 };
 
 const TABS = ["Overview","Chat","Channels","Memories","Ingest","Workers","Tasks","Cortex","Skills","Cron","Config"];
@@ -96,57 +86,81 @@ If a directive conflicts with a previously saved memory or your trained
 behavior, you MUST ask for explicit confirmation before saving or acting
 on it. State clearly what the conflict is and wait for the user to confirm.`;
 
+const CONFIG_SECTIONS = {
+  "Core Personality": ["Soul", "Directives", "Voice"],
+  "Infrastructure": ["Kernel", "Memory Index", "Slot Mapping"],
+  "Safety": ["Boundary Enforcement", "Audit Logs"]
+};
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const accent = (slot) => SLOT_ACCENT[slot] ?? SLOT_ACCENT.default;
 
-const Badge = ({ label, color }) => (
-  <span style={{
-    fontSize: 10, padding: "2px 7px", borderRadius: 3, fontFamily: "'IBM Plex Mono', monospace",
-    background: (color ?? "#6b7280") + "18", color: color ?? "#6b7280",
-    border: `1px solid ${(color ?? "#6b7280")}33`, letterSpacing: 0.5,
-  }}>{label}</span>
+const Badge = ({ label, color, type = "info" }) => (
+  <span className={`status-chip ${type}`} style={{ color }}>
+    {label}
+  </span>
 );
 
-const STATUS = { online:"#4ade80", idle:"#fbbf24", offline:"#374151", active:"#4ade80", disabled:"#374151", running:"#38bdf8", completed:"#4ade80", failed:"#f87171", dead_letter:"#f59e0b" };
+const STATUS = { online:"var(--success)", idle:"var(--accent)", offline:"var(--muted)", active:"var(--success)", disabled:"var(--muted)", running:"var(--accent-2)", completed:"var(--success)", failed:"rgb(248, 113, 113)", dead_letter:"var(--accent)" };
 
 function Dot({ status }) {
-  const c = STATUS[status] ?? "#374151";
-  return <span style={{ display:"inline-block", width:7, height:7, borderRadius:"50%", background:c, boxShadow: status==="online"||status==="active"||status==="running" ? `0 0 6px ${c}` : "none" }} />;
+  const c = STATUS[status] ?? "var(--muted)";
+  const isActive = status === "online" || status === "active" || status === "running";
+  return (
+    <span 
+      className={`inline-block w-[7px] h-[7px] rounded-full transition-shadow duration-500`} 
+      style={{ 
+        background: c, 
+        boxShadow: isActive ? `0 0 8px ${c}` : "none" 
+      }} 
+    />
+  );
 }
 
 // ─── Sidebar ─────────────────────────────────────────────────────────────────
-function Sidebar({ agents, activeAgent, setActiveAgent }) {
+function AgentSidebar({ agents, activeAgent, setActiveAgent }) {
   return (
-    <div style={{ width:52, background:"#0d0d0d", borderRight:"1px solid #1a1a1a", display:"flex", flexDirection:"column", alignItems:"center", padding:"16px 0", gap:6, flexShrink:0 }}>
-      <div style={{ width:28, height:28, borderRadius:6, background:"linear-gradient(135deg,#4ade80,#38bdf8)", marginBottom:12 }} />
+    <div className="w-[52px] bg-black/40 backdrop-blur-panel border-r border-line flex flex-col items-center py-4 gap-2 flex-shrink-0">
+      <div className="w-7 h-7 rounded-md bg-gradient-to-br from-accent to-[rgb(244,233,181)] mb-3 shadow-[0_0_15px_rgba(232,209,122,0.3)]" />
       {agents.map(a => (
-        <button key={a.id} onClick={() => setActiveAgent(a.id)} title={a.name} style={{
-          width:36, height:36, borderRadius:8, border:`1px solid ${activeAgent===a.id ? accent(a.slot)+"66" : "transparent"}`,
-          background: activeAgent===a.id ? accent(a.slot)+"15" : "transparent",
-          display:"flex", alignItems:"center", justifyContent:"center",
-          color: activeAgent===a.id ? accent(a.slot) : "#444",
-          fontFamily:"'IBM Plex Mono',monospace", fontSize:12, fontWeight:600,
-          transition:"all 0.15s",
-        }}>
+        <button 
+          key={a.id} 
+          onClick={() => setActiveAgent(a.id)} 
+          title={a.name} 
+          className={`
+            w-9 h-9 rounded-lg border transition-all duration-200 flex items-center justify-center font-mono text-xs font-semibold
+            ${activeAgent === a.id 
+              ? "bg-panel border-accent/40 text-accent shadow-[0_0_10px_rgba(232,209,122,0.1)]" 
+              : "bg-transparent border-transparent text-muted/40 hover:text-white hover:bg-bg-elevated"
+            }
+          `}
+        >
           {a.name[0]}
         </button>
       ))}
-      <button style={{ width:36, height:36, borderRadius:8, border:"1px solid #1a1a1a", background:"transparent", color:"#333", fontSize:18, marginTop:"auto" }}>+</button>
+      <button className="w-9 h-9 rounded-lg border border-line bg-transparent text-muted/30 text-lg mt-auto hover:text-white hover:border-muted transition-colors">+</button>
     </div>
   );
 }
 
 // ─── Tab Bar ──────────────────────────────────────────────────────────────────
-function TabBar({ active, setActive, agentAccent }) {
+function AgentTabBar({ active, setActive, agentAccent }) {
   return (
-    <div style={{ display:"flex", borderBottom:"1px solid #1a1a1a", padding:"0 24px", gap:0, flexShrink:0 }}>
+    <div className="flex border-b border-line px-6 gap-0 flex-shrink-0">
       {TABS.map(t => (
-        <button key={t} onClick={() => setActive(t)} style={{
-          padding:"12px 14px 10px", fontSize:12, fontFamily:"'IBM Plex Sans',sans-serif",
-          background:"none", border:"none", borderBottom:`2px solid ${active===t ? agentAccent : "transparent"}`,
-          color: active===t ? "#e5e5e5" : "#555", transition:"color 0.15s",
-          marginBottom:-1,
-        }}>{t}</button>
+        <button 
+          key={t} 
+          onClick={() => setActive(t)} 
+          className={`
+            px-[14px] pt-3 pb-[10px] text-xs font-sans transition-all duration-200 border-b-2 mb-[-1px]
+            ${active === t 
+              ? "text-white border-accent" 
+              : "text-muted/50 border-transparent hover:text-white transition-colors"
+            }
+          `}
+        >
+          {t}
+        </button>
       ))}
     </div>
   );
@@ -156,52 +170,52 @@ function TabBar({ active, setActive, agentAccent }) {
 function Overview({ agent }) {
   const ac = accent(agent.slot);
   return (
-    <div style={{ padding:28, display:"flex", flexDirection:"column", gap:24, overflow:"auto", height:"100%" }}>
+    <div className="p-7 flex flex-col gap-6 overflow-auto h-full">
       <div>
-        <h1 style={{ fontSize:28, fontWeight:300, color:"#e5e5e5", fontFamily:"'IBM Plex Sans',sans-serif", letterSpacing:-0.5 }}>{agent.name}</h1>
-        <div style={{ display:"flex", alignItems:"center", gap:12, marginTop:8 }}>
+        <h1 className="text-white font-light tracking-[-0.04em]">{agent.name}</h1>
+        <div className="flex items-center gap-3 mt-2">
           <Dot status={agent.status} />
-          <span style={{ color:"#555", fontSize:12 }}>{agent.status === "online" ? "Online" : "Idle"}</span>
-          {agent.channels > 0 && <span style={{ color:"#444", fontSize:12 }}>{agent.channels} channel{agent.channels!==1?"s":""}</span>}
+          <span className="text-muted text-xs">{agent.status === "online" ? "Online" : "Idle"}</span>
+          {agent.channels > 0 && <span className="text-muted/40 text-xs">{agent.channels} channel{agent.channels !== 1 ? "s" : ""}</span>}
         </div>
       </div>
 
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12 }}>
+      <div className="grid grid-cols-3 gap-3">
         {[
-          { label:"Memories", value:agent.memories },
-          { label:"Model", value:agent.model },
-          { label:"Slot", value:agent.slot },
+          { label: "Memories", value: agent.memories },
+          { label: "Model", value: agent.model },
+          { label: "Slot", value: agent.slot },
         ].map(s => (
-          <div key={s.label} style={{ background:"#111", border:"1px solid #1c1c1c", borderRadius:8, padding:"16px 20px" }}>
-            <div style={{ color:"#444", fontSize:10, fontFamily:"'IBM Plex Mono',monospace", letterSpacing:1.5, textTransform:"uppercase", marginBottom:8 }}>{s.label}</div>
-            <div style={{ color:"#e5e5e5", fontSize:16, fontFamily:"'IBM Plex Mono',monospace" }}>{s.value}</div>
+          <div key={s.label} className="bg-bg-elevated border border-line rounded-card p-5">
+            <div className="card-label !mb-2">{s.label}</div>
+            <div className="text-white text-base font-mono">{s.value}</div>
           </div>
         ))}
       </div>
 
-      <div style={{ background:"#111", border:"1px solid #1c1c1c", borderRadius:8, padding:"20px 24px" }}>
-        <div style={{ color:"#444", fontSize:10, fontFamily:"'IBM Plex Mono',monospace", letterSpacing:1.5, marginBottom:16 }}>MEMORY GROWTH · LAST 30 DAYS</div>
-        <svg viewBox="0 0 600 80" style={{ width:"100%", height:80 }}>
+      <div className="bg-bg-elevated border border-line rounded-card p-6">
+        <div className="card-label !mb-4">MEMORY GROWTH · LAST 30 DAYS</div>
+        <svg viewBox="0 0 600 80" className="w-full h-20">
           <polyline points="0,70 100,65 200,55 300,50 400,40 500,25 580,20" fill="none" stroke={ac} strokeWidth="1.5" opacity="0.6" />
           <polyline points="0,70 100,65 200,55 300,50 400,40 500,25 580,20 580,80 0,80" fill={ac} opacity="0.06" />
-          {[[580,20]].map(([x,y],i) => <circle key={i} cx={x} cy={y} r={3} fill={ac} />)}
+          {[[580, 20]].map(([x, y], i) => <circle key={i} cx={x} cy={y} r={3} fill={ac} />)}
         </svg>
       </div>
 
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
-        <div style={{ background:"#111", border:"1px solid #1c1c1c", borderRadius:8, padding:"20px 24px" }}>
-          <div style={{ color:"#444", fontSize:10, fontFamily:"'IBM Plex Mono',monospace", letterSpacing:1.5, marginBottom:16 }}>ACTIVITY HEATMAP</div>
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(24,1fr)", gap:2 }}>
-            {Array.from({length:7*24}).map((_,i) => (
-              <div key={i} style={{ height:8, borderRadius:1, background: Math.random()>0.85 ? ac+"99" : Math.random()>0.6 ? "#1c1c1c" : "#141414" }} />
+      <div className="grid grid-cols-2 gap-3">
+        <div className="bg-bg-elevated border border-line rounded-card p-6">
+          <div className="card-label !mb-4">ACTIVITY HEATMAP</div>
+          <div className="grid grid-cols-24 gap-[2px]">
+            {Array.from({ length: 7 * 24 }).map((_, i) => (
+              <div key={i} className="h-2 rounded-[1px]" style={{ background: Math.random() > 0.85 ? ac + "99" : Math.random() > 0.6 ? "var(--bg-elevated)" : "var(--bg)" }} />
             ))}
           </div>
         </div>
-        <div style={{ background:"#111", border:"1px solid #1c1c1c", borderRadius:8, padding:"20px 24px" }}>
-          <div style={{ color:"#444", fontSize:10, fontFamily:"'IBM Plex Mono',monospace", letterSpacing:1.5, marginBottom:16 }}>PROCESS ACTIVITY</div>
-          <svg viewBox="0 0 300 80" style={{ width:"100%", height:80 }}>
+        <div className="bg-bg-elevated border border-line rounded-card p-6">
+          <div className="card-label !mb-4">PROCESS ACTIVITY</div>
+          <svg viewBox="0 0 300 80" className="w-full h-20">
             <polyline points="0,75 60,72 120,60 180,65 240,40 290,20" fill="none" stroke={ac} strokeWidth="1.5" opacity="0.6" />
-            {[[290,20]].map(([x,y],i) => <circle key={i} cx={x} cy={y} r={3} fill={ac} />)}
+            {[[290, 20]].map(([x, y], i) => <circle key={i} cx={x} cy={y} r={3} fill={ac} />)}
           </svg>
         </div>
       </div>
@@ -217,32 +231,44 @@ function Chat({ agent }) {
 
   const send = () => {
     if (!input.trim()) return;
-    setMsgs(m => [...m, { role:"user", text:input }, { role:"agent", text:`[${agent.name}] acknowledged: "${input}"` }]);
+    setMsgs(m => [...m, { role: "user", text: input }, { role: "agent", text: `[${agent.name}] acknowledged: "${input}"` }]);
     setInput("");
   };
 
   return (
-    <div style={{ display:"flex", flexDirection:"column", height:"100%", overflow:"hidden" }}>
-      <div style={{ flex:1, overflowY:"auto", padding:"24px 28px", display:"flex", flexDirection:"column", gap:12 }}>
+    <div className="flex flex-col h-full overflow-hidden">
+      <div className="flex-1 overflow-y-auto px-7 py-6 flex flex-col gap-3">
         {msgs.length === 0 && (
-          <div style={{ margin:"auto", color:"#333", fontSize:13 }}>Start a conversation with {agent.name}</div>
+          <div className="m-auto text-muted/30 text-[13px] font-mono italic">Start a conversation with {agent.name}</div>
         )}
-        {msgs.map((m,i) => (
-          <div key={i} style={{ display:"flex", justifyContent: m.role==="user" ? "flex-end" : "flex-start" }}>
-            <div style={{
-              maxWidth:"60%", padding:"10px 14px", borderRadius:8, fontSize:13,
-              background: m.role==="user" ? ac+"22" : "#161616",
-              border:`1px solid ${m.role==="user" ? ac+"44" : "#1c1c1c"}`,
-              color: m.role==="user" ? "#e5e5e5" : "#aaa",
-            }}>{m.text}</div>
+        {msgs.map((m, i) => (
+          <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+            <div className={`
+              max-w-[60%] px-4 py-[10px] rounded-inner text-[13px] backdrop-blur-panel border transition-all duration-200
+              ${m.role === "user" 
+                ? "bg-accent/10 border-accent/30 text-white" 
+                : "bg-panel border-line text-muted shadow-panel"
+              }
+            `}>
+              {m.text}
+            </div>
           </div>
         ))}
       </div>
-      <div style={{ padding:"16px 24px", borderTop:"1px solid #1a1a1a", display:"flex", gap:10 }}>
-        <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()}
+      <div className="px-6 py-4 border-t border-line flex gap-3 bg-black/20">
+        <input 
+          value={input} 
+          onChange={e => setInput(e.target.value)} 
+          onKeyDown={e => e.key === "Enter" && send()}
           placeholder={`Message ${agent.name}...`}
-          style={{ flex:1, background:"#111", border:"1px solid #1c1c1c", borderRadius:8, padding:"10px 14px", color:"#e5e5e5", fontSize:13, outline:"none" }} />
-        <button onClick={send} style={{ width:38, height:38, borderRadius:"50%", background:ac, border:"none", color:"#000", fontSize:16, display:"flex", alignItems:"center", justifyContent:"center" }}>↑</button>
+          className="flex-1 bg-bg-elevated border border-line rounded-pill px-4 py-[10px] text-white text-[13px] outline-none focus:border-accent/50 transition-colors" 
+        />
+        <button 
+          onClick={send} 
+          className="w-[38px] h-[38px] rounded-full bg-gradient-to-br from-accent to-[rgb(244,233,181)] text-bg text-lg flex items-center justify-center shadow-[0_0_15px_rgba(232,209,122,0.2)] hover:scale-105 active:scale-95 transition-transform"
+        >
+          ↑
+        </button>
       </div>
     </div>
   );
@@ -252,17 +278,20 @@ function Chat({ agent }) {
 function Channels({ agent }) {
   const ac = accent(agent.slot);
   return (
-    <div style={{ padding:24, display:"flex", flexDirection:"column", gap:16, overflow:"auto", height:"100%" }}>
-      <input placeholder="Search channels..." style={{ background:"#111", border:"1px solid #1c1c1c", borderRadius:6, padding:"8px 12px", color:"#aaa", fontSize:12, outline:"none", width:"100%" }} />
+    <div className="p-6 flex flex-col gap-4 overflow-auto h-full">
+      <input 
+        placeholder="Search channels..." 
+        className="bg-bg-elevated border border-line rounded-pill px-3 py-2 text-muted text-xs outline-none focus:border-accent/40 transition-colors w-full" 
+      />
       {CHANNELS.map(ch => (
-        <div key={ch.id} style={{ background:"#111", border:"1px solid #1c1c1c", borderRadius:8, padding:"16px 20px" }}>
-          <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:8 }}>
-            <span style={{ color:"#e5e5e5", fontSize:13, fontFamily:"'IBM Plex Mono',monospace", flex:1 }}>{ch.name}</span>
-            <Dot status={ch.active?"online":"offline"} />
-            <span style={{ color:"#333", fontSize:11 }}>{ch.ago}</span>
+        <div key={ch.id} className="bg-panel border border-line rounded-card p-5 hover:bg-panel-strong transition-colors group">
+          <div className="flex items-center gap-3 mb-2">
+            <span className="text-white text-[13px] font-mono flex-1 group-hover:text-accent transition-colors">{ch.name}</span>
+            <Dot status={ch.active ? "online" : "offline"} />
+            <span className="text-muted/30 text-[11px] font-mono">{ch.ago}</span>
           </div>
-          <Badge label={ch.platform} color={ac} />
-          <p style={{ color:"#444", fontSize:12, marginTop:10 }}>{ch.preview}</p>
+          <Badge label={ch.platform} color={ac} type="info" />
+          <p className="text-muted text-xs mt-3 leading-relaxed">{ch.preview}</p>
         </div>
       ))}
     </div>
@@ -270,45 +299,54 @@ function Channels({ agent }) {
 }
 
 // ─── Memories ────────────────────────────────────────────────────────────────
-const MEM_COLORS = { preference:"#a78bfa", fact:"#38bdf8", decision:"#fb923c", goal:"#4ade80", observation:"#fbbf24", event:"#f87171", identity:"#e879f9", todo:"#94a3b8" };
+const MEM_COLORS = { preference:"var(--accent-2)", fact:"var(--accent-2)", decision:"var(--accent)", goal:"var(--success)", observation:"var(--accent)", event:"rgb(248, 113, 113)", identity:"rgb(232, 121, 249)", todo:"var(--muted)" };
 
 function Memories({ agent }) {
   const [filter, setFilter] = useState("all");
-  const types = ["all","fact","preference","decision","identity","event","observation","goal","todo"];
-  const shown = filter==="all" ? MEMORIES : MEMORIES.filter(m=>m.type===filter);
+  const types = ["all", "fact", "preference", "decision", "identity", "event", "observation", "goal", "todo"];
+  const shown = filter === "all" ? MEMORIES : MEMORIES.filter(m => m.type === filter);
 
   return (
-    <div style={{ padding:24, display:"flex", flexDirection:"column", gap:16, overflow:"auto", height:"100%" }}>
-      <div style={{ display:"flex", gap:10, alignItems:"center" }}>
-        <input placeholder="Search memories..." style={{ flex:1, background:"#111", border:"1px solid #1c1c1c", borderRadius:6, padding:"8px 12px", color:"#aaa", fontSize:12, outline:"none" }} />
+    <div className="p-6 flex flex-col gap-4 overflow-auto h-full font-sans">
+      <div className="flex gap-3 items-center">
+        <input 
+          placeholder="Search memories..." 
+          className="flex-1 bg-bg-elevated border border-line rounded-pill px-3 py-2 text-muted text-xs outline-none focus:border-accent/40 transition-colors" 
+        />
       </div>
-      <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+      <div className="flex gap-2 flex-wrap">
         {types.map(t => (
-          <button key={t} onClick={()=>setFilter(t)} style={{
-            padding:"4px 10px", borderRadius:5, fontSize:11, border:`1px solid ${filter===t?"#333":"#1a1a1a"}`,
-            background: filter===t ? "#1c1c1c" : "transparent", color: filter===t ? "#e5e5e5" : "#444",
-          }}>{t}</button>
+          <button 
+            key={t} 
+            onClick={() => setFilter(t)} 
+            className={`
+              px-3 py-1 rounded-md text-[11px] border transition-all duration-200
+              ${filter === t ? "bg-panel border-accent/40 text-white" : "bg-transparent border-line text-muted/40 hover:text-white hover:border-muted"}
+            `}
+          >
+            {t}
+          </button>
         ))}
-        <span style={{ marginLeft:"auto", color:"#444", fontSize:11, alignSelf:"center" }}>{shown.length} memories</span>
+        <span className="ml-auto text-muted/40 text-[11px] align-self-center font-mono">{shown.length} memories</span>
       </div>
-      <div style={{ display:"flex", gap:0, flexDirection:"column" }}>
-        <div style={{ display:"grid", gridTemplateColumns:"120px 1fr 120px 120px 100px", padding:"6px 12px", borderBottom:"1px solid #1a1a1a" }}>
-          {["TYPE","CONTENT","IMPORTANCE","SOURCE","CREATED"].map(h => (
-            <span key={h} style={{ color:"#333", fontSize:10, fontFamily:"'IBM Plex Mono',monospace", letterSpacing:1 }}>{h}</span>
+      <div className="flex flex-col">
+        <div className="grid grid-cols-[120px_1fr_120px_120px_100px] px-3 py-2 border-b border-line">
+          {["TYPE", "CONTENT", "IMPORTANCE", "SOURCE", "CREATED"].map(h => (
+            <span key={h} className="text-muted/30 text-[10px] font-mono tracking-widest">{h}</span>
           ))}
         </div>
         {shown.map(m => (
-          <div key={m.id} style={{ display:"grid", gridTemplateColumns:"120px 1fr 120px 120px 100px", padding:"12px", borderBottom:"1px solid #141414", alignItems:"center" }}>
-            <Badge label={m.type} color={MEM_COLORS[m.type]} />
-            <span style={{ color:"#aaa", fontSize:12, paddingRight:16 }}>{m.content}</span>
-            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-              <div style={{ flex:1, height:4, borderRadius:2, background:"#1a1a1a", maxWidth:80 }}>
-                <div style={{ width:`${m.importance*100}%`, height:"100%", borderRadius:2, background: MEM_COLORS[m.type] ?? "#444" }} />
+          <div key={m.id} className="grid grid-cols-[120px_1fr_120px_120px_100px] p-3 border-b border-white/5 items-center hover:bg-panel/[0.02] transition-colors group">
+            <Badge label={m.type} color={MEM_COLORS[m.type]} type="info" />
+            <span className="text-muted text-[12px] pr-4 line-clamp-1 group-hover:text-white transition-colors">{m.content}</span>
+            <div className="flex items-center gap-2">
+              <div className="flex-1 h-1 rounded-full bg-line max-w-[80px]">
+                <div className="h-full rounded-full" style={{ width: `${m.importance * 100}%`, background: MEM_COLORS[m.type] ?? "var(--muted)" }} />
               </div>
-              <span style={{ color:"#555", fontSize:11, fontFamily:"'IBM Plex Mono',monospace" }}>{m.importance}</span>
+              <span className="text-muted/70 text-[11px] font-mono">{m.importance}</span>
             </div>
-            <span style={{ color:"#444", fontSize:11 }}>{m.source}</span>
-            <span style={{ color:"#333", fontSize:11 }}>{m.ago}</span>
+            <span className="text-muted/40 text-[11px] font-mono">{m.source}</span>
+            <span className="text-muted/30 text-[11px] font-mono">{m.ago}</span>
           </div>
         ))}
       </div>
@@ -320,27 +358,26 @@ function Memories({ agent }) {
 function Ingest() {
   const [dragging, setDragging] = useState(false);
   return (
-    <div style={{ padding:24, display:"flex", flexDirection:"column", gap:16, overflow:"auto", height:"100%" }}>
-      <div style={{ display:"flex", gap:10 }}>
-        <Badge label="0 total" color="#4ade80" />
-        <Badge label="0 completed" color="#4ade80" />
-        <span style={{ marginLeft:"auto", color:"#333", fontSize:11 }}>.pdf .txt .md .json .csv .yaml .toml .html .log +more</span>
+    <div className="p-6 flex flex-col gap-4 overflow-auto h-full font-sans">
+      <div className="flex gap-3">
+        <Badge label="0 total" type="success" />
+        <Badge label="0 completed" type="success" />
+        <span className="ml-auto text-muted/30 text-[11px] font-mono">.pdf .txt .md .json .csv .yaml .toml .html .log +more</span>
       </div>
       <div
-        onDragOver={e=>{e.preventDefault();setDragging(true)}}
-        onDragLeave={()=>setDragging(false)}
-        onDrop={e=>{e.preventDefault();setDragging(false)}}
-        style={{
-          border:`1px dashed ${dragging?"#4ade80":"#1c1c1c"}`, borderRadius:8, padding:"60px 24px",
-          display:"flex", flexDirection:"column", alignItems:"center", gap:12, background: dragging?"#4ade8006":"transparent",
-          transition:"all 0.15s",
-        }}
+        onDragOver={e => { e.preventDefault(); setDragging(true) }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={e => { e.preventDefault(); setDragging(false) }}
+        className={`
+          border-2 border-dashed rounded-card p-[60px_24px] flex flex-col items-center gap-3 transition-all duration-300
+          ${dragging ? "border-accent bg-accent/5" : "border-line bg-transparent"}
+        `}
       >
-        <div style={{ color:"#333", fontSize:24 }}>↑</div>
-        <div style={{ color:"#aaa", fontSize:13 }}>Drop files here or click to browse</div>
-        <div style={{ color:"#444", fontSize:12 }}>Supported files, including PDFs, are chunked and processed into structured memories</div>
+        <div className="text-muted text-3xl font-light">↑</div>
+        <div className="text-white text-[13px] font-medium tracking-tight">Drop files here or click to browse</div>
+        <div className="text-muted text-xs text-center max-w-[320px] leading-relaxed">Supported files, including PDFs, are chunked and processed into structured memories.</div>
       </div>
-      <div style={{ color:"#333", fontSize:13, textAlign:"center", marginTop:24 }}>No files ingested yet. Drop a supported file above to get started.</div>
+      <div className="text-muted/30 text-[13px] text-center mt-6 italic">No files ingested yet. Drop a supported file above to get started.</div>
     </div>
   );
 }
@@ -348,36 +385,48 @@ function Ingest() {
 // ─── Workers ─────────────────────────────────────────────────────────────────
 function Workers() {
   const [filter, setFilter] = useState("all");
-  const shown = filter==="all" ? WORKERS : WORKERS.filter(w=>w.status===filter);
+  const shown = filter === "all" ? WORKERS : WORKERS.filter(w => w.status === filter);
   return (
-    <div style={{ padding:24, display:"flex", gap:0, height:"100%", overflow:"hidden" }}>
-      <div style={{ width:360, display:"flex", flexDirection:"column", gap:12, borderRight:"1px solid #1a1a1a", paddingRight:20, overflowY:"auto" }}>
-        <div style={{ display:"flex", gap:6, alignItems:"center" }}>
-          <input placeholder="Search tasks..." style={{ flex:1, background:"#111", border:"1px solid #1c1c1c", borderRadius:6, padding:"7px 10px", color:"#aaa", fontSize:12, outline:"none" }} />
-          <span style={{ color:"#444", fontSize:11 }}>{shown.length}</span>
+    <div className="p-6 flex gap-0 h-full overflow-hidden font-sans">
+      <div className="w-[360px] flex flex-col gap-3 border-r border-line pr-5 overflow-y-auto">
+        <div className="flex gap-2 items-center">
+          <input 
+            placeholder="Search tasks..." 
+            className="flex-1 bg-bg-elevated border border-line rounded-pill px-3 py-[7px] text-muted text-xs outline-none focus:border-accent/40 transition-colors" 
+          />
+          <span className="text-muted/40 text-[11px] font-mono">{shown.length}</span>
         </div>
-        <div style={{ display:"flex", gap:6 }}>
-          {["all","running","done","failed"].map(f => (
-            <button key={f} onClick={()=>setFilter(f)} style={{ padding:"4px 10px", borderRadius:5, fontSize:11, border:`1px solid ${filter===f?"#333":"#1a1a1a"}`, background:filter===f?"#1c1c1c":"transparent", color:filter===f?"#e5e5e5":"#444" }}>{f.charAt(0).toUpperCase()+f.slice(1)}</button>
+        <div className="flex gap-2">
+          {["all", "running", "done", "failed"].map(f => (
+            <button 
+              key={f} 
+              onClick={() => setFilter(f)} 
+              className={`
+                px-3 py-1 rounded-md text-[11px] border transition-all duration-200
+                ${filter === f ? "bg-panel border-accent/40 text-white" : "bg-transparent border-line text-muted/40 hover:text-white hover:border-muted"}
+              `}
+            >
+              {f.charAt(0).toUpperCase() + f.slice(1)}
+            </button>
           ))}
         </div>
-        {shown.length===0 && <div style={{ color:"#333", fontSize:13, textAlign:"center", marginTop:32 }}>No workers found</div>}
+        {shown.length === 0 && <div className="text-muted/40 text-[13px] text-center mt-8 italic">No workers found</div>}
         {shown.map(w => (
-          <div key={w.id} style={{ background:"#111", border:"1px solid #1c1c1c", borderRadius:8, padding:"14px 16px" }}>
-            <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6 }}>
+          <div key={w.id} className="bg-panel border border-line rounded-card p-4 hover:bg-panel-strong transition-colors group">
+            <div className="flex items-center gap-2 mb-2">
               <Dot status={w.status} />
-              <span style={{ color:"#e5e5e5", fontSize:12, fontFamily:"'IBM Plex Mono',monospace", flex:1 }}>{w.job}</span>
+              <span className="text-white text-xs font-mono flex-1 group-hover:text-accent-2 transition-colors">{w.job}</span>
             </div>
-            <div style={{ display:"flex", gap:10, alignItems:"center" }}>
-              <Badge label={w.slot} color={SLOT_ACCENT[w.slot]??SLOT_ACCENT.default} />
-              <span style={{ color:"#444", fontSize:11, marginLeft:"auto" }}>{w.elapsed}</span>
-              <button style={{ fontSize:11, padding:"2px 8px", borderRadius:4, background:"#1c1c1c", border:"1px solid #2a2a2a", color:"#555" }}>Cancel</button>
+            <div className="flex gap-3 items-center">
+              <Badge label={w.slot} color={SLOT_ACCENT[w.slot] ?? SLOT_ACCENT.default} type="info" />
+              <span className="text-muted/40 text-[11px] ml-auto font-mono">{w.elapsed}</span>
+              <button className="text-[11px] px-2 py-1 rounded border border-line bg-transparent text-muted/40 hover:text-white hover:border-white transition-all">Cancel</button>
             </div>
           </div>
         ))}
       </div>
-      <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center" }}>
-        <span style={{ color:"#2a2a2a", fontSize:13 }}>Select a worker to view details</span>
+      <div className="flex-1 flex items-center justify-center bg-black/5">
+        <span className="text-muted/20 text-[13px] italic font-mono">Select a worker to view details</span>
       </div>
     </div>
   );
@@ -385,28 +434,28 @@ function Workers() {
 
 // ─── Tasks ────────────────────────────────────────────────────────────────────
 function Tasks() {
-  const STATUS_BADGE = { completed:"#4ade80", failed:"#f87171", dead_letter:"#f59e0b", running:"#38bdf8" };
+  const STATUS_BADGE = { completed: "success", failed: "danger", dead_letter: "warn", running: "info" };
   return (
-    <div style={{ padding:24, display:"flex", flexDirection:"column", gap:16, overflow:"auto", height:"100%" }}>
+    <div className="p-6 flex flex-col gap-4 overflow-auto h-full font-sans">
       {TASKS.length === 0 ? (
-        <div style={{ margin:"auto", display:"flex", flexDirection:"column", alignItems:"center", gap:12 }}>
-          <div style={{ color:"#333", fontSize:13 }}>No tasks yet</div>
-          <button style={{ padding:"8px 20px", borderRadius:6, background:"#a78bfa22", border:"1px solid #a78bfa44", color:"#a78bfa", fontSize:12 }}>Create Task</button>
+        <div className="m-auto flex flex-col items-center gap-3">
+          <div className="text-muted/30 text-[13px] font-mono italic">No tasks yet</div>
+          <button className="btn btn-secondary !min-h-[40px] text-xs">Create Task</button>
         </div>
       ) : (
-        <div style={{ display:"flex", flexDirection:"column", gap:0 }}>
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 100px 80px 100px 100px", padding:"6px 12px", borderBottom:"1px solid #1a1a1a" }}>
-            {["JOB","STATUS","CREDITS","MODEL","TIME"].map(h=>(
-              <span key={h} style={{ color:"#333", fontSize:10, fontFamily:"'IBM Plex Mono',monospace", letterSpacing:1 }}>{h}</span>
+        <div className="flex flex-col">
+          <div className="grid grid-cols-[1fr_100px_80px_100px_100px] px-3 py-2 border-b border-line">
+            {["JOB", "STATUS", "CREDITS", "MODEL", "TIME"].map(h => (
+              <span key={h} className="text-muted/30 text-[10px] font-mono tracking-widest">{h}</span>
             ))}
           </div>
-          {TASKS.map(t=>(
-            <div key={t.id} style={{ display:"grid", gridTemplateColumns:"1fr 100px 80px 100px 100px", padding:"12px", borderBottom:"1px solid #141414", alignItems:"center" }}>
-              <span style={{ color:"#aaa", fontSize:12, fontFamily:"'IBM Plex Mono',monospace" }}>{t.job}</span>
-              <Badge label={t.status} color={STATUS_BADGE[t.status]} />
-              <span style={{ color:"#555", fontSize:11, fontFamily:"'IBM Plex Mono',monospace" }}>{t.credits}</span>
-              <span style={{ color:"#444", fontSize:11 }}>{t.model}</span>
-              <span style={{ color:"#333", fontSize:11 }}>{t.ago}</span>
+          {TASKS.map(t => (
+            <div key={t.id} className="grid grid-cols-[1fr_100px_80px_100px_100px] p-3 border-b border-white/5 items-center hover:bg-panel/[0.02] transition-colors group">
+              <span className="text-white text-[12px] font-mono group-hover:text-accent-2 transition-colors">{t.job}</span>
+              <Badge label={t.status} type={STATUS_BADGE[t.status]} />
+              <span className="text-muted/70 text-[11px] font-mono">{t.credits}</span>
+              <span className="text-muted/40 text-[11px] font-mono">{t.model}</span>
+              <span className="text-muted/30 text-[11px] font-mono">{t.ago}</span>
             </div>
           ))}
         </div>
@@ -416,42 +465,56 @@ function Tasks() {
 }
 
 // ─── Cortex ───────────────────────────────────────────────────────────────────
-const CORTEX_TYPE_COLOR = { "bulletin generated":"#38bdf8", "warmup succeeded":"#4ade80", "profile generated":"#a78bfa" };
+const CORTEX_TYPE_COLOR = { "bulletin generated":"var(--accent-2)", "warmup succeeded":"var(--success)", "profile generated":"rgb(167, 139, 250)" };
 
 function CortexTab({ agent }) {
   const [filter, setFilter] = useState("all");
-  const filters = ["all","bulletin","maintenance","health","consolidation"];
+  const filters = ["all", "bulletin", "maintenance", "health", "consolidation"];
   return (
-    <div style={{ padding:24, display:"flex", gap:0, height:"100%", overflow:"hidden" }}>
-      <div style={{ flex:1, display:"flex", flexDirection:"column", gap:12, overflowY:"auto", paddingRight:20 }}>
-        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-          {filters.map(f=>(
-            <button key={f} onClick={()=>setFilter(f)} style={{ padding:"4px 10px", borderRadius:5, fontSize:11, border:`1px solid ${filter===f?"#333":"#1a1a1a"}`, background:filter===f?"#1c1c1c":"transparent", color:filter===f?"#e5e5e5":"#444" }}>{f.charAt(0).toUpperCase()+f.slice(1)}</button>
+    <div className="p-6 flex gap-0 h-full overflow-hidden font-sans">
+      <div className="flex-1 flex flex-col gap-3 overflow-y-auto pr-5">
+        <div className="flex items-center gap-2">
+          {filters.map(f => (
+            <button 
+              key={f} 
+              onClick={() => setFilter(f)} 
+              className={`
+                px-3 py-1 rounded-md text-[11px] border transition-all duration-200
+                ${filter === f ? "bg-panel border-accent/40 text-white" : "bg-transparent border-line text-muted/40 hover:text-white hover:border-muted"}
+              `}
+            >
+              {f.charAt(0).toUpperCase() + f.slice(1)}
+            </button>
           ))}
-          <span style={{ marginLeft:"auto", color:"#333", fontSize:11 }}>1-{CORTEX_LOG.length} of {CORTEX_LOG.length}</span>
+          <span className="ml-auto text-muted/30 text-[11px] font-mono italic">1-{CORTEX_LOG.length} of {CORTEX_LOG.length}</span>
         </div>
-        {CORTEX_LOG.map((e,i)=>(
-          <div key={i} style={{ display:"grid", gridTemplateColumns:"80px 160px 1fr 20px", alignItems:"center", padding:"10px 12px", borderBottom:"1px solid #141414", gap:12 }}>
-            <span style={{ color:"#333", fontSize:11 }}>{e.ago}</span>
-            <Badge label={e.type} color={CORTEX_TYPE_COLOR[e.type] ?? "#6b7280"} />
-            <span style={{ color:"#666", fontSize:12 }}>{e.msg}</span>
-            <span style={{ color:"#333" }}>›</span>
-          </div>
-        ))}
+        <div className="flex flex-col">
+          {CORTEX_LOG.map((e, i) => (
+            <div key={i} className="grid grid-cols-[80px_160px_1fr_20px] items-center p-3 border-b border-white/5 gap-3 hover:bg-panel/[0.02] transition-colors group">
+              <span className="text-muted/30 text-[11px] font-mono">{e.ago}</span>
+              <Badge label={e.type} color={CORTEX_TYPE_COLOR[e.type] ?? "var(--muted)"} type="info" />
+              <span className="text-muted text-[12px] group-hover:text-white transition-colors">{e.msg}</span>
+              <span className="text-muted/30 group-hover:text-accent transition-colors">›</span>
+            </div>
+          ))}
+        </div>
       </div>
-      <div style={{ width:320, borderLeft:"1px solid #1a1a1a", paddingLeft:20, display:"flex", flexDirection:"column", gap:16 }}>
-        <div style={{ color:"#e5e5e5", fontSize:14, fontWeight:500 }}>Cortex</div>
-        <div style={{ flex:1 }} />
-        <div style={{ background:"#111", border:"1px solid #1c1c1c", borderRadius:8, padding:"16px" }}>
-          <div style={{ color:"#e5e5e5", fontSize:13, fontWeight:500, marginBottom:6 }}>Cortex chat</div>
-          <div style={{ color:"#555", fontSize:12, lineHeight:1.6, marginBottom:8 }}>System-level control for this agent: memory, tasks, worker inspection, and direct tool execution.</div>
-          <div style={{ color:"#333", fontSize:11, marginBottom:12 }}>No channel transcript is injected. Operating at full agent scope.</div>
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6, marginBottom:12 }}>
-            {["Run health check","Audit memories","Review workers","Draft task spec"].map(a=>(
-              <button key={a} style={{ padding:"7px 10px", borderRadius:5, background:"#161616", border:"1px solid #1c1c1c", color:"#555", fontSize:11, textAlign:"left" }}>{a}</button>
+      <div className="w-[320px] border-l border-line pl-5 flex flex-col gap-4">
+        <div className="text-white text-sm font-semibold tracking-tight">Cortex</div>
+        <div className="flex-1" />
+        <div className="bg-panel border border-line rounded-card p-5 shadow-panel backdrop-blur-panel">
+          <div className="text-white text-[13px] font-medium mb-1">Cortex chat</div>
+          <div className="text-muted text-[12px] leading-relaxed mb-2 italic">System-level control for this agent: memory, tasks, worker inspection, and direct tool execution.</div>
+          <div className="text-muted/30 text-[11px] mb-3 font-mono">No channel transcript is injected. Operating at full agent scope.</div>
+          <div className="grid grid-cols-2 gap-2 mb-3">
+            {["Run health check", "Audit memories", "Review workers", "Draft task spec"].map(a => (
+              <button key={a} className="text-left p-2 rounded-md bg-bg-elevated border border-line text-muted/50 text-[11px] hover:text-white hover:border-muted transition-colors">{a}</button>
             ))}
           </div>
-          <input placeholder="Message the cortex..." style={{ width:"100%", background:"#0d0d0d", border:"1px solid #1a1a1a", borderRadius:6, padding:"8px 10px", color:"#aaa", fontSize:12, outline:"none" }} />
+          <input 
+            placeholder="Message the cortex..." 
+            className="w-full bg-black/40 border border-line rounded-pill px-3 py-2 text-white text-[12px] outline-none focus:border-accent/40 transition-colors" 
+          />
         </div>
       </div>
     </div>
@@ -462,35 +525,41 @@ function CortexTab({ agent }) {
 function Skills({ agent }) {
   const ac = accent(agent.slot);
   return (
-    <div style={{ padding:24, display:"flex", flexDirection:"column", gap:16, overflow:"auto", height:"100%" }}>
-      <div style={{ display:"flex", gap:10, alignItems:"center" }}>
-        <button style={{ padding:"6px 14px", borderRadius:6, background:"#1c1c1c", border:"1px solid #2a2a2a", color:"#e5e5e5", fontSize:12 }}>Browse Registry</button>
-        <button style={{ padding:"6px 14px", borderRadius:6, background:"transparent", border:"1px solid #1a1a1a", color:"#555", fontSize:12 }}>Installed (0)</button>
-        <span style={{ marginLeft:"auto", color:"#444", fontSize:11 }}>skills.sh ↗</span>
+    <div className="p-6 flex flex-col gap-4 overflow-auto h-full font-sans">
+      <div className="flex gap-3 items-center">
+        <button className="btn btn-secondary !min-h-[36px] text-xs">Browse Skills</button>
+        <button className="px-4 py-[6px] rounded-pill border border-line bg-transparent text-muted/50 text-xs hover:text-white transition-colors">Installed (0)</button>
+        <span className="ml-auto text-muted/40 text-[11px] font-mono hover:text-accent-2 cursor-pointer transition-colors text-link">skills.sh ↗</span>
       </div>
-      <div style={{ display:"flex", gap:10, alignItems:"center" }}>
-        <input placeholder="Search skills..." style={{ flex:1, background:"#111", border:"1px solid #1c1c1c", borderRadius:6, padding:"8px 12px", color:"#aaa", fontSize:12, outline:"none" }} />
-        {["All Time","Trending","Hot"].map(f=>(
-          <button key={f} style={{ padding:"6px 12px", borderRadius:6, background:"transparent", border:"1px solid #1a1a1a", color:"#444", fontSize:11 }}>{f}</button>
+      <div className="flex gap-3 items-center">
+        <input 
+          placeholder="Search skills..." 
+          className="flex-1 bg-bg-elevated border border-line rounded-pill px-3 py-2 text-muted text-xs outline-none focus:border-accent/40 transition-colors" 
+        />
+        {["All Time", "Trending", "Hot"].map(f => (
+          <button key={f} className="px-3 py-[6px] rounded-pill border border-line bg-transparent text-muted/40 text-[11px] hover:text-white transition-colors">{f}</button>
         ))}
       </div>
-      <div style={{ background:"#111", border:"1px solid #1c1c1c", borderRadius:8, padding:"16px 20px", display:"flex", alignItems:"center", gap:12 }}>
-        <div style={{ flex:1 }}>
-          <div style={{ color:"#e5e5e5", fontSize:13, marginBottom:4 }}>Install from GitHub</div>
-          <div style={{ color:"#555", fontSize:12 }}>Install any skill from a GitHub repository</div>
+      <div className="bg-panel border border-line rounded-card p-5 flex items-center gap-4 transition-all duration-300">
+        <div className="flex-1">
+          <div className="text-white text-[13px] font-medium mb-1">Install from GitHub</div>
+          <div className="text-muted text-[12px] italic">Install any skill from a GitHub repository</div>
         </div>
-        <input placeholder="owner/repo or owner/repo/skill-name" style={{ width:280, background:"#0d0d0d", border:"1px solid #1a1a1a", borderRadius:6, padding:"7px 12px", color:"#aaa", fontSize:12, outline:"none" }} />
-        <button style={{ padding:"7px 16px", borderRadius:6, background:ac+"22", border:`1px solid ${ac}44`, color:ac, fontSize:12 }}>↓ Install</button>
+        <input 
+          placeholder="owner/repo or owner/repo/skill-name" 
+          className="w-[280px] bg-black/40 border border-line rounded-pill px-3 py-[7px] text-white text-[12px] outline-none focus:border-accent/40 transition-colors font-mono" 
+        />
+        <button className="btn btn-primary !min-h-[36px] px-4 text-xs">↓ Install</button>
       </div>
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
-        {SKILLS.map(s=>(
-          <div key={s.id} style={{ background:"#111", border:"1px solid #1c1c1c", borderRadius:8, padding:"16px 20px" }}>
-            <div style={{ color:"#e5e5e5", fontSize:13, fontWeight:500, marginBottom:4 }}>{s.name}</div>
-            <div style={{ color:"#444", fontSize:11, fontFamily:"'IBM Plex Mono',monospace", marginBottom:8 }}>{s.author}</div>
-            <div style={{ color:"#666", fontSize:12, lineHeight:1.5, marginBottom:12 }}>{s.desc}</div>
-            <div style={{ display:"flex", alignItems:"center" }}>
-              <span style={{ color:"#333", fontSize:11 }}>{s.installs} installs</span>
-              <button style={{ marginLeft:"auto", width:28, height:28, borderRadius:5, background:"#1c1c1c", border:"1px solid #2a2a2a", color:"#555", fontSize:14 }}>↓</button>
+      <div className="grid grid-cols-2 gap-3">
+        {SKILLS.map(s => (
+          <div key={s.id} className="bg-panel border border-line rounded-card p-5 hover:bg-panel-strong transition-all duration-200 group">
+            <div className="text-white text-[13px] font-bold mb-1 group-hover:text-accent transition-colors">{s.name}</div>
+            <div className="text-muted/40 text-[11px] font-mono mb-2">{s.author}</div>
+            <div className="text-muted text-[12px] leading-relaxed mb-4 italic line-clamp-2">{s.desc}</div>
+            <div className="flex items-center">
+              <span className="text-muted/30 text-[11px] font-mono">{s.installs} installs</span>
+              <button className="ml-auto w-8 h-8 rounded-md bg-bg-elevated border border-line text-muted/50 text-sm flex items-center justify-center hover:text-white hover:border-white transition-all font-bold">↓</button>
             </div>
           </div>
         ))}
@@ -503,30 +572,34 @@ function Skills({ agent }) {
 function Cron({ agent }) {
   const ac = accent(agent.slot);
   return (
-    <div style={{ padding:24, display:"flex", flexDirection:"column", gap:16, overflow:"auto", height:"100%" }}>
-      <div style={{ display:"flex", gap:10, alignItems:"center" }}>
-        <Badge label={`${CRON_JOBS.length} total`} color="#6b7280" />
-        <Badge label={`${CRON_JOBS.filter(j=>j.status==="active").length} enabled`} color="#4ade80" />
-        <Badge label="0 runs" color="#6b7280" />
-        <button style={{ marginLeft:"auto", padding:"6px 14px", borderRadius:6, background:ac+"22", border:`1px solid ${ac}44`, color:ac, fontSize:12 }}>+ New Job</button>
+    <div className="p-6 flex flex-col gap-4 overflow-auto h-full font-sans">
+      <div className="flex gap-3 items-center">
+        <Badge label={`${CRON_JOBS.length} total`} type="info" />
+        <Badge label={`${CRON_JOBS.filter(j => j.status === "active").length} enabled`} type="success" />
+        <Badge label="0 runs" type="muted" />
+        <button className="ml-auto btn btn-primary !min-h-[36px] px-4 text-xs font-bold">+ New Job</button>
       </div>
-      {CRON_JOBS.map(j=>(
-        <div key={j.id} style={{ background:"#111", border:"1px solid #1c1c1c", borderRadius:8, padding:"16px 20px" }}>
-          <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:8 }}>
+      {CRON_JOBS.map(j => (
+        <div key={j.id} className="bg-panel border border-line rounded-card p-5 hover:bg-panel-strong transition-all duration-200 group">
+          <div className="flex items-center gap-3 mb-2">
             <Dot status={j.status} />
-            <span style={{ color:"#e5e5e5", fontSize:13, fontFamily:"'IBM Plex Mono',monospace" }}>{j.name}</span>
-            <Badge label={j.status} color={STATUS[j.status]} />
-            <div style={{ marginLeft:"auto", display:"flex", gap:8 }}>
-              {["▶","⚡","✎","✕"].map(a=><button key={a} style={{ width:26, height:26, borderRadius:4, background:"#1c1c1c", border:"1px solid #2a2a2a", color:"#444", fontSize:12 }}>{a}</button>)}
+            <span className="text-white text-[13px] font-mono group-hover:text-accent transition-colors">{j.name}</span>
+            <Badge label={j.status} type={j.status === "active" ? "success" : "muted"} />
+            <div className="ml-auto flex gap-2">
+              {["▶", "⚡", "✎", "✕"].map(a => (
+                <button key={a} className="w-7 h-7 rounded border border-line bg-bg-elevated text-muted/40 text-[10px] flex items-center justify-center hover:text-white hover:border-white transition-all">{a}</button>
+              ))}
             </div>
           </div>
-          <div style={{ color:"#555", fontSize:12, marginBottom:8 }}>{j.desc}</div>
-          <div style={{ display:"flex", gap:16 }}>
-            <span style={{ color:"#333", fontSize:11 }}>{j.interval}</span>
-            <span style={{ color:"#333", fontSize:11 }}>·</span>
-            <span style={{ color:"#333", fontSize:11 }}>{j.type}</span>
+          <div className="text-muted text-[12px] italic mb-3 leading-relaxed">{j.desc}</div>
+          <div className="flex gap-4 items-center">
+            <span className="text-muted/40 text-[11px] font-mono">{j.interval}</span>
+            <span className="text-line">|</span>
+            <span className="text-muted/40 text-[11px] font-mono uppercase">{j.type}</span>
           </div>
-          <button style={{ marginTop:10, color:"#444", fontSize:11, background:"none", border:"none" }}>› Show history</button>
+          <button className="mt-3 text-muted/40 text-[11px] hover:text-white transition-colors flex items-center gap-1 font-mono">
+            › Show history
+          </button>
         </div>
       ))}
     </div>
@@ -534,41 +607,41 @@ function Cron({ agent }) {
 }
 
 // ─── Config ───────────────────────────────────────────────────────────────────
-const CONFIG_SECTIONS = {
-  IDENTITY: ["Soul","Identity","User"],
-  CONFIGURATION: ["Model Routing","Tuning","Compaction","Cortex","Coalesce","Memory Persistence","Browser","Sandbox"],
-};
-
 function Config() {
   const [active, setActive] = useState("Soul");
   return (
-    <div style={{ display:"flex", height:"100%", overflow:"hidden" }}>
-      <div style={{ width:180, borderRight:"1px solid #1a1a1a", padding:"16px 0", overflowY:"auto", flexShrink:0 }}>
-        {Object.entries(CONFIG_SECTIONS).map(([section, items])=>(
-          <div key={section} style={{ marginBottom:16 }}>
-            <div style={{ color:"#333", fontSize:9, fontFamily:"'IBM Plex Mono',monospace", letterSpacing:2, padding:"0 16px 6px", textTransform:"uppercase" }}>{section}</div>
-            {items.map(item=>(
-              <button key={item} onClick={()=>setActive(item)} style={{
-                display:"block", width:"100%", textAlign:"left", padding:"7px 16px",
-                background: active===item ? "#1c1c1c" : "transparent",
-                border:"none", color: active===item ? "#e5e5e5" : "#555", fontSize:12,
-              }}>{item}</button>
+    <div className="flex h-full overflow-hidden font-sans">
+      <div className="w-[180px] border-r border-line py-4 overflow-y-auto flex-shrink-0 bg-black/10">
+        {Object.entries(CONFIG_SECTIONS).map(([section, items]) => (
+          <div key={section} className="mb-4">
+            <div className="text-muted/30 text-[9px] font-mono tracking-[0.2em] px-4 pb-2 text-uppercase opacity-80">{section}</div>
+            {items.map(item => (
+              <button 
+                key={item} 
+                onClick={() => setActive(item)} 
+                className={`
+                  block w-full text-left px-4 py-[7px] text-[12px] transition-all duration-200
+                  ${active === item ? "bg-bg-elevated text-white font-medium border-r-2 border-accent" : "text-muted/50 hover:text-white hover:bg-panel/[0.02]"}
+                `}
+              >
+                {item}
+              </button>
             ))}
           </div>
         ))}
       </div>
-      <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden" }}>
-        <div style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 24px", borderBottom:"1px solid #1a1a1a" }}>
-          <span style={{ color:"#e5e5e5", fontSize:13 }}>{active}</span>
-          {active==="Soul" && <span style={{ color:"#444", fontSize:11, fontFamily:"'IBM Plex Mono',monospace" }}>SOUL.md</span>}
-          <div style={{ marginLeft:"auto", display:"flex", gap:10 }}>
-            <button style={{ padding:"4px 12px", borderRadius:5, background:"#1c1c1c", border:"1px solid #2a2a2a", color:"#aaa", fontSize:11 }}>Edit</button>
-            <button style={{ padding:"4px 12px", borderRadius:5, background:"transparent", border:"1px solid #1a1a1a", color:"#555", fontSize:11 }}>Preview</button>
-            <span style={{ color:"#333", fontSize:11, alignSelf:"center" }}>Cmd+S to save</span>
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex items-center gap-3 px-6 py-3 border-b border-line bg-black/5">
+          <span className="text-white text-[13px] font-medium tracking-tight">{active}</span>
+          {active === "Soul" && <span className="text-muted/40 text-[11px] font-mono italic opacity-60">SOUL.md</span>}
+          <div className="ml-auto flex gap-2">
+            <button className="px-3 py-1 rounded-md bg-bg-elevated border border-line text-muted text-[11px] hover:text-white hover:border-white transition-all font-medium">Edit</button>
+            <button className="px-3 py-1 rounded-md bg-transparent border border-line text-muted/50 text-[11px] hover:text-white transition-all">Preview</button>
+            <span className="text-muted/20 text-[10px] align-self-center font-mono italic ml-2">Cmd+S to save</span>
           </div>
         </div>
-        <div style={{ flex:1, overflowY:"auto", padding:24 }}>
-          <pre style={{ color:"#6b7280", fontSize:12, fontFamily:"'IBM Plex Mono',monospace", lineHeight:1.8, whiteSpace:"pre-wrap" }}>{SOUL_MD}</pre>
+        <div className="flex-1 overflow-y-auto p-6 bg-black/20">
+          <pre className="text-muted text-[12px] font-mono leading-[1.8] whitespace-pre-wrap">{SOUL_MD}</pre>
         </div>
       </div>
     </div>
@@ -578,46 +651,44 @@ function Config() {
 // ─── Root App ─────────────────────────────────────────────────────────────────
 export default function AgentApp() {
   const [activeAgent, setActiveAgent] = useState(AGENTS[0].id);
-  const [activeTab, setActiveTab]     = useState("Overview");
+  const [activeTab, setActiveTab] = useState("Overview");
 
-  const agent = AGENTS.find(a=>a.id===activeAgent) ?? AGENTS[0];
+  const agent = AGENTS.find(a => a.id === activeAgent) ?? AGENTS[0];
   const ac = accent(agent.slot);
 
   const renderTab = () => {
-    switch(activeTab) {
-      case "Overview":  return <Overview agent={agent} />;
-      case "Chat":      return <Chat agent={agent} />;
-      case "Channels":  return <Channels agent={agent} />;
-      case "Memories":  return <Memories agent={agent} />;
-      case "Ingest":    return <Ingest />;
-      case "Workers":   return <Workers />;
-      case "Tasks":     return <Tasks />;
-      case "Cortex":    return <CortexTab agent={agent} />;
-      case "Skills":    return <Skills agent={agent} />;
-      case "Cron":      return <Cron agent={agent} />;
-      case "Config":    return <Config />;
-      default:          return null;
+    switch (activeTab) {
+      case "Overview": return <Overview agent={agent} />;
+      case "Chat": return <Chat agent={agent} />;
+      case "Channels": return <Channels agent={agent} />;
+      case "Memories": return <Memories agent={agent} />;
+      case "Ingest": return <Ingest />;
+      case "Workers": return <Workers />;
+      case "Tasks": return <Tasks />;
+      case "Cortex": return <CortexTab agent={agent} />;
+      case "Skills": return <Skills agent={agent} />;
+      case "Cron": return <Cron agent={agent} />;
+      case "Config": return <Config />;
+      default: return null;
     }
   };
 
   return (
-    <>
-      <style>{GLOBAL_STYLE}</style>
-      <div style={{ display:"flex", height:"100vh", overflow:"hidden", background:"#0a0a0a" }}>
-        <Sidebar agents={AGENTS} activeAgent={activeAgent} setActiveAgent={id=>{setActiveAgent(id);setActiveTab("Overview");}} />
-        <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden" }}>
-          {/* Agent header */}
-          <div style={{ padding:"12px 24px", borderBottom:"1px solid #1a1a1a", display:"flex", alignItems:"center", gap:12, flexShrink:0 }}>
-            <span style={{ color:"#e5e5e5", fontSize:14, fontWeight:500 }}>{agent.name}</span>
-            <Dot status={agent.status} />
-            <button style={{ marginLeft:"auto", padding:"4px 12px", borderRadius:5, background:"#1c1c1c", border:"1px solid #2a2a2a", color:"#555", fontSize:11 }}>Delete</button>
-          </div>
-          <TabBar active={activeTab} setActive={setActiveTab} agentAccent={ac} />
-          <div style={{ flex:1, overflow:"hidden" }}>
-            {renderTab()}
-          </div>
+    <div className="flex h-screen overflow-hidden bg-bg text-text selection:bg-accent/20">
+      <AgentSidebar agents={AGENTS} activeAgent={activeAgent} setActiveAgent={id => { setActiveAgent(id); setActiveTab("Overview"); }} />
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Agent header */}
+        <div className="px-6 py-[12px] border-b border-line flex items-center gap-3 flex-shrink-0 bg-black/40 backdrop-blur-panel">
+          <span className="text-white text-sm font-bold tracking-tight">{agent.name}</span>
+          <Dot status={agent.status} />
+          <button className="ml-auto py-1 px-3 rounded-md bg-bg-elevated border border-line text-muted/40 text-[11px] hover:text-accent hover:border-accent/30 transition-all">Delete</button>
+        </div>
+        <AgentTabBar active={activeTab} setActive={setActiveTab} agentAccent={ac} />
+        <div className="flex-1 overflow-hidden relative">
+          <div className="absolute inset-0 pointer-events-none opacity-[0.03] bg-[radial-gradient(circle_at_50%_50%,var(--accent),transparent_70%)]" />
+          {renderTab()}
         </div>
       </div>
-    </>
+    </div>
   );
 }

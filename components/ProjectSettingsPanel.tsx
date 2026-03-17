@@ -69,31 +69,31 @@ export function ProjectSettingsPanel({
   }
 
   return (
-    <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-5 space-y-4">
+    <section className="rounded-card border border-line bg-panel p-5 space-y-4 shadow-panel backdrop-blur-panel">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-slate-100">Project Settings</h2>
-        <span className="text-[11px] text-slate-500">Name and description only</span>
+        <h2 className="text-sm font-semibold text-white tracking-tight">Project Settings</h2>
+        <span className="eyebrow !mb-0 text-[0.72rem]">Identifiers Only</span>
       </div>
 
-      {error && <p className="text-xs text-red-400">{error}</p>}
-      {notice && <p className="text-xs text-emerald-400">{notice}</p>}
+      {error && <p className="text-xs text-accent font-mono">{error}</p>}
+      {notice && <p className="text-xs text-success font-mono">{notice}</p>}
 
       <form onSubmit={handleSave} className="space-y-3">
-        <div className="space-y-1">
-          <label className="block text-xs font-medium text-slate-300">Project Name</label>
+        <div className="space-y-2">
+          <label className="block text-[11px] font-mono text-muted uppercase tracking-wider">Project Name</label>
           <input
             value={name}
             onChange={(event) => setName(event.target.value)}
-            className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+            className="w-full rounded-pill border border-line bg-[rgba(255,255,255,0.03)] px-4 py-2 text-sm text-white placeholder:text-muted/40 outline-none focus:border-accent/40 transition-colors"
             placeholder="Project name"
           />
         </div>
-        <div className="space-y-1">
-          <label className="block text-xs font-medium text-slate-300">Description</label>
+        <div className="space-y-2">
+          <label className="block text-[11px] font-mono text-muted uppercase tracking-wider">Description</label>
           <textarea
             value={description}
             onChange={(event) => setDescription(event.target.value)}
-            className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-sky-500 min-h-[64px]"
+            className="w-full rounded-card border border-line bg-[rgba(255,255,255,0.03)] px-4 py-2 text-sm text-white placeholder:text-muted/40 outline-none focus:border-accent/40 transition-colors min-h-[80px]"
             placeholder="Optional project description"
           />
         </div>
@@ -101,7 +101,7 @@ export function ProjectSettingsPanel({
         <button
           type="submit"
           disabled={saving || !hasPendingChanges}
-          className="inline-flex items-center px-3 py-1.5 rounded-md bg-sky-500 hover:bg-sky-400 disabled:opacity-50 text-xs font-medium text-slate-950"
+          className="btn btn-primary !min-h-[36px] px-5 text-xs font-bold shadow-[0_0_15px_rgba(232,209,122,0.15)]"
         >
           {saving ? "Saving..." : "Save Settings"}
         </button>

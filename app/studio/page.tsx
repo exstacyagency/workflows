@@ -103,13 +103,13 @@ export default function StudioHomePage() {
     <>
       <StudioHeader />
       <div className="px-6 py-6 space-y-8">
-      <section className="rounded-xl border border-slate-800 bg-slate-900/80 p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <section className="rounded-xl border border-line bg-panel p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-50">
+          <h1 className="text-2xl font-semibold text-white">
             FrameForge AI · Studio Command Center
           </h1>
           <WhoAmI />
-          <p className="text-sm text-slate-300 mt-1">
+          <p className="text-sm text-muted mt-1">
             Monitor your production pipeline, resume active projects, and launch
             new cinematic workflows.
           </p>
@@ -117,21 +117,21 @@ export default function StudioHomePage() {
         <div className="flex flex-col items-start md:items-end gap-2">
           {lastProject ? (
             <>
-              <div className="text-[11px] uppercase tracking-wide text-slate-500">
+              <div className="text-[11px] uppercase tracking-wide text-muted/60">
                 Resume Project
               </div>
-              <div className="text-sm font-medium text-slate-50">
+              <div className="text-sm font-medium text-white">
                 {lastProject.name}
               </div>
               <Link
                 href={`/projects/${lastProject.id}`}
-                className="mt-1 inline-flex items-center px-3 py-1.5 rounded-md bg-sky-500 hover:bg-sky-400 text-xs font-medium"
+                className="mt-1 inline-flex items-center px-3 py-1.5 rounded-pill bg-accent hover:bg-accent/90 text-bg text-xs font-medium"
               >
                 Open Project
               </Link>
             </>
           ) : (
-            <div className="text-sm text-slate-400">
+            <div className="text-sm text-muted/80">
               No projects yet. Once you add projects, you’ll be able to resume
               them from here.
             </div>
@@ -139,60 +139,31 @@ export default function StudioHomePage() {
         </div>
       </section>
 
-      <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-4">
-        <h2 className="text-sm font-semibold text-slate-100 mb-3">
-          Pipeline Milestones
-        </h2>
-        <p className="text-xs text-slate-400 mb-3">
-          This represents the full FrameForge AI workflow from insights to
-          final delivery. Detailed status will appear on each project’s
-          dashboard.
-        </p>
-        <div className="flex flex-wrap gap-2 text-xs text-slate-300">
-          {[
-            "1 · Research",
-            "2 · Avatar & Product Intel",
-            "3 · Pattern Brain",
-            "4 · Script",
-            "5 · Storyboards & Frames",
-            "6 · Scenes & Review",
-            "7 · Upscale & Export",
-          ].map((label) => (
-            <span
-              key={label}
-              className="px-3 py-1 rounded-full bg-slate-800/80 border border-slate-700"
-            >
-              {label}
-            </span>
-          ))}
-        </div>
-      </section>
-
-      <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-4 space-y-3">
+      <section className="rounded-xl border border-line bg-panel p-4 space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-slate-100">Projects</h2>
+          <h2 className="text-sm font-semibold text-white">Projects</h2>
           <div className="flex items-center gap-2">
             <button
               onClick={handleStartCreateProject}
               disabled={creatingProject}
-              className="inline-flex items-center px-3 py-1.5 rounded-md bg-sky-500 hover:bg-sky-400 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-medium"
+              className="inline-flex items-center px-3 py-1.5 rounded-pill bg-accent hover:bg-accent/90 text-bg disabled:opacity-50 disabled:cursor-not-allowed text-xs font-medium"
             >
               {creatingProject ? "Creating…" : "Create Project"}
             </button>
             <button
               onClick={loadProjects}
               disabled={loading}
-              className="text-xs px-3 py-1 rounded-md border border-slate-700 hover:bg-slate-800 disabled:opacity-50"
+              className="text-xs px-3 py-1 rounded-md border border-line hover:bg-bg-elevated disabled:opacity-50"
             >
               {loading ? "Refreshing…" : "Refresh"}
             </button>
           </div>
         </div>
         {showCreateForm && (
-          <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-3 space-y-3">
+          <div className="rounded-lg border border-line bg-bg/70 p-3 space-y-3">
             <label
               htmlFor="project-name"
-              className="block text-xs font-medium text-slate-200"
+              className="block text-xs font-medium text-white/90"
             >
               Project name
             </label>
@@ -202,31 +173,31 @@ export default function StudioHomePage() {
               value={projectName}
               onChange={(e) => setProjectName(e.target.value)}
               placeholder="Optional: defaults to timestamp name"
-              className="w-full rounded-md bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-slate-50"
+              className="w-full rounded-md bg-bg border border-line px-3 py-2 text-sm text-white"
               disabled={creatingProject}
             />
             <div className="flex items-center gap-2">
               <button
                 onClick={handleConfirmCreateProject}
                 disabled={creatingProject}
-                className="inline-flex items-center px-3 py-1.5 rounded-md bg-sky-500 hover:bg-sky-400 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-medium"
+                className="inline-flex items-center px-3 py-1.5 rounded-pill bg-accent hover:bg-accent/90 text-bg disabled:opacity-50 disabled:cursor-not-allowed text-xs font-medium"
               >
                 {creatingProject ? "Creating…" : "Confirm"}
               </button>
               <button
                 onClick={handleCancelCreateProject}
                 disabled={creatingProject}
-                className="inline-flex items-center px-3 py-1.5 rounded-md border border-slate-700 hover:bg-slate-800 disabled:opacity-50 text-xs font-medium"
+                className="inline-flex items-center px-3 py-1.5 rounded-md border border-line hover:bg-bg-elevated disabled:opacity-50 text-xs font-medium"
               >
                 Cancel
               </button>
             </div>
-            {createError && <p className="text-xs text-red-400">{createError}</p>}
+            {createError && <p className="text-xs text-accent">{createError}</p>}
           </div>
         )}
-        {error && <p className="text-xs text-red-400">{error}</p>}
+        {error && <p className="text-xs text-accent">{error}</p>}
         {projects.length === 0 && !loading && (
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-muted/80">
             No projects found. Use your existing API or a future UI form to
             create projects.
           </p>
@@ -235,25 +206,25 @@ export default function StudioHomePage() {
           {projects.map((project) => (
             <div
               key={project.id}
-              className="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950/70 px-4 py-3"
+              className="flex items-center justify-between rounded-lg border border-line bg-bg/70 px-4 py-3"
             >
               <div className="space-y-1">
-                <div className="text-sm font-medium text-slate-50">
+                <div className="text-sm font-medium text-white">
                   {project.name}
                 </div>
                 {project.description && (
-                  <div className="text-xs text-slate-400">
+                  <div className="text-xs text-muted/80">
                     {project.description}
                   </div>
                 )}
-                <div className="text-[11px] text-slate-500">
+                <div className="text-[11px] text-muted/60">
                   ID: <span className="font-mono">{project.id}</span>
                 </div>
               </div>
               <div className="flex items-center gap-2">
                 <Link
                   href={`/projects/${project.id}`}
-                  className="text-xs px-3 py-1.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-50"
+                  className="text-xs px-3 py-1.5 rounded-md bg-bg-elevated hover:bg-panel-strong text-white"
                 >
                   Open
                 </Link>

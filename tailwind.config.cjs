@@ -6,7 +6,34 @@ module.exports = {
     "./pages/**/*.{js,ts,jsx,tsx}",
   ],
   theme: {
-    extend: {},
+    extend: {
+      colors: {
+        bg: '#09090b',
+        'bg-elevated': 'rgba(255,255,255,0.04)',
+        panel: 'rgba(255,255,255,0.06)',
+        'panel-strong': 'rgba(255,255,255,0.10)',
+        line: 'rgba(255,255,255,0.10)',
+        muted: '#b7b7bd',
+        accent: '#e8d17a',
+        'accent-2': '#9ad0ff',
+        success: '#90e9a8',
+      },
+      fontFamily: {
+        sans: ['Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'sans-serif'],
+        mono: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
+      },
+      boxShadow: {
+        panel: '0 24px 80px rgba(0,0,0,0.4)',
+      },
+      borderRadius: {
+        card: '26px',
+        pill: '999px',
+        inner: '20px',
+      },
+      backdropBlur: {
+        panel: '18px',
+      },
+    },
   },
   plugins: [],
 };

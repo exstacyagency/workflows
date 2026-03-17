@@ -65,52 +65,53 @@ export function UploadDataModal({ isOpen, onClose, jobId, projectId }: UploadDat
         zIndex: 9999,
       }}
     >
-      <div className="absolute inset-0" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
       <div
-        className="relative bg-slate-900 border border-slate-700 rounded-lg p-6 max-w-md w-full"
+        className="relative bg-panel border border-line rounded-lg p-6 max-w-md w-full shadow-panel backdrop-blur-panel"
         style={{
           position: "relative",
           zIndex: 10,
         }}
       >
-        <h2 className="text-xl font-bold mb-4">Upload Research Data</h2>
+        <h2 className="text-xl font-bold mb-4">Upload Market Research</h2>
 
-        <p className="text-sm text-slate-400 mb-4">
-          Upload additional research data in CSV, TXT, PDF, DOCX, or JSON format.
-          The content will be parsed and added to your existing research.
+        <p className="text-sm text-muted mb-4">
+          Upload additional market research in CSV, TXT, PDF, DOCX, or JSON format.
+          The content will be parsed and added to your existing audience and product research.
         </p>
 
         <input
           type="file"
           accept=".csv,.txt,.pdf,.docx,.json"
           onChange={(e) => setFile(e.target.files?.[0] || null)}
-          className="block w-full text-sm text-slate-400
+          className="block w-full text-sm text-muted
             file:mr-4 file:py-2 file:px-4
-            file:rounded file:border-0
-            file:text-sm file:font-medium
-            file:bg-sky-600 file:text-white
-            hover:file:bg-sky-500
+            file:rounded-pill file:border-0
+            file:text-sm file:font-semibold
+            file:bg-accent file:text-bg
+            hover:file:bg-accent/90
+            transition-all
             mb-4"
         />
 
         {file && (
-          <p className="text-sm text-slate-400 mb-4">
+          <p className="text-sm text-muted mb-4 font-mono">
             Selected: {file.name} ({(file.size / 1024).toFixed(1)} KB)
           </p>
         )}
 
-        <div className="flex gap-3 justify-end">
+        <div className="flex gap-3 justify-end mt-2">
           <button
             onClick={onClose}
             disabled={uploading}
-            className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded text-sm"
+            className="px-4 py-2 bg-bg-elevated hover:bg-panel-strong border border-line rounded-pill text-sm text-muted hover:text-white transition-all"
           >
             Cancel
           </button>
           <button
             onClick={handleUpload}
             disabled={uploading || !file}
-            className="px-4 py-2 bg-sky-600 hover:bg-sky-500 disabled:opacity-50 disabled:cursor-not-allowed rounded text-sm"
+            className="px-4 py-2 bg-accent hover:bg-accent/90 text-bg font-semibold disabled:opacity-50 disabled:cursor-not-allowed rounded-pill text-sm transition-all shadow-[0_0_15px_rgba(232,209,122,0.2)]"
           >
             {uploading ? "Uploading..." : "Upload & Add Data"}
           </button>

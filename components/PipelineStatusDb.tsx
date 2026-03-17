@@ -65,10 +65,10 @@ const pipelinePhases: PipelinePhase[] = [
 function statusBadge(status: PhaseStatus) {
   const normalized = status === "failed" ? "needs_attention" : status;
   const colorMap: Record<typeof normalized, string> = {
-    pending: "bg-slate-800/80 text-slate-300 border border-slate-700",
-    running: "bg-sky-500/10 text-sky-300 border border-sky-500/50",
-    needs_attention: "bg-red-500/10 text-red-300 border border-red-500/50",
-    completed: "bg-emerald-500/10 text-emerald-300 border border-emerald-500/50",
+    pending: "status-chip info opacity-60",
+    running: "status-chip info",
+    needs_attention: "status-chip danger",
+    completed: "status-chip success",
   };
   const labelMap: Record<typeof normalized, string> = {
     pending: "Pending",
@@ -77,7 +77,7 @@ function statusBadge(status: PhaseStatus) {
     completed: "Completed",
   };
   return (
-    <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${colorMap[normalized]}`}>
+    <span className={colorMap[normalized]}>
       {labelMap[normalized]}
     </span>
   );
@@ -137,12 +137,12 @@ export function PipelineStatusDb({ projectId }: Props) {
   }, [url]);
 
   return (
-    <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-5 space-y-3">
+    <section className="rounded-card border border-line bg-panel p-5 space-y-3 shadow-panel backdrop-blur-panel">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-slate-100">Pipeline Status</h2>
-        <span className="text-[11px] text-slate-500">Phases auto-update from job history</span>
+        <h2 className="text-sm font-semibold text-white tracking-tight">Pipeline Status</h2>
+        <span className="text-[11px] text-muted font-mono opacity-50">AUTO-UPDATE FROM JOB HISTORY</span>
       </div>
-      {err && <p className="text-xs text-red-400">{err}</p>}
+      {err && <p className="text-xs text-accent">{err}</p>}
       <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
         {pipelinePhases.map((phase) => {
           const apiPhase = phaseByKey.get(phase.key);
@@ -155,16 +155,16 @@ export function PipelineStatusDb({ projectId }: Props) {
           return (
             <div
               key={phase.key}
-              className="rounded-lg border border-slate-800 bg-slate-950/60 px-4 py-3 space-y-1.5"
+              className="rounded-card border border-line bg-bg-elevated/40 px-4 py-3 space-y-1.5 hover:bg-bg-elevated transition-colors"
             >
               <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-medium text-slate-50">{phase.label}</p>
+                <p className="text-sm font-medium text-white">{phase.label}</p>
                 {statusBadge(status)}
               </div>
-              <p className="text-xs text-slate-400">{phase.description}</p>
+              <p className="text-xs text-muted/80">{phase.description}</p>
               {supportingJob && updatedAt && (
-                <p className="text-[11px] text-slate-500">
-                  Last job: {supportingJob.type.replace(/_/g, " ")} {"\u00b7"} {updatedAt}
+                <p className="text-[11px] text-muted font-mono opacity-50 uppercase">
+                  Last: {supportingJob.type.replace(/_/g, " ")} {"\u00b7"} {updatedAt}
                 </p>
               )}
             </div>

@@ -658,121 +658,122 @@ export default function ResearchHubDataPage() {
   }
 
   return (
-    <div className="px-6 py-6 max-w-7xl mx-auto">
-      <div className="mb-6 flex items-start justify-between gap-4">
-        <div>
+    <div className="px-8 py-8 max-w-7xl mx-auto space-y-10">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
+        <div className="space-y-4">
           <Link
             href={`/projects/${projectId}/research-hub`}
-            className="text-sm text-slate-400 hover:text-slate-300 mb-2 inline-block"
+            className="text-[11px] font-mono text-muted hover:text-white mb-6 inline-block uppercase tracking-wider transition-colors"
           >
             ← Back to Research Hub
           </Link>
-          <h1 className="text-2xl font-bold text-white">Research Hub Data</h1>
-          <p className="text-sm text-slate-400 mt-1">
-            jobType: <span className="font-mono">{focusJobType ?? rawJobType}</span>
+          <div className="flex items-center gap-4">
+            <h1 className="text-4xl font-bold text-white tracking-tight">Research Library</h1>
+            <div className="status-chip subtle uppercase tracking-widest text-[9px]">
+              {focusJobType ?? rawJobType}
+            </div>
+          </div>
+          <p className="text-sm text-muted max-w-xl font-mono uppercase tracking-widest opacity-60">
             {effectiveRunId ? (
               <>
-                {" "}
-                · runId: <span className="font-mono">{effectiveRunId}</span>
+                Active Run: <span className="text-accent-2">{effectiveRunId}</span>
               </>
-            ) : null}
+            ) : "Loading research..."}
           </p>
         </div>
-        <button
-          onClick={handleExportCsv}
-          disabled={loading || !!error || !focusJobType || exportConfig.rows.length === 0}
-          className={`px-3 py-2 text-sm rounded border ${
-            loading || !!error || !focusJobType || exportConfig.rows.length === 0
-              ? "border-slate-700 text-slate-500 cursor-not-allowed"
-              : "border-slate-600 text-slate-200 hover:border-slate-500 hover:text-white"
-          }`}
-        >
-          Export CSV
-        </button>
-        {(focusJobType === "ad-transcripts" || focusJobType === "ad-quality-gate") && (
-          <>
-            <button
-              onClick={handleDeleteSelected}
-              disabled={selectedCount === 0 || bulkDeleting || deletingAll || !effectiveRunId}
-              className={`px-3 py-2 text-sm rounded border ${
-                selectedCount === 0 || bulkDeleting || deletingAll || !effectiveRunId
-                  ? "border-slate-700 text-slate-500 cursor-not-allowed"
-                  : "border-rose-700 text-rose-200 hover:bg-rose-900/40"
-              }`}
-            >
-              {bulkDeleting ? "Deleting..." : `Delete Selected (${selectedCount})`}
-            </button>
-            <button
-              onClick={handleDeleteAll}
-              disabled={deletingAll || bulkDeleting || assets.length === 0 || !effectiveRunId}
-              className={`px-3 py-2 text-sm rounded border ${
-                deletingAll || bulkDeleting || assets.length === 0 || !effectiveRunId
-                  ? "border-slate-700 text-slate-500 cursor-not-allowed"
-                  : "border-rose-700 text-rose-200 hover:bg-rose-900/40"
-              }`}
-            >
-              {deletingAll ? "Deleting..." : "Delete All"}
-            </button>
-          </>
-        )}
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleExportCsv}
+            disabled={loading || !!error || !focusJobType || exportConfig.rows.length === 0}
+            className="btn btn-secondary !min-h-[36px] px-4 text-[10px] font-bold uppercase tracking-widest"
+          >
+            Export Research
+          </button>
+          {(focusJobType === "ad-transcripts" || focusJobType === "ad-quality-gate") && (
+            <div className="flex gap-2">
+              <button
+                onClick={handleDeleteSelected}
+                disabled={selectedCount === 0 || bulkDeleting || deletingAll || !effectiveRunId}
+                className="btn btn-secondary !min-h-[36px] px-4 text-[10px] font-bold uppercase tracking-widest hover:text-danger hover:border-danger/30"
+              >
+                {bulkDeleting ? 'PURGING...' : `PURGE_SEL (${selectedCount})`}
+              </button>
+              <button
+                onClick={handleDeleteAll}
+                disabled={deletingAll || bulkDeleting || assets.length === 0 || !effectiveRunId}
+                className="btn btn-secondary !min-h-[36px] px-4 text-[10px] font-bold uppercase tracking-widest hover:text-danger hover:border-danger/30"
+              >
+                {deletingAll ? 'PURGING_ALL...' : 'PURGE_ALL'}
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {loading && (
-        <div className="rounded border border-slate-700 bg-slate-900/60 p-4 text-slate-300 text-sm">
-          Loading data...
+        <div className="flex flex-col items-center justify-center min-h-[40vh] space-y-4">
+          <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+          <p className="text-xs font-mono text-muted uppercase tracking-widest">Querying Datastore...</p>
         </div>
       )}
 
       {!loading && error && (
-        <div className="rounded border border-red-500/40 bg-red-500/10 p-4 text-red-300 text-sm">{error}</div>
+        <div className="rounded-card border border-danger/20 bg-danger/5 p-8 text-center space-y-4 font-mono">
+          <p className="text-danger text-sm uppercase tracking-widest">Access Refused</p>
+          <p className="text-muted text-xs">{error}</p>
+        </div>
       )}
 
       {!loading && !error && focusJobType === "ad-transcripts" && (
-        <div className="space-y-4">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <div className="rounded border border-slate-800 bg-slate-900/70 p-4">
-              <div className="text-xl font-semibold text-white">{transcriptRows.length}</div>
-              <p className="text-xs text-slate-400 mt-1">Ad assets in run</p>
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="rounded-card border border-line bg-panel p-6 space-y-2">
+              <p className="text-[10px] font-mono text-muted uppercase tracking-widest opacity-40">Assets Scanned</p>
+              <div className="text-3xl font-bold text-white">{transcriptRows.length}</div>
             </div>
-            <div className="rounded border border-slate-800 bg-slate-900/70 p-4">
-              <div className="text-xl font-semibold text-emerald-300">{transcriptsWithText}</div>
-              <p className="text-xs text-slate-400 mt-1">Assets with transcript text</p>
+            <div className="rounded-card border border-line bg-panel p-6 space-y-2">
+              <p className="text-[10px] font-mono text-muted uppercase tracking-widest opacity-40">Transcription Coverage</p>
+              <div className="flex items-end gap-3">
+                <div className="text-3xl font-bold text-accent-2">{transcriptsWithText}</div>
+                <div className="text-xs font-mono text-muted/60 mb-1.5 uppercase tracking-widest">Verified</div>
+              </div>
             </div>
-            <div className="rounded border border-slate-800 bg-slate-900/70 p-4">
-              <div className="text-xl font-semibold text-rose-300">
+            <div className="rounded-card border border-line bg-panel p-6 space-y-2">
+              <p className="text-[10px] font-mono text-muted uppercase tracking-widest opacity-40">Missing Transcript</p>
+              <div className="text-3xl font-bold text-danger/80">
                 {Math.max(0, transcriptRows.length - transcriptsWithText)}
               </div>
-              <p className="text-xs text-slate-400 mt-1">Assets missing transcript text</p>
             </div>
           </div>
 
-          <div className="rounded-lg border border-slate-800 bg-slate-900/50 overflow-hidden">
+          <div className="rounded-card border border-line bg-panel overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1200px]">
-                <thead className="bg-slate-800/50 border-b border-slate-700">
-                  <tr>
-                    <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">
+              <table className="w-full min-w-[1200px] border-collapse">
+                <thead>
+                  <tr className="border-b border-line bg-bg-elevated/50">
+                    <th className="px-6 py-4 text-left">
                       <input
                         type="checkbox"
                         checked={allVisibleSelected}
                         onChange={toggleSelectAllVisible}
-                        className="h-4 w-4"
-                        aria-label="Select all visible rows"
+                        className="h-3.5 w-3.5 rounded border-line bg-bg-elevated text-accent focus:ring-accent/20"
+                        aria-label="Select all"
                       />
                     </th>
-                    <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Updated</th>
-                    <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Asset</th>
-                    <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Video URL</th>
-                    <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Transcript</th>
-                    <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Timestamps</th>
-                    <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">AssemblyAI</th>
-                    <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Actions</th>
+                    <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Trace_Time</th>
+                    <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Asset_Identifier</th>
+                    <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Source_Vector</th>
+                    <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Transcript_Payload</th>
+                    <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Temporal_Range</th>
+                    <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Provider_Node</th>
+                    <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800">
+                <tbody className="divide-y divide-line/40">
                   {transcriptRows.map((row) => (
-                    <tr key={row.id} className="align-top">
-                      <td className="px-3 py-2 text-xs text-slate-300">
+                    <tr key={row.id} className="hover:bg-accent/5 transition-colors group align-top">
+                      <td className="px-3 py-2 text-xs text-muted">
                         <input
                           type="checkbox"
                           checked={selectedAssetIds.includes(row.id)}
@@ -781,10 +782,15 @@ export default function ResearchHubDataPage() {
                           aria-label={`Select asset ${row.id}`}
                         />
                       </td>
-                      <td className="px-3 py-2 text-xs text-slate-300">{new Date(row.updatedAt).toLocaleString()}</td>
-                      <td className="px-3 py-2 text-xs text-slate-300">
-                        <div className="font-medium text-slate-200">{row.adName}</div>
-                        <div className="font-mono text-slate-500 mt-1">{row.id}</div>
+                      <td className="px-6 py-4">
+                         <div className="text-[11px] font-mono text-muted uppercase">
+                           {new Date(row.updatedAt).toLocaleDateString()}<br/>
+                           {new Date(row.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                         </div>
+                      </td>
+                      <td className="px-6 py-4 space-y-1">
+                        <div className="text-xs font-bold text-white group-hover:text-accent transition-colors">{row.adName}</div>
+                        <div className="text-[9px] font-mono text-muted uppercase tracking-tight opacity-40">{row.id}</div>
                       </td>
                       <td className="px-3 py-2 text-xs">
                         {row.videoUrl ? (
@@ -792,60 +798,60 @@ export default function ResearchHubDataPage() {
                             href={row.videoUrl}
                             target="_blank"
                             rel="noreferrer"
-                            className="text-sky-400 hover:text-sky-300 underline break-all"
+                            className="text-accent-2 hover:text-accent-2 underline break-all"
                           >
                             {row.videoUrl}
                           </a>
                         ) : (
-                          <span className="text-slate-500">—</span>
+                          <span className="text-muted/60">—</span>
                         )}
                       </td>
-                      <td className="px-3 py-2 text-xs text-slate-200">
+                      <td className="px-3 py-2 text-xs text-white/90">
                         {row.transcriptText ? (
                           <details>
-                            <summary className="cursor-pointer text-sky-400 hover:text-sky-300">
+                            <summary className="cursor-pointer text-accent-2 hover:text-accent-2">
                               View transcript ({row.transcriptText.length} chars)
                             </summary>
                             <p className="mt-2 whitespace-pre-wrap break-words">{row.transcriptText}</p>
                           </details>
                         ) : (
-                          <span className="text-rose-300">No transcript text</span>
+                          <span className="text-accent">No transcript text</span>
                         )}
                       </td>
-                      <td className="px-3 py-2 text-xs text-slate-300">
+                      <td className="px-3 py-2 text-xs text-muted">
                         <div>{row.wordRangeLabel}</div>
-                        <div className="text-slate-500 mt-1">{row.transcriptWords.length} words</div>
+                        <div className="text-muted/60 mt-1">{row.transcriptWords.length} words</div>
                       </td>
-                      <td className="px-3 py-2 text-xs text-slate-300">
+                      <td className="px-3 py-2 text-xs text-muted">
                         <div>Provider: {row.transcriptSource.provider || "—"}</div>
                         <div className="mt-1">Status: {row.transcriptSource.status || "—"}</div>
                         <div className="mt-1">
                           Confidence: {formatConfidence(row.transcriptSource.confidence)}
                         </div>
-                        <div className="mt-1 font-mono text-slate-500 break-all">
+                        <div className="mt-1 font-mono text-muted/60 break-all">
                           Transcript ID: {row.transcriptSource.transcriptId || "—"}
                         </div>
                       </td>
-                      <td className="px-3 py-2 text-xs text-slate-300">
+                      <td className="px-3 py-2 text-xs text-muted">
                         <div className="flex flex-wrap gap-1">
                           <button
                             onClick={() => handleClearAssetData(row.id, "transcript")}
                             disabled={clearingAssetKey === `transcript:${row.id}` || deletingAssetId === row.id}
-                            className="rounded border border-amber-700 px-2 py-1 text-amber-200 hover:bg-amber-900/40 disabled:opacity-50"
+                            className="rounded border border-accent/30 px-2 py-1 text-accent hover:bg-accent/10 disabled:opacity-50"
                           >
                             {clearingAssetKey === `transcript:${row.id}` ? "Clearing..." : "Clear Transcript"}
                           </button>
                           <button
                             onClick={() => handleClearAssetData(row.id, "ocr")}
                             disabled={clearingAssetKey === `ocr:${row.id}` || deletingAssetId === row.id}
-                            className="rounded border border-sky-700 px-2 py-1 text-sky-200 hover:bg-sky-900/40 disabled:opacity-50"
+                            className="rounded border border-accent-2/30 px-2 py-1 text-accent-2 hover:bg-accent-2/10 disabled:opacity-50"
                           >
                             {clearingAssetKey === `ocr:${row.id}` ? "Clearing..." : "Clear OCR"}
                           </button>
                           <button
                             onClick={() => handleDeleteAsset(row.id)}
                             disabled={deletingAssetId === row.id || Boolean(clearingAssetKey)}
-                            className="rounded border border-red-700 px-2 py-1 text-red-200 hover:bg-red-900 disabled:opacity-50"
+                            className="rounded border border-accent/30 px-2 py-1 text-accent hover:bg-accent/20 disabled:opacity-50"
                           >
                             {deletingAssetId === row.id ? "Deleting..." : "Delete"}
                           </button>
@@ -862,114 +868,139 @@ export default function ResearchHubDataPage() {
 
       {!loading && !error && focusJobType === "ad-quality-gate" && (
         <div className="space-y-4">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <div className="rounded border border-slate-800 bg-slate-900/70 p-4">
-              <div className="text-xl font-semibold text-white">{qualityRows.length}</div>
-              <p className="text-xs text-slate-400 mt-1">Ad assets in run</p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="rounded-card border border-line bg-panel p-6 space-y-2">
+              <p className="text-[10px] font-mono text-muted uppercase tracking-widest opacity-40">Assets Evaluated</p>
+              <div className="text-3xl font-bold text-white">{qualityRows.length}</div>
             </div>
-            <div className="rounded border border-slate-800 bg-slate-900/70 p-4">
-              <div className="text-xl font-semibold text-emerald-300">{qualityViable}</div>
-              <p className="text-xs text-slate-400 mt-1">Viable ads</p>
+            <div className="rounded-card border border-line bg-panel p-6 space-y-2">
+              <p className="text-[10px] font-mono text-muted uppercase tracking-widest opacity-40">Approved Ads</p>
+              <div className="flex items-end gap-3">
+                <div className="text-3xl font-bold text-success">{qualityViable}</div>
+                <div className="text-xs font-mono text-muted/60 mb-1.5 uppercase tracking-widest">Verified</div>
+              </div>
             </div>
-            <div className="rounded border border-slate-800 bg-slate-900/70 p-4">
-              <div className="text-xl font-semibold text-rose-300">{qualityRejected}</div>
-              <p className="text-xs text-slate-400 mt-1">Rejected ads</p>
+            <div className="rounded-card border border-line bg-panel p-6 space-y-2">
+              <p className="text-[10px] font-mono text-muted uppercase tracking-widest opacity-40">Rejected Nodes</p>
+              <div className="text-3xl font-bold text-danger/80">{qualityRejected}</div>
             </div>
           </div>
 
-          <div className="rounded border border-slate-800 bg-slate-900/70 p-4 text-xs text-slate-400">
-            Assessed assets: <span className="text-slate-200">{qualityAssessed}</span>
+          <div className="flex items-center gap-2 text-[10px] font-mono text-muted/60 uppercase tracking-widest">
+            <div className="w-1 h-1 rounded-full bg-accent animate-pulse" />
+            Assessed Assets: <span className="text-white ml-1">{qualityAssessed}</span>
           </div>
 
-          <div className="rounded-lg border border-slate-800 bg-slate-900/50 overflow-hidden">
+          <div className="rounded-card border border-line bg-panel overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1200px]">
-                <thead className="bg-slate-800/50 border-b border-slate-700">
-                  <tr>
-                    <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">
+              <table className="w-full min-w-[1200px] border-collapse">
+                <thead>
+                  <tr className="border-b border-line bg-bg-elevated/50">
+                    <th className="px-6 py-4 text-left">
                       <input
                         type="checkbox"
                         checked={allVisibleSelected}
                         onChange={toggleSelectAllVisible}
-                        className="h-4 w-4"
-                        aria-label="Select all visible rows"
+                        className="h-3.5 w-3.5 rounded border-line bg-bg-elevated text-accent focus:ring-accent/20"
+                        aria-label="Select all"
                       />
                     </th>
-                    <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Updated</th>
-                    <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Asset ID</th>
-                    <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Video URL</th>
-                    <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Swipe</th>
-                    <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Assessed</th>
-                    <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Viable</th>
-                    <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Raw Viable</th>
-                    <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Issue</th>
-                    <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Confidence</th>
-                    <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Reason</th>
-                    <th className="px-3 py-2 text-left text-xs text-slate-400 uppercase">Actions</th>
+                    <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Trace_Time</th>
+                    <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Asset_ID</th>
+                    <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Source</th>
+                    <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Swipe</th>
+                    <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Verified</th>
+                    <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Viable</th>
+                    <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Raw</th>
+                    <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Issue</th>
+                    <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Confidence</th>
+                    <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Reasoning</th>
+                    <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800">
+                <tbody className="divide-y divide-line/40">
                   {qualityRows.map((row) => (
-                    <tr key={row.id} className="align-top">
-                      <td className="px-3 py-2 text-xs text-slate-300">
+                    <tr key={row.id} className="hover:bg-accent/5 transition-colors group align-top">
+                      <td className="px-6 py-4">
                         <input
                           type="checkbox"
                           checked={selectedAssetIds.includes(row.id)}
                           onChange={() => toggleSelectAsset(row.id)}
-                          className="h-4 w-4"
-                          aria-label={`Select asset ${row.id}`}
+                          className="h-3.5 w-3.5 rounded border-line bg-bg-elevated text-accent focus:ring-accent/20"
+                          aria-label={`Select ${row.id}`}
                         />
                       </td>
-                      <td className="px-3 py-2 text-xs text-slate-300">{new Date(row.updatedAt).toLocaleString()}</td>
-                      <td className="px-3 py-2 text-xs font-mono text-slate-300">{row.id}</td>
-                      <td className="px-3 py-2 text-xs">
+                      <td className="px-6 py-4">
+                         <div className="text-[11px] font-mono text-muted uppercase">
+                           {new Date(row.updatedAt).toLocaleDateString()}<br/>
+                           {new Date(row.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                         </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="text-[10px] font-mono text-white opacity-80 uppercase tracking-tight">{row.id}</div>
+                      </td>
+                      <td className="px-6 py-4">
                         {row.videoUrl ? (
                           <a
                             href={row.videoUrl}
                             target="_blank"
                             rel="noreferrer"
-                            className="text-sky-400 hover:text-sky-300 underline break-all"
+                            className="text-[11px] font-mono text-accent-2 hover:text-white underline transition-colors break-all opacity-80"
                           >
-                            {row.videoUrl}
+                            [Link_External]
                           </a>
                         ) : (
-                          <span className="text-slate-500">—</span>
+                          <span className="text-muted/40">—</span>
                         )}
                       </td>
-                      <td className="px-3 py-2 text-xs text-slate-300">
+                      <td className="px-6 py-4">
                         {row.isSwipeFile ? (
-                          <span className="inline-flex rounded bg-amber-500/20 px-2 py-0.5 text-[11px] text-amber-300">
-                            Swipe File
-                          </span>
+                          <div className="status-chip info !text-[8px] !px-1.5 !py-0 !h-4 uppercase tracking-widest">Swipe</div>
                         ) : (
-                          "—"
+                          <span className="text-muted/20">—</span>
                         )}
                       </td>
-                      <td className="px-3 py-2 text-xs text-slate-300">
-                        {row.assessedAt ? new Date(row.assessedAt).toLocaleString() : "—"}
+                      <td className="px-6 py-4">
+                        <div className="text-[10px] font-mono text-muted/60 uppercase">
+                          {row.assessedAt ? new Date(row.assessedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "—"}
+                        </div>
                       </td>
-                      <td className="px-3 py-2 text-xs text-slate-300">
-                        {row.viable === null ? "—" : row.viable ? "Yes" : "No"}
+                      <td className="px-6 py-4">
+                        <div className={`status-chip !text-[8px] !px-1.5 !py-0 !h-4 ${
+                          row.viable === true ? 'success' : row.viable === false ? 'danger' : 'subtle'
+                        }`}>
+                          {row.viable === true ? 'YES' : row.viable === false ? 'NO' : 'NULL'}
+                        </div>
                       </td>
-                      <td className="px-3 py-2 text-xs text-slate-300">
-                        {row.rawViable === null ? "—" : row.rawViable ? "Yes" : "No"}
+                      <td className="px-6 py-4 opacity-40">
+                        <div className={`status-chip !text-[8px] !px-1.5 !py-0 !h-4 ${
+                          row.rawViable === true ? 'success' : row.rawViable === false ? 'danger' : 'subtle'
+                        }`}>
+                          {row.rawViable === true ? 'YES' : row.rawViable === false ? 'NO' : 'NULL'}
+                        </div>
                       </td>
-                      <td className="px-3 py-2 text-xs text-slate-300">{row.issue || "—"}</td>
-                      <td className="px-3 py-2 text-xs text-slate-300">
-                        {row.confidence === null
-                          ? "—"
-                          : `${Math.round(row.confidence)}/${row.confidenceThreshold ?? "—"}`}
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-[11px] font-mono text-white opacity-80 uppercase tracking-tight">
+                          {row.issue || "NO_ISSUE"}
+                        </div>
                       </td>
-                      <td className="px-3 py-2 text-xs text-slate-300 whitespace-pre-wrap break-words">
-                        {row.reason || "—"}
+                      <td className="px-6 py-4">
+                        <div className="text-[11px] font-mono text-accent-2/80">
+                          {row.confidence === null ? "—" : `${Math.round(row.confidence)}/${row.confidenceThreshold ?? "80"}`}
+                        </div>
                       </td>
-                      <td className="px-3 py-2 text-xs text-slate-300">
+                      <td className="px-6 py-4">
+                        <div className="text-xs text-muted leading-relaxed line-clamp-2 max-w-xs">
+                          {row.reason || <span className="opacity-20 italic font-mono uppercase text-[10px]">No analysis provided</span>}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
                         <button
                           onClick={() => handleDeleteAsset(row.id)}
                           disabled={deletingAssetId === row.id}
-                          className="rounded border border-red-700 px-2 py-1 text-red-200 hover:bg-red-900 disabled:opacity-50"
+                          className="text-[9px] font-mono text-muted hover:text-danger uppercase tracking-widest transition-colors text-left"
                         >
-                          {deletingAssetId === row.id ? "Deleting..." : "Delete"}
+                          {deletingAssetId === row.id ? '[Purging...]' : '[Delete_Node]'}
                         </button>
                       </td>
                     </tr>
@@ -984,54 +1015,62 @@ export default function ResearchHubDataPage() {
       {!loading && !error && focusJobType === "pattern-analysis" && (
         <div className="space-y-4">
           {!patternJob ? (
-            <div className="rounded border border-slate-700 bg-slate-900/60 p-4 text-slate-300 text-sm">
-              No pattern analysis result found for this run.
+            <div className="rounded-card border border-line bg-panel p-8 text-center space-y-4 font-mono">
+              <p className="text-muted text-xs uppercase tracking-widest opacity-40">No pattern analysis result found for this run.</p>
             </div>
           ) : (
-            <>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <div className="rounded border border-slate-800 bg-slate-900/70 p-4">
-                  <div className="text-xl font-semibold text-white">
+            <div className="space-y-8">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="rounded-card border border-line bg-panel p-6 space-y-2">
+                  <p className="text-[10px] font-mono text-muted uppercase tracking-widest opacity-40">Ads Synthesized</p>
+                  <div className="text-3xl font-bold text-white">
                     {asNum(patternResult.adsAnalyzed) ?? 0}
                   </div>
-                  <p className="text-xs text-slate-400 mt-1">Ads analyzed</p>
                 </div>
-                <div className="rounded border border-slate-800 bg-slate-900/70 p-4">
-                  <div className="text-xl font-semibold text-emerald-300">
-                    {Array.isArray(asObj(patternResult.patterns).hookPatterns)
-                      ? asObj(patternResult.patterns).hookPatterns.length
-                      : 0}
+                <div className="rounded-card border border-line bg-panel p-6 space-y-2">
+                  <p className="text-[10px] font-mono text-muted uppercase tracking-widest opacity-40">Hook Vectors</p>
+                  <div className="flex items-end gap-3">
+                    <div className="text-3xl font-bold text-accent">
+                      {Array.isArray(asObj(patternResult.patterns).hookPatterns)
+                        ? asObj(patternResult.patterns).hookPatterns.length
+                        : 0}
+                    </div>
+                    <div className="text-xs font-mono text-muted/60 mb-1.5 uppercase tracking-widest">Active</div>
                   </div>
-                  <p className="text-xs text-slate-400 mt-1">Hook patterns</p>
                 </div>
-                <div className="rounded border border-slate-800 bg-slate-900/70 p-4">
-                  <div className="text-xl font-semibold text-sky-300">
+                <div className="rounded-card border border-line bg-panel p-6 space-y-2">
+                  <p className="text-[10px] font-mono text-muted uppercase tracking-widest opacity-40">Logic Clusters</p>
+                  <div className="text-3xl font-bold text-accent-2">
                     {Array.isArray(asObj(patternResult.patterns).clusters)
                       ? asObj(patternResult.patterns).clusters.length
                       : 0}
                   </div>
-                  <p className="text-xs text-slate-400 mt-1">Creative clusters</p>
                 </div>
               </div>
 
-              <div className="rounded border border-slate-800 bg-slate-900/70 p-4">
-                <div className="text-xs text-slate-400 mb-2">
-                  Job <span className="font-mono text-slate-300">{patternJob.id}</span>
+              <div className="rounded-card border border-line bg-panel p-8 space-y-6 shadow-panel backdrop-blur-panel">
+                <div className="flex items-center justify-between border-b border-line/40 pb-4">
+                   <p className="card-label font-bold">Analysis Summary</p>
+                   <div className="text-[10px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">
+                     Job ID: <span className="text-accent-2">{patternJob.id}</span>
+                   </div>
                 </div>
-                <p className="text-sm text-slate-200">
+                <p className="text-sm text-muted leading-relaxed font-medium">
                   {typeof patternResult.summary === "string" && patternResult.summary.trim().length > 0
                     ? patternResult.summary
                     : "No summary available."}
                 </p>
               </div>
 
-              <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-4">
-                <h2 className="text-sm font-semibold text-slate-200 mb-2">Raw Pattern Output</h2>
-                <pre className="max-h-[520px] overflow-auto whitespace-pre-wrap break-words text-xs text-slate-300">
-                  {JSON.stringify(patternResult, null, 2)}
-                </pre>
+              <div className="rounded-card border border-line bg-panel p-8 space-y-4">
+                <p className="text-[10px] font-mono text-muted uppercase tracking-widest opacity-40 font-bold">Raw Analysis Output</p>
+                <div className="rounded bg-bg/50 p-4 overflow-hidden">
+                  <pre className="max-h-[300px] overflow-auto whitespace-pre-wrap break-words text-[10px] font-mono text-muted/60 scrollbar-thin scrollbar-thumb-line">
+                    {JSON.stringify(patternResult, null, 2)}
+                  </pre>
+                </div>
               </div>
-            </>
+            </div>
           )}
         </div>
       )}
@@ -1041,7 +1080,7 @@ export default function ResearchHubDataPage() {
         focusJobType !== "ad-transcripts" &&
         focusJobType !== "ad-quality-gate" &&
         focusJobType !== "pattern-analysis" && (
-        <div className="rounded border border-amber-500/40 bg-amber-500/10 p-4 text-amber-200 text-sm">
+        <div className="rounded border border-accent/30 bg-accent/10 p-4 text-accent text-sm">
           jobType=<span className="font-mono">{focusJobType ?? rawJobType}</span> is not yet implemented on this
           viewer. Use ad-assets run pages for collection/OCR data.
         </div>

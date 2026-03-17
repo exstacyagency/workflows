@@ -19,9 +19,9 @@ export default function TopBar() {
   ];
 
   return (
-    <header className="h-14 px-5 border-b border-slate-800 bg-slate-950/90 backdrop-blur flex items-center justify-between">
+    <header className="h-14 px-5 border-b border-line bg-black/66 backdrop-blur-panel sticky top-0 z-20 flex items-center justify-between">
       {/* Breadcrumbs */}
-      <div className="flex items-center gap-1 text-xs text-slate-400">
+      <div className="flex items-center gap-1 text-xs text-muted">
         {crumbs.map((crumb, idx) => {
           const isLast = idx === crumbs.length - 1;
           return (
@@ -29,24 +29,24 @@ export default function TopBar() {
               {idx === 0 ? (
                 <Link
                   href={crumb.href}
-                  className="hover:text-slate-100 transition-colors"
+                  className="hover:text-white transition-colors"
                 >
                   {crumb.label}
                 </Link>
               ) : isLast ? (
-                <span className="capitalize text-slate-200">
+                <span className="capitalize text-white">
                   {crumb.label}
                 </span>
               ) : (
                 <Link
                   href={crumb.href}
-                  className="hover:text-slate-100 transition-colors capitalize"
+                  className="hover:text-white transition-colors capitalize"
                 >
                   {crumb.label}
                 </Link>
               )}
               {idx < crumbs.length - 1 && (
-                <span className="text-slate-600">/</span>
+                <span className="opacity-30">/</span>
               )}
             </span>
           );
@@ -54,11 +54,11 @@ export default function TopBar() {
       </div>
 
       {/* Right side tools */}
-      <div className="flex items-center gap-3 text-xs text-slate-400">
-        <span className="hidden md:inline-block text-slate-500">
+      <div className="flex items-center gap-3 text-xs text-muted">
+        <span className="hidden md:inline-block">
           Command Palette
         </span>
-        <span className="px-2 py-1 rounded-md border border-slate-700 bg-slate-900 font-mono text-[11px]">
+        <span className="px-2 py-1 rounded-md border border-line bg-bg-elevated font-mono text-[11px] text-accent-2">
           ⌘K
         </span>
       </div>

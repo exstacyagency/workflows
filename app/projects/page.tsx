@@ -82,17 +82,17 @@ export default function ProjectsPage() {
   return (
     <div className="px-6 py-6 space-y-6">
       {/* Header */}
-      <section className="rounded-xl border border-slate-800 bg-slate-900/80 p-5 flex flex-col gap-2">
+      <section className="rounded-card border border-line bg-panel p-6 flex flex-col gap-2 shadow-panel backdrop-blur-panel">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-semibold text-slate-50">Projects</h1>
-            <p className="text-sm text-slate-300 mt-1">
+            <h1 className="text-2xl font-semibold text-white tracking-tight">Projects</h1>
+            <p className="text-sm text-muted mt-1 italic max-w-2xl">
               Create and manage FrameForge AI productions. Each project flows through the full research → script → storyboard → video pipeline.
             </p>
           </div>
         </div>
         {error && (
-          <p className="text-xs text-red-400">
+          <p className="text-xs text-danger font-mono">
             {error}
           </p>
         )}
@@ -102,28 +102,28 @@ export default function ProjectsPage() {
       </section>
 
       {/* New Project form */}
-      <section className="rounded-xl border border-slate-800 bg-slate-900/80 p-4 space-y-3">
-        <h2 className="text-sm font-semibold text-slate-100">
+      <section className="rounded-card border border-line bg-panel p-5 space-y-4 shadow-panel backdrop-blur-panel">
+        <h2 className="text-sm font-semibold text-white tracking-tight uppercase">
           New Project
         </h2>
         <form onSubmit={handleCreate} className="space-y-3">
-          <div className="space-y-1">
-            <label className="block text-xs font-medium text-slate-300">
-              Name <span className="text-red-400">*</span>
+          <div className="space-y-2">
+            <label className="card-label">
+              Name <span className="text-danger">*</span>
             </label>
             <input
-              className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+              className="w-full rounded-pill border border-line bg-[rgba(255,255,255,0.03)] px-4 py-2 text-sm text-white placeholder:text-muted/40 outline-none focus:border-accent/40 transition-colors"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. ClearGlow Acne Serum Launch"
             />
           </div>
-          <div className="space-y-1">
-            <label className="block text-xs font-medium text-slate-300">
+          <div className="space-y-2">
+            <label className="card-label">
               Description
             </label>
             <textarea
-              className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-sky-500 min-h-[64px]"
+              className="w-full rounded-card border border-line bg-[rgba(255,255,255,0.03)] px-4 py-2 text-sm text-white placeholder:text-muted/40 outline-none focus:border-accent/40 transition-colors min-h-[80px]"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Optional short description to remind you what this project is about."
@@ -132,7 +132,7 @@ export default function ProjectsPage() {
           <button
             type="submit"
             disabled={creating}
-            className="inline-flex items-center px-3 py-1.5 rounded-md bg-sky-500 hover:bg-sky-400 disabled:opacity-50 text-xs font-medium"
+            className="btn btn-primary !min-h-[36px] px-6 text-xs font-bold shadow-[0_0_15px_rgba(232,209,122,0.15)]"
           >
             {creating ? "Creating…" : "Create Project"}
           </button>
@@ -140,21 +140,21 @@ export default function ProjectsPage() {
       </section>
 
       {/* Projects list */}
-      <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-4 space-y-3">
+      <section className="rounded-card border border-line bg-panel p-5 space-y-4 shadow-panel backdrop-blur-panel">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-slate-100">
+          <h2 className="text-sm font-semibold text-white tracking-tight uppercase">
             Existing Projects
           </h2>
           <button
             onClick={loadProjects}
             disabled={loading}
-            className="text-xs px-3 py-1 rounded-md border border-slate-700 hover:bg-slate-800 disabled:opacity-50"
+            className="btn btn-secondary !min-h-[32px] px-4 text-[10px]"
           >
             {loading ? "Refreshing…" : "Refresh"}
           </button>
         </div>
         {projects.length === 0 && !loading && (
-          <p className="text-xs text-slate-400">
+          <p className="text-sm text-muted italic text-center py-6 border border-dashed border-line rounded-card">
             No projects yet. Create your first project using the form above.
           </p>
         )}
@@ -162,25 +162,25 @@ export default function ProjectsPage() {
           {projects.map((project) => (
             <div
               key={project.id}
-              className="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950/70 px-4 py-3"
+              className="flex items-center justify-between rounded-card border border-line bg-[rgba(255,255,255,0.03)] px-5 py-4 transition-colors hover:bg-bg-elevated/70"
             >
-              <div className="space-y-1">
-                <div className="text-sm font-medium text-slate-50">
+              <div className="space-y-1.5">
+                <div className="text-sm font-bold text-white tracking-tight">
                   {project.name}
                 </div>
                 {project.description && (
-                  <div className="text-xs text-slate-400">
+                  <div className="text-xs text-muted/80 italic">
                     {project.description}
                   </div>
                 )}
-                <div className="text-[11px] text-slate-500">
-                  ID: <span className="font-mono">{project.id}</span>
+                <div className="text-[10px] font-mono text-accent-2/40 uppercase tracking-widest">
+                  ID: {project.id}
                 </div>
               </div>
               <div className="flex items-center gap-2">
                 <Link
                   href={`/projects/${project.id}`}
-                  className="text-xs px-3 py-1.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-50"
+                  className="inline-flex items-center rounded-pill border border-line bg-transparent px-4 py-2 text-[11px] font-bold uppercase tracking-wider text-muted transition-all hover:bg-bg-elevated hover:text-white"
                 >
                   Open
                 </Link>
