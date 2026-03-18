@@ -119,6 +119,15 @@ export default async function ProjectDashboardPage({ params }: Params) {
 
   return (
     <div className="app-shell space-y-6">
+      <div>
+        <a
+          href="/studio"
+          className="text-[11px] font-mono text-muted hover:text-white inline-block uppercase tracking-wider transition-colors"
+        >
+          ← Back to Studio
+        </a>
+      </div>
+
       <section className="app-surface app-header">
         <div>
           <span className="app-kicker">Project Overview</span>

@@ -3901,7 +3901,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                   </div>
                 ) : (
                   <p className="text-sm text-danger/80 font-mono uppercase tracking-widest py-4 border border-danger/20 bg-danger/5 rounded-card text-center">
-                    NO_PRODUCTS_ADDED
+                    No Products Added
                   </p>
                 )}
               </div>

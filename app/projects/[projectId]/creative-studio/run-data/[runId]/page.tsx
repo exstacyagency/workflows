@@ -306,7 +306,7 @@ export default function CreativeRunDataPage() {
                 </tr>
               ) : (
                 jobs.map((job) => (
-                  <tr key={job.id} className="group bg-panel-row transition-colors">
+                  <tr key={job.id} className="bg-panel-row">
                     <td className="p-5">
                       <input
                         type="checkbox"
@@ -330,9 +330,6 @@ export default function CreativeRunDataPage() {
                             </span>
                           ) : null}
                         </div>
-                        <span className="text-[9px] font-mono uppercase tracking-widest text-muted opacity-40">
-                          {job.type}
-                        </span>
                       </div>
                     </td>
                     <td className="p-5">
@@ -354,7 +351,7 @@ export default function CreativeRunDataPage() {
                     <td className="p-5 font-mono text-[10px] uppercase text-muted">
                       {formatDate(job.updatedAt)}
                     </td>
-                    <td className="max-w-[100px] cursor-default truncate p-5 text-[10px] font-mono text-accent-2/40 transition-all hover:max-w-none">
+                    <td className="p-5 text-[10px] font-mono text-accent-2/40">
                       {job.id}
                     </td>
                   </tr>

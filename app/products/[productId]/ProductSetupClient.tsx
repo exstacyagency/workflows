@@ -545,7 +545,7 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
             <p className="text-[11px] uppercase tracking-widest text-muted/60">Product Setup</p>
             <h1 className="text-2xl font-semibold text-white">{product.name}</h1>
             <p className="text-sm text-muted/80 mt-1">
-              Select a character archetype and run the 3-stage pipeline to create a reusable Sora character.
+              Create your own custom character.
             </p>
           </div>
           <Link
