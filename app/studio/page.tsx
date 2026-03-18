@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import StudioHeader from "./StudioHeader";
 import WhoAmI from "./WhoAmI";
+import { EmptyState, SectionCard } from "@/components/ui";
 
 type Project = {
   id: string;
@@ -103,7 +104,7 @@ export default function StudioHomePage() {
     <>
       <StudioHeader />
       <div className="px-6 py-6 space-y-8">
-      <section className="rounded-xl border border-line bg-panel p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <SectionCard className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 rounded-xl" padding="sm">
         <div>
           <h1 className="text-2xl font-semibold text-white">
             Victora Studio
@@ -116,7 +117,7 @@ export default function StudioHomePage() {
         <div className="flex flex-col items-start md:items-end gap-2">
           {lastProject ? (
             <>
-              <div className="text-[11px] uppercase tracking-wide text-muted/60">
+              <div className="text-body-sm uppercase tracking-wide text-muted">
                 Resume Project
               </div>
               <div className="text-sm font-medium text-white">
@@ -124,28 +125,28 @@ export default function StudioHomePage() {
               </div>
               <Link
                 href={`/projects/${lastProject.id}`}
-                className="mt-1 inline-flex items-center px-3 py-1.5 rounded-pill bg-accent hover:bg-accent/90 text-bg text-xs font-medium"
+                className="mt-1 btn btn-primary !min-h-[32px] px-4 text-label"
               >
                 Open Project
               </Link>
             </>
           ) : (
-            <div className="text-sm text-muted/80">
+            <div className="text-sm text-muted">
               No projects yet. Once you add projects, you’ll be able to resume
               them from here.
             </div>
           )}
         </div>
-      </section>
+      </SectionCard>
 
-      <section className="rounded-xl border border-line bg-panel p-4 space-y-3">
+      <SectionCard className="space-y-3 rounded-xl" padding="sm">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-white">Projects</h2>
           <div className="flex items-center gap-2">
             <button
               onClick={handleStartCreateProject}
               disabled={creatingProject}
-              className="inline-flex items-center px-3 py-1.5 rounded-pill bg-accent hover:bg-accent/90 text-bg disabled:opacity-50 disabled:cursor-not-allowed text-xs font-medium"
+              className="btn btn-primary !min-h-[32px] px-4 text-label disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {creatingProject ? "Creating…" : "Create Project"}
             </button>
@@ -162,7 +163,7 @@ export default function StudioHomePage() {
           <div className="rounded-lg border border-line bg-panel p-3 space-y-3">
             <label
               htmlFor="project-name"
-              className="block text-xs font-medium text-white/90"
+              className="block text-xs font-medium text-white"
             >
               Project name
             </label>
@@ -179,14 +180,14 @@ export default function StudioHomePage() {
               <button
                 onClick={handleConfirmCreateProject}
                 disabled={creatingProject}
-                className="inline-flex items-center px-3 py-1.5 rounded-pill bg-accent hover:bg-accent/90 text-bg disabled:opacity-50 disabled:cursor-not-allowed text-xs font-medium"
+                className="btn btn-primary !min-h-[32px] px-4 text-label disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {creatingProject ? "Creating…" : "Confirm"}
               </button>
               <button
                 onClick={handleCancelCreateProject}
                 disabled={creatingProject}
-                className="inline-flex items-center px-3 py-1.5 rounded-md border border-line hover:bg-bg-elevated disabled:opacity-50 text-xs font-medium"
+                className="btn btn-secondary !min-h-[32px] px-4 text-label disabled:opacity-50"
               >
                 Cancel
               </button>
@@ -196,10 +197,10 @@ export default function StudioHomePage() {
         )}
         {error && <p className="text-xs text-accent">{error}</p>}
         {projects.length === 0 && !loading && (
-          <p className="text-xs text-muted/80">
-            No projects found. Use your existing API or a future UI form to
-            create projects.
-          </p>
+          <EmptyState
+            title="No Projects Found"
+            description="Use your existing API or a future UI form to create projects."
+          />
         )}
         <div className="space-y-2">
           {projects.map((project) => (
@@ -212,11 +213,11 @@ export default function StudioHomePage() {
                   {project.name}
                 </div>
                 {project.description && (
-                  <div className="text-xs text-muted/80">
+                  <div className="text-xs text-muted">
                     {project.description}
                   </div>
                 )}
-                <div className="text-[11px] text-muted/60">
+                <div className="text-body-sm text-muted">
                   ID: <span className="font-mono">{project.id}</span>
                 </div>
               </div>
@@ -231,7 +232,7 @@ export default function StudioHomePage() {
             </div>
           ))}
         </div>
-      </section>
+      </SectionCard>
     </div>
     </>
   );

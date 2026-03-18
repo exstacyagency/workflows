@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import Link from "next/link";
+import { PageHeader, SectionCard, StatusChip } from "@/components/ui";
 import { JobStatus, JobType } from "@prisma/client";
 
 type CreativeJob = {
@@ -181,7 +181,7 @@ export default function CreativeRunDataPage() {
       <div className="min-h-screen bg-bg text-white px-8 py-8">
         <div className="flex min-h-[60vh] flex-col items-center justify-center space-y-4">
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent/20 border-t-accent" />
-          <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-muted animate-pulse">
+          <p className="text-label font-mono uppercase tracking-[0.3em] text-muted animate-pulse">
             Loading run data...
           </p>
         </div>
@@ -192,45 +192,32 @@ export default function CreativeRunDataPage() {
   return (
     <div className="min-h-screen bg-bg text-white">
       <div className="border-b border-line bg-panel px-8 py-6 backdrop-blur-md">
-        <div className="flex items-center justify-between gap-6">
-          <div className="space-y-4">
-            <Link
-              href={`/projects/${projectId}/creative-studio`}
-              className="inline-block text-[11px] font-mono uppercase tracking-widest text-muted transition-colors hover:text-white"
-            >
-              ← Back to Creative Studio
-            </Link>
-            <div className="flex items-center gap-4">
-              <h1 className="text-4xl font-bold tracking-tight text-white">Run Overview</h1>
-              <div className="status-chip subtle text-[9px] uppercase tracking-widest">
-                {runId.substring(0, 8)}
-              </div>
-            </div>
-            <p className="text-xs font-mono uppercase tracking-widest text-muted opacity-60">
-              Run ID: <span className="text-accent">{runId}</span>
-              <span className="mx-3 opacity-20">|</span>
-              Jobs: <span className="text-accent-2">{jobs.length} Active</span>
-            </p>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => void loadJobs()}
-              disabled={loading || deleting}
-              className="btn btn-secondary !min-h-[40px] px-6 text-[10px] font-bold uppercase tracking-widest"
-            >
-              Refresh
-            </button>
-          </div>
-        </div>
+        <PageHeader
+          backHref={`/projects/${projectId}/creative-studio`}
+          backLabel="Back to Creative Studio"
+          title="Run Overview"
+          description={`Run ID: ${runId} | Jobs: ${jobs.length} Active`}
+          actions={
+            <>
+              <StatusChip variant="subtle">{runId.substring(0, 8)}</StatusChip>
+              <button
+                onClick={() => void loadJobs()}
+                disabled={loading || deleting}
+                className="btn btn-secondary !min-h-[40px] px-6 text-label font-bold uppercase tracking-widest"
+              >
+                Refresh
+              </button>
+            </>
+          }
+        />
       </div>
 
       <div className="mx-auto max-w-[1200px] space-y-8 px-8 py-10">
-        <div className="flex flex-wrap items-center gap-4 rounded-card border border-line bg-panel p-6 backdrop-blur-panel">
+        <SectionCard className="flex flex-wrap items-center gap-4" padding="md">
           <button
             onClick={toggleAll}
             disabled={jobs.length === 0}
-            className="rounded-pill border border-line bg-bg-elevated px-4 py-2 text-[10px] font-mono uppercase tracking-widest text-muted transition-colors hover:text-white"
+            className="rounded-pill border border-line bg-bg-elevated px-4 py-2 text-label font-mono uppercase tracking-widest text-muted transition-colors hover:text-white"
           >
             {allSelected ? "Clear Selection" : "Select All Jobs"}
           </button>
@@ -240,7 +227,7 @@ export default function CreativeRunDataPage() {
           <button
             onClick={() => void deleteJobs("selected")}
             disabled={selectedIds.length === 0 || deleting}
-            className="rounded-pill border border-danger/20 bg-danger/5 px-4 py-2 text-[10px] font-mono font-bold uppercase tracking-widest text-danger transition-all hover:bg-danger/10"
+            className="rounded-pill border border-danger/20 bg-danger/5 px-4 py-2 text-label font-mono font-bold uppercase tracking-widest text-danger transition-all hover:bg-danger/10"
           >
             Delete Selected ({selectedIds.length})
           </button>
@@ -248,21 +235,19 @@ export default function CreativeRunDataPage() {
           <button
             onClick={() => void deleteJobs("all")}
             disabled={jobs.length === 0 || deleting}
-            className="rounded-pill border border-danger/40 bg-danger/10 px-4 py-2 text-[10px] font-mono font-bold uppercase tracking-widest text-danger transition-all hover:bg-danger/20"
+            className="rounded-pill border border-danger/40 bg-danger/10 px-4 py-2 text-label font-mono font-bold uppercase tracking-widest text-danger transition-all hover:bg-danger/20"
           >
             Delete All Jobs
           </button>
 
           {error && (
-            <div className="ml-4 rounded border border-danger/20 bg-danger/10 px-3 py-1.5 text-[10px] font-mono uppercase text-danger">
-              {error}
-            </div>
+            <StatusChip variant="danger" className="ml-4">{error}</StatusChip>
           )}
-        </div>
+        </SectionCard>
 
-        <div className="overflow-hidden rounded-card border border-line bg-panel shadow-panel">
+        <SectionCard padding="none" className="overflow-hidden">
           <div className="border-b border-line bg-bg-elevated px-6 py-3">
-            <h2 className="text-[10px] font-mono font-bold uppercase tracking-[0.2em] text-accent">
+            <h2 className="text-label font-mono font-bold uppercase tracking-[0.2em] text-accent">
               Run Jobs
             </h2>
           </div>
@@ -277,19 +262,19 @@ export default function CreativeRunDataPage() {
                     className="h-3.5 w-3.5 cursor-pointer rounded-sm border-line bg-panel transition-all checked:border-accent-2 checked:bg-accent-2"
                   />
                 </th>
-                <th className="p-5 text-[9px] font-mono uppercase tracking-[0.2em] text-accent">
+                <th className="p-5 text-label-sm font-mono uppercase tracking-[0.2em] text-accent">
                   Job Type
                 </th>
-                <th className="w-32 p-5 text-[9px] font-mono uppercase tracking-[0.2em] text-muted">
+                <th className="w-32 p-5 text-label-sm font-mono uppercase tracking-[0.2em] text-muted">
                   Status
                 </th>
-                <th className="w-48 p-5 text-[9px] font-mono uppercase tracking-[0.2em] text-muted">
+                <th className="w-48 p-5 text-label-sm font-mono uppercase tracking-[0.2em] text-muted">
                   Created
                 </th>
-                <th className="w-48 p-5 text-[9px] font-mono uppercase tracking-[0.2em] text-muted">
+                <th className="w-48 p-5 text-label-sm font-mono uppercase tracking-[0.2em] text-muted">
                   Updated
                 </th>
-                <th className="w-40 p-5 text-[9px] font-mono uppercase tracking-[0.2em] text-muted">
+                <th className="w-40 p-5 text-label-sm font-mono uppercase tracking-[0.2em] text-muted">
                   Job ID
                 </th>
               </tr>
@@ -299,7 +284,7 @@ export default function CreativeRunDataPage() {
                 <tr>
                   <td
                     colSpan={6}
-                    className="p-10 text-center text-[10px] font-mono uppercase tracking-widest text-muted opacity-40"
+                    className="p-10 text-center text-label font-mono uppercase tracking-widest text-muted opacity-40"
                   >
                     No jobs found for this run
                   </td>
@@ -319,13 +304,13 @@ export default function CreativeRunDataPage() {
                     <td className="p-5">
                       <div className="flex flex-col gap-1">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-[14px] font-black leading-none tracking-tight text-accent">
+                          <span className="text-sm font-black leading-none tracking-tight text-accent">
                             {typeof job?.payload?.jobLabel === "string" && String(job.payload.jobLabel).trim()
                               ? String(job.payload.jobLabel).trim()
                               : CREATIVE_JOB_LABELS[job.type] ?? job.type}
                           </span>
                           {getSceneLabel(job) ? (
-                            <span className="text-[9px] font-mono uppercase tracking-widest text-muted opacity-50">
+                            <span className="text-label-sm font-mono uppercase tracking-widest text-muted opacity-50">
                               {getSceneLabel(job)}
                             </span>
                           ) : null}
@@ -333,25 +318,26 @@ export default function CreativeRunDataPage() {
                       </div>
                     </td>
                     <td className="p-5">
-                      <span
-                        className={`status-chip !py-0.5 !text-[8.5px] font-bold uppercase tracking-tighter ${
+                      <StatusChip
+                        variant={
                           job.status === "COMPLETED"
                             ? "success"
                             : job.status === "FAILED"
                               ? "danger"
                               : "warning"
-                        }`}
+                        }
+                        className="!py-0.5 !text-label-xs tracking-tighter"
                       >
                         {job.status}
-                      </span>
+                      </StatusChip>
                     </td>
-                    <td className="p-5 font-mono text-[10px] uppercase text-muted">
+                    <td className="p-5 font-mono text-label uppercase text-muted">
                       {formatDate(job.createdAt)}
                     </td>
-                    <td className="p-5 font-mono text-[10px] uppercase text-muted">
+                    <td className="p-5 font-mono text-label uppercase text-muted">
                       {formatDate(job.updatedAt)}
                     </td>
-                    <td className="p-5 text-[10px] font-mono text-accent-2/40">
+                    <td className="p-5 text-label font-mono text-accent-2/40">
                       {job.id}
                     </td>
                   </tr>
@@ -359,7 +345,7 @@ export default function CreativeRunDataPage() {
               )}
             </tbody>
           </table>
-        </div>
+        </SectionCard>
       </div>
     </div>
   );

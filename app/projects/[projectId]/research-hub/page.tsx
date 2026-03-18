@@ -5,6 +5,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { getJobTypeLabel } from "@/lib/jobLabels";
 import RunManagementModal from "@/components/RunManagementModal";
+import { EmptyState, PageHeader, SectionCard, StatusChip } from "@/components/ui";
 
 // Types
 type JobStatus = "NOT_STARTED" | "PENDING" | "RUNNING" | "COMPLETED" | "FAILED";
@@ -254,7 +255,7 @@ export default function ResearchHubPage() {
       return {
         ...run,
         runNumber,
-        displayLabel: `${runLabel} - Last: ${lastJobName} ✓`,
+        displayLabel: `${runLabel} - Last: ${lastJobName}`,
         jobCount: run.jobs.length,
       };
     });
@@ -1070,17 +1071,22 @@ export default function ResearchHubPage() {
 
   const StatusBadge = ({ status }: { status: JobStatus }) => {
     return (
-      <div className={`status-chip ${
-        status === 'COMPLETED' ? 'success' :
-        status === 'RUNNING' || status === 'PENDING' ? 'info pulse' :
-        status === 'FAILED' ? 'danger' :
-        'subtle'
-      }`}>
+      <StatusChip
+        variant={
+          status === "COMPLETED"
+            ? "success"
+            : status === "RUNNING" || status === "PENDING"
+              ? "running"
+              : status === "FAILED"
+                ? "danger"
+                : "subtle"
+        }
+      >
         {status === 'COMPLETED' ? 'VERIFIED' :
          status === 'RUNNING' ? 'PROCESSING' :
          status === 'FAILED' ? 'ERROR' :
          status.replace("_", " ")}
-      </div>
+      </StatusChip>
     );
   };
 
@@ -1098,9 +1104,9 @@ export default function ResearchHubPage() {
       {/* New Run Confirmation Modal */}
       {showNewRunModal && (
         <div className="fixed inset-0 bg-overlay backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="rounded-card border border-line bg-panel p-8 shadow-panel max-w-md w-full space-y-6">
+          <SectionCard padding="lg" className="max-w-md w-full space-y-6">
             <div className="space-y-2 text-center">
-              <h2 className="text-xl font-bold text-white tracking-tight">Initialise New Trace?</h2>
+              <p className="eyebrow">Initialise New Trace?</p>
               <p className="text-sm text-muted">
                 This will begin tracking a fresh set of research jobs. Existing run data will remain in the ledger.
               </p>
@@ -1108,47 +1114,31 @@ export default function ResearchHubPage() {
             <div className="flex gap-3">
               <button
                 onClick={() => setShowNewRunModal(false)}
-                className="btn btn-secondary flex-1 py-3 text-[10px]"
+                className="btn btn-secondary flex-1 py-3 text-label"
               >
                 ABORT
               </button>
               <button
                 onClick={handleStartNewRun}
-                className="btn btn-primary flex-1 py-3 text-[10px]"
+                className="btn btn-primary flex-1 py-3 text-label"
               >
                 CONFIRM_NEW_TRACE
               </button>
             </div>
-          </div>
+          </SectionCard>
         </div>
       )}
 
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
-        <div className="space-y-4">
-          <Link
-            href={`/projects/${projectId}`}
-            className="text-[11px] font-mono text-muted hover:text-white mb-6 inline-block uppercase tracking-wider transition-colors"
-          >
-            ← Back to Project
-          </Link>
-          <div className="flex items-center gap-4">
-            <h1 className="text-4xl font-bold text-white tracking-tight">
-              Research Hub{selectedProduct ? <span className="text-accent ml-3">/ {selectedProduct.name}</span> : ""}
-            </h1>
-            {anyRunning && (
-              <div className="status-chip info pulse">
-                Running
-              </div>
-            )}
-          </div>
-          <p className="text-sm text-muted max-w-xl font-mono uppercase tracking-widest opacity-60">
-            Multi-track customer research, ad research, and product research.
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        backHref={`/projects/${projectId}`}
+        backLabel="Back to Project"
+        title={selectedProduct ? `Research Hub / ${selectedProduct.name}` : "Research Hub"}
+        description="Multi-track customer research, ad research, and product research."
+        actions={anyRunning ? <StatusChip variant="running">Running</StatusChip> : undefined}
+      />
 
       {/* Operation Control Center */}
-      <div className="rounded-card border border-line bg-panel p-8 shadow-panel backdrop-blur-panel mb-12">
+      <SectionCard className="mb-12" padding="lg">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
           <div className="space-y-6">
             <div>
@@ -1156,7 +1146,7 @@ export default function ResearchHubPage() {
               {products.length > 0 ? (
                 <div className="space-y-4">
                   <div className="flex flex-col gap-2">
-                    <label className="text-[10px] font-mono text-muted uppercase tracking-[0.2em] ml-1">Active Product</label>
+                    <label className="text-label font-mono text-muted uppercase tracking-[0.2em] ml-1">Active Product</label>
                     <select
                       value={selectedProductId || ''}
                       onChange={(e) => {
@@ -1181,9 +1171,7 @@ export default function ResearchHubPage() {
                   </div>
                 </div>
               ) : (
-                <p className="text-sm text-danger/80 font-mono uppercase tracking-widest py-4 border border-danger/20 bg-danger/5 rounded-card text-center">
-                  No Products Added
-                </p>
+                <EmptyState title="No Products Added" variant="error" />
               )}
             </div>
           </div>
@@ -1193,7 +1181,7 @@ export default function ResearchHubPage() {
               <p className="card-label mb-4">Campaign Run</p>
               <div className="space-y-4">
                 <div className="flex flex-col gap-2">
-                  <label className="text-[10px] font-mono text-muted uppercase tracking-[0.2em] ml-1">Active Run</label>
+                  <label className="text-label font-mono text-muted uppercase tracking-[0.2em] ml-1">Active Run</label>
                   <div className="flex flex-col sm:flex-row gap-3">
                     <select
                       value={selectedRunId || "no-active"}
@@ -1214,7 +1202,7 @@ export default function ResearchHubPage() {
                     {selectedRunId ? (
                       <Link
                         href={`/projects/${projectId}/research-hub/run-data/${selectedRunId}`}
-                        className="btn btn-secondary !min-h-[46px] px-6 text-[10px]"
+                        className="btn btn-secondary !min-h-[46px] px-6 text-label"
                       >
                         View Run Data
                       </Link>
@@ -1222,7 +1210,7 @@ export default function ResearchHubPage() {
                       <button
                         type="button"
                         disabled
-                        className="btn btn-secondary !min-h-[46px] px-6 text-[10px] opacity-50 cursor-not-allowed"
+                        className="btn btn-secondary !min-h-[46px] px-6 text-label opacity-50 cursor-not-allowed"
                       >
                         View Run Data
                       </button>
@@ -1230,7 +1218,7 @@ export default function ResearchHubPage() {
                     <button
                       type="button"
                       onClick={() => setShowRunManagerModal(true)}
-                      className="btn btn-secondary !min-h-[46px] px-6 text-[10px]"
+                      className="btn btn-secondary !min-h-[46px] px-6 text-label"
                     >
                       Run Manager
                     </button>
@@ -1246,19 +1234,19 @@ export default function ResearchHubPage() {
                 <div className="flex flex-wrap gap-2 pt-2">
                   <Link
                     href={customerDataHref}
-                    className="btn btn-secondary !min-h-[32px] px-4 text-[9px] opacity-70 hover:opacity-100"
+                    className="btn btn-secondary !min-h-[32px] px-4 text-label-sm opacity-70 hover:opacity-100"
                   >
                     Audience Research
                   </Link>
                   <Link
                     href={adDataHref}
-                    className="btn btn-secondary !min-h-[32px] px-4 text-[9px] opacity-70 hover:opacity-100"
+                    className="btn btn-secondary !min-h-[32px] px-4 text-label-sm opacity-70 hover:opacity-100"
                   >
                     Ad Research
                   </Link>
                   <Link
                     href={productDataHref}
-                    className="btn btn-secondary !min-h-[32px] px-4 text-[9px] opacity-70 hover:opacity-100"
+                    className="btn btn-secondary !min-h-[32px] px-4 text-label-sm opacity-70 hover:opacity-100"
                   >
                     Product Research
                   </Link>
@@ -1269,12 +1257,12 @@ export default function ResearchHubPage() {
         </div>
 
         {statusMessage && (
-           <div className="mt-8 p-3 rounded bg-accent/10 border border-accent/20 flex items-center gap-3">
-              <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
-              <p className="text-[11px] font-mono text-accent uppercase tracking-widest">{statusMessage}</p>
-           </div>
+          <div className="mt-8 p-3 rounded bg-accent/10 border border-accent/20 flex items-center gap-3">
+            <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
+            <p className="text-body-sm font-mono text-accent uppercase tracking-widest">{statusMessage}</p>
+          </div>
         )}
-      </div>
+      </SectionCard>
 
       {/* Research Tracks */}
       <div className="space-y-8">
@@ -1284,16 +1272,13 @@ export default function ResearchHubPage() {
             return (
               <div key={track.key} className="space-y-6">
                 <div className="flex items-center justify-between border-b border-line pb-4">
-                  <div className="flex items-center gap-4">
-                    <div className="w-2 h-8 rounded-full bg-accent-2 shadow-[0_0_15px_rgba(154,208,255,0.4)]" />
-                    <div>
-                      <h2 className="text-xl font-bold text-white tracking-tight uppercase tracking-[0.1em]">{track.label}</h2>
-                      <p className="text-[11px] font-mono text-muted uppercase tracking-[0.05em] opacity-60">{track.description}</p>
-                    </div>
+                  <div>
+                    <p className="eyebrow">{track.label}</p>
+                    <p className="text-body-sm font-mono text-muted uppercase tracking-widest">{track.description}</p>
                   </div>
                   <div className="flex items-center gap-6">
                     <div className="text-right whitespace-nowrap">
-                      <p className="text-[10px] font-mono text-muted uppercase tracking-widest opacity-40 mb-1">Vector Progress</p>
+                      <p className="text-label font-mono text-muted uppercase tracking-widest opacity-40 mb-1">Vector Progress</p>
                       <div className="flex items-center gap-3">
                         <div className="h-1 bg-bg-elevated rounded-full w-24 overflow-hidden">
                           <div className="h-full bg-accent-2" style={{ width: `${completion}%` }} />
@@ -1357,18 +1342,19 @@ export default function ResearchHubPage() {
 	                        }`
 	                      : null;
 	                    return (
-                      <div
+                      <SectionCard
                         key={stepWithStatus.id}
-                        className="flex items-start gap-4 rounded-card border border-line bg-panel p-4"
+                        padding="sm"
+                        className="flex items-start gap-4"
                       >
                         {/* Step Info */}
                         <div className="flex-1 min-w-0">
                           <h3 className="text-sm font-semibold text-white mb-1">
                             {stepWithStatus.label}
                           </h3>
-                          <p className="text-xs text-muted/80 mb-2">{stepWithStatus.description}</p>
+                          <p className="text-xs text-muted mb-2">{stepWithStatus.description}</p>
                           {stepWithStatus.attemptCount && stepWithStatus.attemptCount > 0 && (
-                            <p className="text-[11px] text-muted/60 mb-2">
+                            <p className="text-body-sm text-muted mb-2">
                               Attempt {stepWithStatus.attemptCount}
                               {stepWithStatus.lastJob?.createdAt
                                 ? ` · Last run ${new Date(stepWithStatus.lastJob.createdAt).toLocaleString()}`
@@ -1381,7 +1367,7 @@ export default function ResearchHubPage() {
                               )
                             : stepWithStatus.status !== "NOT_STARTED" && <StatusBadge status={stepWithStatus.status} />}
                           {stepWithStatus.label === "Customer Analysis" && analysisRunning && (
-                            <div className="mt-2 text-xs text-muted/80">Analysis in progress...</div>
+                            <div className="mt-2 text-xs text-muted">Analysis in progress...</div>
                           )}
 
                           {/* Error Display */}
@@ -1405,7 +1391,7 @@ export default function ResearchHubPage() {
                               onClick={() => {
                                 router.push(historyUrl);
                               }}
-                              className="inline-flex items-center rounded-pill border border-line bg-panel px-4 py-2 text-xs text-muted transition-colors hover:text-white/90"
+                              className="btn btn-secondary !min-h-[32px] px-4 text-label"
                             >
                               View Run History
                             </button>
@@ -1417,7 +1403,7 @@ export default function ResearchHubPage() {
                                 {selectedRunId && selectedRunCustomerJob ? (
                                   <Link
                                     href={`/projects/${projectId}/research/data/${selectedRunCustomerJob.id}?runId=${selectedRunCustomerJob.runId ?? selectedRunCustomerJob.id}`}
-                                    className="inline-flex items-center rounded-pill border border-line bg-panel px-4 py-2 text-xs text-muted transition-colors hover:text-white/90"
+                                    className="btn btn-secondary !min-h-[32px] px-4 text-label"
                                   >
                                     View Data
                                   </Link>
@@ -1430,7 +1416,7 @@ export default function ResearchHubPage() {
                               {selectedRunId && analysisStatusJob?.status === "COMPLETED" && (
                                 <Link
                                   href={`/projects/${projectId}/research-hub/analysis/data/${analysisStatusJob.id}`}
-                                  className="inline-flex items-center rounded-pill border border-line bg-panel px-4 py-2 text-xs text-muted transition-colors hover:text-white/90"
+                                  className="btn btn-secondary !min-h-[32px] px-4 text-label"
                                 >
                                   View Data
                                 </Link>
@@ -1442,7 +1428,7 @@ export default function ResearchHubPage() {
 	                              {stepWithStatus.id === "product-collection" && stepRawDataHref && (
 	                                <Link
 	                                  href={stepRawDataHref}
-		                                className="inline-flex items-center rounded-pill border border-line bg-panel px-4 py-2 text-xs text-muted transition-colors hover:text-white/90"
+		                                className="btn btn-secondary !min-h-[32px] px-4 text-label"
 	                                >
 	                                  View Data
 	                                </Link>
@@ -1463,7 +1449,7 @@ export default function ResearchHubPage() {
                                     }
                                     handleViewStepData(stepWithStatus);
                                   }}
-                                  className="inline-flex items-center rounded-pill border border-line bg-panel px-4 py-2 text-xs text-muted transition-colors hover:text-white/90"
+                                  className="btn btn-secondary !min-h-[32px] px-4 text-label"
                                 >
 	                                  View Data
 	                                </button>
@@ -1478,7 +1464,7 @@ export default function ResearchHubPage() {
                               disabled={!canRunAnalysis || isRunning}
                               className={`inline-flex items-center gap-2 rounded-pill px-4 py-2 text-sm font-bold ${
                                 !canRunAnalysis || isRunning
-                                  ? "cursor-not-allowed bg-panel-strong text-muted/60"
+                                  ? "cursor-not-allowed bg-panel-strong text-muted"
                                   : "app-gold-gradient text-[#111]"
                               }`}
                               title={!canRunAnalysis ? "Complete Customer Collection first" : undefined}
@@ -1492,7 +1478,7 @@ export default function ResearchHubPage() {
                                   disabled={isRunning || isCollecting}
                                   className={`inline-flex items-center rounded-pill px-4 py-2 text-sm font-bold ${
                                     isRunning || isCollecting
-                                      ? "cursor-not-allowed bg-panel-strong text-muted/50"
+                                      ? "cursor-not-allowed bg-panel-strong text-muted/40"
                                       : "app-gold-gradient text-[#111]"
                                   }`}
                                 >
@@ -1513,7 +1499,7 @@ export default function ResearchHubPage() {
                                     }
                                     className={`inline-flex items-center rounded-pill px-4 py-2 text-sm font-bold ${
                                       locked || isRunning || (isCustomerCollectionStep && hasRunningJob) || (stepWithStatus.label === "Customer Analysis" && (analysisRunning || !canRunAnalysis))
-                                        ? "cursor-not-allowed bg-panel-strong text-muted/50"
+                                        ? "cursor-not-allowed bg-panel-strong text-muted/40"
                                         : "app-gold-gradient text-[#111]"
                                     }`}
                                   >
@@ -1592,7 +1578,7 @@ export default function ResearchHubPage() {
                           </>
                         )}
 
-                      </div>
+                      </SectionCard>
                     );
                   })}
                 </div>
@@ -1652,7 +1638,7 @@ export default function ResearchHubPage() {
 
       {/* Recent Jobs */}
       <div className="mt-8 border-t border-line pt-6">
-        <h2 className="app-section-title mb-4 text-white/90">Recent Jobs</h2>
+        <h2 className="app-section-title mb-4 text-white">Recent Jobs</h2>
         <div className="app-list">
           {recentResearchJobs.map(job => {
             const rs = job.resultSummary as any;
@@ -1660,8 +1646,8 @@ export default function ResearchHubPage() {
             return (
               <div key={job.id} className="app-list-item flex items-start justify-between gap-4">
                 <div className="flex-1">
-                  <div className="text-sm font-medium text-white/90">{job.type}</div>
-                  <div className="text-xs text-muted/60">{new Date(job.createdAt).toLocaleString()}</div>
+                  <div className="text-sm font-medium text-white">{job.type}</div>
+                  <div className="text-xs text-muted">{new Date(job.createdAt).toLocaleString()}</div>
                   {isCancelable && (
                     <div className="mt-2">
                       <button
@@ -1674,7 +1660,7 @@ export default function ResearchHubPage() {
                   )}
                   {rs?.amazon && (
                     <div className="mt-2 rounded border border-line p-2 text-sm text-muted">
-                      <div className="font-medium text-white/90">Amazon</div>
+                      <div className="font-medium text-white">Amazon</div>
                       <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-1">
                         <div>Total reviews</div><div className="text-right">{rs.amazon.productTotal ?? 0}</div>
                         <div>Competitor reviews</div><div className="text-right">
@@ -1806,10 +1792,10 @@ function CustomerResearchModal({
     <div className="fixed inset-0 bg-overlay flex items-center justify-center z-50 p-4">
       <div className="bg-panel rounded-lg border border-line max-w-lg w-full max-h-[90vh] overflow-y-auto">
         <div className="p-6">
-          <h2 className="text-xl font-bold text-white mb-2">
+          <p className="eyebrow">
             {uploadOnly ? "Upload Market Research" : "Collect Audience Research"}
-          </h2>
-          <p className="text-sm text-muted/80 mb-6">
+          </p>
+          <p className="text-sm text-muted mb-6">
             {uploadOnly
               ? "Add additional research data to your existing collection"
               : "Scrape from Reddit/Amazon or upload your own research data"}
@@ -1825,7 +1811,7 @@ function CustomerResearchModal({
                 className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
                   activeTab === "scrape"
                     ? "border-accent-2 text-accent-2"
-                    : "border-transparent text-muted/80 hover:text-muted"
+                    : "border-transparent text-muted hover:text-muted"
                 }`}
               >
                 Scrape Data
@@ -1836,7 +1822,7 @@ function CustomerResearchModal({
                 className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
                   activeTab === "upload"
                     ? "border-accent-2 text-accent-2"
-                    : "border-transparent text-muted/80 hover:text-muted"
+                    : "border-transparent text-muted hover:text-muted"
                 }`}
               >
                 Upload Data
@@ -1848,7 +1834,7 @@ function CustomerResearchModal({
             <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-muted mb-2">
-                Problem to Research <span className="text-muted/60">(required)</span>
+                Problem to Research <span className="text-muted">(required)</span>
               </label>
               <textarea
                 value={formData.productProblemSolved}
@@ -1861,7 +1847,7 @@ function CustomerResearchModal({
 
             <div>
               <label className="block text-sm font-medium text-muted mb-2">
-                Additional Problems <span className="text-muted/60">(optional)</span>
+                Additional Problems <span className="text-muted">(optional)</span>
               </label>
               <textarea
                 value={formData.additionalProblems}
@@ -1870,13 +1856,13 @@ function CustomerResearchModal({
                 placeholder={"e.g.,\nbreakouts before period\nsensitive skin irritation"}
                 rows={3}
               />
-              <p className="text-xs text-muted/60 mt-1">One per line or comma-separated</p>
+              <p className="text-xs text-muted mt-1">One per line or comma-separated</p>
             </div>
 
             <div>
               <label className="block text-sm font-medium text-muted mb-2">
                 Solution Keywords (optional)
-                <span className="ml-2 text-xs text-muted/60">
+                <span className="ml-2 text-xs text-muted">
                   Specific solutions, products, or alternatives to search for
                 </span>
               </label>
@@ -1887,14 +1873,14 @@ function CustomerResearchModal({
                 placeholder="e.g., tretinoin, accutane, birth control"
                 className="w-full px-3 py-2 bg-bg-elevated border border-line rounded text-white placeholder:text-muted/40 focus:outline-none focus:ring-2 focus:ring-accent/20"
               />
-              <p className="mt-1 text-xs text-muted/60">
+              <p className="mt-1 text-xs text-muted">
                 Comma-separated. Search for discussions about specific solutions/alternatives
               </p>
             </div>
 
             <div>
               <label className="block text-sm font-medium text-muted mb-2">
-                Amazon ASIN <span className="text-muted/60">(optional)</span>
+                Amazon ASIN <span className="text-muted">(optional)</span>
               </label>
               <input
                 type="text"
@@ -1907,7 +1893,7 @@ function CustomerResearchModal({
 
             <div>
               <label className="block text-sm font-medium text-muted mb-2">
-                Competitor 1 ASIN <span className="text-muted/60">(optional)</span>
+                Competitor 1 ASIN <span className="text-muted">(optional)</span>
               </label>
               <input
                 type="text"
@@ -1920,7 +1906,7 @@ function CustomerResearchModal({
 
             <div>
               <label className="block text-sm font-medium text-muted mb-2">
-                Competitor 2 ASIN <span className="text-muted/60">(optional)</span>
+                Competitor 2 ASIN <span className="text-muted">(optional)</span>
               </label>
               <input
                 type="text"
@@ -1933,7 +1919,7 @@ function CustomerResearchModal({
 
             <div>
               <label className="block text-sm font-medium text-muted mb-2">
-                Competitor 3 ASIN <span className="text-muted/60">(optional)</span>
+                Competitor 3 ASIN <span className="text-muted">(optional)</span>
               </label>
               <input
                 type="text"
@@ -1946,8 +1932,8 @@ function CustomerResearchModal({
 
             {/* Reddit Search Settings */}
             <div className="border-t border-line pt-6 mt-6">
-              <h3 className="text-lg font-semibold text-white/90 mb-4">Reddit Search Settings</h3>
-              <p className="text-sm text-muted/80 mb-6">
+              <h3 className="text-lg font-semibold text-white mb-4">Reddit Search Settings</h3>
+              <p className="text-sm text-muted mb-6">
                 Reddit search is problem-focused. Use optional fields below to control intent, keywords, and alternatives.
               </p>
               
@@ -1955,7 +1941,7 @@ function CustomerResearchModal({
                 <div>
                   <label className="block text-sm font-medium text-muted mb-2">
                     Search Intent (optional)
-                    <span className="ml-2 text-xs text-muted/60">
+                    <span className="ml-2 text-xs text-muted">
                       What type of discussions to find
                     </span>
                   </label>
@@ -1966,7 +1952,7 @@ function CustomerResearchModal({
                     placeholder="e.g., routine, help, what worked, recommend, tried everything"
                     className="w-full px-3 py-2 bg-bg-elevated border border-line rounded text-white placeholder:text-muted/40 focus:outline-none focus:ring-2 focus:ring-accent/20"
                   />
-                  <p className="mt-1 text-xs text-muted/60">
+                  <p className="mt-1 text-xs text-muted">
                     Comma-separated phrases. Examples: &quot;routine&quot;, &quot;help&quot;, &quot;what worked&quot;, &quot;tried everything&quot;, &quot;side effects&quot;
                   </p>
                 </div>
@@ -2004,7 +1990,7 @@ function CustomerResearchModal({
                     />
                     <span className="text-sm text-muted">Scrape comments from posts</span>
                   </label>
-                  <p className="text-xs text-muted/60 mt-1 ml-6">Recommended for deeper insights</p>
+                  <p className="text-xs text-muted mt-1 ml-6">Recommended for deeper insights</p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
@@ -2019,9 +2005,9 @@ function CustomerResearchModal({
                       min={10}
                       max={1000}
                       onChange={(e) => setFormData({ ...formData, maxPosts: Number(e.target.value) })}
-                      className="w-full px-3 py-2 bg-bg-elevated border border-line rounded text-white/90"
+                      className="w-full px-3 py-2 bg-bg-elevated border border-line rounded text-white"
                     />
-                    <p className="text-xs text-muted/60 mt-1">Recommended: 50-200</p>
+                    <p className="text-xs text-muted mt-1">Recommended: 50-200</p>
                   </div>
 
                   <div>
@@ -2035,9 +2021,9 @@ function CustomerResearchModal({
                       min={0}
                       max={500}
                       onChange={(e) => setFormData({ ...formData, maxCommentsPerPost: Number(e.target.value) })}
-                      className="w-full px-3 py-2 bg-bg-elevated border border-line rounded text-white/90"
+                      className="w-full px-3 py-2 bg-bg-elevated border border-line rounded text-white"
                     />
-                    <p className="text-xs text-muted/60 mt-1">0 = no comments, Recommended: 50-100</p>
+                    <p className="text-xs text-muted mt-1">0 = no comments, Recommended: 50-100</p>
                   </div>
                 </div>
               </div>
@@ -2067,14 +2053,14 @@ function CustomerResearchModal({
                 <label className="block text-sm font-medium text-muted mb-2">
                   Upload Research File
                 </label>
-                <p className="text-xs text-muted/80 mb-3">
+                <p className="text-xs text-muted mb-3">
                   Accepted formats: CSV, TXT, PDF, DOCX, JSON
                 </p>
                 <input
                   type="file"
                   accept=".csv,.txt,.pdf,.docx,.json"
                   onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
-                  className="block w-full text-sm text-muted/80
+                  className="block w-full text-sm text-muted
                     file:mr-4 file:py-2 file:px-4
                     file:rounded file:border-0
                     file:text-sm file:font-medium
@@ -2082,7 +2068,7 @@ function CustomerResearchModal({
                     hover:file:bg-accent"
                 />
                 {uploadFile && (
-                  <p className="text-xs text-muted/80 mt-2">
+                  <p className="text-xs text-muted mt-2">
                     Selected: {uploadFile.name} ({(uploadFile.size / 1024).toFixed(1)} KB)
                   </p>
                 )}
@@ -2105,7 +2091,7 @@ function CustomerResearchModal({
                 </button>
               </div>
               {uploading && (
-                <p className="text-xs text-muted/80 text-right">Processing file...</p>
+                <p className="text-xs text-muted text-right">Processing file...</p>
               )}
             </form>
           )}
@@ -2221,8 +2207,8 @@ function AdCollectionModal({
     <div className="fixed inset-0 bg-overlay flex items-center justify-center z-50 p-4">
       <div className="bg-panel rounded-lg border border-line max-w-lg w-full">
         <div className="p-6">
-          <h2 className="text-xl font-bold text-white mb-2">Industry Selection</h2>
-          <p className="text-sm text-muted/80 mb-6">
+          <p className="eyebrow">Industry Selection</p>
+          <p className="text-sm text-muted mb-6">
             Enter your industry code to collect relevant ads or upload your own ad research data
           </p>
           {errorMessage && <p className="text-sm text-accent mb-3">{errorMessage}</p>}
@@ -2235,7 +2221,7 @@ function AdCollectionModal({
               className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
                 activeTab === "collect"
                   ? "border-accent-2 text-accent-2"
-                  : "border-transparent text-muted/80 hover:text-muted"
+                  : "border-transparent text-muted hover:text-muted"
               }`}
             >
               Collect Ads
@@ -2246,7 +2232,7 @@ function AdCollectionModal({
               className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
                 activeTab === "upload"
                   ? "border-accent-2 text-accent-2"
-                  : "border-transparent text-muted/80 hover:text-muted"
+                  : "border-transparent text-muted hover:text-muted"
               }`}
             >
               Upload Data
@@ -2284,7 +2270,7 @@ function AdCollectionModal({
                     </div>
                     <div className="max-h-64 overflow-y-auto p-1">
                       {filteredIndustries.length === 0 ? (
-                        <p className="px-3 py-2 text-sm text-muted/80">
+                        <p className="px-3 py-2 text-sm text-muted">
                           No matching industries.
                         </p>
                       ) : (
@@ -2300,11 +2286,11 @@ function AdCollectionModal({
                             className={`w-full rounded px-3 py-2 text-left text-sm hover:bg-bg-elevated ${
                               option.code === industryCode
                                 ? "bg-bg-elevated text-accent-2"
-                                : "text-white/90"
+                                : "text-white"
                             }`}
                           >
                             <span>{option.label}</span>
-                            <span className="ml-2 text-xs text-muted/80">{option.code}</span>
+                            <span className="ml-2 text-xs text-muted">{option.code}</span>
                           </button>
                         ))
                       )}
@@ -2312,7 +2298,7 @@ function AdCollectionModal({
                   </div>
                 )}
               </div>
-              <p className="mt-2 text-xs text-muted/60">
+              <p className="mt-2 text-xs text-muted">
                 Search by name or code. All 21 TikTok industry categories are available.
               </p>
             </div>
@@ -2340,14 +2326,14 @@ function AdCollectionModal({
                 <label className="block text-sm font-medium text-muted mb-2">
                   Upload Research File
                 </label>
-                <p className="text-xs text-muted/80 mb-3">
+                <p className="text-xs text-muted mb-3">
                   Accepted formats: CSV, TXT, PDF, DOCX, JSON
                 </p>
                 <input
                   type="file"
                   accept=".csv,.txt,.pdf,.docx,.json"
                   onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
-                  className="block w-full text-sm text-muted/80
+                  className="block w-full text-sm text-muted
                     file:mr-4 file:py-2 file:px-4
                     file:rounded file:border-0
                     file:text-sm file:font-medium
@@ -2355,7 +2341,7 @@ function AdCollectionModal({
                     hover:file:bg-accent"
                 />
                 {uploadFile && (
-                  <p className="text-xs text-muted/80 mt-2">
+                  <p className="text-xs text-muted mt-2">
                     Selected: {uploadFile.name} ({(uploadFile.size / 1024).toFixed(1)} KB)
                   </p>
                 )}
@@ -2378,7 +2364,7 @@ function AdCollectionModal({
                 </button>
               </div>
               {uploading && (
-                <p className="text-xs text-muted/80 text-right">Processing file...</p>
+                <p className="text-xs text-muted text-right">Processing file...</p>
               )}
             </form>
           )}
@@ -2463,8 +2449,8 @@ function ProductCollectionModal({
     <div className="fixed inset-0 bg-overlay flex items-center justify-center z-50 p-4">
       <div className="bg-panel rounded-lg border border-line max-w-lg w-full max-h-[90vh] overflow-y-auto">
         <div className="p-6">
-          <h2 className="text-xl font-bold text-white mb-2">Product Information</h2>
-          <p className="text-sm text-muted/80 mb-6">
+          <p className="eyebrow">Product Information</p>
+          <p className="text-sm text-muted mb-6">
             Enter your product URL or upload your own product research data
           </p>
           {errorMessage && <p className="text-sm text-accent mb-3">{errorMessage}</p>}
@@ -2477,7 +2463,7 @@ function ProductCollectionModal({
               className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
                 activeTab === "collect"
                   ? "border-accent text-accent"
-                  : "border-transparent text-muted/80 hover:text-muted"
+                  : "border-transparent text-muted hover:text-muted"
               }`}
             >
               Collect Data
@@ -2488,7 +2474,7 @@ function ProductCollectionModal({
               className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
                 activeTab === "upload"
                   ? "border-accent text-accent"
-                  : "border-transparent text-muted/80 hover:text-muted"
+                  : "border-transparent text-muted hover:text-muted"
               }`}
             >
               Upload Data
@@ -2561,14 +2547,14 @@ function ProductCollectionModal({
                 <label className="block text-sm font-medium text-muted mb-2">
                   Upload Research File
                 </label>
-                <p className="text-xs text-muted/80 mb-3">
+                <p className="text-xs text-muted mb-3">
                   Accepted formats: CSV, TXT, PDF, DOCX, JSON
                 </p>
                 <input
                   type="file"
                   accept=".csv,.txt,.pdf,.docx,.json"
                   onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
-                  className="block w-full text-sm text-muted/80
+                  className="block w-full text-sm text-muted
                     file:mr-4 file:py-2 file:px-4
                     file:rounded file:border-0
                     file:text-sm file:font-medium
@@ -2576,7 +2562,7 @@ function ProductCollectionModal({
                     hover:file:bg-accent"
                 />
                 {uploadFile && (
-                  <p className="text-xs text-muted/80 mt-2">
+                  <p className="text-xs text-muted mt-2">
                     Selected: {uploadFile.name} ({(uploadFile.size / 1024).toFixed(1)} KB)
                   </p>
                 )}
@@ -2599,7 +2585,7 @@ function ProductCollectionModal({
                 </button>
               </div>
               {uploading && (
-                <p className="text-xs text-muted/80 text-right">Processing file...</p>
+                <p className="text-xs text-muted text-right">Processing file...</p>
               )}
             </form>
           )}

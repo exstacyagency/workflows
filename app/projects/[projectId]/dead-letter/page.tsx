@@ -2,6 +2,7 @@
 
 import { use, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { EmptyState, PageHeader, SectionCard } from "@/components/ui";
 
 type DeadJob = {
   id: string;
@@ -177,21 +178,13 @@ export default function DeadLetterPage({
 
   return (
     <div className="px-6 py-6 space-y-6">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="eyebrow !mb-2">Project</p>
-          <h1 className="text-2xl font-semibold text-white tracking-tight">Dead Letter</h1>
-          <p className="text-sm text-muted mt-1 italic">
-            Failed jobs that won’t be retried automatically.
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Link
-            href={`/projects/${encodeURIComponent(projectId)}`}
-            className="btn btn-secondary !min-h-[36px] px-4 text-xs"
-          >
-            Back
-          </Link>
+      <PageHeader
+        eyebrow="Project"
+        title="Dead Letter"
+        description="Failed jobs that won’t be retried automatically."
+        backHref={`/projects/${encodeURIComponent(projectId)}`}
+        actions={
+          <div className="flex gap-2">
           <button
             onClick={() => void bulk("retry_all_transient")}
             className="btn btn-secondary !min-h-[36px] px-4 text-xs"
@@ -217,19 +210,20 @@ export default function DeadLetterPage({
           >
             {loading ? "Refreshing…" : "Refresh"}
           </button>
-        </div>
-      </div>
+          </div>
+        }
+      />
 
       {msg ? (
-        <div className="rounded-card border border-line bg-panel px-4 py-3 text-sm text-muted font-mono italic">
+        <SectionCard padding="sm" className="text-sm text-muted font-mono italic">
           {msg}
-        </div>
+        </SectionCard>
       ) : null}
 
-      <div className="rounded-card border border-line bg-panel shadow-panel backdrop-blur-panel overflow-hidden">
+      <SectionCard padding="none" className="overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 border-b border-line">
           <h2 className="text-sm font-bold text-white uppercase tracking-tight">Failed Jobs</h2>
-          <p className="text-[10px] font-mono text-muted/40 uppercase tracking-widest">{loading ? "Loading…" : `${jobs.length} items recorded`}</p>
+          <p className="text-label font-mono text-muted/40 uppercase tracking-widest">{loading ? "Loading…" : `${jobs.length} items recorded`}</p>
         </div>
 
         {loading ? (
@@ -238,18 +232,23 @@ export default function DeadLetterPage({
             <p className="text-xs font-mono text-muted uppercase tracking-widest">Polling Queue...</p>
           </div>
         ) : jobs.length === 0 ? (
-          <div className="px-5 py-12 text-center text-xs text-muted italic">No failed jobs in this sector.</div>
+          <div className="px-5 py-5">
+            <EmptyState
+              title="No Failed Jobs"
+              description="There are no failed jobs in this sector."
+            />
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-bg-elevated border-b border-line">
                 <tr>
-                  <th className="px-5 py-3 text-left text-[10px] font-mono text-muted uppercase tracking-widest">Type</th>
-                  <th className="px-5 py-3 text-left text-[10px] font-mono text-muted uppercase tracking-widest">Attempts</th>
-                  <th className="px-5 py-3 text-left text-[10px] font-mono text-muted uppercase tracking-widest">Next run</th>
-                  <th className="px-5 py-3 text-left text-[10px] font-mono text-muted uppercase tracking-widest">Error</th>
-                  <th className="px-5 py-3 text-left text-[10px] font-mono text-muted uppercase tracking-widest">Updated</th>
-                  <th className="px-5 py-3 text-left text-[10px] font-mono text-muted uppercase tracking-widest">Actions</th>
+                  <th className="px-5 py-3 text-left text-label font-mono text-muted uppercase tracking-widest">Type</th>
+                  <th className="px-5 py-3 text-left text-label font-mono text-muted uppercase tracking-widest">Attempts</th>
+                  <th className="px-5 py-3 text-left text-label font-mono text-muted uppercase tracking-widest">Next run</th>
+                  <th className="px-5 py-3 text-left text-label font-mono text-muted uppercase tracking-widest">Error</th>
+                  <th className="px-5 py-3 text-left text-label font-mono text-muted uppercase tracking-widest">Updated</th>
+                  <th className="px-5 py-3 text-left text-label font-mono text-muted uppercase tracking-widest">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">
@@ -262,41 +261,41 @@ export default function DeadLetterPage({
                       <td className="px-5 py-4 text-xs text-muted">{j.attempts}</td>
                       <td className="px-5 py-4 text-xs text-muted font-mono">{fmtNextRun(j.nextRunAt)}</td>
                       <td className="px-5 py-4">
-                        <div className="max-w-[420px] truncate text-xs text-white/80" title={j.lastError ?? j.error ?? ""}>
+                        <div className="max-w-[420px] truncate text-xs text-white" title={j.lastError ?? j.error ?? ""}>
                           {j.lastError ?? j.error ?? "—"}
                         </div>
                         {rec && (
-                          <div className="mt-1 text-[10px] font-mono text-accent italic">
+                          <div className="mt-1 text-label font-mono text-accent italic">
                             REC: {rec}
                           </div>
                         )}
                       </td>
-                      <td className="px-5 py-4 text-[10px] font-mono text-muted/40 uppercase tracking-tight">{new Date(j.updatedAt).toLocaleString()}</td>
+                      <td className="px-5 py-4 text-label font-mono text-muted/40 uppercase tracking-tight">{new Date(j.updatedAt).toLocaleString()}</td>
                       <td className="px-5 py-4 flex flex-wrap gap-2">
                         <button
                           onClick={() => act(j.id, "retry")}
                           disabled={busyJobId === j.id}
-                          className="btn btn-secondary !min-h-[28px] px-3 text-[10px]"
+                          className="btn btn-secondary !min-h-[28px] px-3 text-label"
                         >
                           Retry
                         </button>
                         <button
                           onClick={() => act(j.id, "clear-attempts")}
                           disabled={busyJobId === j.id}
-                          className="btn btn-secondary !min-h-[28px] px-3 text-[10px]"
+                          className="btn btn-secondary !min-h-[28px] px-3 text-label"
                         >
                           Reset
                         </button>
                         <button
                           onClick={() => act(j.id, "dismiss")}
                           disabled={busyJobId === j.id}
-                          className="btn btn-secondary !min-h-[28px] px-3 text-[10px] hover:text-danger hover:border-danger/30"
+                          className="btn btn-secondary !min-h-[28px] px-3 text-label hover:text-danger hover:border-danger/30"
                         >
                           Kill
                         </button>
                         <button
                           onClick={() => setExpandedId(expandedId === j.id ? null : j.id)}
-                          className="btn btn-secondary !min-h-[28px] px-3 text-[10px]"
+                          className="btn btn-secondary !min-h-[28px] px-3 text-label"
                         >
                           {expandedId === j.id ? "Close" : "Data"}
                         </button>
@@ -306,18 +305,18 @@ export default function DeadLetterPage({
                       <tr key={`${j.id}:details`} className="bg-bg-elevated border-t border-line">
                         <td colSpan={6} className="p-6 space-y-4">
                           <div className="flex items-center gap-3 flex-wrap">
-                            <div className="text-[11px] font-mono text-muted uppercase tracking-widest">
+                            <div className="text-body-sm font-mono text-muted uppercase tracking-widest">
                               JobID: <span className="text-accent-2">{j.id}</span>
                             </div>
                             <button
                               onClick={() => void copy(j.id)}
-                              className="btn btn-secondary !min-h-[24px] px-2 text-[10px] opacity-70 hover:opacity-100"
+                              className="btn btn-secondary !min-h-[24px] px-2 text-label opacity-70 hover:opacity-100"
                             >
                               Copy ID
                             </button>
                             <button
                               onClick={() => void copy(JSON.stringify(j.payload ?? {}, null, 2))}
-                              className="btn btn-secondary !min-h-[24px] px-2 text-[10px] opacity-70 hover:opacity-100"
+                              className="btn btn-secondary !min-h-[24px] px-2 text-label opacity-70 hover:opacity-100"
                             >
                               Copy Payload
                             </button>
@@ -326,14 +325,14 @@ export default function DeadLetterPage({
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-2">
                               <div className="card-label !mb-0">Job Error</div>
-                              <div className="font-mono text-[11px] whitespace-pre-wrap break-words bg-panel border border-line rounded-card p-4 text-danger/80">
+                              <div className="font-mono text-body-sm whitespace-pre-wrap break-words bg-panel border border-line rounded-card p-4 text-danger">
                                 {j.error ?? "—"}
                               </div>
                             </div>
 
                             <div className="space-y-2">
                               <div className="card-label !mb-0">Context Trace</div>
-                              <div className="font-mono text-[11px] whitespace-pre-wrap break-words bg-panel border border-line rounded-card p-4 text-accent-2/60">
+                              <div className="font-mono text-body-sm whitespace-pre-wrap break-words bg-panel border border-line rounded-card p-4 text-accent-2/60">
                                 {j.lastError ?? "—"}
                               </div>
                             </div>
@@ -341,7 +340,7 @@ export default function DeadLetterPage({
 
                           <div className="space-y-2">
                             <div className="card-label !mb-0">Payload Schema</div>
-                            <pre className="text-[11px] font-mono whitespace-pre-wrap break-words bg-panel border border-line rounded-card p-5 text-muted/60 overflow-x-auto">
+                            <pre className="text-body-sm font-mono whitespace-pre-wrap break-words bg-panel border border-line rounded-card p-5 text-muted overflow-x-auto">
 {JSON.stringify(j.payload ?? {}, null, 2)}
                             </pre>
                           </div>
@@ -354,7 +353,7 @@ export default function DeadLetterPage({
             </table>
           </div>
         )}
-      </div>
+      </SectionCard>
     </div>
   );
 }

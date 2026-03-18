@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
+import { EmptyState, PageHeader, SectionCard, StatusChip } from "@/components/ui";
 
 type JobStatus = "NOT_STARTED" | "PENDING" | "RUNNING" | "COMPLETED" | "FAILED";
 
@@ -659,57 +660,42 @@ export default function ResearchHubDataPage() {
 
   return (
     <div className="px-8 py-8 max-w-7xl mx-auto space-y-10">
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
-        <div className="space-y-4">
-          <Link
-            href={`/projects/${projectId}/research-hub`}
-            className="text-[11px] font-mono text-muted hover:text-white mb-6 inline-block uppercase tracking-wider transition-colors"
-          >
-            ← Back to Research Hub
-          </Link>
-          <div className="flex items-center gap-4">
-            <h1 className="text-4xl font-bold text-white tracking-tight">Advertising Data Library</h1>
-            <div className="status-chip subtle uppercase tracking-widest text-[9px]">
-              {focusJobType ?? rawJobType}
-            </div>
-          </div>
-          <p className="text-sm text-muted max-w-xl font-mono uppercase tracking-widest opacity-60">
-            {effectiveRunId ? (
-              <>
-                Active Run: <span className="text-accent-2">{effectiveRunId}</span>
-              </>
-            ) : "Loading advertising data..."}
-          </p>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleExportCsv}
-            disabled={loading || !!error || !focusJobType || exportConfig.rows.length === 0}
-            className="btn btn-secondary !min-h-[36px] px-4 text-[10px] font-bold uppercase tracking-widest"
-          >
-            Export Advertising Data
-          </button>
-          {(focusJobType === "ad-transcripts" || focusJobType === "ad-quality-gate") && (
-            <div className="flex gap-2">
-              <button
-                onClick={handleDeleteSelected}
-                disabled={selectedCount === 0 || bulkDeleting || deletingAll || !effectiveRunId}
-                className="btn btn-secondary !min-h-[36px] px-4 text-[10px] font-bold uppercase tracking-widest hover:text-danger hover:border-danger/30"
-              >
-                {bulkDeleting ? 'DELETING...' : `DELETE SELECTED (${selectedCount})`}
-              </button>
-              <button
-                onClick={handleDeleteAll}
-                disabled={deletingAll || bulkDeleting || assets.length === 0 || !effectiveRunId}
-                className="btn btn-secondary !min-h-[36px] px-4 text-[10px] font-bold uppercase tracking-widest hover:text-danger hover:border-danger/30"
-              >
-                {deletingAll ? 'PURGING_ALL...' : 'PURGE_ALL'}
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
+      <PageHeader
+        backHref={`/projects/${projectId}/research-hub`}
+        backLabel="Back to Research Hub"
+        title="Advertising Data Library"
+        description={effectiveRunId ? `Active run: ${effectiveRunId}` : "Loading advertising data..."}
+        actions={
+          <>
+            <StatusChip variant="subtle">{focusJobType ?? rawJobType}</StatusChip>
+            <button
+              onClick={handleExportCsv}
+              disabled={loading || !!error || !focusJobType || exportConfig.rows.length === 0}
+              className="btn btn-secondary !min-h-[36px] px-4 text-label font-bold uppercase tracking-widest"
+            >
+              Export Advertising Data
+            </button>
+            {(focusJobType === "ad-transcripts" || focusJobType === "ad-quality-gate") && (
+              <div className="flex gap-2">
+                <button
+                  onClick={handleDeleteSelected}
+                  disabled={selectedCount === 0 || bulkDeleting || deletingAll || !effectiveRunId}
+                  className="btn btn-secondary !min-h-[36px] px-4 text-label font-bold uppercase tracking-widest hover:text-danger hover:border-danger/30"
+                >
+                  {bulkDeleting ? 'DELETING...' : `DELETE SELECTED (${selectedCount})`}
+                </button>
+                <button
+                  onClick={handleDeleteAll}
+                  disabled={deletingAll || bulkDeleting || assets.length === 0 || !effectiveRunId}
+                  className="btn btn-secondary !min-h-[36px] px-4 text-label font-bold uppercase tracking-widest hover:text-danger hover:border-danger/30"
+                >
+                  {deletingAll ? 'PURGING_ALL...' : 'PURGE_ALL'}
+                </button>
+              </div>
+            )}
+          </>
+        }
+      />
 
       {loading && (
         <div className="flex flex-col items-center justify-center min-h-[40vh] space-y-4">
@@ -719,35 +705,32 @@ export default function ResearchHubDataPage() {
       )}
 
       {!loading && error && (
-        <div className="rounded-card border border-danger/20 bg-danger/5 p-8 text-center space-y-4 font-mono">
-          <p className="text-danger text-sm uppercase tracking-widest">Access Refused</p>
-          <p className="text-muted text-xs">{error}</p>
-        </div>
+        <EmptyState title="Access refused" description={error} variant="error" />
       )}
 
       {!loading && !error && focusJobType === "ad-transcripts" && (
         <div className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="rounded-card border border-line bg-panel p-6 space-y-2">
-              <p className="text-[10px] font-mono text-muted uppercase tracking-widest opacity-40">Assets Scanned</p>
+            <SectionCard className="space-y-2">
+              <p className="text-label font-mono text-muted uppercase tracking-widest opacity-40">Assets Scanned</p>
               <div className="text-3xl font-bold text-white">{transcriptRows.length}</div>
-            </div>
-            <div className="rounded-card border border-line bg-panel p-6 space-y-2">
-              <p className="text-[10px] font-mono text-muted uppercase tracking-widest opacity-40">Transcription Coverage</p>
+            </SectionCard>
+            <SectionCard className="space-y-2">
+              <p className="text-label font-mono text-muted uppercase tracking-widest opacity-40">Transcription Coverage</p>
               <div className="flex items-end gap-3">
                 <div className="text-3xl font-bold text-accent-2">{transcriptsWithText}</div>
-                <div className="text-xs font-mono text-muted/60 mb-1.5 uppercase tracking-widest">Verified</div>
+                <div className="text-xs font-mono text-muted mb-1.5 uppercase tracking-widest">Verified</div>
               </div>
-            </div>
-            <div className="rounded-card border border-line bg-panel p-6 space-y-2">
-              <p className="text-[10px] font-mono text-muted uppercase tracking-widest opacity-40">Missing Transcript</p>
-              <div className="text-3xl font-bold text-danger/80">
+            </SectionCard>
+            <SectionCard className="space-y-2">
+              <p className="text-label font-mono text-muted uppercase tracking-widest opacity-40">Missing Transcript</p>
+              <div className="text-3xl font-bold text-danger">
                 {Math.max(0, transcriptRows.length - transcriptsWithText)}
               </div>
-            </div>
+            </SectionCard>
           </div>
 
-          <div className="rounded-card border border-line bg-panel overflow-hidden">
+          <SectionCard padding="none" className="overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full min-w-[1200px] border-collapse">
                 <thead>
@@ -761,13 +744,13 @@ export default function ResearchHubDataPage() {
                         aria-label="Select all"
                       />
                     </th>
-                    <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Trace Time</th>
-                    <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Asset ID</th>
-                    <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Source</th>
-                    <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Transcript</th>
-                    <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Time Range</th>
-                    <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Provider</th>
-                    <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Actions</th>
+                    <th className="px-6 py-4 text-left text-label font-mono text-muted uppercase tracking-widest font-bold">Trace Time</th>
+                    <th className="px-6 py-4 text-left text-label font-mono text-muted uppercase tracking-widest font-bold">Asset ID</th>
+                    <th className="px-6 py-4 text-left text-label font-mono text-muted uppercase tracking-widest font-bold">Source</th>
+                    <th className="px-6 py-4 text-left text-label font-mono text-muted uppercase tracking-widest font-bold">Transcript</th>
+                    <th className="px-6 py-4 text-left text-label font-mono text-muted uppercase tracking-widest font-bold">Time Range</th>
+                    <th className="px-6 py-4 text-left text-label font-mono text-muted uppercase tracking-widest font-bold">Provider</th>
+                    <th className="px-6 py-4 text-left text-label font-mono text-muted uppercase tracking-widest font-bold">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-line/40">
@@ -783,14 +766,14 @@ export default function ResearchHubDataPage() {
                         />
                       </td>
                       <td className="px-6 py-4">
-                         <div className="text-[11px] font-mono text-muted uppercase">
+                         <div className="text-body-sm font-mono text-muted uppercase">
                            {new Date(row.updatedAt).toLocaleDateString()}<br/>
                            {new Date(row.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                          </div>
                       </td>
                       <td className="px-6 py-4 space-y-1">
                         <div className="text-xs font-bold text-white group-hover:text-accent transition-colors">{row.adName}</div>
-                        <div className="text-[9px] font-mono text-muted uppercase tracking-tight opacity-40">{row.id}</div>
+                        <div className="text-label-sm font-mono text-muted uppercase tracking-tight opacity-40">{row.id}</div>
                       </td>
                       <td className="px-3 py-2 text-xs">
                         {row.videoUrl ? (
@@ -803,10 +786,10 @@ export default function ResearchHubDataPage() {
                             {row.videoUrl}
                           </a>
                         ) : (
-                          <span className="text-muted/60">—</span>
+                          <span className="text-muted">—</span>
                         )}
                       </td>
-                      <td className="px-3 py-2 text-xs text-white/90">
+                      <td className="px-3 py-2 text-xs text-white">
                         {row.transcriptText ? (
                           <details>
                             <summary className="cursor-pointer text-accent-2 hover:text-accent-2">
@@ -820,7 +803,7 @@ export default function ResearchHubDataPage() {
                       </td>
                       <td className="px-3 py-2 text-xs text-muted">
                         <div>{row.wordRangeLabel}</div>
-                        <div className="text-muted/60 mt-1">{row.transcriptWords.length} words</div>
+                        <div className="text-muted mt-1">{row.transcriptWords.length} words</div>
                       </td>
                       <td className="px-3 py-2 text-xs text-muted">
                         <div>Provider: {row.transcriptSource.provider || "—"}</div>
@@ -828,7 +811,7 @@ export default function ResearchHubDataPage() {
                         <div className="mt-1">
                           Confidence: {formatConfidence(row.transcriptSource.confidence)}
                         </div>
-                        <div className="mt-1 font-mono text-muted/60 break-all">
+                        <div className="mt-1 font-mono text-muted break-all">
                           Transcript ID: {row.transcriptSource.transcriptId || "—"}
                         </div>
                       </td>
@@ -862,36 +845,36 @@ export default function ResearchHubDataPage() {
                 </tbody>
               </table>
             </div>
-          </div>
+          </SectionCard>
         </div>
       )}
 
       {!loading && !error && focusJobType === "ad-quality-gate" && (
         <div className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="rounded-card border border-line bg-panel p-6 space-y-2">
-              <p className="text-[10px] font-mono text-muted uppercase tracking-widest opacity-40">Assets Evaluated</p>
+            <SectionCard className="space-y-2">
+              <p className="text-label font-mono text-muted uppercase tracking-widest opacity-40">Assets Evaluated</p>
               <div className="text-3xl font-bold text-white">{qualityRows.length}</div>
-            </div>
-            <div className="rounded-card border border-line bg-panel p-6 space-y-2">
-              <p className="text-[10px] font-mono text-muted uppercase tracking-widest opacity-40">Approved Ads</p>
+            </SectionCard>
+            <SectionCard className="space-y-2">
+              <p className="text-label font-mono text-muted uppercase tracking-widest opacity-40">Approved Ads</p>
               <div className="flex items-end gap-3">
                 <div className="text-3xl font-bold text-success">{qualityViable}</div>
-                <div className="text-xs font-mono text-muted/60 mb-1.5 uppercase tracking-widest">Verified</div>
+                <div className="text-xs font-mono text-muted mb-1.5 uppercase tracking-widest">Verified</div>
               </div>
-            </div>
-            <div className="rounded-card border border-line bg-panel p-6 space-y-2">
-              <p className="text-[10px] font-mono text-muted uppercase tracking-widest opacity-40">Rejected Nodes</p>
-              <div className="text-3xl font-bold text-danger/80">{qualityRejected}</div>
-            </div>
+            </SectionCard>
+            <SectionCard className="space-y-2">
+              <p className="text-label font-mono text-muted uppercase tracking-widest opacity-40">Rejected Nodes</p>
+              <div className="text-3xl font-bold text-danger">{qualityRejected}</div>
+            </SectionCard>
           </div>
 
-          <div className="flex items-center gap-2 text-[10px] font-mono text-muted/60 uppercase tracking-widest">
+          <div className="flex items-center gap-2 text-label font-mono text-muted uppercase tracking-widest">
             <div className="w-1 h-1 rounded-full bg-accent animate-pulse" />
             Assessed Assets: <span className="text-white ml-1">{qualityAssessed}</span>
           </div>
 
-          <div className="rounded-card border border-line bg-panel overflow-hidden">
+          <SectionCard padding="none" className="overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full min-w-[1200px] border-collapse">
                 <thead>
@@ -905,17 +888,17 @@ export default function ResearchHubDataPage() {
                         aria-label="Select all"
                       />
                     </th>
-                    <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Trace Time</th>
-                    <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Asset ID</th>
-                    <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Source</th>
-                    <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Swipe</th>
-                    <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Verified</th>
-                    <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Viable</th>
-                    <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Raw</th>
-                    <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Issue</th>
-                    <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Confidence</th>
-                    <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Reasoning</th>
-                    <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Actions</th>
+                    <th className="px-6 py-4 text-left text-label font-mono text-muted uppercase tracking-widest font-bold">Trace Time</th>
+                    <th className="px-6 py-4 text-left text-label font-mono text-muted uppercase tracking-widest font-bold">Asset ID</th>
+                    <th className="px-6 py-4 text-left text-label font-mono text-muted uppercase tracking-widest font-bold">Source</th>
+                    <th className="px-6 py-4 text-left text-label font-mono text-muted uppercase tracking-widest font-bold">Swipe</th>
+                    <th className="px-6 py-4 text-left text-label font-mono text-muted uppercase tracking-widest font-bold">Verified</th>
+                    <th className="px-6 py-4 text-left text-label font-mono text-muted uppercase tracking-widest font-bold">Viable</th>
+                    <th className="px-6 py-4 text-left text-label font-mono text-muted uppercase tracking-widest font-bold">Raw</th>
+                    <th className="px-6 py-4 text-left text-label font-mono text-muted uppercase tracking-widest font-bold">Issue</th>
+                    <th className="px-6 py-4 text-left text-label font-mono text-muted uppercase tracking-widest font-bold">Confidence</th>
+                    <th className="px-6 py-4 text-left text-label font-mono text-muted uppercase tracking-widest font-bold">Reasoning</th>
+                    <th className="px-6 py-4 text-left text-label font-mono text-muted uppercase tracking-widest font-bold">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-line/40">
@@ -931,13 +914,13 @@ export default function ResearchHubDataPage() {
                         />
                       </td>
                       <td className="px-6 py-4">
-                         <div className="text-[11px] font-mono text-muted uppercase">
+                         <div className="text-body-sm font-mono text-muted uppercase">
                            {new Date(row.updatedAt).toLocaleDateString()}<br/>
                            {new Date(row.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                          </div>
                       </td>
                       <td className="px-6 py-4">
-                        <div className="text-[10px] font-mono text-white opacity-80 uppercase tracking-tight">{row.id}</div>
+                        <div className="text-label font-mono text-white opacity-80 uppercase tracking-tight">{row.id}</div>
                       </td>
                       <td className="px-6 py-4">
                         {row.videoUrl ? (
@@ -945,7 +928,7 @@ export default function ResearchHubDataPage() {
                             href={row.videoUrl}
                             target="_blank"
                             rel="noreferrer"
-                            className="text-[11px] font-mono text-accent-2 hover:text-white underline transition-colors break-all opacity-80"
+                            className="text-body-sm font-mono text-accent-2 hover:text-white underline transition-colors break-all opacity-80"
                           >
                             [Link_External]
                           </a>
@@ -955,50 +938,50 @@ export default function ResearchHubDataPage() {
                       </td>
                       <td className="px-6 py-4">
                         {row.isSwipeFile ? (
-                          <div className="status-chip info !text-[8px] !px-1.5 !py-0 !h-4 uppercase tracking-widest">Swipe</div>
+                          <div className="status-chip info !text-label-xs !px-1.5 !py-0 !h-4 uppercase tracking-widest">Swipe</div>
                         ) : (
                           <span className="text-muted/20">—</span>
                         )}
                       </td>
                       <td className="px-6 py-4">
-                        <div className="text-[10px] font-mono text-muted/60 uppercase">
+                        <div className="text-label font-mono text-muted uppercase">
                           {row.assessedAt ? new Date(row.assessedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "—"}
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <div className={`status-chip !text-[8px] !px-1.5 !py-0 !h-4 ${
+                        <div className={`status-chip !text-label-xs !px-1.5 !py-0 !h-4 ${
                           row.viable === true ? 'success' : row.viable === false ? 'danger' : 'subtle'
                         }`}>
                           {row.viable === true ? 'YES' : row.viable === false ? 'NO' : 'NULL'}
                         </div>
                       </td>
                       <td className="px-6 py-4 opacity-40">
-                        <div className={`status-chip !text-[8px] !px-1.5 !py-0 !h-4 ${
+                        <div className={`status-chip !text-label-xs !px-1.5 !py-0 !h-4 ${
                           row.rawViable === true ? 'success' : row.rawViable === false ? 'danger' : 'subtle'
                         }`}>
                           {row.rawViable === true ? 'YES' : row.rawViable === false ? 'NO' : 'NULL'}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-[11px] font-mono text-white opacity-80 uppercase tracking-tight">
+                        <div className="text-body-sm font-mono text-white opacity-80 uppercase tracking-tight">
                           {row.issue || "No issue"}
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <div className="text-[11px] font-mono text-accent-2/80">
+                        <div className="text-body-sm font-mono text-accent-2/80">
                           {row.confidence === null ? "—" : `${Math.round(row.confidence)}/${row.confidenceThreshold ?? "80"}`}
                         </div>
                       </td>
                       <td className="px-6 py-4">
                         <div className="text-xs text-muted leading-relaxed line-clamp-2 max-w-xs">
-                          {row.reason || <span className="opacity-20 italic font-mono uppercase text-[10px]">No analysis provided</span>}
+                          {row.reason || <span className="opacity-20 italic font-mono uppercase text-label">No analysis provided</span>}
                         </div>
                       </td>
                       <td className="px-6 py-4">
                         <button
                           onClick={() => handleDeleteAsset(row.id)}
                           disabled={deletingAssetId === row.id}
-                          className="text-[9px] font-mono text-muted hover:text-danger uppercase tracking-widest transition-colors text-left"
+                          className="text-label-sm font-mono text-muted hover:text-danger uppercase tracking-widest transition-colors text-left"
                         >
                           {deletingAssetId === row.id ? '[Purging...]' : '[Delete_Node]'}
                         </button>
@@ -1008,50 +991,50 @@ export default function ResearchHubDataPage() {
                 </tbody>
               </table>
             </div>
-          </div>
+          </SectionCard>
         </div>
       )}
 
       {!loading && !error && focusJobType === "pattern-analysis" && (
         <div className="space-y-4">
           {!patternJob ? (
-            <div className="rounded-card border border-line bg-panel p-8 text-center space-y-4 font-mono">
+            <SectionCard padding="lg" className="text-center space-y-4 font-mono">
               <p className="text-muted text-xs uppercase tracking-widest opacity-40">No pattern analysis result found for this run.</p>
-            </div>
+            </SectionCard>
           ) : (
             <div className="space-y-8">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="rounded-card border border-line bg-panel p-6 space-y-2">
-                  <p className="text-[10px] font-mono text-muted uppercase tracking-widest opacity-40">Ads Synthesized</p>
+                <SectionCard className="space-y-2">
+                  <p className="text-label font-mono text-muted uppercase tracking-widest opacity-40">Ads Synthesized</p>
                   <div className="text-3xl font-bold text-white">
                     {asNum(patternResult.adsAnalyzed) ?? 0}
                   </div>
-                </div>
-                <div className="rounded-card border border-line bg-panel p-6 space-y-2">
-                  <p className="text-[10px] font-mono text-muted uppercase tracking-widest opacity-40">Hook Vectors</p>
+                </SectionCard>
+                <SectionCard className="space-y-2">
+                  <p className="text-label font-mono text-muted uppercase tracking-widest opacity-40">Hook Vectors</p>
                   <div className="flex items-end gap-3">
                     <div className="text-3xl font-bold text-accent">
                       {Array.isArray(asObj(patternResult.patterns).hookPatterns)
                         ? asObj(patternResult.patterns).hookPatterns.length
                         : 0}
                     </div>
-                    <div className="text-xs font-mono text-muted/60 mb-1.5 uppercase tracking-widest">Active</div>
+                    <div className="text-xs font-mono text-muted mb-1.5 uppercase tracking-widest">Active</div>
                   </div>
-                </div>
-                <div className="rounded-card border border-line bg-panel p-6 space-y-2">
-                  <p className="text-[10px] font-mono text-muted uppercase tracking-widest opacity-40">Logic Clusters</p>
+                </SectionCard>
+                <SectionCard className="space-y-2">
+                  <p className="text-label font-mono text-muted uppercase tracking-widest opacity-40">Logic Clusters</p>
                   <div className="text-3xl font-bold text-accent-2">
                     {Array.isArray(asObj(patternResult.patterns).clusters)
                       ? asObj(patternResult.patterns).clusters.length
                       : 0}
                   </div>
-                </div>
+                </SectionCard>
               </div>
 
-              <div className="rounded-card border border-line bg-panel p-8 space-y-6 shadow-panel backdrop-blur-panel">
+              <SectionCard padding="lg" className="space-y-6">
                 <div className="flex items-center justify-between border-b border-line/40 pb-4">
                    <p className="card-label font-bold">Analysis Summary</p>
-                   <div className="text-[10px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">
+                   <div className="text-label font-mono text-muted uppercase tracking-[0.2em] opacity-40">
                      Job ID: <span className="text-accent-2">{patternJob.id}</span>
                    </div>
                 </div>
@@ -1060,16 +1043,16 @@ export default function ResearchHubDataPage() {
                     ? patternResult.summary
                     : "No summary available."}
                 </p>
-              </div>
+              </SectionCard>
 
-              <div className="rounded-card border border-line bg-panel p-8 space-y-4">
-                <p className="text-[10px] font-mono text-muted uppercase tracking-widest opacity-40 font-bold">Raw Analysis Output</p>
+              <SectionCard padding="lg" className="space-y-4">
+                <p className="text-label font-mono text-muted uppercase tracking-widest opacity-40 font-bold">Raw Analysis Output</p>
                 <div className="rounded bg-panel p-4 overflow-hidden">
-                  <pre className="max-h-[300px] overflow-auto whitespace-pre-wrap break-words text-[10px] font-mono text-muted/60 scrollbar-thin scrollbar-thumb-line">
+                  <pre className="max-h-[300px] overflow-auto whitespace-pre-wrap break-words text-label font-mono text-muted scrollbar-thin scrollbar-thumb-line">
                     {JSON.stringify(patternResult, null, 2)}
                   </pre>
                 </div>
-              </div>
+              </SectionCard>
             </div>
           )}
         </div>

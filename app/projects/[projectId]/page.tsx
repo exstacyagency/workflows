@@ -4,24 +4,29 @@ import { notFound } from 'next/navigation';
 import { getJobTypeLabel } from '@/lib/jobLabels';
 import { ProjectProductsPanel } from '@/components/ProjectProductsPanel';
 import { ProjectSettingsPanel } from '@/components/ProjectSettingsPanel';
+import { PageHeader, StatusChip } from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 function statusBadge(status: 'pending' | 'running' | 'failed' | 'completed') {
-  const colorMap: Record<typeof status, string> = {
-    pending: 'status-chip info opacity-60',
-    running: 'status-chip info',
-    failed: 'status-chip danger',
-    completed: 'status-chip success',
-  };
   const labelMap: Record<typeof status, string> = {
     pending: 'Pending',
     running: 'Running',
     failed: 'Needs Attention',
     completed: 'Completed',
   };
-  return <span className={colorMap[status]}>{labelMap[status]}</span>;
+  const variantMap: Record<typeof status, "info" | "running" | "danger" | "success"> = {
+    pending: "info",
+    running: "running",
+    failed: "danger",
+    completed: "success",
+  };
+  return (
+    <StatusChip variant={variantMap[status]} className={status === "pending" ? "opacity-60" : ""}>
+      {labelMap[status]}
+    </StatusChip>
+  );
 }
 
 const dateFormatter = new Intl.DateTimeFormat('en-US', {
@@ -122,23 +127,21 @@ export default async function ProjectDashboardPage({ params }: Params) {
       <div>
         <a
           href="/studio"
-          className="text-[11px] font-mono text-muted hover:text-white inline-block uppercase tracking-wider transition-colors"
+          className="text-body-sm font-mono text-muted hover:text-white inline-block uppercase tracking-wider transition-colors"
         >
           ← Back to Studio
         </a>
       </div>
 
       <section className="app-surface app-header">
-        <div>
-          <span className="app-kicker">Project Overview</span>
-          <h1 className="app-heading">{project.name}</h1>
-          <p className="app-subheading">
-            {project.description || 'No description provided yet.'}
-          </p>
-          <div className="app-status-line mt-4">
-            ID: <span className="mono-text">{project.id}</span> · Updated{' '}
-            {dateFormatter.format(project.updatedAt)}
-          </div>
+        <PageHeader
+          eyebrow="Project Overview"
+          title={project.name}
+          description={project.description || 'No description provided yet.'}
+        />
+        <div className="app-status-line mt-4">
+          ID: <span className="mono-text">{project.id}</span> · Updated{' '}
+          {dateFormatter.format(project.updatedAt)}
         </div>
       </section>
 
@@ -263,7 +266,7 @@ export default async function ProjectDashboardPage({ params }: Params) {
                           : 'pending'
                   )}
                 </div>
-                <p className="text-[10px] text-muted font-mono uppercase opacity-60">
+                <p className="text-label text-muted font-mono uppercase opacity-60">
                   Started {dateFormatter.format(job.createdAt)} · Updated {dateFormatter.format(job.updatedAt)}
                 </p>
                 {job.resultSummary && (

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { EmptyState, SectionCard } from "@/components/ui";
 
 type ProductItem = {
   id: string;
@@ -76,7 +77,7 @@ export function ProjectProductsPanel({ projectId, initialProducts }: Props) {
   }
 
   return (
-    <section className="rounded-card border border-line bg-panel p-5 space-y-4 shadow-panel backdrop-blur-panel">
+    <SectionCard className="space-y-4" padding="sm">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold text-white tracking-tight">Products</h2>
@@ -103,7 +104,7 @@ export function ProjectProductsPanel({ projectId, initialProducts }: Props) {
           <div className="flex items-center gap-2">
             <Link
               href={`/projects/${projectId}/products`}
-              className="inline-flex items-center rounded-pill border border-line bg-bg-elevated px-4 py-1.5 text-xs font-medium text-muted hover:text-white hover:bg-panel-strong transition-all"
+              className="btn btn-secondary !min-h-[32px] px-4 text-label"
             >
               View All Products
             </Link>
@@ -112,27 +113,26 @@ export function ProjectProductsPanel({ projectId, initialProducts }: Props) {
       </div>
 
       {!hasProducts && (
-        <div className="rounded-card border border-line bg-panel p-6 text-center">
-          <p className="text-sm text-text mb-2">No products created yet.</p>
-          <p className="text-xs text-muted mb-4 italic">
-            Add your first product to start research and creative workflows.
-          </p>
-        </div>
+        <EmptyState
+          title="No Products Created Yet"
+          description="Add your first product to start research and creative workflows."
+        />
       )}
 
+      <SectionCard padding="none" className="overflow-hidden">
       <details
         ref={createDetailsRef}
-        className="rounded-card border border-line bg-panel overflow-hidden"
+        className="overflow-hidden"
       >
         <summary className="list-none select-none px-4 py-3 cursor-pointer hover:bg-panel/[0.02] transition-colors">
-          <span className="inline-flex items-center justify-center rounded-pill bg-accent hover:bg-accent/90 px-4 py-2 text-xs font-bold text-bg shadow-[0_0_15px_rgba(232,209,122,0.15)] transition-all">
+          <span className="btn btn-primary !min-h-[36px] px-6">
             + Create New Product
           </span>
         </summary>
         <div className="border-t border-line p-5">
           <form onSubmit={handleCreateProduct} className="space-y-4">
             <div>
-              <label className="block text-[11px] font-mono text-muted uppercase tracking-wider mb-2">Product Name</label>
+              <label className="block text-body-sm font-mono text-muted uppercase tracking-wider mb-2">Product Name</label>
               <input
                 type="text"
                 value={name}
@@ -167,6 +167,7 @@ export function ProjectProductsPanel({ projectId, initialProducts }: Props) {
           </form>
         </div>
       </details>
-    </section>
+      </SectionCard>
+    </SectionCard>
   );
 }

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { getJobTypeLabel } from "@/lib/jobLabels";
+import { EmptyState, PageHeader, SectionCard, StatusChip } from "@/components/ui";
 
 // Types
 type JobStatus = "NOT_STARTED" | "PENDING" | "RUNNING" | "COMPLETED" | "FAILED";
@@ -120,18 +121,21 @@ export default function JobListPage() {
   }));
 
   const StatusBadge = ({ status }: { status: JobStatus }) => {
-    const classes = {
-      NOT_STARTED: "status-chip info opacity-40",
-      PENDING: "status-chip info opacity-60",
-      RUNNING: "status-chip info",
-      COMPLETED: "status-chip success",
-      FAILED: "status-chip danger",
-    };
+    const variants = {
+      NOT_STARTED: "info",
+      PENDING: "info",
+      RUNNING: "running",
+      COMPLETED: "success",
+      FAILED: "danger",
+    } as const;
 
     return (
-      <span className={classes[status]}>
+      <StatusChip
+        variant={variants[status]}
+        className={status === "NOT_STARTED" ? "opacity-40" : status === "PENDING" ? "opacity-60" : ""}
+      >
         {status.replace("_", " ")}
-      </span>
+      </StatusChip>
     );
   };
 
@@ -147,18 +151,12 @@ export default function JobListPage() {
   if (error) {
     return (
       <div className="px-6 py-6 max-w-7xl mx-auto space-y-6">
-        <div>
-          <Link
-            href={`/projects/${projectId}/research-hub`}
-            className="text-[11px] font-mono text-muted hover:text-white uppercase tracking-wider transition-colors"
-          >
-            ← Back to Research Hub
-          </Link>
-        </div>
-        <div className="rounded-card border border-accent/30 bg-accent/10 p-6 backdrop-blur-panel">
-          <h2 className="text-sm font-bold text-accent mb-2 uppercase tracking-wide">Error Loading Jobs</h2>
-          <p className="text-xs text-accent font-mono">{error}</p>
-        </div>
+        <PageHeader
+          backHref={`/projects/${projectId}/research-hub`}
+          backLabel="Back to Research Hub"
+          title="Job Logs"
+        />
+        <EmptyState title="Error Loading Jobs" description={error} variant="error" />
       </div>
     );
   }
@@ -166,28 +164,16 @@ export default function JobListPage() {
   return (
     <div className="px-8 py-8 max-w-7xl mx-auto space-y-8">
       {/* Header */}
-      <div>
-        <Link
-          href={`/projects/${projectId}/research-hub`}
-          className="text-[11px] font-mono text-muted hover:text-white mb-6 inline-block uppercase tracking-wider transition-colors"
-        >
-          ← Back to Research Hub
-        </Link>
-        <div className="flex items-end justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-white tracking-tight mb-2">{getJobTypeLabel(jobType)} Logs</h1>
-            <p className="text-[11px] font-mono text-muted uppercase tracking-widest opacity-60">
-              {jobs.length} {jobs.length === 1 ? 'ENTRY' : 'ENTRIES'} RECORDED
-            </p>
-          </div>
-        </div>
-      </div>
+      <PageHeader
+        backHref={`/projects/${projectId}/research-hub`}
+        backLabel="Back to Research Hub"
+        title={`${getJobTypeLabel(jobType)} Logs`}
+        description={`${jobs.length} ${jobs.length === 1 ? "ENTRY" : "ENTRIES"} RECORDED`}
+      />
 
       {/* Job Groups */}
       {groupedJobs.length === 0 ? (
-        <div className="rounded-card border border-line bg-panel p-16 text-center shadow-panel backdrop-blur-panel">
-          <p className="text-sm text-muted italic">No job logs found for this type.</p>
-        </div>
+        <EmptyState title="No Job Logs Found" description="No job logs found for this type." />
       ) : (
         <div className="space-y-6">
           {groupedJobs.map((group) => (
@@ -195,24 +181,24 @@ export default function JobListPage() {
               {/* Group Header */}
               <div className="flex items-center justify-between rounded-pill border border-line bg-bg-elevated px-5 py-3 shadow-panel backdrop-blur-panel">
                 <h2 className="text-sm font-bold text-white uppercase tracking-tight">{group.runLabel}</h2>
-                <p className="text-[10px] font-mono text-muted uppercase opacity-70">{group.jobs.length} {group.jobs.length === 1 ? 'job' : 'jobs'}</p>
+                <p className="text-label font-mono text-muted uppercase opacity-70">{group.jobs.length} {group.jobs.length === 1 ? 'job' : 'jobs'}</p>
               </div>
 
               {/* Jobs Table */}
-              <div className="rounded-card border border-line bg-panel overflow-hidden shadow-panel backdrop-blur-panel">
+              <SectionCard padding="none" className="overflow-hidden">
                 <table className="w-full">
                   <thead className="border-b border-line bg-panel">
                     <tr>
-                      <th className="px-5 py-3 text-left text-[0.76rem] font-mono uppercase tracking-[0.12em] text-muted">
+                      <th className="px-5 py-3 text-left text-body-xs font-mono uppercase tracking-[0.12em] text-muted">
                         Created
                       </th>
-                      <th className="px-5 py-3 text-left text-[0.76rem] font-mono uppercase tracking-[0.12em] text-muted">
+                      <th className="px-5 py-3 text-left text-body-xs font-mono uppercase tracking-[0.12em] text-muted">
                         Status
                       </th>
-                      <th className="px-5 py-3 text-left text-[0.76rem] font-mono uppercase tracking-[0.12em] text-muted">
+                      <th className="px-5 py-3 text-left text-body-xs font-mono uppercase tracking-[0.12em] text-muted">
                         Duration
                       </th>
-                      <th className="px-5 py-3 text-right text-[0.76rem] font-mono uppercase tracking-[0.12em] text-muted">
+                      <th className="px-5 py-3 text-right text-body-xs font-mono uppercase tracking-[0.12em] text-muted">
                         Actions
                       </th>
                     </tr>
@@ -238,7 +224,7 @@ export default function JobListPage() {
                               href={`/projects/${projectId}/research/data/${job.id}${
                                 job.runId ? `?runId=${job.runId}` : ""
                               }`}
-                              className="text-[11px] font-mono uppercase tracking-wider text-accent-2 underline decoration-accent-2/30 underline-offset-4 transition-all hover:text-white hover:decoration-white"
+                              className="text-body-sm font-mono uppercase tracking-wider text-accent-2 underline decoration-accent-2/30 underline-offset-4 transition-all hover:text-white hover:decoration-white"
                             >
                               View Data →
                             </Link>
@@ -250,7 +236,7 @@ export default function JobListPage() {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </SectionCard>
             </div>
           ))}
         </div>

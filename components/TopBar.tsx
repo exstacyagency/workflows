@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { StatusChip } from "@/components/ui";
 
 export default function TopBar() {
   const pathname = usePathname() ?? "";
@@ -58,9 +59,9 @@ export default function TopBar() {
         <span className="hidden md:inline-block">
           Command Palette
         </span>
-        <span className="px-2 py-1 rounded-md border border-line bg-bg-elevated font-mono text-[11px] text-accent-2">
+        <StatusChip variant="info" className="!rounded-md !px-2 !py-1 !normal-case !tracking-normal">
           ⌘K
-        </span>
+        </StatusChip>
       </div>
     </header>
   );

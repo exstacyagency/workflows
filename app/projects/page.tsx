@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import CreateProjectButton from "@/app/(app)/projects/CreateProjectButton";
+import { EmptyState, PageHeader, SectionCard } from "@/components/ui";
 
 type Project = {
   id: string;
@@ -82,15 +83,11 @@ export default function ProjectsPage() {
   return (
     <div className="px-6 py-6 space-y-6">
       {/* Header */}
-      <section className="rounded-card border border-line bg-panel p-6 flex flex-col gap-2 shadow-panel backdrop-blur-panel">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold text-white tracking-tight">Projects</h1>
-            <p className="text-sm text-muted mt-1 italic max-w-2xl">
-              Create and manage your projects. Each project flows through the full research → script → storyboard → video pipeline.
-            </p>
-          </div>
-        </div>
+      <SectionCard className="flex flex-col gap-2" padding="md">
+        <PageHeader
+          title="Projects"
+          description="Create and manage your projects. Each project flows through the full research → script → storyboard → video pipeline."
+        />
         {error && (
           <p className="text-xs text-danger font-mono">
             {error}
@@ -99,10 +96,10 @@ export default function ProjectsPage() {
         <div className="pt-2">
           <CreateProjectButton />
         </div>
-      </section>
+      </SectionCard>
 
       {/* New Project form */}
-      <section className="rounded-card border border-line bg-panel p-5 space-y-4 shadow-panel backdrop-blur-panel">
+      <SectionCard className="space-y-4" padding="sm">
         <h2 className="text-sm font-semibold text-white tracking-tight uppercase">
           New Project
         </h2>
@@ -123,7 +120,7 @@ export default function ProjectsPage() {
               Description
             </label>
             <textarea
-              className="w-full rounded-card border border-line bg-panel px-4 py-2 text-sm text-white placeholder:text-muted/40 outline-none focus:border-accent/40 transition-colors min-h-[80px]"
+              className="w-full rounded-card border border-line bg-bg-elevated px-4 py-2 text-sm text-white placeholder:text-muted/40 outline-none focus:border-accent/40 transition-colors min-h-[80px]"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Optional short description to remind you what this project is about."
@@ -137,10 +134,10 @@ export default function ProjectsPage() {
             {creating ? "Creating…" : "Create Project"}
           </button>
         </form>
-      </section>
+      </SectionCard>
 
       {/* Projects list */}
-      <section className="rounded-card border border-line bg-panel p-5 space-y-4 shadow-panel backdrop-blur-panel">
+      <SectionCard className="space-y-4" padding="sm">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-white tracking-tight uppercase">
             Existing Projects
@@ -148,47 +145,49 @@ export default function ProjectsPage() {
           <button
             onClick={loadProjects}
             disabled={loading}
-            className="btn btn-secondary !min-h-[32px] px-4 text-[10px]"
+            className="btn btn-secondary !min-h-[32px] px-4 text-label"
           >
             {loading ? "Refreshing…" : "Refresh"}
           </button>
         </div>
         {projects.length === 0 && !loading && (
-          <p className="text-sm text-muted italic text-center py-6 border border-dashed border-line rounded-card">
-            No projects yet. Create your first project using the form above.
-          </p>
+          <EmptyState
+            title="No Projects Yet"
+            description="Create your first project using the form above."
+          />
         )}
         <div className="space-y-2">
           {projects.map((project) => (
-            <div
+            <SectionCard
               key={project.id}
-              className="flex cursor-pointer items-center justify-between rounded-card border border-line bg-panel px-5 py-4"
+              padding="none"
+              className="flex cursor-pointer items-center justify-between px-5 py-4"
             >
               <div className="space-y-1.5">
                 <div className="text-sm font-bold text-white tracking-tight">
                   {project.name}
                 </div>
                 {project.description && (
-                  <div className="text-xs text-muted/80 italic">
+                  <div className="text-xs text-muted italic">
                     {project.description}
                   </div>
                 )}
-                <div className="text-[10px] font-mono text-accent-2/40 uppercase tracking-widest">
+                <div className="text-label font-mono text-accent-2/40 uppercase tracking-widest">
                   ID: {project.id}
                 </div>
               </div>
               <div className="flex items-center gap-2">
                 <Link
                   href={`/projects/${project.id}`}
-                  className="inline-flex items-center rounded-pill border border-line bg-transparent px-4 py-2 text-[11px] font-bold uppercase tracking-wider text-muted transition-all hover:bg-bg-elevated hover:text-white"
+                  className="inline-flex items-center rounded-pill border border-line bg-transparent px-4 py-2 text-body-sm font-bold uppercase tracking-wider text-muted transition-all hover:bg-bg-elevated hover:text-white"
                 >
                   Open
                 </Link>
               </div>
-            </div>
+            </SectionCard>
           ))}
         </div>
-      </section>
+      </SectionCard>
     </div>
   );
 }

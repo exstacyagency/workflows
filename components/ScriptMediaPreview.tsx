@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { EmptyState, SectionCard, StatusChip } from "@/components/ui";
 
 export type ScriptMedia = {
   id: string;
@@ -69,23 +70,24 @@ export function ScriptMediaPreview({ script }: Props) {
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between text-[11px] text-muted font-mono">
+      <div className="flex items-center justify-between text-body-sm text-muted font-mono">
         <span className="font-semibold text-text">
           Script #{script.id.slice(0, 6)}
         </span>
         <span suppressHydrationWarning className="opacity-70">{displayTime}</span>
       </div>
       <p className="text-xs text-muted">
-        Status: <span className="text-accent-2 font-mono">{script.status ?? "pending"}</span>
+        Status: <StatusChip variant="info" className="ml-2 !px-2 !py-0.5 !text-label-xs">{script.status ?? "pending"}</StatusChip>
         {typeof script.wordCount === "number" && (
           <span className="ml-2 opacity-50 font-mono">· {script.wordCount} words</span>
         )}
       </p>
 
       {!mediaKey ? (
-        <p className="text-xs text-muted/60 italic font-mono">
-          No merged video available for this script yet.
-        </p>
+        <EmptyState
+          title="No merged video available"
+          description="No merged video is available for this script yet."
+        />
       ) : (
         <button
           type="button"
@@ -98,12 +100,12 @@ export function ScriptMediaPreview({ script }: Props) {
       )}
       {error && <p className="text-xs text-accent">{error}</p>}
       {warning && (
-        <div className="text-[11px] text-accent bg-accent/5 border border-accent/20 rounded-card p-4 space-y-2 backdrop-blur-panel">
+        <SectionCard padding="sm" className="text-body-sm text-accent bg-accent/5 border-accent/20 space-y-2">
           <p className="font-bold uppercase tracking-tight opacity-90">{warning}</p>
           {warningKey && (
-            <p className="font-mono text-accent/70 break-all leading-relaxed">{warningKey}</p>
+            <p className="font-mono text-accent break-all leading-relaxed">{warningKey}</p>
           )}
-        </div>
+        </SectionCard>
       )}
     </div>
   );

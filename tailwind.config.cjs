@@ -24,6 +24,13 @@ module.exports = {
         sans: ['Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'sans-serif'],
         mono: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
       },
+      fontSize: {
+        'label-xs': ['0.5rem', { lineHeight: '1' }],
+        'label-sm': ['0.5625rem', { lineHeight: '1' }],
+        label: ['0.625rem', { lineHeight: '1' }],
+        'body-sm': ['0.6875rem', { lineHeight: '1.5' }],
+        'body-xs': ['0.75rem', { lineHeight: '1.5' }],
+      },
       boxShadow: {
         panel: '0 24px 80px rgba(0,0,0,0.4)',
       },

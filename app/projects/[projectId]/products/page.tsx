@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { EmptyState, PageHeader, SectionCard, StatusChip } from "@/components/ui";
 
 type ProductItem = {
   id: string;
@@ -262,7 +263,7 @@ export default function ProjectProductsPage() {
       <div className="min-h-screen bg-bg text-white px-8 py-8">
         <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
           <div className="w-8 h-8 border-2 border-accent/20 border-t-accent rounded-full animate-spin" />
-          <p className="text-[10px] font-mono text-muted uppercase tracking-[0.3em] animate-pulse">Loading products...</p>
+          <p className="text-label font-mono text-muted uppercase tracking-[0.3em] animate-pulse">Loading products...</p>
         </div>
       </div>
     );
@@ -275,13 +276,13 @@ export default function ProjectProductsPage() {
           <div className="space-y-4">
             <Link
               href={`/projects/${projectId}`}
-              className="text-[11px] font-mono text-muted hover:text-white uppercase tracking-widest transition-colors inline-block"
+              className="text-body-sm font-mono text-muted hover:text-white uppercase tracking-widest transition-colors inline-block"
             >
               ← Back to Project
             </Link>
             <div className="flex items-center gap-4">
               <h1 className="text-4xl font-bold tracking-tight text-white">Product Library</h1>
-              <div className="status-chip subtle uppercase tracking-widest text-[9px]">
+              <div className="status-chip subtle uppercase tracking-widest text-label-sm">
                 {sortedProducts.length} Products
               </div>
             </div>
@@ -294,7 +295,7 @@ export default function ProjectProductsPage() {
           
           <button
             onClick={() => void loadProducts()}
-            className="btn btn-secondary !min-h-[40px] px-6 text-[10px] font-bold uppercase tracking-widest"
+            className="btn btn-secondary !min-h-[40px] px-6 text-label font-bold uppercase tracking-widest"
           >
             Refresh Products
           </button>
@@ -304,15 +305,13 @@ export default function ProjectProductsPage() {
       <div className="px-8 py-10 max-w-[1200px] mx-auto space-y-12">
         {error && (
           <div className="rounded-card border border-danger/20 bg-danger/5 p-4 flex items-center justify-between gap-4 animate-in fade-in slide-in-from-top-2">
-            <p className="text-[11px] font-mono text-danger uppercase tracking-widest">{error}</p>
-            <button onClick={() => setError(null)} className="text-white/20 hover:text-white transition-colors">✕</button>
+            <p className="text-body-sm font-mono text-danger uppercase tracking-widest">{error}</p>
+            <button onClick={() => setError(null)} className="text-muted/20 hover:text-white transition-colors">✕</button>
           </div>
         )}
 
         {sortedProducts.length === 0 ? (
-          <div className="rounded-card border border-line bg-panel p-20 text-center shadow-panel backdrop-blur-panel">
-            <p className="text-[10px] font-mono text-muted uppercase tracking-widest opacity-40 italic">No products have been added to this project yet.</p>
-          </div>
+          <EmptyState title="No products have been added to this project yet." />
         ) : (
           <div className="grid gap-8">
             {sortedProducts.map((product) => (
@@ -326,12 +325,12 @@ export default function ProjectProductsPage() {
               >
                 <div className="px-6 py-4 border-b border-line/50 bg-bg-elevated flex items-center justify-between">
                   <div className="flex items-center gap-4">
-                    <span className="text-[9px] font-mono text-white/30 uppercase tracking-[0.2em] font-bold">Product Record</span>
+                    <span className="text-label-sm font-mono text-muted/40 uppercase tracking-[0.2em] font-bold">Product Record</span>
                     <div className="h-3 w-px bg-line/50" />
-                    <span className="text-[9px] font-mono text-accent-2/60 uppercase tracking-widest">{product.id}</span>
+                    <span className="text-label-sm font-mono text-accent-2/60 uppercase tracking-widest">{product.id}</span>
                   </div>
                   <div className="flex items-center gap-4">
-                    <span className="text-[9px] font-mono text-muted uppercase tracking-widest">
+                    <span className="text-label-sm font-mono text-muted uppercase tracking-widest">
                        Added: {product.createdAt ? dateFormatter.format(new Date(product.createdAt)) : "N/A"}
                     </span>
                   </div>
@@ -344,22 +343,22 @@ export default function ProjectProductsPage() {
                         <h2 className="text-3xl font-black text-white tracking-tight leading-none">
                           {product.name}
                         </h2>
-                        <p className="text-[10px] font-mono text-muted uppercase tracking-[0.33em] pt-1 opacity-60">
+                        <p className="text-label font-mono text-muted uppercase tracking-[0.33em] pt-1 opacity-60">
                           {product.amazonAsin ? `ASIN: ${product.amazonAsin}` : "ASIN: NOT ADDED"}
                         </p>
                       </div>
 
                       {product.productProblemSolved && (
                         <div className="p-4 rounded border border-line/30 bg-transparent">
-                          <p className="text-[9px] font-mono text-accent uppercase tracking-widest mb-1 opacity-70">Primary Problem</p>
-                          <p className="text-[13px] text-muted leading-relaxed line-clamp-2 italic">&quot;{product.productProblemSolved}&quot;</p>
+                          <p className="text-label-sm font-mono text-accent uppercase tracking-widest mb-1 opacity-70">Primary Problem</p>
+                          <p className="text-sm text-muted leading-relaxed line-clamp-2 italic">&quot;{product.productProblemSolved}&quot;</p>
                         </div>
                       )}
 
                       <div className="flex flex-wrap gap-3 pt-2">
                         <button
                           onClick={() => editingProductId === product.id ? cancelEditProduct() : beginEditProduct(product)}
-                          className="inline-flex items-center rounded-pill border border-line bg-panel px-5 py-2 text-[0.82rem] text-text transition-all hover:bg-panel-strong"
+                          className="btn btn-secondary !min-h-[36px] px-6"
                         >
                           {editingProductId === product.id ? "Close Editor" : "Edit Product"}
                         </button>
@@ -368,19 +367,19 @@ export default function ProjectProductsPage() {
 
                         <Link
                           href={`/products/${product.id}`}
-                          className="inline-flex items-center rounded-pill border border-line bg-panel px-5 py-2 text-[0.82rem] text-text transition-all hover:bg-panel-strong"
+                          className="btn btn-secondary !min-h-[36px] px-6"
                         >
                           Product Setup
                         </Link>
                         <Link
                           href={`/projects/${projectId}/research-hub?productId=${product.id}`}
-                          className="inline-flex items-center rounded-pill border border-line bg-panel px-5 py-2 text-[0.82rem] text-text transition-all hover:bg-panel-strong"
+                          className="btn btn-secondary !min-h-[36px] px-6"
                         >
                           Research Hub
                         </Link>
                         <Link
                           href={`/projects/${projectId}/creative-studio?productId=${product.id}`}
-                          className="inline-flex items-center rounded-pill border border-line bg-panel px-5 py-2 text-[0.82rem] text-text transition-all hover:bg-panel-strong"
+                          className="btn btn-secondary !min-h-[36px] px-6"
                         >
                           Creative Studio
                         </Link>
@@ -388,7 +387,7 @@ export default function ProjectProductsPage() {
                         <button
                           onClick={() => void handleDeleteProduct(product.id)}
                           disabled={deletingProductId === product.id}
-                          className="ml-auto inline-flex items-center rounded-pill border border-line bg-panel px-5 py-2 text-[0.82rem] text-text transition-all hover:bg-panel-strong disabled:opacity-50"
+                          className="ml-auto btn btn-secondary !min-h-[36px] px-6 disabled:opacity-50"
                         >
                           {deletingProductId === product.id ? "Deleting..." : "Delete Product"}
                         </button>
@@ -408,7 +407,7 @@ export default function ProjectProductsPage() {
                       ) : (
                         <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center space-y-3 opacity-30">
                           <div className="w-10 h-10 border border-line rounded flex items-center justify-center text-xl">🖼️</div>
-                          <span className="text-[9px] font-mono uppercase tracking-[0.2em] leading-tight">No Image</span>
+                          <span className="text-label-sm font-mono uppercase tracking-[0.2em] leading-tight">No Image</span>
                         </div>
                       )}
                     </div>
@@ -420,7 +419,7 @@ export default function ProjectProductsPage() {
                         <div className="grid gap-8 lg:grid-cols-2">
                           <div className="space-y-6">
                             <div className="space-y-2">
-                              <label className="text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Product Name</label>
+                              <label className="text-label font-mono text-muted uppercase tracking-widest font-bold">Product Name</label>
                               <input
                                 value={editingDraft.name}
                                 onChange={(event) => setEditingDraft((prev) => prev ? { ...prev, name: event.target.value } : prev)}
@@ -430,7 +429,7 @@ export default function ProjectProductsPage() {
                             </div>
                             
                             <div className="space-y-3">
-                              <label className="text-[10px] font-mono text-muted uppercase tracking-widest font-bold block">Product Image</label>
+                              <label className="text-label font-mono text-muted uppercase tracking-widest font-bold block">Product Image</label>
                               <div className="flex flex-wrap gap-3">
                                 <button
                                   type="button"
@@ -439,7 +438,7 @@ export default function ProjectProductsPage() {
                                     input?.click();
                                   }}
                                   disabled={uploadingReferenceProductId === product.id}
-                                  className="px-6 h-10 rounded-pill border border-line bg-bg-elevated text-[10px] font-mono text-white uppercase tracking-widest hover:bg-panel transition-all hover:text-bg font-bold disabled:opacity-40"
+                                  className="px-6 h-10 rounded-pill border border-line bg-bg-elevated text-label font-mono text-white uppercase tracking-widest hover:bg-panel transition-all hover:text-bg font-bold disabled:opacity-40"
                                 >
                                   {uploadingReferenceProductId === product.id ? "Uploading..." : "Upload Image"}
                                 </button>
@@ -449,7 +448,7 @@ export default function ProjectProductsPage() {
                                     type="button"
                                     onClick={() => void handleDeleteProductReferenceImage(product.id)}
                                     disabled={deletingReferenceProductId === product.id}
-                                    className="px-6 h-10 rounded-pill border border-danger/40 bg-danger/5 text-[10px] font-mono text-danger uppercase tracking-widest hover:bg-danger/20 transition-all font-bold"
+                                    className="px-6 h-10 rounded-pill border border-danger/40 bg-danger/5 text-label font-mono text-danger uppercase tracking-widest hover:bg-danger/20 transition-all font-bold"
                                   >
                                     Remove Image
                                   </button>
@@ -468,7 +467,7 @@ export default function ProjectProductsPage() {
                                   }}
                                 />
                               </div>
-                              <p className="text-[9px] font-mono text-muted/40 uppercase tracking-widest">Supports: JPG, PNG, WEBP [Max 10MB]</p>
+                              <p className="text-label-sm font-mono text-muted/40 uppercase tracking-widest">Supports: JPG, PNG, WEBP [Max 10MB]</p>
                             </div>
                           </div>
 
@@ -481,7 +480,7 @@ export default function ProjectProductsPage() {
                               />
                             ) : (
                               <div className="py-12 opacity-20">
-                                <span className="text-[10px] font-mono uppercase tracking-[0.3em]">No image uploaded</span>
+                                <span className="text-label font-mono uppercase tracking-[0.3em]">No image uploaded</span>
                               </div>
                             )}
                           </div>
@@ -491,14 +490,14 @@ export default function ProjectProductsPage() {
                           <button
                             onClick={cancelEditProduct}
                             disabled={savingProductId === product.id}
-                            className="btn btn-secondary !min-h-[40px] px-8 text-[10px] font-bold uppercase tracking-widest"
+                            className="btn btn-secondary !min-h-[40px] px-8 text-label font-bold uppercase tracking-widest"
                           >
                             Cancel
                           </button>
                           <button
                             onClick={() => void saveEditedProduct(product.id)}
                             disabled={savingProductId === product.id}
-                            className="btn btn-primary !min-h-[40px] px-10 text-[10px] font-bold uppercase tracking-widest"
+                            className="btn btn-primary !min-h-[40px] px-10 text-label font-bold uppercase tracking-widest"
                           >
                             {savingProductId === product.id ? "Saving..." : "Save Changes"}
                           </button>
