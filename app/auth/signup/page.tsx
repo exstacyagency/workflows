@@ -3,6 +3,7 @@
 import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { SectionCard } from "@/components/ui";
 
 export default function SignUpPage() {
   const router = useRouter();
@@ -56,7 +57,7 @@ export default function SignUpPage() {
 
   return (
     <main className="min-h-screen bg-bg text-white px-4 py-10 selection:bg-accent/30">
-      <div className="max-w-md mx-auto rounded-card border border-line bg-panel p-6 space-y-4 shadow-panel backdrop-blur-panel">
+      <SectionCard className="max-w-md mx-auto space-y-4">
         <h1 className="text-xl font-semibold">Create account</h1>
         <form onSubmit={onSubmit} className="space-y-3">
           <input
@@ -102,11 +103,11 @@ export default function SignUpPage() {
         </form>
         <p className="text-sm text-muted">
           Already have an account?{" "}
-          <Link href="/auth/signin" className="text-accent hover:text-accent/80 font-mono font-medium">
+          <Link href="/auth/signin" className="text-accent hover:text-accent font-mono font-medium">
             Sign in
           </Link>
         </p>
-      </div>
+      </SectionCard>
     </main>
   );
 }

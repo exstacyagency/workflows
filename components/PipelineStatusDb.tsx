@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { SectionCard, StatusChip } from "@/components/ui";
 
 type PhaseStatus = "completed" | "pending" | "running" | "needs_attention" | "failed";
 
@@ -64,22 +65,22 @@ const pipelinePhases: PipelinePhase[] = [
 
 function statusBadge(status: PhaseStatus) {
   const normalized = status === "failed" ? "needs_attention" : status;
-  const colorMap: Record<typeof normalized, string> = {
-    pending: "status-chip info opacity-60",
-    running: "status-chip info",
-    needs_attention: "status-chip danger",
-    completed: "status-chip success",
-  };
   const labelMap: Record<typeof normalized, string> = {
     pending: "Pending",
     running: "Running",
     needs_attention: "Needs Attention",
     completed: "Completed",
   };
+  const variantMap: Record<typeof normalized, "info" | "running" | "danger" | "success"> = {
+    pending: "info",
+    running: "running",
+    needs_attention: "danger",
+    completed: "success",
+  };
   return (
-    <span className={colorMap[normalized]}>
+    <StatusChip variant={variantMap[normalized]} className={normalized === "pending" ? "opacity-60" : ""}>
       {labelMap[normalized]}
-    </span>
+    </StatusChip>
   );
 }
 
@@ -137,10 +138,10 @@ export function PipelineStatusDb({ projectId }: Props) {
   }, [url]);
 
   return (
-    <section className="rounded-card border border-line bg-panel p-5 space-y-3 shadow-panel backdrop-blur-panel">
+    <SectionCard className="space-y-3" padding="sm">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold text-white tracking-tight">Pipeline Status</h2>
-        <span className="text-[11px] text-muted font-mono opacity-50">AUTO-UPDATE FROM JOB HISTORY</span>
+        <span className="text-body-sm text-muted font-mono opacity-50">AUTO-UPDATE FROM JOB HISTORY</span>
       </div>
       {err && <p className="text-xs text-accent">{err}</p>}
       <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
@@ -161,9 +162,9 @@ export function PipelineStatusDb({ projectId }: Props) {
                 <p className="text-sm font-medium text-white">{phase.label}</p>
                 {statusBadge(status)}
               </div>
-              <p className="text-xs text-muted/80">{phase.description}</p>
+              <p className="text-xs text-muted">{phase.description}</p>
               {supportingJob && updatedAt && (
-                <p className="text-[11px] text-muted font-mono opacity-50 uppercase">
+                <p className="text-body-sm text-muted font-mono opacity-50 uppercase">
                   Last: {supportingJob.type.replace(/_/g, " ")} {"\u00b7"} {updatedAt}
                 </p>
               )}
@@ -171,6 +172,6 @@ export function PipelineStatusDb({ projectId }: Props) {
           );
         })}
       </div>
-    </section>
+    </SectionCard>
   );
 }

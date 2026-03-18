@@ -2,6 +2,7 @@
 
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { EmptyState, SectionCard, StatusChip } from "@/components/ui";
 
 type RunItem = {
   id: string;
@@ -214,8 +215,7 @@ export default function RunManagementModal({
       >
         <div className="flex items-start justify-between gap-4 p-8 pb-4 bg-transparent">
           <div>
-            <p className="app-eyebrow">Campaign Runs</p>
-            <h3 className="text-xl font-bold tracking-tight text-white">Run Manager</h3>
+            <p className="eyebrow">Run Manager</p>
             <p className="text-xs font-mono text-muted uppercase tracking-wider mt-2 opacity-70">
               Rename or delete campaign runs.
             </p>
@@ -223,7 +223,7 @@ export default function RunManagementModal({
           <button
             type="button"
             onClick={onClose}
-            className="btn btn-secondary !min-h-[32px] px-4 text-[11px] font-bold uppercase tracking-wider"
+            className="btn btn-secondary !min-h-[32px] px-4 text-body-sm font-bold uppercase tracking-wider"
           >
             Close
           </button>
@@ -237,16 +237,17 @@ export default function RunManagementModal({
           )}
 
           {loading ? (
-            <div className="rounded-card border border-line bg-panel py-12 px-6 flex flex-col items-center justify-center space-y-4">
+            <SectionCard className="py-12 px-6 flex flex-col items-center justify-center space-y-4" padding="none">
               <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
-              <p className="text-[10px] font-mono text-muted uppercase tracking-widest">Loading campaign runs...</p>
-            </div>
+              <p className="text-label font-mono text-muted uppercase tracking-widest">Loading campaign runs...</p>
+            </SectionCard>
           ) : sortedRuns.length === 0 ? (
-            <div className="rounded-card border border-dashed border-line bg-panel py-12 text-center">
-              <p className="text-xs text-muted italic">No campaign runs found for this project.</p>
-            </div>
+            <EmptyState
+              title="No Campaign Runs"
+              description="No campaign runs found for this project."
+            />
           ) : (
-            <div className="rounded-card border border-line bg-panel overflow-hidden">
+            <SectionCard padding="none" className="overflow-hidden">
               <div className="overflow-y-auto p-4 pr-2 space-y-3 custom-scrollbar">
               {sortedRuns.map((run) => {
                 const draftName = String(draftNames[run.id] ?? "");
@@ -258,20 +259,21 @@ export default function RunManagementModal({
                   normalizedDraft === normalizedCurrent;
 
                 return (
-                  <div
+                  <SectionCard
                     key={run.id}
-                    className="rounded-card border border-line bg-panel p-5 transition-colors"
+                    padding="sm"
+                    className="transition-colors"
                   >
                     <div className="flex items-start justify-between gap-4 mb-4">
                       <div className="space-y-1">
-                        <p className="text-[0.78rem] font-mono text-accent uppercase tracking-[0.14em]">
+                        <p className="text-body-xs font-mono text-accent uppercase tracking-[0.14em]">
                           Run #{run.runNumber}
                         </p>
-                        <p className="text-[15px] font-bold text-white tracking-tight">
+                        <p className="text-base font-bold text-white tracking-tight">
                           {getJobTypeLabel(run.latestJobType, run.latestJobSubtype)}
                         </p>
-                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-mono text-muted uppercase tracking-wider opacity-60">
-                          <span className="text-white/80">{run.name?.trim() || "UNNAMED"}</span>
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-label font-mono text-muted uppercase tracking-wider opacity-60">
+                          <span className="text-white">{run.name?.trim() || "UNNAMED"}</span>
                           <span className="opacity-30">•</span>
                           <span className="text-accent-2">{run.id.slice(0, 8)}</span>
                           <span className="opacity-30">•</span>
@@ -280,9 +282,9 @@ export default function RunManagementModal({
                           <span>{formatRunDate(run.createdAt)}</span>
                         </div>
                       </div>
-                      <span className="status-chip info opacity-80">
+                      <StatusChip variant="info" className="opacity-80">
                         {run.latestJobStatus ? run.latestJobStatus.replaceAll("_", " ") : "Not Started"}
-                      </span>
+                      </StatusChip>
                     </div>
 
                     <div className="flex flex-wrap gap-2 items-center">
@@ -294,15 +296,15 @@ export default function RunManagementModal({
                         }
                         placeholder="Assign Name..."
                         maxLength={120}
-                        className="flex-1 min-w-[200px] rounded-pill border border-line bg-bg-elevated px-4 py-2 text-xs text-white placeholder:text-muted/30 outline-none focus:border-accent/40 transition-colors"
+                        className="flex-1 min-w-[200px] rounded-pill border border-line bg-bg-elevated px-4 py-2 text-xs text-white placeholder:text-muted/20 outline-none focus:border-accent/40 transition-colors"
                       />
                       <button
                         type="button"
                         disabled={renameDisabled}
                         onClick={() => void handleRename(run.id)}
-                        className={`btn px-4 py-2 text-[10px] font-bold uppercase tracking-widest transition-all ${
+                        className={`btn px-4 py-2 text-label font-bold uppercase tracking-widest transition-all ${
                           renameDisabled 
-                            ? "bg-transparent text-muted/30 cursor-not-allowed" 
+                            ? "bg-transparent text-muted/20 cursor-not-allowed" 
                             : "btn-secondary text-accent-2 border-accent-2/30 hover:border-accent-2/40"
                         }`}
                       >
@@ -315,7 +317,7 @@ export default function RunManagementModal({
                             type="button"
                             disabled={deletingRunId === run.id}
                             onClick={() => void handleDelete(run.id)}
-                            className="btn btn-secondary text-danger border-danger/30 hover:border-danger/40 px-4 py-2 text-[10px] font-bold uppercase tracking-widest"
+                            className="btn btn-secondary text-danger border-danger/30 hover:border-danger/40 px-4 py-2 text-label font-bold uppercase tracking-widest"
                           >
                             {deletingRunId === run.id ? "Wiping..." : "Confirm Wipe"}
                           </button>
@@ -323,7 +325,7 @@ export default function RunManagementModal({
                             type="button"
                             disabled={deletingRunId === run.id}
                             onClick={() => setConfirmDeleteRunId(null)}
-                            className="text-[10px] font-bold text-muted hover:text-white uppercase tracking-widest transition-colors px-2"
+                            className="text-label font-bold text-muted hover:text-white uppercase tracking-widest transition-colors px-2"
                           >
                             Cancel
                           </button>
@@ -332,7 +334,7 @@ export default function RunManagementModal({
                         <button
                           type="button"
                           onClick={() => setConfirmDeleteRunId(run.id)}
-                          className="btn btn-secondary text-danger/80 border-danger/20 hover:border-danger/30 px-4 py-2 text-[10px] font-bold uppercase tracking-widest"
+                          className="btn btn-secondary text-danger border-danger/20 hover:border-danger/30 px-4 py-2 text-label font-bold uppercase tracking-widest"
                         >
                           Delete
                         </button>
@@ -340,15 +342,15 @@ export default function RunManagementModal({
                     </div>
 
                     {confirmDeleteRunId === run.id && (
-                      <p className="mt-3 text-[10px] font-mono text-accent/80 uppercase tracking-tight italic">
+                      <p className="mt-3 text-label font-mono text-accent uppercase tracking-tight italic">
                         Caution: This action will purge all associated dataset entries.
                       </p>
                     )}
-                  </div>
+                  </SectionCard>
                 );
               })}
               </div>
-            </div>
+            </SectionCard>
           )}
         </div>
       </div>

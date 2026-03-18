@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
+import { SectionCard } from "@/components/ui";
 
 type ProjectSettingsPanelProps = {
   projectId: string;
@@ -69,7 +70,7 @@ export function ProjectSettingsPanel({
   }
 
   return (
-    <section className="rounded-card border border-line bg-panel p-5 space-y-4 shadow-panel backdrop-blur-panel">
+    <SectionCard className="space-y-4" padding="sm">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold text-white tracking-tight">Project Settings</h2>
       </div>
@@ -79,7 +80,7 @@ export function ProjectSettingsPanel({
 
       <form onSubmit={handleSave} className="space-y-3">
         <div className="space-y-2">
-          <label className="block text-[11px] font-mono text-muted uppercase tracking-wider">Project Name</label>
+          <label className="block text-body-sm font-mono text-muted uppercase tracking-wider">Project Name</label>
           <input
             value={name}
             onChange={(event) => setName(event.target.value)}
@@ -88,11 +89,11 @@ export function ProjectSettingsPanel({
           />
         </div>
         <div className="space-y-2">
-          <label className="block text-[11px] font-mono text-muted uppercase tracking-wider">Description</label>
+          <label className="block text-body-sm font-mono text-muted uppercase tracking-wider">Description</label>
           <textarea
             value={description}
             onChange={(event) => setDescription(event.target.value)}
-            className="w-full rounded-card border border-line bg-panel px-4 py-2 text-sm text-white placeholder:text-muted/40 outline-none focus:border-accent/40 transition-colors min-h-[80px]"
+            className="w-full rounded-card border border-line bg-bg-elevated px-4 py-2 text-sm text-white placeholder:text-muted/40 outline-none focus:border-accent/40 transition-colors min-h-[80px]"
             placeholder="Optional project description"
           />
         </div>
@@ -105,6 +106,6 @@ export function ProjectSettingsPanel({
           {saving ? "Saving..." : "Save Settings"}
         </button>
       </form>
-    </section>
+    </SectionCard>
   );
 }

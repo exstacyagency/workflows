@@ -25,7 +25,7 @@ export default function StudioHeader() {
 
       <button
         onClick={() => signOut({ callbackUrl: "/" })}
-        className="inline-flex items-center rounded-pill border border-line bg-transparent px-4 py-2 text-xs font-medium text-muted transition-all hover:bg-bg-elevated hover:text-white"
+        className="btn btn-secondary !min-h-[32px] px-4 text-label"
       >
         Log out
       </button>

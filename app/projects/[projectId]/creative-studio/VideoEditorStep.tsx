@@ -532,7 +532,7 @@ export function VideoEditorStep({ storyboardId, projectId, scenes, onComplete }:
 
       {/* ── LEFT RAIL ── */}
       <div className="flex flex-col gap-2 overflow-y-auto rounded-card border border-line bg-panel p-3">
-        <div className="pl-1 text-[10px] font-bold uppercase tracking-widest text-muted/70">
+        <div className="pl-1 text-label font-bold uppercase tracking-widest text-muted">
           Select a clip to edit
         </div>
 
@@ -559,14 +559,14 @@ export function VideoEditorStep({ storyboardId, projectId, scenes, onComplete }:
 
               <div className="mb-1 flex items-center gap-2">
                 <div
-                  className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-[4px] text-[10px] font-bold ${
+                  className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-[4px] text-label font-bold ${
                     isActive ? "bg-accent-2 text-bg" : "bg-bg-elevated text-muted"
                   }`}
                 >
                   {index + 1}
                 </div>
                 <span
-                  className={`min-w-0 flex-1 truncate text-[12px] font-semibold ${
+                  className={`min-w-0 flex-1 truncate text-body-xs font-semibold ${
                     isActive ? "text-white" : "text-muted"
                   }`}
                 >
@@ -574,14 +574,14 @@ export function VideoEditorStep({ storyboardId, projectId, scenes, onComplete }:
                 </span>
               </div>
 
-              <div className="truncate pl-7 text-[10px] text-muted/70">
+              <div className="truncate pl-7 text-label text-muted">
                 {clip.vo}
               </div>
 
               <div className="mt-1 flex justify-between pl-7">
                 <span
-                  className={`text-[10px] tabular-nums ${
-                    isTrimmed ? "text-accent" : "text-muted/50"
+                  className={`text-label tabular-nums ${
+                    isTrimmed ? "text-accent" : "text-muted/40"
                   }`}
                 >
                   {isTrimmed
@@ -589,7 +589,7 @@ export function VideoEditorStep({ storyboardId, projectId, scenes, onComplete }:
                     : `${clip.durationSec}s`}
                 </span>
                 {isTrimmed && (
-                  <span className="text-[8px] font-bold uppercase tracking-widest text-accent">
+                  <span className="text-label-xs font-bold uppercase tracking-widest text-accent">
                     Trimmed
                   </span>
                 )}
@@ -617,7 +617,7 @@ export function VideoEditorStep({ storyboardId, projectId, scenes, onComplete }:
                   onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
                 />
                 <div
-                  className="pointer-events-none absolute left-3 top-3 rounded-pill border border-line bg-panel px-3 py-1 text-[10px] font-mono font-semibold uppercase tracking-widest text-white backdrop-blur-panel"
+                  className="pointer-events-none absolute left-3 top-3 rounded-pill border border-line bg-panel px-3 py-1 text-label font-mono font-semibold uppercase tracking-widest text-white backdrop-blur-panel"
                 >
                   {activeClip.beatLabel || `Scene ${activeClip.sceneNumber}`}
                 </div>
@@ -627,10 +627,10 @@ export function VideoEditorStep({ storyboardId, projectId, scenes, onComplete }:
             {/* Scrubber */}
             <div className="rounded-card border border-line bg-panel p-4">
               <div className="mb-3 flex justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-widest text-muted/70">
+                <span className="text-label font-bold uppercase tracking-widest text-muted">
                   ✂ Trim
                 </span>
-                <span className="text-[10px] tabular-nums text-muted/50">
+                <span className="text-label tabular-nums text-muted/40">
                   playhead {currentTime.toFixed(2)}s
                 </span>
               </div>
@@ -643,13 +643,13 @@ export function VideoEditorStep({ storyboardId, projectId, scenes, onComplete }:
             </div>
 
             {activeClip.vo && (
-              <div className="rounded-card border border-line bg-panel px-4 py-3 text-[11px] italic leading-relaxed text-muted">
+              <div className="rounded-card border border-line bg-panel px-4 py-3 text-body-sm italic leading-relaxed text-muted">
                 &quot;{activeClip.vo}&quot;
               </div>
             )}
           </>
         ) : (
-          <div className="flex flex-1 items-center justify-center rounded-card border border-dashed border-line bg-panel p-10 text-[13px] text-muted/60">
+          <div className="flex flex-1 items-center justify-center rounded-card border border-dashed border-line bg-panel p-10 text-sm text-muted">
             Select a clip from the left to edit
           </div>
         )}
@@ -660,29 +660,29 @@ export function VideoEditorStep({ storyboardId, projectId, scenes, onComplete }:
 
         {activeClip && (
           <div className="rounded-card border border-line bg-panel p-4">
-            <div className="mb-2 text-[10px] font-bold uppercase tracking-widest text-muted/70">
+            <div className="mb-2 text-label font-bold uppercase tracking-widest text-muted">
               Active Clip
             </div>
-            <div className="mb-3 text-[12px] font-semibold text-white">
+            <div className="mb-3 text-body-xs font-semibold text-white">
               {activeClip.beatLabel || `Scene ${activeClip.sceneNumber}`}
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div className="rounded-card bg-bg-elevated px-3 py-2">
-                <div className="mb-1 text-[9px] uppercase tracking-[0.06em] text-muted/60">Full</div>
-                <div className="text-[13px] font-semibold tabular-nums text-muted">
+                <div className="mb-1 text-label-sm uppercase tracking-[0.06em] text-muted">Full</div>
+                <div className="text-sm font-semibold tabular-nums text-muted">
                   {activeClip.durationSec}s
                 </div>
               </div>
               <div className="rounded-card bg-bg-elevated px-3 py-2">
-                <div className="mb-1 text-[9px] uppercase tracking-[0.06em] text-muted/60">Kept</div>
-                <div className="text-[13px] font-semibold tabular-nums text-accent">
+                <div className="mb-1 text-label-sm uppercase tracking-[0.06em] text-muted">Kept</div>
+                <div className="text-sm font-semibold tabular-nums text-accent">
                   {(activeClip.trimEnd - activeClip.trimStart).toFixed(1)}s
                 </div>
               </div>
             </div>
             <button
               onClick={() => toggleIncluded(activeClip.sceneId)}
-              className={`mt-3 w-full rounded-pill border px-4 py-2 text-[12px] font-semibold transition-colors ${
+              className={`mt-3 w-full rounded-pill border px-4 py-2 text-body-xs font-semibold transition-colors ${
                 activeClip.included
                   ? "border-success/30 bg-success/10 text-success"
                   : "border-line bg-transparent text-muted"
@@ -693,8 +693,8 @@ export function VideoEditorStep({ storyboardId, projectId, scenes, onComplete }:
           </div>
         )}
 
-        <div className="rounded-card border border-line bg-panel p-4 text-[12px] text-muted">
-          <div className="mb-3 text-[10px] font-bold uppercase tracking-widest text-muted/70">
+        <div className="rounded-card border border-line bg-panel p-4 text-body-xs text-muted">
+          <div className="mb-3 text-label font-bold uppercase tracking-widest text-muted">
             Export Summary
           </div>
           <div className="mb-2 flex justify-between">
@@ -710,20 +710,20 @@ export function VideoEditorStep({ storyboardId, projectId, scenes, onComplete }:
         </div>
 
         {error && (
-          <div className="rounded-card border border-danger/30 bg-danger/10 px-4 py-3 text-[12px] text-danger">
+          <div className="rounded-card border border-danger/30 bg-danger/10 px-4 py-3 text-body-xs text-danger">
             {error}
           </div>
         )}
 
         {mergedUrl && (
-          <div className="rounded-card border border-success/30 bg-success/10 p-4 text-[12px] text-success">
+          <div className="rounded-card border border-success/30 bg-success/10 p-4 text-body-xs text-success">
             <div className="mb-2 font-semibold">✓ Merged successfully</div>
             <a
               href={mergedUrl}
               target="_blank"
               rel="noopener noreferrer"
               download
-              className="block rounded-pill bg-[linear-gradient(135deg,var(--accent),#f4e9b5)] px-4 py-2 text-center text-[12px] font-semibold text-[#111] no-underline"
+              className="block rounded-pill bg-[linear-gradient(135deg,var(--accent),#f4e9b5)] px-4 py-2 text-center text-body-xs font-semibold text-[#111] no-underline"
             >
               ↓ Export Merged Video
             </a>
@@ -733,7 +733,7 @@ export function VideoEditorStep({ storyboardId, projectId, scenes, onComplete }:
         <button
           onClick={handleMerge}
           disabled={merging || includedClips.length === 0}
-          className={`btn !min-h-[44px] w-full text-[14px] font-bold ${
+          className={`btn !min-h-[44px] w-full text-sm font-bold ${
             merging || includedClips.length === 0 ? "btn-secondary opacity-50" : "btn-primary"
           }`}
         >
@@ -743,13 +743,13 @@ export function VideoEditorStep({ storyboardId, projectId, scenes, onComplete }:
         <button
           type="button"
           onClick={handleResetEdits}
-          className="btn btn-secondary !min-h-[40px] w-full text-[12px] font-semibold"
+          className="btn btn-secondary !min-h-[40px] w-full text-body-xs font-semibold"
         >
           Reset edits
         </button>
 
         {includedClips.length === 0 && (
-          <div className="text-center text-[11px] text-muted/60">
+          <div className="text-center text-body-sm text-muted">
             Include at least one clip to merge
           </div>
         )}

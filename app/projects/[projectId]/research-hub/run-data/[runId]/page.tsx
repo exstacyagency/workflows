@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import Link from "next/link";
+import { PageHeader, SectionCard, StatusChip } from "@/components/ui";
 import { JobStatus, JobType } from "@prisma/client";
 import { getJobTypeLabel } from "@/lib/jobLabels";
 
@@ -156,7 +156,7 @@ export default function ResearchRunDataPage() {
       <div className="min-h-screen bg-bg text-white px-8 py-8">
         <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
           <div className="w-8 h-8 border-2 border-accent/20 border-t-accent rounded-full animate-spin" />
-          <p className="text-[10px] font-mono text-muted uppercase tracking-[0.3em] animate-pulse">Loading run data...</p>
+          <p className="text-label font-mono text-muted uppercase tracking-[0.3em] animate-pulse">Loading run data...</p>
         </div>
       </div>
     );
@@ -165,45 +165,32 @@ export default function ResearchRunDataPage() {
   return (
     <div className="min-h-screen bg-bg text-white">
       <div className="border-b border-line bg-panel backdrop-blur-md px-8 py-6">
-        <div className="flex items-center justify-between gap-6">
-          <div className="space-y-4">
-            <Link
-              href={`/projects/${projectId}/research-hub`}
-              className="text-[11px] font-mono text-muted hover:text-white uppercase tracking-widest transition-colors inline-block"
-            >
-              ← Back to Research Hub
-            </Link>
-            <div className="flex items-center gap-4">
-              <h1 className="text-4xl font-bold tracking-tight text-white">Run Overview</h1>
-              <div className="status-chip subtle uppercase tracking-widest text-[9px]">
-                {runId.substring(0, 8)}
-              </div>
-            </div>
-            <p className="text-xs text-muted font-mono uppercase tracking-widest opacity-60">
-              Run ID: <span className="text-accent">{runId}</span> 
-              <span className="mx-3 opacity-20">|</span> 
-              Jobs: <span className="text-accent-2">{jobs.length} Active</span>
-            </p>
-          </div>
-          
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => void loadJobs()}
-              disabled={loading || deleting}
-              className="btn btn-secondary !min-h-[40px] px-6 text-[10px] font-bold uppercase tracking-widest"
-            >
-              Refresh
-            </button>
-          </div>
-        </div>
+        <PageHeader
+          backHref={`/projects/${projectId}/research-hub`}
+          backLabel="Back to Research Hub"
+          title="Run Overview"
+          description={`Run ID: ${runId} | Jobs: ${jobs.length} Active`}
+          actions={
+            <>
+              <StatusChip variant="subtle">{runId.substring(0, 8)}</StatusChip>
+              <button
+                onClick={() => void loadJobs()}
+                disabled={loading || deleting}
+                className="btn btn-secondary !min-h-[40px] px-6 text-label font-bold uppercase tracking-widest"
+              >
+                Refresh
+              </button>
+            </>
+          }
+        />
       </div>
 
       <div className="px-8 py-10 space-y-8 max-w-[1200px] mx-auto">
-        <div className="rounded-card border border-line bg-panel p-6 backdrop-blur-panel flex flex-wrap items-center gap-4">
+        <SectionCard className="flex flex-wrap items-center gap-4" padding="md">
           <button
             onClick={toggleAll}
             disabled={jobs.length === 0}
-            className="px-4 py-2 rounded-pill border border-line bg-bg-elevated text-[10px] font-mono text-muted uppercase tracking-widest hover:text-white transition-colors"
+            className="px-4 py-2 rounded-pill border border-line bg-bg-elevated text-label font-mono text-muted uppercase tracking-widest hover:text-white transition-colors"
           >
             {allSelected ? "Clear Selection" : "Select All Jobs"}
           </button>
@@ -213,7 +200,7 @@ export default function ResearchRunDataPage() {
           <button
             onClick={() => void deleteJobs("selected")}
             disabled={selectedIds.length === 0 || deleting}
-            className="px-4 py-2 rounded-pill border border-danger/20 bg-danger/5 text-[10px] font-mono text-danger uppercase tracking-widest hover:bg-danger/10 transition-all font-bold"
+            className="px-4 py-2 rounded-pill border border-danger/20 bg-danger/5 text-label font-mono text-danger uppercase tracking-widest hover:bg-danger/10 transition-all font-bold"
           >
             Delete Selected ({selectedIds.length})
           </button>
@@ -221,21 +208,19 @@ export default function ResearchRunDataPage() {
           <button
             onClick={() => void deleteJobs("all")}
             disabled={jobs.length === 0 || deleting}
-            className="px-4 py-2 rounded-pill border border-danger/40 bg-danger/10 text-[10px] font-mono text-danger uppercase tracking-widest hover:bg-danger/20 transition-all font-bold"
+            className="px-4 py-2 rounded-pill border border-danger/40 bg-danger/10 text-label font-mono text-danger uppercase tracking-widest hover:bg-danger/20 transition-all font-bold"
           >
              Delete All Jobs
           </button>
 
           {error && (
-            <div className="ml-4 px-3 py-1.5 rounded bg-danger/10 border border-danger/20 text-[10px] font-mono text-danger uppercase">
-              {error}
-            </div>
+            <StatusChip variant="danger" className="ml-4">{error}</StatusChip>
           )}
-        </div>
+        </SectionCard>
 
-        <div className="rounded-card border border-line bg-panel overflow-hidden shadow-panel">
+        <SectionCard padding="none" className="overflow-hidden">
           <div className="px-6 py-3 border-b border-line bg-bg-elevated">
-            <h2 className="text-[10px] font-mono text-accent uppercase tracking-[0.2em] font-bold">Run Jobs</h2>
+            <h2 className="text-label font-mono text-accent uppercase tracking-[0.2em] font-bold">Run Jobs</h2>
           </div>
           <table className="w-full text-left border-collapse">
             <thead className="bg-bg-elevated border-b border-line">
@@ -248,17 +233,17 @@ export default function ResearchRunDataPage() {
                     className="h-3.5 w-3.5 rounded-sm bg-panel border-line checked:bg-accent-2 checked:border-accent-2 transition-all cursor-pointer"
                   />
                 </th>
-                <th className="p-5 text-[9px] font-mono text-accent uppercase tracking-[0.2em]">Job Type</th>
-                <th className="p-5 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-32">Status</th>
-                <th className="p-5 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-48">Created</th>
-                <th className="p-5 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-48">Updated</th>
-                <th className="p-5 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-40">Job ID</th>
+                <th className="p-5 text-label-sm font-mono text-accent uppercase tracking-[0.2em]">Job Type</th>
+                <th className="p-5 text-label-sm font-mono text-muted uppercase tracking-[0.2em] w-32">Status</th>
+                <th className="p-5 text-label-sm font-mono text-muted uppercase tracking-[0.2em] w-48">Created</th>
+                <th className="p-5 text-label-sm font-mono text-muted uppercase tracking-[0.2em] w-48">Updated</th>
+                <th className="p-5 text-label-sm font-mono text-muted uppercase tracking-[0.2em] w-40">Job ID</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-line/30">
               {jobs.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="p-10 text-center text-[10px] font-mono text-muted uppercase tracking-widest opacity-40">
+                  <td colSpan={6} className="p-10 text-center text-label font-mono text-muted uppercase tracking-widest opacity-40">
                     No jobs found for this run
                   </td>
                 </tr>
@@ -276,23 +261,28 @@ export default function ResearchRunDataPage() {
                     </td>
                     <td className="p-5">
                       <div className="flex flex-col gap-1">
-                        <span className="text-[14px] font-black text-accent tracking-tight leading-none">
+                        <span className="text-sm font-black text-accent tracking-tight leading-none">
                           {getResearchJobLabel(job)}
                         </span>
                       </div>
                     </td>
                     <td className="p-5">
-                      <span className={`status-chip !text-[8.5px] uppercase font-bold tracking-tighter !py-0.5 ${
-                        job.status === 'COMPLETED' ? 'success' :
-                        job.status === 'FAILED' ? 'danger' :
-                        'warning'
-                      }`}>
+                      <StatusChip
+                        variant={
+                          job.status === "COMPLETED"
+                            ? "success"
+                            : job.status === "FAILED"
+                              ? "danger"
+                              : "warning"
+                        }
+                        className="!py-0.5 !text-label-xs tracking-tighter"
+                      >
                         {job.status}
-                      </span>
+                      </StatusChip>
                     </td>
-                    <td className="p-5 font-mono text-[10px] text-muted uppercase">{formatDate(job.createdAt)}</td>
-                    <td className="p-5 font-mono text-[10px] text-muted uppercase">{formatDate(job.updatedAt)}</td>
-                    <td className="p-5 text-[10px] font-mono text-accent-2/40">
+                    <td className="p-5 font-mono text-label text-muted uppercase">{formatDate(job.createdAt)}</td>
+                    <td className="p-5 font-mono text-label text-muted uppercase">{formatDate(job.updatedAt)}</td>
+                    <td className="p-5 text-label font-mono text-accent-2/40">
                       {job.id}
                     </td>
                   </tr>
@@ -300,7 +290,7 @@ export default function ResearchRunDataPage() {
               )}
             </tbody>
           </table>
-        </div>
+        </SectionCard>
       </div>
     </div>
   );

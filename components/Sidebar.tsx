@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { StatusChip } from "@/components/ui";
 
 type NavItem = {
   label: string;
@@ -39,7 +40,7 @@ export default function Sidebar() {
     <aside className="h-screen w-64 bg-panel backdrop-blur-panel border-r border-line flex flex-col sticky top-0 z-30">
       {/* Brand */}
       <div className="px-4 py-4 border-b border-line">
-        <div className="text-[10px] uppercase tracking-[0.25em] text-accent font-bold">
+        <div className="text-label uppercase tracking-[0.25em] text-accent font-bold">
           KAIROS
         </div>
         <div className="text-lg font-semibold text-white mt-1 tracking-tight">
@@ -64,15 +65,18 @@ export default function Sidebar() {
           <div className="eyebrow !m-0 !mb-2">
             Pipeline
           </div>
-          <p className="text-[11px] text-muted italic">
+          <p className="text-body-sm text-muted italic">
             Open a project to see phase-level navigation here.
           </p>
         </div>
       </nav>
 
       {/* Footer */}
-      <div className="px-4 py-3 border-t border-line text-[11px] text-muted font-mono">
-        KAIROS AI · v1.0
+      <div className="px-4 py-3 border-t border-line text-body-sm text-muted font-mono">
+        <div className="flex items-center justify-between gap-2">
+          <span>KAIROS AI</span>
+          <StatusChip variant="subtle" className="!px-2 !py-1 !text-label-xs">v1.0</StatusChip>
+        </div>
       </div>
     </aside>
   );

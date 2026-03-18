@@ -73,7 +73,7 @@ export function UploadDataModal({ isOpen, onClose, jobId, projectId }: UploadDat
           zIndex: 10,
         }}
       >
-        <h2 className="text-xl font-bold mb-4">Upload Market Research</h2>
+        <p className="eyebrow mb-4">Upload Market Research</p>
 
         <p className="text-sm text-muted mb-4">
           Upload additional market research in CSV, TXT, PDF, DOCX, or JSON format.
@@ -104,14 +104,14 @@ export function UploadDataModal({ isOpen, onClose, jobId, projectId }: UploadDat
           <button
             onClick={onClose}
             disabled={uploading}
-            className="px-4 py-2 bg-bg-elevated hover:bg-panel-strong border border-line rounded-pill text-sm text-muted hover:text-white transition-all"
+            className="btn btn-secondary !min-h-[32px] px-4 text-label"
           >
             Cancel
           </button>
           <button
             onClick={handleUpload}
             disabled={uploading || !file}
-            className="px-4 py-2 bg-accent hover:bg-accent/90 text-bg font-semibold disabled:opacity-50 disabled:cursor-not-allowed rounded-pill text-sm transition-all shadow-[0_0_15px_rgba(232,209,122,0.2)]"
+            className="btn btn-primary !min-h-[32px] px-4 text-label disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {uploading ? "Uploading..." : "Upload & Add Data"}
           </button>

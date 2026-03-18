@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, Suspense, useMemo, useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { SectionCard } from "@/components/ui";
 
 function getErrorMessage(error: string | null): string | null {
   if (!error) return null;
@@ -56,7 +57,7 @@ function ApiSignInPageInner() {
 
   return (
     <main className="min-h-screen bg-bg text-white px-4 py-10 selection:bg-accent/30">
-      <div className="max-w-md mx-auto rounded-card border border-line bg-panel p-6 space-y-4 shadow-panel backdrop-blur-panel">
+      <SectionCard className="max-w-md mx-auto space-y-4">
         <h1 className="text-xl font-semibold">Sign in</h1>
         {showRegistered && (
           <p className="text-sm text-success font-mono uppercase tracking-tight">
@@ -95,7 +96,7 @@ function ApiSignInPageInner() {
             Create Account
           </Link>
         </form>
-      </div>
+      </SectionCard>
     </main>
   );
 }

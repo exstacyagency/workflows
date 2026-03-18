@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { PageHeader } from "@/components/ui";
 import { getJobTypeLabel } from "@/lib/jobLabels";
 
 type JobStatus = "PENDING" | "RUNNING" | "COMPLETED" | "FAILED";
@@ -349,18 +350,12 @@ export default function ProductCollectionPage() {
   return (
     <main className="min-h-screen bg-bg text-white px-6 py-6">
       <div className="mx-auto max-w-4xl space-y-6">
-        <div>
-          <Link
-            href={`/projects/${projectId}/research-hub${selectedProductId ? `?productId=${selectedProductId}` : ""}`}
-            className="text-sm text-accent-2 hover:text-accent-2"
-          >
-            ← Back to Research Hub
-          </Link>
-          <h1 className="mt-2 text-2xl font-bold">Product Collection</h1>
-          <p className="mt-1 text-sm text-muted/80">
-            Collect structured product intelligence from a main product URL.
-          </p>
-        </div>
+        <PageHeader
+          backHref={`/projects/${projectId}/research-hub${selectedProductId ? `?productId=${selectedProductId}` : ""}`}
+          backLabel="Back to Research Hub"
+          title="Product Collection"
+          description="Collect structured product intelligence from a main product URL."
+        />
 
         <section className="rounded-lg border border-line bg-panel p-4 space-y-4">
           {statusMessage && <p className="text-xs text-muted">{statusMessage}</p>}
@@ -380,7 +375,7 @@ export default function ProductCollectionPage() {
               >
                 {activeStatusJob.status}
               </p>
-              <p className="text-xs text-muted/80">{getJobTypeLabel(activeStatusJob.type)}</p>
+              <p className="text-xs text-muted">{getJobTypeLabel(activeStatusJob.type)}</p>
               {activeStatusJob.status === "FAILED" && activeStatusJob.error && (
                 <p className="mt-2 text-xs text-accent">{activeStatusJob.error}</p>
               )}
@@ -388,7 +383,7 @@ export default function ProductCollectionPage() {
           )}
 
           <div>
-            <label className="mb-2 block text-xs text-muted/80">Product</label>
+            <label className="mb-2 block text-xs text-muted">Product</label>
             <select
               value={selectedProductId || ""}
               onChange={(event) => {
@@ -403,7 +398,7 @@ export default function ProductCollectionPage() {
                 url.searchParams.delete("product");
                 router.replace(url.pathname + url.search, { scroll: false });
               }}
-              className="w-full rounded-md border border-line bg-bg-elevated px-3 py-2 text-sm text-white/90"
+              className="w-full rounded-md border border-line bg-bg-elevated px-3 py-2 text-sm text-white"
             >
               {products.length === 0 && <option value="">No products found</option>}
               {products.map((product) => (
@@ -415,7 +410,7 @@ export default function ProductCollectionPage() {
           </div>
 
           <div>
-            <label className="mb-2 block text-xs text-muted/80">Product URL</label>
+            <label className="mb-2 block text-xs text-muted">Product URL</label>
             <input
               value={productUrl}
               onChange={(event) => setProductUrl(event.target.value)}
@@ -430,7 +425,7 @@ export default function ProductCollectionPage() {
               disabled={!selectedProductId || isCollecting}
               className={`px-4 py-2 rounded text-sm font-medium flex items-center gap-2 ${
                 !selectedProductId || isCollecting
-                  ? "bg-panel-strong text-muted/80 cursor-not-allowed"
+                  ? "bg-panel-strong text-muted cursor-not-allowed"
                   : "bg-accent hover:bg-accent/90 text-bg"
               }`}
             >
@@ -456,7 +451,7 @@ export default function ProductCollectionPage() {
             ) : (
               <button
                 disabled
-                className="px-4 py-2 bg-bg-elevated text-muted/80 rounded opacity-50 cursor-not-allowed text-xs"
+                className="px-4 py-2 bg-bg-elevated text-muted rounded opacity-50 cursor-not-allowed text-xs"
               >
                 View Product Data
               </button>
@@ -465,7 +460,7 @@ export default function ProductCollectionPage() {
             {latestCompletedJob && (
               <Link
                 href={`/projects/${projectId}/research/data/${latestCompletedJob.id}/inputs?runId=${latestCompletedJob.runId ?? latestCompletedJob.id}`}
-                className="text-muted/80 hover:text-muted text-xs underline"
+                className="text-muted hover:text-muted text-xs underline"
               >
                 View Input Parameters
               </Link>
@@ -477,16 +472,16 @@ export default function ProductCollectionPage() {
           <table className="w-full">
             <thead className="bg-bg-elevated">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted/80 uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
                   Created
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted/80 uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
                   Status
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted/80 uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
                   Product URL
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted/80 uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
                   Actions
                 </th>
               </tr>
@@ -494,13 +489,13 @@ export default function ProductCollectionPage() {
             <tbody className="divide-y divide-line">
               {loading ? (
                 <tr>
-                  <td colSpan={4} className="px-4 py-6 text-sm text-muted/80">
+                  <td colSpan={4} className="px-4 py-6 text-sm text-muted">
                     Loading jobs...
                   </td>
                 </tr>
               ) : jobs.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-4 py-6 text-sm text-muted/60">
+                  <td colSpan={4} className="px-4 py-6 text-sm text-muted">
                     No product collection jobs yet.
                   </td>
                 </tr>
@@ -519,7 +514,7 @@ export default function ProductCollectionPage() {
                     <td className="px-4 py-3">
                       <StatusBadge status={job.status} />
                     </td>
-                    <td className="px-4 py-3 text-xs text-muted/80 break-all max-w-md">
+                    <td className="px-4 py-3 text-xs text-muted break-all max-w-md">
                       {String(job.payload?.productUrl || "—")}
                     </td>
                     <td className="px-4 py-3 text-sm">
@@ -538,7 +533,7 @@ export default function ProductCollectionPage() {
                           Cancel
                         </button>
                       ) : (
-                        <span className="text-muted/60">—</span>
+                        <span className="text-muted">—</span>
                       )}
                     </td>
                   </tr>

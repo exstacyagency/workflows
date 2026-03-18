@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
+import { EmptyState, PageHeader, SectionCard, StatusChip } from "@/components/ui";
 
 type AssetRecord = {
   id: string;
@@ -287,7 +288,7 @@ export default function AdAssetsViewerPage() {
       <div className="min-h-screen bg-bg text-white px-8 py-8">
         <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
           <div className="w-8 h-8 border-2 border-accent-2/20 border-t-accent-2 rounded-full animate-spin" />
-          <p className="text-[10px] font-mono text-muted uppercase tracking-[0.3em] animate-pulse">Scanning_Assets...</p>
+          <p className="text-label font-mono text-muted uppercase tracking-[0.3em] animate-pulse">Scanning_Assets...</p>
         </div>
       </div>
     );
@@ -296,16 +297,13 @@ export default function AdAssetsViewerPage() {
   if (error) {
     return (
       <div className="min-h-screen bg-bg text-white px-8 py-8 space-y-6">
-        <Link
-          href={`/projects/${projectId}/research-hub`}
-          className="text-[11px] font-mono text-muted hover:text-white uppercase tracking-widest transition-colors inline-block"
-        >
-          ← Back to Research Hub
-        </Link>
-        <div className="rounded-card border border-danger/20 bg-danger/5 p-6 space-y-2">
-          <p className="text-[10px] font-mono text-danger uppercase tracking-widest font-bold">Asset load failed</p>
-          <p className="text-sm text-muted leading-relaxed">{error}</p>
-        </div>
+        <PageHeader
+          backHref={`/projects/${projectId}/research-hub`}
+          backLabel="Back to Research Hub"
+          title="Ad Creative Inventory"
+          description="Unable to load ad assets."
+        />
+        <EmptyState title="Asset load failed" description={error} variant="error" />
       </div>
     );
   }
@@ -313,43 +311,32 @@ export default function AdAssetsViewerPage() {
   return (
     <div className="min-h-screen bg-bg text-white">
       <div className="border-b border-line bg-panel backdrop-blur-md px-8 py-6">
-        <div className="flex items-center justify-between gap-6">
-          <div className="space-y-4">
-            <Link
-              href={`/projects/${projectId}/research-hub`}
-              className="text-[11px] font-mono text-muted hover:text-white uppercase tracking-widest transition-colors inline-block"
-            >
-              ← Back to Research Hub
-            </Link>
-            <div className="flex items-center gap-4">
-              <h1 className="text-4xl font-bold tracking-tight text-white">Ad Creative Inventory</h1>
-              <div className="status-chip subtle uppercase tracking-widest text-[9px]">
-                RUN_{runId.substring(0, 8)}
-              </div>
-            </div>
-            <p className="text-xs text-muted font-mono uppercase tracking-widest opacity-60">
-              View: <span className="text-accent-2">Creative Asset Library</span> 
-              <span className="mx-3 opacity-20">|</span> 
-              Assets: <span className="text-white">{rows.length}</span>
-            </p>
-          </div>
-          
-          <button
-            onClick={handleExportCsv}
-            disabled={rows.length === 0}
-            className="btn btn-primary !min-h-[40px] px-8 text-[10px] font-bold uppercase tracking-widest"
-          >
-            Export CSV
-          </button>
-        </div>
+        <PageHeader
+          backHref={`/projects/${projectId}/research-hub`}
+          backLabel="Back to Research Hub"
+          title="Ad Creative Inventory"
+          description={`View: Creative Asset Library | Assets: ${rows.length}`}
+          actions={
+            <>
+              <StatusChip variant="subtle">{`RUN_${runId.substring(0, 8)}`}</StatusChip>
+              <button
+                onClick={handleExportCsv}
+                disabled={rows.length === 0}
+                className="btn btn-primary !min-h-[40px] px-8 text-label font-bold uppercase tracking-widest"
+              >
+                Export CSV
+              </button>
+            </>
+          }
+        />
       </div>
 
       <div className="px-8 py-10">
-        <div className="rounded-card border border-line bg-panel overflow-hidden shadow-panel">
+        <SectionCard padding="none" className="overflow-hidden">
           <div className="px-6 py-4 border-b border-line bg-bg-elevated flex items-center justify-between">
-            <h2 className="text-[10px] font-mono text-white/50 uppercase tracking-[0.2em] font-bold">Creative Assets</h2>
+            <h2 className="text-label font-mono text-muted uppercase tracking-[0.2em] font-bold">Creative Assets</h2>
             {highlightOcr && (
-              <div className="flex items-center gap-4 text-[9px] font-mono uppercase tracking-widest">
+              <div className="flex items-center gap-4 text-label-sm font-mono uppercase tracking-widest">
                 <span className="flex items-center gap-2">
                   <div className="w-1.5 h-1.5 rounded-full bg-success"></div>
                   <span className="text-success">OCR Ready</span>
@@ -365,28 +352,28 @@ export default function AdAssetsViewerPage() {
             <table className="w-full text-left border-collapse min-w-[1650px]">
               <thead className="bg-bg-elevated border-b border-line">
                 <tr>
-                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-40">Timestamp</th>
-                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-32">Asset ID</th>
-                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-32">Classification</th>
-                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-24">Linkage</th>
-                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em]">Source URL</th>
-                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-32 text-center">OCR Status</th>
-                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-24 text-right">3s Ret.</th>
-                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-24 text-right">10s Ret.</th>
-                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-24 text-right">CTR 3s</th>
-                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-24 text-right">CTR 10s</th>
-                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-24 text-right">CVR 3s</th>
-                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-24 text-right">CVR 10s</th>
-                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-20 text-right">Dur</th>
-                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-24 text-right">CTR</th>
-                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-24 text-right">Cost</th>
-                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-24 text-right">Like</th>
-                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-20 text-center">Engage</th>
-                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-28">Source</th>
-                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-28">Industry</th>
-                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-28">Spikes</th>
-                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-48">Frame Analysis</th>
-                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-24 text-center">Raw</th>
+                  <th className="px-5 py-4 text-label-sm font-mono text-muted uppercase tracking-[0.2em] w-40">Timestamp</th>
+                  <th className="px-5 py-4 text-label-sm font-mono text-muted uppercase tracking-[0.2em] w-32">Asset ID</th>
+                  <th className="px-5 py-4 text-label-sm font-mono text-muted uppercase tracking-[0.2em] w-32">Classification</th>
+                  <th className="px-5 py-4 text-label-sm font-mono text-muted uppercase tracking-[0.2em] w-24">Linkage</th>
+                  <th className="px-5 py-4 text-label-sm font-mono text-muted uppercase tracking-[0.2em]">Source URL</th>
+                  <th className="px-5 py-4 text-label-sm font-mono text-muted uppercase tracking-[0.2em] w-32 text-center">OCR Status</th>
+                  <th className="px-5 py-4 text-label-sm font-mono text-muted uppercase tracking-[0.2em] w-24 text-right">3s Ret.</th>
+                  <th className="px-5 py-4 text-label-sm font-mono text-muted uppercase tracking-[0.2em] w-24 text-right">10s Ret.</th>
+                  <th className="px-5 py-4 text-label-sm font-mono text-muted uppercase tracking-[0.2em] w-24 text-right">CTR 3s</th>
+                  <th className="px-5 py-4 text-label-sm font-mono text-muted uppercase tracking-[0.2em] w-24 text-right">CTR 10s</th>
+                  <th className="px-5 py-4 text-label-sm font-mono text-muted uppercase tracking-[0.2em] w-24 text-right">CVR 3s</th>
+                  <th className="px-5 py-4 text-label-sm font-mono text-muted uppercase tracking-[0.2em] w-24 text-right">CVR 10s</th>
+                  <th className="px-5 py-4 text-label-sm font-mono text-muted uppercase tracking-[0.2em] w-20 text-right">Dur</th>
+                  <th className="px-5 py-4 text-label-sm font-mono text-muted uppercase tracking-[0.2em] w-24 text-right">CTR</th>
+                  <th className="px-5 py-4 text-label-sm font-mono text-muted uppercase tracking-[0.2em] w-24 text-right">Cost</th>
+                  <th className="px-5 py-4 text-label-sm font-mono text-muted uppercase tracking-[0.2em] w-24 text-right">Like</th>
+                  <th className="px-5 py-4 text-label-sm font-mono text-muted uppercase tracking-[0.2em] w-20 text-center">Engage</th>
+                  <th className="px-5 py-4 text-label-sm font-mono text-muted uppercase tracking-[0.2em] w-28">Source</th>
+                  <th className="px-5 py-4 text-label-sm font-mono text-muted uppercase tracking-[0.2em] w-28">Industry</th>
+                  <th className="px-5 py-4 text-label-sm font-mono text-muted uppercase tracking-[0.2em] w-28">Spikes</th>
+                  <th className="px-5 py-4 text-label-sm font-mono text-muted uppercase tracking-[0.2em] w-48">Frame Analysis</th>
+                  <th className="px-5 py-4 text-label-sm font-mono text-muted uppercase tracking-[0.2em] w-24 text-center">Raw</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-line/30">
@@ -401,33 +388,33 @@ export default function AdAssetsViewerPage() {
                         : ""
                     }`}
                   >
-                    <td className="px-5 py-4 text-[10px] font-mono text-muted/80">
+                    <td className="px-5 py-4 text-label font-mono text-muted">
                       {new Date(row.asset.createdAt).toLocaleDateString()}
                       <br />
                       {new Date(row.asset.createdAt).toLocaleTimeString()}
                     </td>
-                    <td className="px-5 py-4 text-[10px] font-mono text-white/90">{row.asset.id.substring(0, 8)}</td>
+                    <td className="px-5 py-4 text-label font-mono text-white">{row.asset.id.substring(0, 8)}</td>
                     <td className="px-5 py-4">
                       {row.isSwipeFile ? (
                         <div className="flex flex-col gap-1.5">
-                          <span className="status-chip warning !text-[8.5px] uppercase font-bold tracking-widest !py-0.5">
+                          <span className="status-chip warning !text-label-xs uppercase font-bold tracking-widest !py-0.5">
                             Swipe_File
                           </span>
                           {row.swipeViews !== null && (
-                            <span className="text-[10px] font-mono text-accent/60 uppercase tracking-widest whitespace-nowrap">
+                            <span className="text-label font-mono text-accent uppercase tracking-widest whitespace-nowrap">
                               {Math.round(row.swipeViews).toLocaleString()} VIEWS
                             </span>
                           )}
-                          <span className={`text-[9px] font-mono uppercase tracking-widest ${row.hasSwipeMetadata ? 'text-success/60' : 'text-muted/40'}`}>
+                          <span className={`text-label-sm font-mono uppercase tracking-widest ${row.hasSwipeMetadata ? 'text-success/60' : 'text-muted/40'}`}>
                             {row.hasSwipeMetadata ? "✓ EXTRACTED" : "PENDING"}
                           </span>
                         </div>
                       ) : (
-                        <span className="text-[10px] font-mono text-muted/20 uppercase tracking-widest">Standard</span>
+                        <span className="text-label font-mono text-muted/20 uppercase tracking-widest">Standard</span>
                       )}
                     </td>
-                    <td className="px-5 py-4 text-[10px] font-mono text-muted/60">{row.asset.jobId?.substring(0, 8) ?? "—"}</td>
-                    <td className="px-5 py-4 text-[11px]">
+                    <td className="px-5 py-4 text-label font-mono text-muted">{row.asset.jobId?.substring(0, 8) ?? "—"}</td>
+                    <td className="px-5 py-4 text-body-sm">
                       {row.videoUrl ? (
                         <a
                           href={row.videoUrl}
@@ -443,37 +430,37 @@ export default function AdAssetsViewerPage() {
                     </td>
                     <td className="px-5 py-4 text-center">
                       {row.hasOcr ? (
-                        <span className="status-chip success !text-[8.5px] uppercase font-bold tracking-widest !py-0.5 inline-block">OCR Ready</span>
+                        <StatusChip variant="success" className="!text-label-xs !py-0.5 inline-flex">OCR Ready</StatusChip>
                       ) : (
-                        <span className="status-chip danger !text-[8.5px] uppercase font-bold tracking-widest !py-0.5 inline-block">No OCR</span>
+                        <StatusChip variant="danger" className="!text-label-xs !py-0.5 inline-flex">No OCR</StatusChip>
                       )}
                     </td>
-                    <td className="px-5 py-4 text-[10px] font-mono text-white/90 text-right">{formatMetric(row.retention3s)}</td>
-                    <td className="px-5 py-4 text-[10px] font-mono text-white/90 text-right">{formatMetric(row.retention10s)}</td>
-                    <td className="px-5 py-4 text-[10px] font-mono text-white/90 text-right">{formatMetric(row.retention3sCtr)}</td>
-                    <td className="px-5 py-4 text-[10px] font-mono text-white/90 text-right">{formatMetric(row.retention10sCtr)}</td>
-                    <td className="px-5 py-4 text-[10px] font-mono text-white/90 text-right">{formatMetric(row.retention3sCvr)}</td>
-                    <td className="px-5 py-4 text-[10px] font-mono text-white/90 text-right">{formatMetric(row.retention10sCvr)}</td>
-                    <td className="px-5 py-4 text-[10px] font-mono text-white/90 text-right">{formatMetric(row.duration)}</td>
-                    <td className="px-5 py-4 text-[10px] font-mono text-white/90 text-right">{formatMetric(row.ctr)}</td>
-                    <td className="px-5 py-4 text-[10px] font-mono text-white/90 text-right">{formatMetric(row.cost)}</td>
-                    <td className="px-5 py-4 text-[10px] font-mono text-white/90 text-right">{formatMetric(row.like)}</td>
+                    <td className="px-5 py-4 text-label font-mono text-white text-right">{formatMetric(row.retention3s)}</td>
+                    <td className="px-5 py-4 text-label font-mono text-white text-right">{formatMetric(row.retention10s)}</td>
+                    <td className="px-5 py-4 text-label font-mono text-white text-right">{formatMetric(row.retention3sCtr)}</td>
+                    <td className="px-5 py-4 text-label font-mono text-white text-right">{formatMetric(row.retention10sCtr)}</td>
+                    <td className="px-5 py-4 text-label font-mono text-white text-right">{formatMetric(row.retention3sCvr)}</td>
+                    <td className="px-5 py-4 text-label font-mono text-white text-right">{formatMetric(row.retention10sCvr)}</td>
+                    <td className="px-5 py-4 text-label font-mono text-white text-right">{formatMetric(row.duration)}</td>
+                    <td className="px-5 py-4 text-label font-mono text-white text-right">{formatMetric(row.ctr)}</td>
+                    <td className="px-5 py-4 text-label font-mono text-white text-right">{formatMetric(row.cost)}</td>
+                    <td className="px-5 py-4 text-label font-mono text-white text-right">{formatMetric(row.like)}</td>
                     <td className="px-5 py-4 text-center">
-                      <span className="text-[11px] font-mono font-bold text-accent-2">
+                      <span className="text-body-sm font-mono font-bold text-accent-2">
                         {formatMetric(row.engagementScore)}
                       </span>
                     </td>
-                    <td className="px-5 py-4 text-[10px] font-mono text-muted/60 uppercase">{row.sourceType ?? "—"}</td>
-                    <td className="px-5 py-4 text-[10px] font-mono text-muted/60 uppercase">{row.industryCode ?? "—"}</td>
-                    <td className="px-5 py-4 text-[10px] font-mono text-accent/60">
+                    <td className="px-5 py-4 text-label font-mono text-muted uppercase">{row.sourceType ?? "—"}</td>
+                    <td className="px-5 py-4 text-label font-mono text-muted uppercase">{row.industryCode ?? "—"}</td>
+                    <td className="px-5 py-4 text-label font-mono text-accent">
                       {row.spikeSeconds.length ? row.spikeSeconds.map(s => `${s}s`).join(", ") : "—"}
                     </td>
                     <td className="px-5 py-4">
                       {row.ocrFrames.length === 0 ? (
-                        <span className="text-[10px] font-mono text-muted/20 uppercase tracking-widest">No Frames</span>
+                        <span className="text-label font-mono text-muted/20 uppercase tracking-widest">No Frames</span>
                       ) : (
                         <details className="group/details">
-                          <summary className="cursor-pointer text-[10px] font-mono text-accent-2/60 hover:text-accent-2 uppercase tracking-widest list-none flex items-center gap-2">
+                          <summary className="cursor-pointer text-label font-mono text-accent-2/60 hover:text-accent-2 uppercase tracking-widest list-none flex items-center gap-2">
                             <span className="transition-transform group-open/details:rotate-90">▶</span>
                             Frames_{row.ocrFrames.length}
                           </summary>
@@ -490,11 +477,11 @@ export default function AdAssetsViewerPage() {
                                   }`}
                                 >
                                   <div className="flex items-center justify-between border-b border-line/50 pb-2">
-                                    <div className="text-[9px] font-mono text-muted uppercase tracking-widest">
+                                    <div className="text-label-sm font-mono text-muted uppercase tracking-widest">
                                       Frame_{idx + 1} @ {formatSeconds(frame.second)}
                                       {isSpike && <span className="text-warning ml-2">[CONVERSION_SPIKE]</span>}
                                     </div>
-                                    <div className="text-[9px] font-mono text-muted/60 uppercase">
+                                    <div className="text-label-sm font-mono text-muted uppercase">
                                       {formatConfidence(frame.confidence)} CONF
                                     </div>
                                   </div>
@@ -513,17 +500,17 @@ export default function AdAssetsViewerPage() {
                                         className="object-contain w-full h-full"
                                       />
                                       <div className="absolute inset-0 bg-accent-2/0 group-hover/img:bg-accent-2/10 transition-colors flex items-center justify-center">
-                                        <span className="text-white text-[10px] font-mono font-black uppercase tracking-widest opacity-0 group-hover/img:opacity-100 transition-opacity">Expand View</span>
+                                        <span className="text-white text-label font-mono font-black uppercase tracking-widest opacity-0 group-hover/img:opacity-100 transition-opacity">Expand View</span>
                                       </div>
                                     </a>
                                   )}
 
-                                  <div className="text-[11px] font-mono text-white/80 whitespace-pre-wrap leading-relaxed">
+                                  <div className="text-body-sm font-mono text-white whitespace-pre-wrap leading-relaxed">
                                     {frame.text || <span className="text-muted/20">[DATA_VOID]</span>}
                                   </div>
                                   
                                   {!frame.textFound && (
-                                    <div className="text-[9px] font-mono text-danger/60 uppercase tracking-widest italic border-t border-line pt-2">
+                                    <div className="text-label-sm font-mono text-danger uppercase tracking-widest italic border-t border-line pt-2">
                                       Anomaly: No sequence detected in sampled vector
                                     </div>
                                   )}
@@ -536,7 +523,7 @@ export default function AdAssetsViewerPage() {
                     </td>
                     <td className="px-5 py-4 text-center">
                       <details className="group/json">
-                        <summary className="cursor-pointer text-[10px] font-mono text-muted/40 hover:text-white uppercase tracking-widest list-none">JSON</summary>
+                        <summary className="cursor-pointer text-label font-mono text-muted/40 hover:text-white uppercase tracking-widest list-none">JSON</summary>
                         <div className="fixed inset-0 z-[100] flex items-center justify-center p-8 bg-bg/90 backdrop-blur-xl group-open/json:flex hidden" onClick={(e) => {
                           if (e.target === e.currentTarget) {
                             (e.currentTarget.parentElement as any).removeAttribute('open');
@@ -544,12 +531,12 @@ export default function AdAssetsViewerPage() {
                         }}>
                           <div className="bg-panel border border-line rounded-card w-full max-w-4xl max-h-full overflow-hidden flex flex-col shadow-2xl">
                             <div className="p-4 border-b border-line flex items-center justify-between bg-bg-elevated">
-                              <span className="text-[10px] font-mono text-white uppercase tracking-[0.2em] font-bold">Raw Data</span>
+                              <span className="text-label font-mono text-white uppercase tracking-[0.2em] font-bold">Raw Data</span>
                               <button onClick={(e) => {
                                 (e.currentTarget.closest('details') as any).removeAttribute('open');
-                              }} className="text-muted hover:text-white font-mono text-[10px] uppercase">Close [ESC]</button>
+                              }} className="text-muted hover:text-white font-mono text-label uppercase">Close [ESC]</button>
                             </div>
-                            <pre className="p-6 overflow-auto text-[11px] font-mono text-muted/80 leading-relaxed scrollbar-thin">
+                            <pre className="p-6 overflow-auto text-body-sm font-mono text-muted leading-relaxed scrollbar-thin">
                               {JSON.stringify(row.raw, null, 2)}
                             </pre>
                           </div>
@@ -561,7 +548,7 @@ export default function AdAssetsViewerPage() {
               </tbody>
             </table>
           </div>
-        </div>
+        </SectionCard>
       </div>
     </div>
   );

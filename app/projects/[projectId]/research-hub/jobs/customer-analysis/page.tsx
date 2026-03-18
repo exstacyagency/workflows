@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { getJobTypeLabel } from "@/lib/jobLabels";
+import { EmptyState, PageHeader, SectionCard, StatusChip } from "@/components/ui";
 
 type JobStatus = "NOT_STARTED" | "PENDING" | "RUNNING" | "COMPLETED" | "FAILED";
 type JobType = "CUSTOMER_ANALYSIS";
@@ -121,14 +122,19 @@ export default function CustomerAnalysisJobsPage() {
 
   const StatusBadge = ({ status }: { status: JobStatus }) => {
     return (
-      <span className={`status-chip ${
-        status === 'COMPLETED' ? 'success' :
-        status === 'FAILED' ? 'danger' :
-        status === 'RUNNING' ? 'info' :
-        'subtle'
-      }`}>
+      <StatusChip
+        variant={
+          status === "COMPLETED"
+            ? "success"
+            : status === "FAILED"
+              ? "danger"
+              : status === "RUNNING"
+                ? "running"
+                : "subtle"
+        }
+      >
         {status.replace("_", " ")}
-      </span>
+      </StatusChip>
     );
   };
 
@@ -137,7 +143,7 @@ export default function CustomerAnalysisJobsPage() {
       <div className="min-h-screen bg-bg px-8 py-8 text-white">
         <div className="flex min-h-[60vh] flex-col items-center justify-center space-y-4">
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent/20 border-t-accent" />
-          <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-muted">Fetching analysis history...</p>
+          <p className="text-label font-mono uppercase tracking-[0.3em] text-muted">Fetching analysis history...</p>
         </div>
       </div>
     );
@@ -146,17 +152,13 @@ export default function CustomerAnalysisJobsPage() {
   if (error) {
     return (
       <div className="min-h-screen bg-bg px-8 py-8 text-white space-y-6">
-        <Link
-          href={`/projects/${projectId}/research-hub`}
-          className="text-[11px] font-mono text-muted hover:text-white uppercase tracking-widest transition-colors inline-block"
-        >
-          ← Back to Research Hub
-        </Link>
-        <div className="rounded-card border border-danger/20 bg-danger/5 p-6 space-y-2">
-          <p className="text-[10px] font-mono text-danger uppercase tracking-widest font-bold">Analysis load failed</p>
-          <p className="text-sm text-muted leading-relaxed">{error}</p>
-          <button onClick={loadJobs} className="btn btn-secondary mt-4">Retry</button>
-        </div>
+        <PageHeader backHref={`/projects/${projectId}/research-hub`} backLabel="Back to Research Hub" title="Analysis History" />
+        <EmptyState
+          title="Analysis Load Failed"
+          description={error}
+          variant="error"
+          action={<button onClick={loadJobs} className="btn btn-secondary mt-4">Retry</button>}
+        />
       </div>
     );
   }
@@ -164,34 +166,18 @@ export default function CustomerAnalysisJobsPage() {
   return (
     <div className="min-h-screen bg-bg text-white">
       <div className="border-b border-line bg-panel backdrop-blur-md px-8 py-6 sticky top-0 z-30">
-        <div className="flex items-center justify-between gap-6">
-          <div className="space-y-4">
-            <Link
-              href={`/projects/${projectId}/research-hub`}
-              className="text-[11px] font-mono text-muted hover:text-white uppercase tracking-widest transition-colors inline-block"
-            >
-              ← Back to Research Hub
-            </Link>
-            <div className="flex items-center gap-4">
-              <h1 className="text-4xl font-bold tracking-tight text-white">Analysis History</h1>
-              <div className="status-chip success uppercase tracking-widest text-[9px]">
-                {jobType}
-              </div>
-            </div>
-            <p className="text-xs text-muted font-mono uppercase tracking-widest opacity-60">
-              Analysis Type: <span className="text-accent">Audience Insights</span> 
-              <span className="mx-3 opacity-20">|</span> 
-              Runs: <span className="text-white">{jobs.length} Entries</span>
-            </p>
-          </div>
-        </div>
+        <PageHeader
+          backHref={`/projects/${projectId}/research-hub`}
+          backLabel="Back to Research Hub"
+          title="Analysis History"
+          description={`Analysis Type: Audience Insights | Runs: ${jobs.length} Entries`}
+          actions={<StatusChip variant="success">{jobType}</StatusChip>}
+        />
       </div>
 
       <div className="px-8 py-10 space-y-12 max-w-[1400px]">
         {groupedJobs.length === 0 ? (
-          <div className="rounded-card border border-line bg-panel p-20 text-center shadow-panel backdrop-blur-panel">
-            <p className="text-[10px] font-mono text-muted uppercase tracking-widest opacity-40 italic">No analysis runs found for this project.</p>
-          </div>
+          <EmptyState title="No Analysis Runs Found" description="No analysis runs found for this project." />
         ) : (
           <div className="space-y-12">
             {groupedJobs.map((group) => (
@@ -200,39 +186,39 @@ export default function CustomerAnalysisJobsPage() {
                   <h2 className="text-sm font-bold uppercase tracking-tight text-white">
                     {group.runLabel}
                   </h2>
-                  <p className="text-[10px] font-mono uppercase text-muted opacity-70">
+                  <p className="text-label font-mono uppercase text-muted opacity-70">
                     {group.jobs.length} {group.jobs.length === 1 ? "job" : "jobs"}
                   </p>
                 </div>
 
-                <div className="rounded-card border border-line bg-panel overflow-hidden shadow-panel backdrop-blur-panel">
+                <SectionCard padding="none" className="overflow-hidden">
                   <div className="border-b border-line bg-panel px-6 py-3">
-                    <h3 className="text-[9px] font-mono text-accent uppercase tracking-[0.2em] font-bold">Run History</h3>
+                    <h3 className="text-label-sm font-mono text-accent uppercase tracking-[0.2em] font-bold">Run History</h3>
                   </div>
                   <table className="w-full text-left border-collapse">
                     <thead className="border-b border-line bg-panel">
                       <tr>
-                        <th className="w-48 px-5 py-4 text-[0.76rem] font-mono uppercase tracking-[0.12em] text-muted">Created</th>
-                        <th className="w-32 px-5 py-4 text-[0.76rem] font-mono uppercase tracking-[0.12em] text-muted">Status</th>
-                        <th className="w-32 px-5 py-4 text-[0.76rem] font-mono uppercase tracking-[0.12em] text-muted">Duration</th>
-                        <th className="px-5 py-4 text-[0.76rem] font-mono uppercase tracking-[0.12em] text-muted">Summary</th>
-                        <th className="w-32 px-5 py-4 text-right text-[0.76rem] font-mono uppercase tracking-[0.12em] text-muted">Actions</th>
+                        <th className="w-48 px-5 py-4 text-body-xs font-mono uppercase tracking-[0.12em] text-muted">Created</th>
+                        <th className="w-32 px-5 py-4 text-body-xs font-mono uppercase tracking-[0.12em] text-muted">Status</th>
+                        <th className="w-32 px-5 py-4 text-body-xs font-mono uppercase tracking-[0.12em] text-muted">Duration</th>
+                        <th className="px-5 py-4 text-body-xs font-mono uppercase tracking-[0.12em] text-muted">Summary</th>
+                        <th className="w-32 px-5 py-4 text-right text-body-xs font-mono uppercase tracking-[0.12em] text-muted">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-line">
                       {group.jobs.map((job) => (
                         <tr key={job.id} className="bg-panel-row transition-colors">
-                          <td className="px-5 py-4 font-mono text-[11px] text-muted uppercase">
+                          <td className="px-5 py-4 font-mono text-body-sm text-muted uppercase">
                             {formatDate(job.createdAt)}
                           </td>
                           <td className="px-5 py-4">
                             <StatusBadge status={job.status} />
                           </td>
-                          <td className="px-5 py-4 text-[11px] font-mono text-accent-2/60 uppercase">
+                          <td className="px-5 py-4 text-body-sm font-mono text-accent-2/60 uppercase">
                             {formatDuration(job.createdAt, job.updatedAt)}
                           </td>
                           <td className="px-5 py-4">
-                            <div className="rounded-inner border border-line/40 bg-panel-row px-4 py-3 text-[13px] font-medium leading-relaxed text-white/80">
+                            <div className="rounded-inner border border-line/40 bg-panel-row px-4 py-3 text-sm font-medium leading-relaxed text-white">
                               {formatSummary(job.resultSummary)}
                             </div>
                           </td>
@@ -240,19 +226,19 @@ export default function CustomerAnalysisJobsPage() {
                             {job.status === "COMPLETED" ? (
                               <Link
                                 href={`/projects/${projectId}/research-hub/analysis/data/${job.id}`}
-                                className="text-[11px] font-mono uppercase tracking-wider text-accent-2 underline decoration-accent-2/30 underline-offset-4 transition-all hover:text-white hover:decoration-white"
+                                className="text-body-sm font-mono uppercase tracking-wider text-accent-2 underline decoration-accent-2/30 underline-offset-4 transition-all hover:text-white hover:decoration-white"
                               >
                                 View Data →
                               </Link>
                             ) : (
-                              <span className="text-[9px] font-mono text-muted/20 uppercase tracking-widest">—</span>
+                              <span className="text-label-sm font-mono text-muted/20 uppercase tracking-widest">—</span>
                             )}
                           </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
-                </div>
+                </SectionCard>
               </div>
             ))}
           </div>

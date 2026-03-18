@@ -4,6 +4,7 @@ assertRuntimeModeAllowed();
 
 import { notFound } from "next/navigation";
 import { isSelfHosted } from "@/lib/config/mode";
+import { SectionCard } from "@/components/ui";
 
 export default function BillingCancelPage() {
   if (isSelfHosted()) {
@@ -12,9 +13,9 @@ export default function BillingCancelPage() {
 
   return (
     <div className="min-h-screen bg-bg flex items-center justify-center p-6 transition-all duration-500">
-      <div className="max-w-lg w-full rounded-card border border-line bg-panel p-8 space-y-6 shadow-panel backdrop-blur-panel">
+      <SectionCard padding="lg" className="max-w-lg w-full space-y-6">
         <h1 className="text-2xl font-semibold tracking-tight text-white">Checkout canceled</h1>
-        <p className="text-[15px] text-muted leading-relaxed">
+        <p className="text-base text-muted leading-relaxed">
           No worries — you weren’t charged. You can try again anytime.
         </p>
 
@@ -32,7 +33,7 @@ export default function BillingCancelPage() {
             Billing
           </a>
         </div>
-      </div>
+      </SectionCard>
     </div>
   );
 }

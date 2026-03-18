@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { EmptyState, PageHeader, SectionCard, StatusChip } from '@/components/ui';
 
 type Project = {
   id: string;
@@ -268,19 +269,16 @@ export default function CustomerProfilePage() {
   return (
     <main className="min-h-screen bg-bg text-white px-4 py-8">
       <div className="max-w-5xl mx-auto space-y-8">
-        <header className="space-y-2">
-          <h1 className="text-3xl font-semibold">Step 3 – Customer profile</h1>
-          <p className="text-muted text-sm">
-            Use your Phase 1A research (Reddit + Amazon) to generate a structured
-            customer avatar and product intelligence for a selected project.
-          </p>
-        </header>
+        <PageHeader
+          title="Step 3 - Customer Profile"
+          description="Use your Phase 1A research (Reddit + Amazon) to generate a structured customer avatar and product intelligence for a selected project."
+        />
 
         {/* Controls */}
-        <section className="bg-panel border border-line rounded-xl p-4 space-y-4">
+        <SectionCard padding="sm" className="space-y-4">
           <div className="grid gap-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium text-white/90">
+              <label className="text-sm font-medium text-white">
                 Project
               </label>
               <select
@@ -299,8 +297,8 @@ export default function CustomerProfilePage() {
           </div>
 
           <div className="space-y-2">
-              <label className="text-sm font-medium text-white/90">
-                Problem it solves <span className="text-muted/60 text-xs">(optional)</span>
+              <label className="text-sm font-medium text-white">
+                Problem it solves <span className="text-muted text-xs">(optional)</span>
               </label>
             <textarea
               className="w-full rounded-lg bg-bg border border-line px-3 py-2 text-sm min-h-[80px]"
@@ -313,7 +311,7 @@ export default function CustomerProfilePage() {
           <button
             onClick={runCustomerAnalysis}
             disabled={loading}
-            className="inline-flex items-center px-4 py-2 rounded-pill bg-accent hover:bg-accent/90 text-bg disabled:opacity-50 text-sm font-medium"
+            className="btn btn-primary !min-h-[36px] px-6 disabled:opacity-50"
           >
             {loading ? 'Running analysis…' : 'Generate avatar + product intelligence'}
           </button>
@@ -329,30 +327,30 @@ export default function CustomerProfilePage() {
             </p>
           )}
 
-          <p className="text-xs text-muted/60">
+          <p className="text-xs text-muted">
             Note: this requires Phase 1A research rows and valid Anthropic credentials. Leave the problem field blank to reuse the value captured
             during customer research.
           </p>
-        </section>
+        </SectionCard>
 
         {hasAnalysis && (
-          <section className="rounded-xl border border-line bg-panel p-4 space-y-3">
+          <SectionCard padding="sm" className="space-y-3">
             <div>
               <h2 className="text-sm font-semibold text-white">Next steps</h2>
-              <p className="text-xs text-muted/80">
+              <p className="text-xs text-muted">
                 Move into pattern analysis or jump straight to script work now that Phase 1B is complete.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
               <Link
                 href={adResearchHref}
-                className="inline-flex items-center justify-center rounded-pill bg-accent hover:bg-accent/90 px-4 py-2 text-sm font-medium text-bg"
+                className="btn btn-primary !min-h-[36px] px-6"
               >
                 Continue to Ad Collection
               </Link>
               <Link
                 href={scriptHref}
-                className="inline-flex items-center justify-center rounded-md border border-line px-4 py-2 text-sm font-medium text-white hover:bg-bg-elevated"
+                className="btn btn-secondary !min-h-[36px] px-6"
               >
                 Generate Script
               </Link>
@@ -360,7 +358,7 @@ export default function CustomerProfilePage() {
                 <button
                   type="button"
                   onClick={() => setShowMoreActions(v => !v)}
-                  className="inline-flex items-center rounded-md border border-line px-3 py-2 text-sm text-white hover:bg-bg-elevated"
+                  className="btn btn-secondary !min-h-[36px] px-4"
                 >
                   More actions ▾
                 </button>
@@ -381,18 +379,16 @@ export default function CustomerProfilePage() {
                 )}
               </div>
             </div>
-          </section>
+          </SectionCard>
         )}
 
         {/* Results */}
         <section className="grid gap-4 md:grid-cols-2">
           {/* Avatar card */}
-          <div className="bg-panel border border-line rounded-xl p-4 space-y-3">
+          <SectionCard padding="sm" className="space-y-3">
             <h2 className="text-lg font-semibold">Customer avatar</h2>
             {!avatar && (
-              <p className="text-sm text-muted/80">
-                Run analysis to see the avatar for this project.
-              </p>
+              <EmptyState title="No customer avatar yet" description="Run analysis to see the avatar for this project." />
             )}
             {avatar && (
               <div className="space-y-2 text-sm">
@@ -423,21 +419,19 @@ export default function CustomerProfilePage() {
                 <button
                   onClick={() => downloadJson('avatar', avatar.id)}
                   disabled={!avatar.hasRaw || downloading === 'avatar'}
-                  className="mt-2 text-xs inline-flex items-center px-3 py-1.5 rounded-md border border-line text-white/90 hover:bg-bg-elevated disabled:opacity-40"
+                  className="mt-2 btn btn-secondary !min-h-[32px] px-4 text-label disabled:opacity-40"
                 >
                   {downloading === 'avatar' ? 'Preparing download…' : 'Download JSON'}
                 </button>
               </div>
             )}
-          </div>
+          </SectionCard>
 
           {/* Product intelligence card */}
-          <div className="bg-panel border border-line rounded-xl p-4 space-y-3">
+          <SectionCard padding="sm" className="space-y-3">
             <h2 className="text-lg font-semibold">Product intelligence</h2>
             {!productIntel && (
-              <p className="text-sm text-muted/80">
-                Run analysis to see product intelligence for this project.
-              </p>
+              <EmptyState title="No product intelligence yet" description="Run analysis to see product intelligence for this project." />
             )}
             {productIntel && (
               <div className="space-y-2 text-sm">
@@ -464,48 +458,48 @@ export default function CustomerProfilePage() {
                 <button
                   onClick={() => downloadJson('intel', productIntel.id)}
                   disabled={!productIntel.hasRaw || downloading === 'intel'}
-                  className="mt-2 text-xs inline-flex items-center px-3 py-1.5 rounded-md border border-line text-white/90 hover:bg-bg-elevated disabled:opacity-40"
+                  className="mt-2 btn btn-secondary !min-h-[32px] px-4 text-label disabled:opacity-40"
                 >
                   {downloading === 'intel' ? 'Preparing download…' : 'Download JSON'}
                 </button>
               </div>
             )}
-          </div>
+          </SectionCard>
         </section>
 
-        <section className="bg-panel border border-line rounded-xl p-4 space-y-4">
+        <SectionCard padding="sm" className="space-y-4">
           <h2 className="text-lg font-semibold">Snapshot history</h2>
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-white/90">Customer avatars</h3>
-                <span className="text-xs text-muted/60">{avatarHistory.length} total</span>
+                <h3 className="text-sm font-semibold text-white">Customer avatars</h3>
+                <span className="text-xs text-muted">{avatarHistory.length} total</span>
               </div>
               {avatarHistory.length === 0 ? (
-                <p className="text-xs text-muted/60">No avatars captured yet.</p>
+                <p className="text-xs text-muted">No avatars captured yet.</p>
               ) : (
                 avatarHistory.map(item => (
                   <div key={item.id} className="rounded-lg border border-line bg-panel px-3 py-2 space-y-1">
-                    <div className="flex items-center justify-between text-xs text-muted/80">
+                    <div className="flex items-center justify-between text-xs text-muted">
                       <span>{formatDate(item.createdAt)}</span>
-                      <span className={item.archivedAt ? 'text-accent' : 'text-success'}>
+                      <StatusChip variant={item.archivedAt ? 'warning' : 'success'} className="!px-2 !py-0.5 !text-label-xs">
                         {item.archivedAt ? 'Archived' : 'Active'}
-                      </span>
+                      </StatusChip>
                     </div>
-                    <p className="text-xs text-muted/80">
+                    <p className="text-xs text-muted">
                       Pain: {item.primaryPain ?? '—'}
                     </p>
-                    <div className="flex flex-wrap gap-2 text-[11px]">
+                    <div className="flex flex-wrap gap-2 text-body-sm">
                       <button
                         onClick={() => downloadJson('avatar', item.id)}
-                        className="px-2 py-1 rounded-md border border-line text-white/90 hover:bg-bg-elevated"
+                        className="px-2 py-1 rounded-md border border-line text-white hover:bg-bg-elevated"
                       >
                         Download
                       </button>
                       {item.archivedAt ? (
                         <button
                           onClick={() => mutateSnapshot('avatar', item.id, 'restore')}
-                          className="px-2 py-1 rounded-md border border-line text-white/90 hover:bg-bg-elevated"
+                          className="px-2 py-1 rounded-md border border-line text-white hover:bg-bg-elevated"
                         >
                           Restore
                         </button>
@@ -513,7 +507,7 @@ export default function CustomerProfilePage() {
                         <button
                           onClick={() => mutateSnapshot('avatar', item.id, 'archive')}
                           disabled={activeAvatarCount <= 1}
-                          className="px-2 py-1 rounded-md border border-line text-white/90 hover:bg-bg-elevated disabled:opacity-40"
+                          className="px-2 py-1 rounded-md border border-line text-white hover:bg-bg-elevated disabled:opacity-40"
                         >
                           Archive
                         </button>
@@ -532,34 +526,34 @@ export default function CustomerProfilePage() {
 
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-white/90">Product intelligence</h3>
-                <span className="text-xs text-muted/60">{productHistory.length} total</span>
+                <h3 className="text-sm font-semibold text-white">Product intelligence</h3>
+                <span className="text-xs text-muted">{productHistory.length} total</span>
               </div>
               {productHistory.length === 0 ? (
-                <p className="text-xs text-muted/60">No product intelligence captured yet.</p>
+                <p className="text-xs text-muted">No product intelligence captured yet.</p>
               ) : (
                 productHistory.map(item => (
                   <div key={item.id} className="rounded-lg border border-line bg-panel px-3 py-2 space-y-1">
-                    <div className="flex items-center justify-between text-xs text-muted/80">
+                    <div className="flex items-center justify-between text-xs text-muted">
                       <span>{formatDate(item.createdAt)}</span>
-                      <span className={item.archivedAt ? 'text-accent' : 'text-success'}>
+                      <StatusChip variant={item.archivedAt ? 'warning' : 'success'} className="!px-2 !py-0.5 !text-label-xs">
                         {item.archivedAt ? 'Archived' : 'Active'}
-                      </span>
+                      </StatusChip>
                     </div>
-                    <p className="text-xs text-muted/80">
+                    <p className="text-xs text-muted">
                       Hero ingredient: {item.heroIngredient ?? '—'}
                     </p>
-                    <div className="flex flex-wrap gap-2 text-[11px]">
+                    <div className="flex flex-wrap gap-2 text-body-sm">
                       <button
                         onClick={() => downloadJson('intel', item.id)}
-                        className="px-2 py-1 rounded-md border border-line text-white/90 hover:bg-bg-elevated"
+                        className="px-2 py-1 rounded-md border border-line text-white hover:bg-bg-elevated"
                       >
                         Download
                       </button>
                       {item.archivedAt ? (
                         <button
                           onClick={() => mutateSnapshot('intel', item.id, 'restore')}
-                          className="px-2 py-1 rounded-md border border-line text-white/90 hover:bg-bg-elevated"
+                          className="px-2 py-1 rounded-md border border-line text-white hover:bg-bg-elevated"
                         >
                           Restore
                         </button>
@@ -567,7 +561,7 @@ export default function CustomerProfilePage() {
                         <button
                           onClick={() => mutateSnapshot('intel', item.id, 'archive')}
                           disabled={activeProductCount <= 1}
-                          className="px-2 py-1 rounded-md border border-line text-white/90 hover:bg-bg-elevated disabled:opacity-40"
+                          className="px-2 py-1 rounded-md border border-line text-white hover:bg-bg-elevated disabled:opacity-40"
                         >
                           Archive
                         </button>
@@ -584,10 +578,10 @@ export default function CustomerProfilePage() {
               )}
             </div>
           </div>
-          <p className="text-[11px] text-muted/60">
+          <p className="text-body-sm text-muted">
             Archived snapshots older than 90 days are automatically removed.
           </p>
-        </section>
+        </SectionCard>
       </div>
     </main>
   );
