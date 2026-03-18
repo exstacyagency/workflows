@@ -8,8 +8,8 @@
   /* Backgrounds */
   --bg: rgb(9, 9, 11);
   --bg-elevated: rgba(255, 255, 255, 0.04);
-  --panel: rgba(255, 255, 255, 0.03);
-  --panel-strong: rgba(255, 255, 255, 0.06);
+  --panel: rgba(255, 255, 255, 0.06);
+  --panel-strong: rgba(255, 255, 255, 0.10);
 
   /* Borders */
   --line: rgba(255, 255, 255, 0.10);
@@ -86,7 +86,7 @@ h1, h2, h3 {
 }
 
 h1 {
-  font-size: clamp(3.2rem, 9vw, 6.3rem);
+  font-size: clamp(2.4rem, 6vw, 4.8rem);
 }
 
 h2 {
@@ -249,7 +249,7 @@ h2 {
   position: relative;
   min-height: 560px;
   border: 1px solid var(--line);
-  border-radius: 32px;
+  border-radius: 26px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
   box-shadow: var(--shadow);
   overflow: hidden;
@@ -521,7 +521,21 @@ h2 {
   background: linear-gradient(180deg, rgba(154, 208, 255, 0.14), rgba(255, 255, 255, 0.03));
 }
 
-.success { color: var(--success); }
+.success {
+  color: var(--success);
+  background: rgba(144, 233, 168, 0.1);
+  border-color: rgba(144, 233, 168, 0.2);
+}
+.danger {
+  color: var(--danger);
+  background: rgba(252, 165, 165, 0.1);
+  border-color: rgba(252, 165, 165, 0.2);
+}
+.warning {
+  color: var(--warn);
+  background: rgba(255, 218, 125, 0.1);
+  border-color: rgba(255, 218, 125, 0.2);
+}
 .subtle { background: rgba(255, 255, 255, 0.03); }
 .muted { color: var(--muted); }
 

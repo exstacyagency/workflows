@@ -10,9 +10,9 @@ module.exports = {
       colors: {
         bg: '#09090b',
         'bg-elevated': 'rgba(255,255,255,0.04)',
-        panel: 'rgba(255,255,255,0.03)',
-        'panel-row': 'rgba(255,255,255,0.025)',
-        'panel-strong': 'rgba(255,255,255,0.06)',
+        panel: 'rgba(255,255,255,0.06)',
+        'panel-row': 'rgba(255,255,255,0.03)',
+        'panel-strong': 'rgba(255,255,255,0.10)',
         overlay: 'rgba(2,6,23,0.75)',
         line: 'rgba(255,255,255,0.10)',
         muted: '#b7b7bd',

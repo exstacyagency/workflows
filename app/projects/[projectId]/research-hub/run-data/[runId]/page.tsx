@@ -264,7 +264,7 @@ export default function ResearchRunDataPage() {
                 </tr>
               ) : (
                 jobs.map((job) => (
-                  <tr key={job.id} className="bg-panel-row transition-colors group">
+                  <tr key={job.id} className="bg-panel-row">
                     <td className="p-5">
                       <input
                         type="checkbox"
@@ -279,9 +279,6 @@ export default function ResearchRunDataPage() {
                         <span className="text-[14px] font-black text-accent tracking-tight leading-none">
                           {getResearchJobLabel(job)}
                         </span>
-                        <span className="text-[9px] font-mono text-muted uppercase tracking-widest opacity-40">
-                          {job.type}
-                        </span>
                       </div>
                     </td>
                     <td className="p-5">
@@ -295,7 +292,7 @@ export default function ResearchRunDataPage() {
                     </td>
                     <td className="p-5 font-mono text-[10px] text-muted uppercase">{formatDate(job.createdAt)}</td>
                     <td className="p-5 font-mono text-[10px] text-muted uppercase">{formatDate(job.updatedAt)}</td>
-                    <td className="p-5 text-[10px] font-mono text-accent-2/40 truncate max-w-[100px] hover:max-w-none transition-all cursor-default">
+                    <td className="p-5 text-[10px] font-mono text-accent-2/40">
                       {job.id}
                     </td>
                   </tr>
