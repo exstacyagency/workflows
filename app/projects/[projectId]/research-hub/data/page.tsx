@@ -668,7 +668,7 @@ export default function ResearchHubDataPage() {
             ← Back to Research Hub
           </Link>
           <div className="flex items-center gap-4">
-            <h1 className="text-4xl font-bold text-white tracking-tight">Research Library</h1>
+            <h1 className="text-4xl font-bold text-white tracking-tight">Advertising Data Library</h1>
             <div className="status-chip subtle uppercase tracking-widest text-[9px]">
               {focusJobType ?? rawJobType}
             </div>
@@ -678,7 +678,7 @@ export default function ResearchHubDataPage() {
               <>
                 Active Run: <span className="text-accent-2">{effectiveRunId}</span>
               </>
-            ) : "Loading research..."}
+            ) : "Loading advertising data..."}
           </p>
         </div>
 
@@ -688,7 +688,7 @@ export default function ResearchHubDataPage() {
             disabled={loading || !!error || !focusJobType || exportConfig.rows.length === 0}
             className="btn btn-secondary !min-h-[36px] px-4 text-[10px] font-bold uppercase tracking-widest"
           >
-            Export Research
+            Export Advertising Data
           </button>
           {(focusJobType === "ad-transcripts" || focusJobType === "ad-quality-gate") && (
             <div className="flex gap-2">
@@ -697,7 +697,7 @@ export default function ResearchHubDataPage() {
                 disabled={selectedCount === 0 || bulkDeleting || deletingAll || !effectiveRunId}
                 className="btn btn-secondary !min-h-[36px] px-4 text-[10px] font-bold uppercase tracking-widest hover:text-danger hover:border-danger/30"
               >
-                {bulkDeleting ? 'PURGING...' : `PURGE_SEL (${selectedCount})`}
+                {bulkDeleting ? 'DELETING...' : `DELETE SELECTED (${selectedCount})`}
               </button>
               <button
                 onClick={handleDeleteAll}
@@ -751,7 +751,7 @@ export default function ResearchHubDataPage() {
             <div className="overflow-x-auto">
               <table className="w-full min-w-[1200px] border-collapse">
                 <thead>
-                  <tr className="border-b border-line bg-bg-elevated/50">
+                  <tr className="border-b border-line bg-bg-elevated">
                     <th className="px-6 py-4 text-left">
                       <input
                         type="checkbox"
@@ -761,12 +761,12 @@ export default function ResearchHubDataPage() {
                         aria-label="Select all"
                       />
                     </th>
-                    <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Trace_Time</th>
-                    <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Asset_Identifier</th>
-                    <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Source_Vector</th>
-                    <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Transcript_Payload</th>
-                    <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Temporal_Range</th>
-                    <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Provider_Node</th>
+                    <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Trace Time</th>
+                    <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Asset ID</th>
+                    <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Source</th>
+                    <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Transcript</th>
+                    <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Time Range</th>
+                    <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Provider</th>
                     <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Actions</th>
                   </tr>
                 </thead>
@@ -895,7 +895,7 @@ export default function ResearchHubDataPage() {
             <div className="overflow-x-auto">
               <table className="w-full min-w-[1200px] border-collapse">
                 <thead>
-                  <tr className="border-b border-line bg-bg-elevated/50">
+                  <tr className="border-b border-line bg-bg-elevated">
                     <th className="px-6 py-4 text-left">
                       <input
                         type="checkbox"
@@ -905,8 +905,8 @@ export default function ResearchHubDataPage() {
                         aria-label="Select all"
                       />
                     </th>
-                    <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Trace_Time</th>
-                    <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Asset_ID</th>
+                    <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Trace Time</th>
+                    <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Asset ID</th>
                     <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Source</th>
                     <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Swipe</th>
                     <th className="px-6 py-4 text-left text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Verified</th>
@@ -981,7 +981,7 @@ export default function ResearchHubDataPage() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-[11px] font-mono text-white opacity-80 uppercase tracking-tight">
-                          {row.issue || "NO_ISSUE"}
+                          {row.issue || "No issue"}
                         </div>
                       </td>
                       <td className="px-6 py-4">
@@ -1064,7 +1064,7 @@ export default function ResearchHubDataPage() {
 
               <div className="rounded-card border border-line bg-panel p-8 space-y-4">
                 <p className="text-[10px] font-mono text-muted uppercase tracking-widest opacity-40 font-bold">Raw Analysis Output</p>
-                <div className="rounded bg-bg/50 p-4 overflow-hidden">
+                <div className="rounded bg-panel p-4 overflow-hidden">
                   <pre className="max-h-[300px] overflow-auto whitespace-pre-wrap break-words text-[10px] font-mono text-muted/60 scrollbar-thin scrollbar-thumb-line">
                     {JSON.stringify(patternResult, null, 2)}
                   </pre>

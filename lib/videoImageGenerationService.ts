@@ -210,6 +210,8 @@ export async function runVideoImageGenerationJob(args: RunArgs): Promise<void> {
             url: String(task.url ?? "").trim(),
           }))
           .filter((image) => Boolean(image.url));
+  const successfulTaskImageCount = polled.tasks.filter((task) => Boolean(String(task.url ?? "").trim())).length;
+  const generatedFrameCount = Math.max(resolvedImages.length, successfulTaskImageCount);
   const taskStatusSnapshot = polled.tasks.map((task) => ({
     taskId: task.taskId,
     sceneNumber: task.sceneNumber,
@@ -280,7 +282,7 @@ export async function runVideoImageGenerationJob(args: RunArgs): Promise<void> {
       data: {
         error: null,
         payload: updatedPayload as any,
-        resultSummary: `Video frames saved: ${resolvedImages.length}`,
+        resultSummary: `Video frames generated: ${generatedFrameCount}`,
       } as any,
     });
     try {
@@ -293,7 +295,7 @@ export async function runVideoImageGenerationJob(args: RunArgs): Promise<void> {
             metric: "imageJobs",
             provider: "kie",
             model: String(polled.providerId ?? payload?.providerId ?? "nano-banana-2"),
-            units: Math.max(1, resolvedImages.length),
+            units: Math.max(1, generatedFrameCount),
             costCents: 0,
             metadata: {
               taskCount: Array.isArray(polled.tasks) ? polled.tasks.length : 0,

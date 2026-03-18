@@ -458,7 +458,7 @@ export default function AllResearchDataPage() {
   return (
     <div className="min-h-screen bg-bg text-text space-y-8 px-8 py-8">
       {/* Header */}
-      <div className="border-b border-line bg-bg/50 backdrop-blur-panel -mx-8 -mt-8 px-8 py-6 sticky top-0 z-30">
+      <div className="border-b border-line bg-panel backdrop-blur-panel -mx-8 -mt-8 px-8 py-6 sticky top-0 z-30">
         <div className="flex flex-wrap items-center justify-between gap-6">
           <div className="space-y-1">
             <div className="flex items-center gap-2 mb-1">
@@ -535,7 +535,7 @@ export default function AllResearchDataPage() {
       </div>
 
       {keywordStats.length > 0 && (
-        <div className="rounded-card border border-line bg-panel/20 p-8 backdrop-blur-panel">
+        <div className="rounded-card border border-line bg-panel p-8 backdrop-blur-panel">
           <div className="flex items-center gap-4 mb-6">
             <div className="h-px flex-1 bg-line/50"></div>
             <h2 className="text-[10px] font-mono font-bold text-muted uppercase tracking-[0.4em] opacity-50">Theme Breakdown</h2>
@@ -545,7 +545,7 @@ export default function AllResearchDataPage() {
             {keywordStats.map((stat) => (
               <div
                 key={stat.keyword}
-                className="flex items-center justify-between rounded-card border border-line/50 bg-bg-elevated/40 px-5 py-3 hover:bg-bg-elevated/80 transition-all group cursor-default"
+                className="flex items-center justify-between rounded-card border border-line/50 bg-bg-elevated px-5 py-3 hover:bg-bg-elevated transition-all group cursor-default"
               >
                 <div className="flex flex-col gap-1">
                   <span className="text-[14px] font-black text-white tracking-tight leading-none">{stat.keyword}</span>
@@ -574,7 +574,7 @@ export default function AllResearchDataPage() {
                 setSelectedJob(e.target.value);
                 setPage(1);
               }}
-              className="w-full px-4 py-3 bg-panel border border-line rounded-card text-[11px] font-mono text-white outline-none focus:border-accent/40 transition-colors appearance-none cursor-pointer hover:bg-bg-elevated/50"
+              className="w-full px-4 py-3 bg-panel border border-line rounded-card text-[11px] font-mono text-white outline-none focus:border-accent/40 transition-colors appearance-none cursor-pointer hover:bg-bg-elevated"
             >
               <option value="all">RUN: ALL ({jobs.length})</option>
               {jobs.map((job) => (
@@ -590,7 +590,7 @@ export default function AllResearchDataPage() {
             <select
               value={sourceFilter}
               onChange={(e) => setSourceFilter(e.target.value)}
-              className="w-full px-4 py-3 bg-panel border border-line rounded-card text-[11px] font-mono text-white outline-none focus:border-accent/40 transition-colors appearance-none cursor-pointer hover:bg-bg-elevated/50"
+              className="w-full px-4 py-3 bg-panel border border-line rounded-card text-[11px] font-mono text-white outline-none focus:border-accent/40 transition-colors appearance-none cursor-pointer hover:bg-bg-elevated"
             >
               <option value="all">SOURCE: ALL</option>
               <option value="reddit">REDDIT NETWORK</option>
@@ -609,7 +609,7 @@ export default function AllResearchDataPage() {
                 setSubredditFilter(e.target.value);
                 setPage(1);
               }}
-              className="w-full px-4 py-3 bg-panel border border-line rounded-card text-[11px] font-mono text-white outline-none focus:border-accent/40 transition-colors appearance-none cursor-pointer hover:bg-bg-elevated/50"
+              className="w-full px-4 py-3 bg-panel border border-line rounded-card text-[11px] font-mono text-white outline-none focus:border-accent/40 transition-colors appearance-none cursor-pointer hover:bg-bg-elevated"
             >
               <option value="">COMMUNITY: ALL</option>
               {uniqueSubreddits.map((subreddit) => (
@@ -628,7 +628,7 @@ export default function AllResearchDataPage() {
                 setSolutionKeywordFilter(e.target.value);
                 setPage(1);
               }}
-              className="w-full px-4 py-3 bg-panel border border-line rounded-card text-[11px] font-mono text-white outline-none focus:border-accent/40 transition-colors appearance-none cursor-pointer hover:bg-bg-elevated/50"
+              className="w-full px-4 py-3 bg-panel border border-line rounded-card text-[11px] font-mono text-white outline-none focus:border-accent/40 transition-colors appearance-none cursor-pointer hover:bg-bg-elevated"
             >
               <option value="">ANGLE: ALL</option>
               {uniqueKeywords.map((keyword) => (
@@ -664,7 +664,7 @@ export default function AllResearchDataPage() {
             <select
               value={typeFilter}
               onChange={(e) => setTypeFilter(e.target.value)}
-              className="w-full px-4 py-3 bg-panel border border-line rounded-card text-[11px] font-mono text-white outline-none focus:border-accent/40 transition-colors appearance-none cursor-pointer hover:bg-bg-elevated/50"
+              className="w-full px-4 py-3 bg-panel border border-line rounded-card text-[11px] font-mono text-white outline-none focus:border-accent/40 transition-colors appearance-none cursor-pointer hover:bg-bg-elevated"
             >
               <option value="all">FORMAT: ALL</option>
               <option value="post">POSTS</option>
@@ -681,7 +681,7 @@ export default function AllResearchDataPage() {
               placeholder="SEARCH RESEARCH..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full px-12 py-3 bg-panel border border-line rounded-card text-[11px] font-mono text-white placeholder:text-muted/20 outline-none focus:border-accent/40 transition-colors hover:bg-bg-elevated/50"
+              className="w-full px-12 py-3 bg-panel border border-line rounded-card text-[11px] font-mono text-white placeholder:text-muted/20 outline-none focus:border-accent/40 transition-colors hover:bg-bg-elevated"
             />
             <span className="pointer-events-none absolute left-5 inset-y-0 flex items-center text-[10px] font-mono text-muted/30">SEARCH:</span>
           </div>
@@ -725,14 +725,14 @@ export default function AllResearchDataPage() {
                           className="h-3.5 w-3.5 rounded-sm bg-panel border-line checked:bg-accent-2 checked:border-accent-2 transition-all cursor-pointer"
                         />
                       </th>
-                      <th className="p-5 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-24">ENTITY TYPE</th>
-                      <th className="p-5 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-24">SOURCE NODE</th>
-                      <th className="p-5 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-44">CONTEXT HUB</th>
-                      <th className="p-5 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-32">SIGNAL TAG</th>
-                      <th className="p-5 text-[9px] font-mono text-muted uppercase tracking-[0.2em]">CONTENT FRAGMENT</th>
-                      <th className="p-5 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-24 text-right">MAGNITUDE</th>
-                      <th className="p-5 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-32">TIMESTAMP</th>
-                      <th className="p-5 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-20 text-center">METRIC</th>
+                      <th className="p-5 text-[0.76rem] font-mono text-muted uppercase tracking-widest w-24">ENTITY TYPE</th>
+                      <th className="p-5 text-[0.76rem] font-mono text-muted uppercase tracking-widest w-24">SOURCE NODE</th>
+                      <th className="p-5 text-[0.76rem] font-mono text-muted uppercase tracking-widest w-44">CONTEXT HUB</th>
+                      <th className="p-5 text-[0.76rem] font-mono text-muted uppercase tracking-widest w-32">SIGNAL TAG</th>
+                      <th className="p-5 text-[0.76rem] font-mono text-muted uppercase tracking-widest">CONTENT FRAGMENT</th>
+                      <th className="p-5 text-[0.76rem] font-mono text-muted uppercase tracking-widest w-24 text-right">MAGNITUDE</th>
+                      <th className="p-5 text-[0.76rem] font-mono text-muted uppercase tracking-widest w-32">TIMESTAMP</th>
+                      <th className="p-5 text-[0.76rem] font-mono text-muted uppercase tracking-widest w-20 text-center">METRIC</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-line/30">
@@ -741,7 +741,7 @@ export default function AllResearchDataPage() {
                       const redditUrl = getRedditUrl(row);
                       return (
                         <Fragment key={row.id}>
-                          <tr className={`hover:bg-bg-elevated/30 transition-all group ${isExpanded ? 'bg-bg-elevated/20' : ''}`}>
+                          <tr className={`hover:bg-bg-elevated transition-all group ${isExpanded ? 'bg-bg-elevated' : ''}`}>
                             <td className="p-5">
                               <input
                                 type="checkbox"
@@ -817,7 +817,7 @@ export default function AllResearchDataPage() {
                                   </div>
                                 </div>
                               ) : isAmazonSource(row) ? (
-                                <div className="inline-flex items-baseline gap-1 bg-panel/5 py-1 px-2.5 rounded border border-line">
+                                <div className="inline-flex items-baseline gap-1 bg-transparent py-1 px-2.5 rounded border border-line">
                                   <span className="text-accent font-black text-[12px]">{row.rating ?? (row.metadata?.rating ?? '—')}</span>
                                   <span className="text-[8px] text-muted opacity-40 font-bold tracking-widest">/ 5.0</span>
                                 </div>
@@ -844,7 +844,7 @@ export default function AllResearchDataPage() {
                           </tr>
                           {isExpanded && (
                             <tr>
-                              <td colSpan={9} className="bg-bg-elevated/10 border-b border-line p-10">
+                              <td colSpan={9} className="bg-bg-elevated border-b border-line p-10">
                                 <div className="max-w-5xl mx-auto space-y-10">
                                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
                                     <div className="lg:col-span-2 space-y-4">
@@ -852,15 +852,17 @@ export default function AllResearchDataPage() {
                                         <div className="h-2 w-2 rounded-full bg-accent animate-pulse"></div>
                                         <h4 className="text-[10px] font-mono text-accent uppercase tracking-[0.3em] font-black">Extracted Semantic Payload</h4>
                                       </div>
-                                      <div className="text-[15px] text-text/95 leading-relaxed font-sans bg-panel/40 p-8 rounded-card border border-line shadow-inner">
-                                        <p className="whitespace-pre-wrap">{row.content}</p>
+                                      <div className="text-[15px] text-text/95 leading-relaxed font-sans bg-panel p-8 rounded-card border border-line shadow-inner overflow-hidden">
+                                        <div className="overflow-x-auto">
+                                          <p className="whitespace-pre-wrap break-words">{row.content}</p>
+                                        </div>
                                       </div>
                                     </div>
                                     <div className="space-y-6">
                                       <div className="space-y-4">
                                         <h4 className="text-[10px] font-mono text-accent-2 uppercase tracking-[0.3em] font-black">Row Metadata</h4>
                                         <div className="bg-panel p-6 rounded-card border border-line overflow-hidden group/meta">
-                                          <pre className="text-[11px] text-muted-2 leading-loose font-mono max-h-[400px] overflow-y-auto custom-scrollbar">
+                                          <pre className="text-[11px] text-muted-2 leading-loose font-mono max-h-[400px] overflow-y-auto overflow-x-auto custom-scrollbar">
                                             {JSON.stringify(row.metadata, null, 2)}
                                           </pre>
                                         </div>
@@ -870,7 +872,7 @@ export default function AllResearchDataPage() {
                                         <div className="flex flex-col gap-2">
                                           <Link 
                                             href={`/projects/${projectId}/research/data/${row.jobId}/inputs`}
-                                            className="px-4 py-2 bg-panel/50 border border-line rounded text-[10px] font-mono text-muted hover:text-white hover:border-accent-2/40 transition-all uppercase tracking-widest text-center"
+                                            className="px-4 py-2 bg-panel border border-line rounded text-[10px] font-mono text-muted hover:text-white hover:border-accent-2/40 transition-all uppercase tracking-widest text-center"
                                           >
                                             Inspect Inputs
                                           </Link>

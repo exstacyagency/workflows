@@ -205,16 +205,18 @@ export default function RunManagementModal({
   return createPortal(
     <div
       onClick={onClose}
-      className="fixed inset-0 bg-overlay z-[9999] flex items-center justify-center p-6 backdrop-blur-sm"
+      className="fixed inset-0 z-[9999] flex items-center justify-center p-6 backdrop-blur-sm"
+      style={{ backgroundColor: "rgba(9, 9, 11, 0.82)" }}
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-2xl max-h-[85vh] overflow-hidden rounded-card border border-line bg-panel text-white shadow-panel flex flex-col backdrop-blur-panel"
+        className="w-full max-w-2xl max-h-[85vh] overflow-hidden rounded-card border border-line bg-bg text-white shadow-panel flex flex-col backdrop-blur-panel"
       >
-        <div className="flex items-start justify-between gap-4 p-5 border-b border-line">
+        <div className="flex items-start justify-between gap-4 p-8 pb-4 bg-transparent">
           <div>
-            <h3 className="text-lg font-bold tracking-tight">Manage Runs</h3>
-            <p className="text-xs font-mono text-muted uppercase tracking-wider mt-1 opacity-70">
+            <p className="app-eyebrow">Campaign Runs</p>
+            <h3 className="text-xl font-bold tracking-tight text-white">Run Manager</h3>
+            <p className="text-xs font-mono text-muted uppercase tracking-wider mt-2 opacity-70">
               Rename or delete campaign runs.
             </p>
           </div>
@@ -227,24 +229,25 @@ export default function RunManagementModal({
           </button>
         </div>
 
-        <div className="p-5 overflow-hidden flex flex-col">
+        <div className="px-8 pb-8 overflow-hidden flex flex-col">
           {error && (
-            <div className="mb-4 rounded-card border border-accent/30 bg-accent/10 p-3 text-xs text-accent font-mono">
+            <div className="mb-4 rounded-card border border-danger/20 bg-danger/5 p-3 text-xs text-danger font-mono uppercase tracking-widest">
               {error}
             </div>
           )}
 
           {loading ? (
-            <div className="py-12 flex flex-col items-center justify-center space-y-4">
+            <div className="rounded-card border border-line bg-panel py-12 px-6 flex flex-col items-center justify-center space-y-4">
               <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
               <p className="text-[10px] font-mono text-muted uppercase tracking-widest">Loading campaign runs...</p>
             </div>
           ) : sortedRuns.length === 0 ? (
-            <div className="py-12 text-center border border-dashed border-line rounded-card">
+            <div className="rounded-card border border-dashed border-line bg-panel py-12 text-center">
               <p className="text-xs text-muted italic">No campaign runs found for this project.</p>
             </div>
           ) : (
-            <div className="overflow-y-auto pr-2 space-y-3 custom-scrollbar">
+            <div className="rounded-card border border-line bg-panel overflow-hidden">
+              <div className="overflow-y-auto p-4 pr-2 space-y-3 custom-scrollbar">
               {sortedRuns.map((run) => {
                 const draftName = String(draftNames[run.id] ?? "");
                 const normalizedDraft = draftName.trim();
@@ -257,16 +260,17 @@ export default function RunManagementModal({
                 return (
                   <div
                     key={run.id}
-                    className="rounded-card border border-line bg-panel p-4 hover:bg-panel-strong transition-colors"
+                    className="rounded-card border border-line bg-panel p-5 transition-colors"
                   >
                     <div className="flex items-start justify-between gap-4 mb-4">
                       <div className="space-y-1">
-                        <p className="text-[13px] font-bold text-white tracking-tight">
+                        <p className="text-[0.78rem] font-mono text-accent uppercase tracking-[0.14em]">
+                          Run #{run.runNumber}
+                        </p>
+                        <p className="text-[15px] font-bold text-white tracking-tight">
                           {getJobTypeLabel(run.latestJobType, run.latestJobSubtype)}
                         </p>
                         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-mono text-muted uppercase tracking-wider opacity-60">
-                          <span className="text-accent font-bold">Run #{run.runNumber}</span>
-                          <span className="opacity-30">•</span>
                           <span className="text-white/80">{run.name?.trim() || "UNNAMED"}</span>
                           <span className="opacity-30">•</span>
                           <span className="text-accent-2">{run.id.slice(0, 8)}</span>
@@ -277,7 +281,7 @@ export default function RunManagementModal({
                         </div>
                       </div>
                       <span className="status-chip info opacity-80">
-                        {run.latestJobStatus ?? "NOT_STARTED"}
+                        {run.latestJobStatus ? run.latestJobStatus.replaceAll("_", " ") : "Not Started"}
                       </span>
                     </div>
 
@@ -290,7 +294,7 @@ export default function RunManagementModal({
                         }
                         placeholder="Assign Name..."
                         maxLength={120}
-                        className="flex-1 min-w-[200px] rounded-pill border border-line bg-panel px-4 py-2 text-xs text-white placeholder:text-muted/30 outline-none focus:border-accent/40 transition-colors"
+                        className="flex-1 min-w-[200px] rounded-pill border border-line bg-bg-elevated px-4 py-2 text-xs text-white placeholder:text-muted/30 outline-none focus:border-accent/40 transition-colors"
                       />
                       <button
                         type="button"
@@ -298,8 +302,8 @@ export default function RunManagementModal({
                         onClick={() => void handleRename(run.id)}
                         className={`btn px-4 py-2 text-[10px] font-bold uppercase tracking-widest transition-all ${
                           renameDisabled 
-                            ? "bg-panel/5 text-muted/30 cursor-not-allowed" 
-                            : "bg-accent-2/10 border border-accent-2/30 text-accent-2 hover:bg-accent-2/20"
+                            ? "bg-transparent text-muted/30 cursor-not-allowed" 
+                            : "btn-secondary text-accent-2 border-accent-2/30 hover:border-accent-2/40"
                         }`}
                       >
                         {savingRunId === run.id ? "Saving..." : "Rename"}
@@ -311,7 +315,7 @@ export default function RunManagementModal({
                             type="button"
                             disabled={deletingRunId === run.id}
                             onClick={() => void handleDelete(run.id)}
-                            className="bg-accent/10 border border-accent/30 text-accent px-4 py-2 rounded-pill text-[10px] font-bold uppercase tracking-widest hover:bg-accent/20 transition-all"
+                            className="btn btn-secondary text-danger border-danger/30 hover:border-danger/40 px-4 py-2 text-[10px] font-bold uppercase tracking-widest"
                           >
                             {deletingRunId === run.id ? "Wiping..." : "Confirm Wipe"}
                           </button>
@@ -328,7 +332,7 @@ export default function RunManagementModal({
                         <button
                           type="button"
                           onClick={() => setConfirmDeleteRunId(run.id)}
-                          className="px-4 py-2 rounded-pill text-[10px] font-bold text-accent/60 hover:text-accent uppercase tracking-widest transition-colors border border-accent/20 hover:border-accent/30 bg-accent/10"
+                          className="btn btn-secondary text-danger/80 border-danger/20 hover:border-danger/30 px-4 py-2 text-[10px] font-bold uppercase tracking-widest"
                         >
                           Delete
                         </button>
@@ -343,6 +347,7 @@ export default function RunManagementModal({
                   </div>
                 );
               })}
+              </div>
             </div>
           )}
         </div>

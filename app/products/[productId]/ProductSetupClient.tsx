@@ -454,7 +454,7 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
 
         {/* Custom fields */}
         {isCustom && (
-          <div className="space-y-2 rounded-lg border border-line bg-bg/40 p-4">
+          <div className="space-y-2 rounded-lg border border-line bg-panel p-4">
             <p className="text-xs text-muted/80 mb-3">All fields required</p>
             {CUSTOM_FIELDS.map(({ key, placeholder }) => (
               <div key={key} className="flex items-start gap-3">
@@ -473,7 +473,7 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
 
         {/* Anchor preview */}
         {resolvedAnchor && (
-          <div className="rounded-lg border border-line bg-bg/40">
+          <div className="rounded-lg border border-line bg-panel">
             <button
               type="button"
               onClick={() => setAnchorPreviewOpen((v) => !v)}
@@ -504,7 +504,7 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
     return (
       <div className="space-y-2">
         {stages.map((stage) => (
-          <div key={stage.type} className="rounded-md border border-line bg-bg/50 p-3">
+          <div key={stage.type} className="rounded-md border border-line bg-panel p-3">
             <div className="flex items-center justify-between gap-3">
               <p className="text-sm text-white/90">{stage.label}</p>
               <div className="flex items-center gap-2">
@@ -568,7 +568,7 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
 
         {!effectiveCharacterId ? (
           <>
-            <div className="space-y-4 rounded-lg border border-line bg-bg/40 p-4">
+            <div className="space-y-4 rounded-lg border border-line bg-panel p-4">
               {/* Run selector */}
               <div className="space-y-1">
                 <label className="text-xs text-muted/80">Attach to Run</label>
@@ -607,7 +607,7 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
         ) : (
           <div className="space-y-4">
             {resolvedAvatarImageUrl && (
-              <div className="rounded-lg border border-line bg-bg/40 p-3">
+              <div className="rounded-lg border border-line bg-panel p-3">
                 <p className="mb-2 text-xs text-muted/80">Current avatar</p>
                 <button
                   type="button"
@@ -669,7 +669,7 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
 
             {/* Character list */}
             <div className="space-y-3">
-              <div className="flex items-center justify-between rounded-lg border border-line bg-bg/40 p-3">
+              <div className="flex items-center justify-between rounded-lg border border-line bg-panel p-3">
                 <label className="inline-flex items-center gap-2 text-xs text-muted">
                   <input
                     type="checkbox"
@@ -691,7 +691,7 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
               </div>
 
               {product.characters.map((char) => (
-                <div key={char.id} className="rounded-lg border border-line bg-bg/50 p-4 space-y-2">
+                <div key={char.id} className="rounded-lg border border-line bg-panel p-4 space-y-2">
                   <div className="flex items-center justify-between gap-3">
                     <label className="inline-flex items-center gap-2">
                       <input
@@ -776,7 +776,7 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
 
             {/* Add character panel */}
             {addingCharacter && (
-              <div className="space-y-4 rounded-lg border border-line bg-bg/40 p-4">
+              <div className="space-y-4 rounded-lg border border-line bg-panel p-4">
                 <p className="text-xs text-muted/80">Generate an additional character for this product.</p>
                 <CharacterSelector />
                 <div className="flex gap-2">
@@ -811,44 +811,21 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
         avatarPreview &&
         createPortal(
           <div
-            style={{
-              position: "fixed",
-              inset: 0,
-              zIndex: 2147483647,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: "rgba(0, 0, 0, 0.8)",
-              padding: 16,
-            }}
+            className="app-modal-shell"
+            style={{ zIndex: 2147483647 }}
             onClick={() => setAvatarPreview(null)}
           >
             <div
-              style={{
-                width: "100%",
-                maxWidth: 360,
-                borderRadius: 12,
-                border: "1px solid rgb(51, 65, 85)",
-                backgroundColor: "rgb(2, 6, 23)",
-                padding: 12,
-                boxSizing: "border-box",
-              }}
+              className="app-modal-card rounded-card border border-line bg-bg p-4 shadow-panel"
+              style={{ maxWidth: 420 }}
               onClick={(event) => event.stopPropagation()}
             >
-              <div style={{ marginBottom: 8, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <p style={{ margin: 0, fontSize: 14, fontWeight: 500, color: "rgb(226, 232, 240)" }}>{avatarPreview.name}</p>
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <p className="m-0 text-sm font-medium text-white">{avatarPreview.name}</p>
                 <button
                   type="button"
                   onClick={() => setAvatarPreview(null)}
-                  style={{
-                    borderRadius: 6,
-                    border: "1px solid rgb(51, 65, 85)",
-                    backgroundColor: "rgb(15, 23, 42)",
-                    padding: "4px 8px",
-                    fontSize: 12,
-                    color: "rgb(226, 232, 240)",
-                    cursor: "pointer",
-                  }}
+                  className="btn btn-secondary !min-h-[32px] px-4 text-[11px] font-semibold"
                 >
                   Close
                 </button>
@@ -856,15 +833,7 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
               <img
                 src={avatarPreview.url}
                 alt={`${avatarPreview.name} avatar preview`}
-                style={{
-                  display: "block",
-                  margin: "0 auto",
-                  maxHeight: "60vh",
-                  width: "auto",
-                  maxWidth: "100%",
-                  borderRadius: 8,
-                  border: "1px solid rgb(51, 65, 85)",
-                }}
+                className="mx-auto block max-h-[70vh] max-w-full rounded-card border border-line"
               />
             </div>
           </div>,

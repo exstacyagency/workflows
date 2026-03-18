@@ -66,7 +66,6 @@ export default function CustomerAnalysisDataPage() {
     }
   }
 
-  return (
   if (loading) {
     return (
       <div className="min-h-screen bg-bg text-white px-8 py-8">
@@ -88,7 +87,7 @@ export default function CustomerAnalysisDataPage() {
           ← Back to Research Hub
         </Link>
         <div className="rounded-card border border-danger/20 bg-danger/5 p-6 space-y-2">
-          <p className="text-[10px] font-mono text-danger uppercase tracking-widest font-bold">Analysis_Fault_Detected</p>
+          <p className="text-[10px] font-mono text-danger uppercase tracking-widest font-bold">Analysis error</p>
           <p className="text-sm text-muted leading-relaxed">{error}</p>
         </div>
       </div>
@@ -97,7 +96,7 @@ export default function CustomerAnalysisDataPage() {
 
   return (
     <div className="min-h-screen bg-bg text-white">
-      <div className="border-b border-line bg-panel/50 backdrop-blur-md px-8 py-6">
+      <div className="border-b border-line bg-panel backdrop-blur-md px-8 py-6">
         <div className="flex items-center justify-between gap-6">
           <div className="space-y-4">
             <Link
@@ -146,11 +145,11 @@ export default function CustomerAnalysisDataPage() {
       <div className="px-8 py-10 space-y-10 max-w-[1400px]">
         {showInputs && (
           <section className="rounded-card border border-line bg-panel overflow-hidden shadow-panel backdrop-blur-panel">
-            <div className="border-b border-line bg-bg-elevated/50 px-6 py-3 flex items-center justify-between">
+            <div className="border-b border-line bg-bg-elevated px-6 py-3 flex items-center justify-between">
               <h2 className="text-[10px] font-mono text-accent uppercase tracking-[0.2em] font-bold">Input Parameters</h2>
               <div className="text-[9px] font-mono text-muted uppercase opacity-40">Request Data</div>
             </div>
-            <div className="p-6 bg-bg/40">
+            <div className="p-6 bg-panel">
               {inputsLoading && (
                 <div className="flex items-center gap-3 py-4">
                   <div className="w-4 h-4 border-2 border-accent/20 border-t-accent rounded-full animate-spin" />
@@ -173,11 +172,11 @@ export default function CustomerAnalysisDataPage() {
 
         {payload?.persona && (
           <section className="rounded-card border border-line bg-panel overflow-hidden shadow-panel">
-            <div className="border-b border-line bg-bg-elevated/50 px-6 py-3 flex items-center justify-between">
-              <h2 className="text-[10px] font-mono text-white uppercase tracking-[0.2em] font-bold">Synthesis_Output_Stream</h2>
-              <div className="text-[9px] font-mono text-muted uppercase opacity-40">Extracted_Persona_Profile</div>
+            <div className="border-b border-line bg-bg-elevated px-6 py-3 flex items-center justify-between">
+              <h2 className="text-[10px] font-mono text-white uppercase tracking-[0.2em] font-bold">Analysis Output</h2>
+              <div className="text-[9px] font-mono text-muted uppercase opacity-40">Persona Profile</div>
             </div>
-            <div className="p-6 bg-bg/20">
+            <div className="p-6 bg-transparent">
               <pre className="text-[12px] font-mono text-white/90 leading-relaxed whitespace-pre-wrap break-words scrollbar-thin scrollbar-thumb-line">
                 {JSON.stringify(payload.persona, null, 2)}
               </pre>

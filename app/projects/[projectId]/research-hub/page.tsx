@@ -1137,22 +1137,13 @@ export default function ResearchHubPage() {
             </h1>
             {anyRunning && (
               <div className="status-chip info pulse">
-                ACTIVE_SCAN
+                Running
               </div>
             )}
           </div>
           <p className="text-sm text-muted max-w-xl font-mono uppercase tracking-widest opacity-60">
             Multi-track customer research, ad research, and product research.
           </p>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <Link
-            href={`/projects/${projectId}/usage`}
-            className="btn btn-secondary !min-h-[36px] px-4 text-[10px] font-bold uppercase tracking-widest"
-          >
-            Usage Metrics
-          </Link>
         </div>
       </div>
 
@@ -1213,13 +1204,29 @@ export default function ResearchHubPage() {
                       }}
                       className="flex-1 bg-bg-elevated border border-line rounded-card px-4 py-3 text-sm text-white font-mono outline-none focus:border-accent/40 transition-colors cursor-pointer"
                     >
-                      <option value="no-active" className="bg-bg text-white">NO_ACTIVE_RUN</option>
+                      <option value="no-active" className="bg-bg text-white">No Active Run</option>
                       {sortedRuns.map((run) => (
                         <option key={run.runId} value={run.runId} className="bg-bg text-white">
                           {run.displayLabel}
                         </option>
                       ))}
                     </select>
+                    {selectedRunId ? (
+                      <Link
+                        href={`/projects/${projectId}/research-hub/run-data/${selectedRunId}`}
+                        className="btn btn-secondary !min-h-[46px] px-6 text-[10px]"
+                      >
+                        View Run Data
+                      </Link>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled
+                        className="btn btn-secondary !min-h-[46px] px-6 text-[10px] opacity-50 cursor-not-allowed"
+                      >
+                        View Run Data
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => setShowRunManagerModal(true)}
@@ -1391,7 +1398,8 @@ export default function ResearchHubPage() {
                         </div>
 
                         {/* Action Button */}
-                        <div className="flex-shrink-0 flex gap-2">
+                        <div className="ml-auto flex-shrink-0 flex items-center gap-3">
+                          <div className="flex items-center gap-2">
                           {showAlwaysHistoryButton && (
                             <button
                               onClick={() => {
@@ -1399,74 +1407,71 @@ export default function ResearchHubPage() {
                               }}
                               className="inline-flex items-center rounded-pill border border-line bg-panel px-4 py-2 text-xs text-muted transition-colors hover:text-white/90"
                             >
-                              {currentRunId ? "View Run History" : "View All History"}
+                              View Run History
                             </button>
                           )}
                           {stepWithStatus.jobType === "CUSTOMER_RESEARCH" ? (
                             customerResearchJob && (
-                            <div className="flex flex-col gap-1">
+                            <div className="flex items-center gap-2">
                               <>
-                                {selectedRunCustomerJob ? (
+                                {selectedRunId && selectedRunCustomerJob ? (
                                   <Link
                                     href={`/projects/${projectId}/research/data/${selectedRunCustomerJob.id}?runId=${selectedRunCustomerJob.runId ?? selectedRunCustomerJob.id}`}
                                     className="inline-flex items-center rounded-pill border border-line bg-panel px-4 py-2 text-xs text-muted transition-colors hover:text-white/90"
                                   >
-                                    View Raw Data
+                                    View Data
                                   </Link>
-                                ) : (
-                                  <button
-                                    disabled
-                                    className="inline-flex cursor-not-allowed items-center rounded-pill border border-line bg-panel px-4 py-2 text-xs text-muted/60 opacity-50"
-                                    title={!selectedRun ? "Select a run first" : "Customer Collection must be completed"}
-                                  >
-                                    View Raw Data
-                                  </button>
-                                )}
+                                ) : null}
                               </>
                             </div>
                             )
                           ) : stepWithStatus.label === "Customer Analysis" ? (
-                            <div className="flex flex-col gap-1">
+                            <div className="flex items-center gap-2">
                               {selectedRunId && analysisStatusJob?.status === "COMPLETED" && (
                                 <Link
                                   href={`/projects/${projectId}/research-hub/analysis/data/${analysisStatusJob.id}`}
                                   className="inline-flex items-center rounded-pill border border-line bg-panel px-4 py-2 text-xs text-muted transition-colors hover:text-white/90"
                                 >
-                                  View Results
+                                  View Data
                                 </Link>
                               )}
                             </div>
                           ) : (
 	                          stepWithStatus.status === "COMPLETED" && stepWithStatus.lastJob && (
-	                            <div className="flex flex-col gap-1">
+	                            <div className="flex items-center gap-2">
 	                              {stepWithStatus.id === "product-collection" && stepRawDataHref && (
 	                                <Link
 	                                  href={stepRawDataHref}
 		                                className="inline-flex items-center rounded-pill border border-line bg-panel px-4 py-2 text-xs text-muted transition-colors hover:text-white/90"
 	                                >
-	                                  View Raw Data
+	                                  View Data
 	                                </Link>
 	                              )}
-	                              {stepWithStatus.id === "ad-transcripts" && (
+	                              {((stepWithStatus.id === "ad-collection" && selectedRunId) ||
+                                  stepWithStatus.id === "ad-ocr" ||
+                                  stepWithStatus.id === "ad-transcripts" ||
+                                  stepWithStatus.id === "ad-quality-gate" ||
+                                  stepWithStatus.id === "pattern-analysis") && (
                                 <button
                                   onClick={() => {
-                                    const payloadRunId = String(stepWithStatus.lastJob?.payload?.runId ?? "").trim();
-                                    const runId = stepWithStatus.lastJob?.runId || payloadRunId || currentRunId;
-                                    const jobType = stepWithStatus.id === "ad-quality-gate"
-                                      ? "ad-quality-gate"
-                                      : stepWithStatus.id === "pattern-analysis"
-                                        ? "pattern-analysis"
-                                        : "ad-transcripts";
-                                    const runQuery = runId ? `&runId=${runId}` : "";
-                                    router.push(`/projects/${projectId}/research-hub/data?jobType=${jobType}${runQuery}`);
+                                    if (stepWithStatus.id === "ad-transcripts") {
+                                      const payloadRunId = String(stepWithStatus.lastJob?.payload?.runId ?? "").trim();
+                                      const runId = stepWithStatus.lastJob?.runId || payloadRunId || currentRunId;
+                                      const runQuery = runId ? `&runId=${runId}` : "";
+                                      router.push(`/projects/${projectId}/research-hub/data?jobType=ad-transcripts${runQuery}`);
+                                      return;
+                                    }
+                                    handleViewStepData(stepWithStatus);
                                   }}
                                   className="inline-flex items-center rounded-pill border border-line bg-panel px-4 py-2 text-xs text-muted transition-colors hover:text-white/90"
                                 >
-                                  View Data
-                                </button>
-                              )}
-                            </div>
+	                                  View Data
+	                                </button>
+	                              )}
+	                            </div>
                           ))}
+                          </div>
+                          <div className="ml-auto flex items-center gap-2">
                           {stepWithStatus.label === "Customer Analysis" ? (
                             <button
                               onClick={() => runStep(stepWithStatus, track.key)}
@@ -1481,8 +1486,7 @@ export default function ResearchHubPage() {
                               {isRunning ? "Starting..." : "Run"}
                             </button>
                           ) : stepWithStatus.status === "COMPLETED" ? (
-                            <div className="flex flex-col gap-1">
-                              <div className="flex gap-2">
+                            <div className="flex items-center gap-2">
                                 <button
                                   onClick={() => runStep(stepWithStatus, track.key)}
                                   disabled={isRunning || isCollecting}
@@ -1494,23 +1498,9 @@ export default function ResearchHubPage() {
                                 >
                                   Run
                                 </button>
-                                {(stepWithStatus.id === "ad-collection" ||
-                                  stepWithStatus.id === "ad-ocr" ||
-                                  stepWithStatus.id === "ad-quality-gate" ||
-                                  stepWithStatus.id === "pattern-analysis") &&
-                                  stepWithStatus.lastJob && (
-                                  <button
-                                    onClick={() => handleViewStepData(stepWithStatus)}
-                                    className="inline-flex items-center rounded-pill border border-line bg-panel px-4 py-2 text-xs text-muted transition-colors hover:text-white/90"
-                                  >
-                                    View Data
-                                  </button>
-                                )}
-                              </div>
                             </div>
                           ) : (
-                            <div className="flex flex-col gap-1">
-                              <div className="flex gap-2">
+                            <div className="flex items-center gap-2">
                                 {!(locked && anyRunning) && (
                                   <button
                                     onClick={() => runStep(stepWithStatus, track.key)}
@@ -1536,7 +1526,6 @@ export default function ResearchHubPage() {
                                           : "Run"}
                                   </button>
                                 )}
-                              </div>
                             </div>
                           )}
                           {(stepWithStatus.status === "RUNNING" || stepWithStatus.status === "PENDING") &&
@@ -1548,6 +1537,7 @@ export default function ResearchHubPage() {
                               Cancel
                             </button>
                             )}
+                          </div>
                         </div>
 
                         {/* Step Modal - Render inline */}
@@ -1612,51 +1602,51 @@ export default function ResearchHubPage() {
         })}
       </div>
 
-      <section className="app-surface space-y-3 mt-8">
-        <div className="app-panel-header">
-          <div>
-            <h2 className="app-section-title text-white">Creative Studio</h2>
-            <p className="text-sm text-muted mt-1 italic">
-              Move approved research into script generation, storyboards, and production output.
-            </p>
-          </div>
+      <section className="mt-8 space-y-4">
+        <div>
+          <h2 className="app-section-title text-white">Creative Studio</h2>
         </div>
-        <div className="flex items-center justify-between gap-4">
-          <p className="app-status-line">
-            Open Creative Studio to turn the current project context into production-ready creative assets.
+        <div className="app-surface space-y-3">
+          <p className="text-sm text-muted italic">
+            Move approved research into script generation, storyboards, and production output.
           </p>
-          <Link
-            href={
-              selectedProductId
-                ? `/projects/${projectId}/creative-studio?productId=${selectedProductId}`
-                : `/projects/${projectId}/creative-studio`
-            }
-            className="app-button app-button--primary text-sm font-medium"
-          >
-            Open Creative Studio
-          </Link>
+          <div className="flex items-center justify-between gap-4">
+            <p className="app-status-line">
+              Open Creative Studio to turn the current project context into production-ready creative assets.
+            </p>
+            <Link
+              href={
+                selectedProductId
+                  ? `/projects/${projectId}/creative-studio?productId=${selectedProductId}`
+                  : `/projects/${projectId}/creative-studio`
+              }
+              className="app-button app-button--primary text-sm font-medium"
+            >
+              Open Creative Studio
+            </Link>
+          </div>
         </div>
       </section>
 
-      <section className="app-surface space-y-3">
-        <div className="app-panel-header">
-          <div>
-            <h2 className="app-section-title text-white">Usage and Cost</h2>
-            <p className="text-sm text-muted mt-1 italic">
-              Review provider usage, spend, and settled job costs for this project.
-            </p>
-          </div>
+      <section className="space-y-4">
+        <div>
+          <h2 className="app-section-title text-white">Usage and Cost</h2>
         </div>
-        <div className="flex items-center justify-between gap-4">
-          <p className="app-status-line">
-            Track cost breakdowns and usage activity without leaving the current project scope.
+        <div className="app-surface space-y-3">
+          <p className="text-sm text-muted italic">
+            Review provider usage, spend, and settled job costs for this project.
           </p>
-          <Link
-            href={`/projects/${projectId}/usage`}
-            className="app-button app-button--primary text-sm font-medium"
-          >
-            Open Usage & Costs
-          </Link>
+          <div className="flex items-center justify-between gap-4">
+            <p className="app-status-line">
+              Track cost breakdowns and usage activity without leaving the current project scope.
+            </p>
+            <Link
+              href={`/projects/${projectId}/usage`}
+              className="app-button app-button--primary text-sm font-medium"
+            >
+              Open Usage & Costs
+            </Link>
+          </div>
         </div>
       </section>
 

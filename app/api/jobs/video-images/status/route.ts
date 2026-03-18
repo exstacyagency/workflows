@@ -83,13 +83,17 @@ export async function POST(req: Request) {
         } as any,
       });
     } else if (polled.status === "SUCCEEDED") {
+      const generatedFrameCount = Math.max(
+        polled.images.length,
+        polled.tasks.filter((task) => Boolean(String(task.url ?? "").trim())).length,
+      );
       await prisma.job.update({
         where: { id: job.id },
         data: {
           status: "COMPLETED" as any,
           error: null,
           payload: updatedPayload as any,
-          resultSummary: `Video frames saved: ${polled.images.length}`,
+          resultSummary: `Video frames generated: ${generatedFrameCount}`,
         } as any,
       });
 

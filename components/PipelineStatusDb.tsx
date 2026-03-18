@@ -155,7 +155,7 @@ export function PipelineStatusDb({ projectId }: Props) {
           return (
             <div
               key={phase.key}
-              className="rounded-card border border-line bg-bg-elevated/40 px-4 py-3 space-y-1.5 hover:bg-bg-elevated transition-colors"
+              className="rounded-card border border-line bg-bg-elevated px-4 py-3 space-y-1.5 hover:bg-bg-elevated transition-colors"
             >
               <div className="flex items-center justify-between gap-3">
                 <p className="text-sm font-medium text-white">{phase.label}</p>

@@ -156,7 +156,7 @@ export default function ResearchRunDataPage() {
       <div className="min-h-screen bg-bg text-white px-8 py-8">
         <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
           <div className="w-8 h-8 border-2 border-accent/20 border-t-accent rounded-full animate-spin" />
-          <p className="text-[10px] font-mono text-muted uppercase tracking-[0.3em] animate-pulse">Syncing_Run_State...</p>
+          <p className="text-[10px] font-mono text-muted uppercase tracking-[0.3em] animate-pulse">Loading run data...</p>
         </div>
       </div>
     );
@@ -164,7 +164,7 @@ export default function ResearchRunDataPage() {
 
   return (
     <div className="min-h-screen bg-bg text-white">
-      <div className="border-b border-line bg-panel/50 backdrop-blur-md px-8 py-6">
+      <div className="border-b border-line bg-panel backdrop-blur-md px-8 py-6">
         <div className="flex items-center justify-between gap-6">
           <div className="space-y-4">
             <Link
@@ -199,11 +199,11 @@ export default function ResearchRunDataPage() {
       </div>
 
       <div className="px-8 py-10 space-y-8 max-w-[1200px] mx-auto">
-        <div className="rounded-card border border-line bg-panel/40 p-6 backdrop-blur-panel flex flex-wrap items-center gap-4">
+        <div className="rounded-card border border-line bg-panel p-6 backdrop-blur-panel flex flex-wrap items-center gap-4">
           <button
             onClick={toggleAll}
             disabled={jobs.length === 0}
-            className="px-4 py-2 rounded-pill border border-line bg-bg-elevated/50 text-[10px] font-mono text-muted uppercase tracking-widest hover:text-white transition-colors"
+            className="px-4 py-2 rounded-pill border border-line bg-bg-elevated text-[10px] font-mono text-muted uppercase tracking-widest hover:text-white transition-colors"
           >
             {allSelected ? "Clear Selection" : "Select All Jobs"}
           </button>

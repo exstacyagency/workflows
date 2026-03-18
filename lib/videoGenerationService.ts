@@ -28,7 +28,7 @@ const KIE_TEXT_TO_VIDEO_MODEL = normalizeKieVideoModel(
 );
 const KIE_IMAGE_TO_VIDEO_MODEL_FALLBACK = 'veo3';
 const KIE_TEXT_TO_VIDEO_MODEL_FALLBACK = 'veo3';
-const DEFAULT_DURATION_SEC = Number(env('KIE_VIDEO_DURATION_SEC') ?? 6);
+const DEFAULT_DURATION_SEC = Number(env('KIE_VIDEO_DURATION_SEC') ?? 8);
 
 function getKieHeaders() {
   requireEnv(['KIE_API_KEY'], 'KIE');
@@ -128,9 +128,8 @@ function asString(value: unknown): string {
   return value.trim();
 }
 
-function normalizeSoraClipDuration(raw: number | null | undefined): 10 | 15 {
-  if (raw === 15) return 15;
-  return 10;
+function normalizeSoraClipDuration(raw: number | null | undefined): 8 {
+  return 8;
 }
 
 function normalizeReferenceFrames(value: unknown): SceneReferenceFrame[] {
@@ -213,7 +212,7 @@ async function createKieVideoJob(params: {
   prompt: string;
   imageInputs: string[];
   referenceFrames?: SceneReferenceFrame[];
-  nFrames: 10 | 15;
+  nFrames: 8;
   aspectRatio: 'portrait' | 'landscape';
   uploadMethod: 's3' | 'oss';
 }): Promise<string> {
@@ -468,7 +467,7 @@ async function generateVideoForScene(
   const durationSec = normalizeSoraClipDuration(
     Number.isFinite(clipDurationFromScene) ? clipDurationFromScene : fallbackDuration
   );
-  const nFrames: 10 | 15 = durationSec === 15 ? 15 : 10;
+  const nFrames: 8 = 8;
   const aspectRatio: 'portrait' | 'landscape' = 'portrait';
   const uploadMethod: 's3' | 'oss' = 's3';
   const referenceFrames = buildSceneReferenceFrames({

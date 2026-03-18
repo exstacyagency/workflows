@@ -312,7 +312,7 @@ export default function AdAssetsViewerPage() {
 
   return (
     <div className="min-h-screen bg-bg text-white">
-      <div className="border-b border-line bg-panel/50 backdrop-blur-md px-8 py-6">
+      <div className="border-b border-line bg-panel backdrop-blur-md px-8 py-6">
         <div className="flex items-center justify-between gap-6">
           <div className="space-y-4">
             <Link
@@ -322,13 +322,13 @@ export default function AdAssetsViewerPage() {
               ← Back to Research Hub
             </Link>
             <div className="flex items-center gap-4">
-              <h1 className="text-4xl font-bold tracking-tight text-white">Asset Inventory</h1>
+              <h1 className="text-4xl font-bold tracking-tight text-white">Ad Creative Inventory</h1>
               <div className="status-chip subtle uppercase tracking-widest text-[9px]">
                 RUN_{runId.substring(0, 8)}
               </div>
             </div>
             <p className="text-xs text-muted font-mono uppercase tracking-widest opacity-60">
-              View: <span className="text-accent-2">Ad Asset Library</span> 
+              View: <span className="text-accent-2">Creative Asset Library</span> 
               <span className="mx-3 opacity-20">|</span> 
               Assets: <span className="text-white">{rows.length}</span>
             </p>
@@ -347,7 +347,7 @@ export default function AdAssetsViewerPage() {
       <div className="px-8 py-10">
         <div className="rounded-card border border-line bg-panel overflow-hidden shadow-panel">
           <div className="px-6 py-4 border-b border-line bg-bg-elevated flex items-center justify-between">
-            <h2 className="text-[10px] font-mono text-white/50 uppercase tracking-[0.2em] font-bold">Ad Assets</h2>
+            <h2 className="text-[10px] font-mono text-white/50 uppercase tracking-[0.2em] font-bold">Creative Assets</h2>
             {highlightOcr && (
               <div className="flex items-center gap-4 text-[9px] font-mono uppercase tracking-widest">
                 <span className="flex items-center gap-2">
@@ -366,17 +366,17 @@ export default function AdAssetsViewerPage() {
               <thead className="bg-bg-elevated border-b border-line">
                 <tr>
                   <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-40">Timestamp</th>
-                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-32">Asset_ID</th>
+                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-32">Asset ID</th>
                   <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-32">Classification</th>
                   <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-24">Linkage</th>
-                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em]">Source_URI</th>
-                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-32 text-center">OCR_State</th>
-                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-24 text-right">R_3s</th>
-                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-24 text-right">R_10s</th>
-                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-24 text-right">CTR_3s</th>
-                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-24 text-right">CTR_10s</th>
-                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-24 text-right">CVR_3s</th>
-                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-24 text-right">CVR_10s</th>
+                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em]">Source URL</th>
+                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-32 text-center">OCR Status</th>
+                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-24 text-right">3s Ret.</th>
+                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-24 text-right">10s Ret.</th>
+                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-24 text-right">CTR 3s</th>
+                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-24 text-right">CTR 10s</th>
+                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-24 text-right">CVR 3s</th>
+                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-24 text-right">CVR 10s</th>
                   <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-20 text-right">Dur</th>
                   <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-24 text-right">CTR</th>
                   <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-24 text-right">Cost</th>
@@ -385,7 +385,7 @@ export default function AdAssetsViewerPage() {
                   <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-28">Source</th>
                   <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-28">Industry</th>
                   <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-28">Spikes</th>
-                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-48">Frame_Analysis</th>
+                  <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-48">Frame Analysis</th>
                   <th className="px-5 py-4 text-[9px] font-mono text-muted uppercase tracking-[0.2em] w-24 text-center">Raw</th>
                 </tr>
               </thead>
@@ -443,9 +443,9 @@ export default function AdAssetsViewerPage() {
                     </td>
                     <td className="px-5 py-4 text-center">
                       {row.hasOcr ? (
-                        <span className="status-chip success !text-[8.5px] uppercase font-bold tracking-widest !py-0.5 inline-block">OCR_OK</span>
+                        <span className="status-chip success !text-[8.5px] uppercase font-bold tracking-widest !py-0.5 inline-block">OCR Ready</span>
                       ) : (
-                        <span className="status-chip danger !text-[8.5px] uppercase font-bold tracking-widest !py-0.5 inline-block">NO_OCR</span>
+                        <span className="status-chip danger !text-[8.5px] uppercase font-bold tracking-widest !py-0.5 inline-block">No OCR</span>
                       )}
                     </td>
                     <td className="px-5 py-4 text-[10px] font-mono text-white/90 text-right">{formatMetric(row.retention3s)}</td>
@@ -470,7 +470,7 @@ export default function AdAssetsViewerPage() {
                     </td>
                     <td className="px-5 py-4">
                       {row.ocrFrames.length === 0 ? (
-                        <span className="text-[10px] font-mono text-muted/20 uppercase tracking-widest">No_Frames</span>
+                        <span className="text-[10px] font-mono text-muted/20 uppercase tracking-widest">No Frames</span>
                       ) : (
                         <details className="group/details">
                           <summary className="cursor-pointer text-[10px] font-mono text-accent-2/60 hover:text-accent-2 uppercase tracking-widest list-none flex items-center gap-2">
@@ -486,7 +486,7 @@ export default function AdAssetsViewerPage() {
                                   className={`rounded-card border p-3 flex flex-col gap-3 ${
                                     isSpike
                                       ? "border-warning/30 bg-warning/5"
-                                      : "border-line bg-bg-elevated/40"
+                                      : "border-line bg-bg-elevated"
                                   }`}
                                 >
                                   <div className="flex items-center justify-between border-b border-line/50 pb-2">
@@ -513,7 +513,7 @@ export default function AdAssetsViewerPage() {
                                         className="object-contain w-full h-full"
                                       />
                                       <div className="absolute inset-0 bg-accent-2/0 group-hover/img:bg-accent-2/10 transition-colors flex items-center justify-center">
-                                        <span className="text-white text-[10px] font-mono font-black uppercase tracking-widest opacity-0 group-hover/img:opacity-100 transition-opacity">Expand_View</span>
+                                        <span className="text-white text-[10px] font-mono font-black uppercase tracking-widest opacity-0 group-hover/img:opacity-100 transition-opacity">Expand View</span>
                                       </div>
                                     </a>
                                   )}
@@ -543,8 +543,8 @@ export default function AdAssetsViewerPage() {
                           }
                         }}>
                           <div className="bg-panel border border-line rounded-card w-full max-w-4xl max-h-full overflow-hidden flex flex-col shadow-2xl">
-                            <div className="p-4 border-b border-line flex items-center justify-between bg-bg-elevated/50">
-                              <span className="text-[10px] font-mono text-white uppercase tracking-[0.2em] font-bold">Raw_Packet_Data</span>
+                            <div className="p-4 border-b border-line flex items-center justify-between bg-bg-elevated">
+                              <span className="text-[10px] font-mono text-white uppercase tracking-[0.2em] font-bold">Raw Data</span>
                               <button onClick={(e) => {
                                 (e.currentTarget.closest('details') as any).removeAttribute('open');
                               }} className="text-muted hover:text-white font-mono text-[10px] uppercase">Close [ESC]</button>

@@ -1129,12 +1129,9 @@ async function runJob(
             shouldCancel: () => isJobCancellationRequested(jobId),
           });
           await assertJobNotCancelled(jobId);
-          const firstUrl = result.videoUrls[0] ?? "";
           const summary = result.skipped
             ? `Video generation skipped: ${result.reason ?? "already_generated"}`
-            : firstUrl
-              ? `Video generated: ${firstUrl}${result.videoUrls.length > 1 ? ` (+${result.videoUrls.length - 1} more)` : ""}`
-              : "Video generation completed";
+            : `Video scenes generated: ${result.scenesUpdated}`;
           await markCompleted({ jobId, result, summary });
         } catch (e: any) {
           const msg = String(e?.message ?? e ?? "Unknown error");

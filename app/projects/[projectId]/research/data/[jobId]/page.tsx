@@ -281,13 +281,13 @@ export default function ResearchDataPage() {
             <p className="card-label font-bold">Keyword Persistence</p>
             <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
               {keywordStats.map((stat) => (
-                <div key={stat.keyword} className="flex flex-col gap-1 p-3 rounded bg-bg-elevated/40 border border-line/20 hover:border-accent/30 transition-colors group">
+                <div key={stat.keyword} className="flex flex-col gap-1 p-3 rounded bg-bg-elevated border border-line/20 hover:border-accent/30 transition-colors group">
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-mono text-accent uppercase tracking-widest">{stat.keyword}</span>
                     <span className="text-[9px] font-mono text-muted/40 uppercase font-bold">{stat.count} Rows</span>
                   </div>
                   <div className="text-sm font-bold text-white group-hover:text-accent transition-colors">
-                    {stat.avgScore.toFixed(1)} <span className="text-[9px] font-mono text-muted/60 font-normal uppercase tracking-widest ml-1">Avg_Score</span>
+                    {stat.avgScore.toFixed(1)} <span className="text-[9px] font-mono text-muted/60 font-normal uppercase tracking-widest ml-1">Avg Score</span>
                   </div>
                 </div>
               ))}
@@ -304,12 +304,12 @@ export default function ResearchDataPage() {
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            <div className="space-y-1.5 text-[9px] font-mono text-muted/60 uppercase tracking-widest ml-1">Source_Type</div>
-            <div className="space-y-1.5 text-[9px] font-mono text-muted/60 uppercase tracking-widest ml-1">Entity_Type</div>
-            <div className="space-y-1.5 text-[9px] font-mono text-muted/60 uppercase tracking-widest ml-1">Subreddit_Node</div>
-            <div className="space-y-1.5 text-[9px] font-mono text-muted/60 uppercase tracking-widest ml-1">Solution_Vector</div>
-            <div className="space-y-1.5 text-[9px] font-mono text-muted/60 uppercase tracking-widest ml-1">Min_Intensity</div>
-            <div className="space-y-1.5 text-[9px] font-mono text-muted/60 uppercase tracking-widest ml-1">Content_Search</div>
+            <div className="space-y-1.5 text-[9px] font-mono text-muted/60 uppercase tracking-widest ml-1">Source Type</div>
+            <div className="space-y-1.5 text-[9px] font-mono text-muted/60 uppercase tracking-widest ml-1">Entity Type</div>
+            <div className="space-y-1.5 text-[9px] font-mono text-muted/60 uppercase tracking-widest ml-1">Subreddit</div>
+            <div className="space-y-1.5 text-[9px] font-mono text-muted/60 uppercase tracking-widest ml-1">Keyword</div>
+            <div className="space-y-1.5 text-[9px] font-mono text-muted/60 uppercase tracking-widest ml-1">Min Intensity</div>
+            <div className="space-y-1.5 text-[9px] font-mono text-muted/60 uppercase tracking-widest ml-1">Search</div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 -mt-4">
@@ -318,7 +318,7 @@ export default function ResearchDataPage() {
               onChange={(e) => setSourceFilter(e.target.value)}
               className="w-full bg-bg-elevated border border-line rounded px-3 py-2 text-[11px] font-mono text-white focus:border-accent/40 outline-none transition-colors"
             >
-              <option value="all">ALL_SOURCES</option>
+              <option value="all">All Sources</option>
               <option value="reddit">REDDIT</option>
               <option value="amazon">AMAZON</option>
               <option value="uploaded">UPLOADED</option>
@@ -329,7 +329,7 @@ export default function ResearchDataPage() {
               onChange={(e) => setTypeFilter(e.target.value)}
               className="w-full bg-bg-elevated border border-line rounded px-3 py-2 text-[11px] font-mono text-white focus:border-accent/40 outline-none transition-colors"
             >
-              <option value="all">ALL_TYPES</option>
+              <option value="all">All Types</option>
               <option value="post">POSTS</option>
               <option value="comment">COMMENTS</option>
               <option value="review">REVIEWS</option>
@@ -344,7 +344,7 @@ export default function ResearchDataPage() {
               }}
               className="w-full bg-bg-elevated border border-line rounded px-3 py-2 text-[11px] font-mono text-white focus:border-accent/40 outline-none transition-colors"
             >
-              <option value="">ALL_SUBREDDITS</option>
+              <option value="">All Subreddits</option>
               {uniqueSubreddits.map((s) => (
                 <option key={s} value={s}>{s.toUpperCase()}</option>
               ))}
@@ -358,7 +358,7 @@ export default function ResearchDataPage() {
               }}
               className="w-full bg-bg-elevated border border-line rounded px-3 py-2 text-[11px] font-mono text-white focus:border-accent/40 outline-none transition-colors"
             >
-              <option value="">ALL_KEYWORDS</option>
+              <option value="">All Keywords</option>
               {uniqueKeywords.map((k) => (
                 <option key={k} value={k}>{k.toUpperCase()}</option>
               ))}
@@ -379,7 +379,7 @@ export default function ResearchDataPage() {
 
             <input
               type="text"
-              placeholder="SEARCH_STREAM..."
+              placeholder="Search content..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full bg-bg-elevated border border-line rounded px-3 py-2 text-[11px] font-mono text-white focus:border-accent/40 outline-none transition-colors placeholder:text-muted/20"
@@ -391,7 +391,7 @@ export default function ResearchDataPage() {
           <div className="rounded border border-accent/20 bg-accent/5 p-4 flex items-center gap-3">
              <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
              <p className="text-[10px] font-mono text-accent uppercase tracking-widest font-bold">
-               Active_Filter_Protocol: <span className="text-white opacity-60">Server-side query + Client-side stream refinement enabled.</span>
+               Active filters: <span className="text-white opacity-60">Server-side query and client-side filtering are active.</span>
              </p>
           </div>
         )}
@@ -406,16 +406,16 @@ export default function ResearchDataPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-[11px] border-collapse">
                 <thead>
-                  <tr className="bg-bg-elevated/50 border-b border-line">
+                  <tr className="bg-bg-elevated border-b border-line">
                     <th className="text-left p-4 font-mono text-muted uppercase tracking-widest font-bold">Type</th>
-                    <th className="text-left p-4 font-mono text-muted uppercase tracking-widest font-bold whitespace-nowrap">Source_Node</th>
+                    <th className="text-left p-4 font-mono text-muted uppercase tracking-widest font-bold whitespace-nowrap">Source</th>
                     <th className="text-left p-4 font-mono text-muted uppercase tracking-widest font-bold">Subreddit</th>
                     <th className="text-left p-4 font-mono text-muted uppercase tracking-widest font-bold">Keyword</th>
                     <th className="text-left p-4 font-mono text-muted uppercase tracking-widest font-bold">Content</th>
                     <th className="text-left p-4 font-mono text-muted uppercase tracking-widest font-bold">Intensity</th>
-                    <th className="text-left p-4 font-mono text-muted uppercase tracking-widest font-bold">Trace_ID</th>
+                    <th className="text-left p-4 font-mono text-muted uppercase tracking-widest font-bold">Trace ID</th>
                     <th className="text-left p-4 font-mono text-muted uppercase tracking-widest font-bold">Posted</th>
-                    <th className="text-left p-4 font-mono text-muted uppercase tracking-widest font-bold whitespace-nowrap">Capture_Time</th>
+                    <th className="text-left p-4 font-mono text-muted uppercase tracking-widest font-bold whitespace-nowrap">Capture Time</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-line/30">
@@ -483,7 +483,7 @@ export default function ResearchDataPage() {
               </table>
             </div>
 
-            <div className="flex flex-col md:flex-row items-center justify-between gap-4 p-6 border-t border-line bg-bg-elevated/20">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-4 p-6 border-t border-line bg-bg-elevated">
               <div className="text-[10px] font-mono text-muted uppercase tracking-[0.2em]">
                 Page <span className="text-white">{page}</span> OF <span className="text-white">{totalPages}</span> 
                 <span className="mx-3 opacity-20">|</span> 

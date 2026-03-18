@@ -41,7 +41,7 @@ export default function IndexPage() {
               </article>
 
               <article className="signal-card metric-card">
-                <p className="card-label">Creative_V3_UGC</p>
+                <p className="card-label">Creative V3 UGC</p>
                 <div className="metric-row">
                   <span>CPA: $45.20</span>
                   <span className="pill pill-warn">High</span>
@@ -61,7 +61,7 @@ export default function IndexPage() {
 
               <article className="signal-card file-card">
                 <div className="file-preview"></div>
-                <p className="card-label">RAW_FILE_04.mp4</p>
+                <p className="card-label">RAW FILE 04.mp4</p>
               </article>
 
               <div className="pipeline-core">

@@ -69,6 +69,7 @@ function formatDate(value: string): string {
   });
 }
 
+
 export default function CreativeRunDataPage() {
   const params = useParams();
   const projectId = String(params?.projectId ?? "").trim();
@@ -122,7 +123,6 @@ export default function CreativeRunDataPage() {
   );
 
   const allSelected = jobs.length > 0 && selectedIds.length === jobs.length;
-
   function toggleAll() {
     setSelectedJobIds((prev) => {
       if (allSelected) return {};
@@ -176,121 +176,187 @@ export default function CreativeRunDataPage() {
     }
   }
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-bg text-white px-8 py-8">
+        <div className="flex min-h-[60vh] flex-col items-center justify-center space-y-4">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent/20 border-t-accent" />
+          <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-muted animate-pulse">
+            Loading run data...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <main className="min-h-screen bg-bg text-white p-6">
-      <div className="mx-auto w-full max-w-6xl space-y-4">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <h1 className="text-xl font-semibold">Creative Production Run</h1>
-            <p className="text-sm text-muted/80">
-              Run ID: <span className="text-white/90">{runId || "N/A"}</span>
+    <div className="min-h-screen bg-bg text-white">
+      <div className="border-b border-line bg-panel px-8 py-6 backdrop-blur-md">
+        <div className="flex items-center justify-between gap-6">
+          <div className="space-y-4">
+            <Link
+              href={`/projects/${projectId}/creative-studio`}
+              className="inline-block text-[11px] font-mono uppercase tracking-widest text-muted transition-colors hover:text-white"
+            >
+              ← Back to Creative Studio
+            </Link>
+            <div className="flex items-center gap-4">
+              <h1 className="text-4xl font-bold tracking-tight text-white">Run Overview</h1>
+              <div className="status-chip subtle text-[9px] uppercase tracking-widest">
+                {runId.substring(0, 8)}
+              </div>
+            </div>
+            <p className="text-xs font-mono uppercase tracking-widest text-muted opacity-60">
+              Run ID: <span className="text-accent">{runId}</span>
+              <span className="mx-3 opacity-20">|</span>
+              Jobs: <span className="text-accent-2">{jobs.length} Active</span>
             </p>
           </div>
-          <div className="flex items-center gap-2">
+
+          <div className="flex items-center gap-3">
             <button
-              type="button"
               onClick={() => void loadJobs()}
               disabled={loading || deleting}
-              className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-white/90 hover:bg-bg-elevated disabled:cursor-not-allowed disabled:opacity-60"
+              className="btn btn-secondary !min-h-[40px] px-6 text-[10px] font-bold uppercase tracking-widest"
             >
               Refresh
             </button>
-            <Link
-              href={`/projects/${projectId}/creative-studio`}
-              className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-white/90 hover:bg-bg-elevated"
-            >
-              Back to Creative Studio
-            </Link>
           </div>
         </div>
+      </div>
 
-        <div className="rounded-lg border border-line bg-panel p-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={toggleAll}
-              disabled={loading || deleting || jobs.length === 0}
-              className="rounded-lg border border-line bg-bg-elevated px-3 py-2 text-sm text-white/90 hover:bg-panel-strong disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {allSelected ? "Clear Selection" : "Select All"}
-            </button>
-            <button
-              type="button"
-              onClick={() => void deleteJobs("selected")}
-              disabled={loading || deleting || selectedIds.length === 0}
-              className="rounded-lg border border-accent/30 bg-accent/10 px-3 py-2 text-sm text-accent hover:bg-accent/20 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              Delete Selected ({selectedIds.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => void deleteJobs("all")}
-              disabled={loading || deleting || jobs.length === 0}
-              className="rounded-lg border border-accent/30 bg-accent/10 px-3 py-2 text-sm text-accent hover:bg-accent/20 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              Delete All Creative Jobs
-            </button>
-            <span className="ml-auto text-xs text-muted/80">
-              {jobs.length} job{jobs.length === 1 ? "" : "s"}
-            </span>
-          </div>
-          {error ? (
-            <p className="mt-3 text-sm text-accent">{error}</p>
-          ) : null}
+      <div className="mx-auto max-w-[1200px] space-y-8 px-8 py-10">
+        <div className="flex flex-wrap items-center gap-4 rounded-card border border-line bg-panel p-6 backdrop-blur-panel">
+          <button
+            onClick={toggleAll}
+            disabled={jobs.length === 0}
+            className="rounded-pill border border-line bg-bg-elevated px-4 py-2 text-[10px] font-mono uppercase tracking-widest text-muted transition-colors hover:text-white"
+          >
+            {allSelected ? "Clear Selection" : "Select All Jobs"}
+          </button>
+
+          <div className="mx-2 h-4 w-px bg-line/50"></div>
+
+          <button
+            onClick={() => void deleteJobs("selected")}
+            disabled={selectedIds.length === 0 || deleting}
+            className="rounded-pill border border-danger/20 bg-danger/5 px-4 py-2 text-[10px] font-mono font-bold uppercase tracking-widest text-danger transition-all hover:bg-danger/10"
+          >
+            Delete Selected ({selectedIds.length})
+          </button>
+
+          <button
+            onClick={() => void deleteJobs("all")}
+            disabled={jobs.length === 0 || deleting}
+            className="rounded-pill border border-danger/40 bg-danger/10 px-4 py-2 text-[10px] font-mono font-bold uppercase tracking-widest text-danger transition-all hover:bg-danger/20"
+          >
+            Delete All Jobs
+          </button>
+
+          {error && (
+            <div className="ml-4 rounded border border-danger/20 bg-danger/10 px-3 py-1.5 text-[10px] font-mono uppercase text-danger">
+              {error}
+            </div>
+          )}
         </div>
 
-        <div className="overflow-hidden rounded-lg border border-line bg-panel">
-          <table className="min-w-full divide-y divide-line text-sm">
-            <thead className="bg-panel/90">
+        <div className="overflow-hidden rounded-card border border-line bg-panel shadow-panel">
+          <div className="border-b border-line bg-bg-elevated px-6 py-3">
+            <h2 className="text-[10px] font-mono font-bold uppercase tracking-[0.2em] text-accent">
+              Run Jobs
+            </h2>
+          </div>
+          <table className="w-full border-collapse text-left">
+            <thead className="border-b border-line bg-bg-elevated">
               <tr>
-                <th className="px-3 py-2 text-left font-medium text-muted">Select</th>
-                <th className="px-3 py-2 text-left font-medium text-muted">Job</th>
-                <th className="px-3 py-2 text-left font-medium text-muted">Status</th>
-                <th className="px-3 py-2 text-left font-medium text-muted">Created</th>
-                <th className="px-3 py-2 text-left font-medium text-muted">Updated</th>
-                <th className="px-3 py-2 text-left font-medium text-muted">Job ID</th>
+                <th className="w-10 p-5">
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    onChange={toggleAll}
+                    className="h-3.5 w-3.5 cursor-pointer rounded-sm border-line bg-panel transition-all checked:border-accent-2 checked:bg-accent-2"
+                  />
+                </th>
+                <th className="p-5 text-[9px] font-mono uppercase tracking-[0.2em] text-accent">
+                  Job Type
+                </th>
+                <th className="w-32 p-5 text-[9px] font-mono uppercase tracking-[0.2em] text-muted">
+                  Status
+                </th>
+                <th className="w-48 p-5 text-[9px] font-mono uppercase tracking-[0.2em] text-muted">
+                  Created
+                </th>
+                <th className="w-48 p-5 text-[9px] font-mono uppercase tracking-[0.2em] text-muted">
+                  Updated
+                </th>
+                <th className="w-40 p-5 text-[9px] font-mono uppercase tracking-[0.2em] text-muted">
+                  Job ID
+                </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-line">
-              {loading ? (
+            <tbody className="divide-y divide-line/30">
+              {jobs.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-3 py-6 text-center text-muted/80">
-                    Loading creative jobs...
-                  </td>
-                </tr>
-              ) : jobs.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-3 py-6 text-center text-muted/60">
-                    No creative jobs found for this run.
+                  <td
+                    colSpan={6}
+                    className="p-10 text-center text-[10px] font-mono uppercase tracking-widest text-muted opacity-40"
+                  >
+                    No jobs found for this run
                   </td>
                 </tr>
               ) : (
                 jobs.map((job) => (
-                  <tr key={job.id}>
-                    <td className="px-3 py-2">
+                  <tr key={job.id} className="group bg-panel-row transition-colors">
+                    <td className="p-5">
                       <input
                         type="checkbox"
                         checked={Boolean(selectedJobIds[job.id])}
                         onChange={() => toggleOne(job.id)}
+                        className="h-3.5 w-3.5 cursor-pointer rounded-sm border-line bg-panel transition-all checked:border-accent-2 checked:bg-accent-2"
                         disabled={deleting}
                       />
                     </td>
-                    <td className="px-3 py-2 text-white/90">
-                      <span>
-                        {typeof job?.payload?.jobLabel === "string" && String(job.payload.jobLabel).trim()
-                          ? String(job.payload.jobLabel).trim()
-                          : CREATIVE_JOB_LABELS[job.type] ?? job.type}
-                      </span>
-                      {getSceneLabel(job) ? (
-                        <span className="ml-2 rounded bg-panel-strong px-1.5 py-0.5 text-xs text-muted">
-                          {getSceneLabel(job)}
+                    <td className="p-5">
+                      <div className="flex flex-col gap-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-[14px] font-black leading-none tracking-tight text-accent">
+                            {typeof job?.payload?.jobLabel === "string" && String(job.payload.jobLabel).trim()
+                              ? String(job.payload.jobLabel).trim()
+                              : CREATIVE_JOB_LABELS[job.type] ?? job.type}
+                          </span>
+                          {getSceneLabel(job) ? (
+                            <span className="text-[9px] font-mono uppercase tracking-widest text-muted opacity-50">
+                              {getSceneLabel(job)}
+                            </span>
+                          ) : null}
+                        </div>
+                        <span className="text-[9px] font-mono uppercase tracking-widest text-muted opacity-40">
+                          {job.type}
                         </span>
-                      ) : null}
+                      </div>
                     </td>
-                    <td className="px-3 py-2 text-muted">{job.status}</td>
-                    <td className="px-3 py-2 text-muted/80">{formatDate(job.createdAt)}</td>
-                    <td className="px-3 py-2 text-muted/80">{formatDate(job.updatedAt)}</td>
-                    <td className="px-3 py-2 text-xs text-muted/60">{job.id}</td>
+                    <td className="p-5">
+                      <span
+                        className={`status-chip !py-0.5 !text-[8.5px] font-bold uppercase tracking-tighter ${
+                          job.status === "COMPLETED"
+                            ? "success"
+                            : job.status === "FAILED"
+                              ? "danger"
+                              : "warning"
+                        }`}
+                      >
+                        {job.status}
+                      </span>
+                    </td>
+                    <td className="p-5 font-mono text-[10px] uppercase text-muted">
+                      {formatDate(job.createdAt)}
+                    </td>
+                    <td className="p-5 font-mono text-[10px] uppercase text-muted">
+                      {formatDate(job.updatedAt)}
+                    </td>
+                    <td className="max-w-[100px] cursor-default truncate p-5 text-[10px] font-mono text-accent-2/40 transition-all hover:max-w-none">
+                      {job.id}
+                    </td>
                   </tr>
                 ))
               )}
@@ -298,6 +364,6 @@ export default function CreativeRunDataPage() {
           </table>
         </div>
       </div>
-    </main>
+    </div>
   );
 }
