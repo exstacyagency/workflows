@@ -43,7 +43,7 @@ type ProductsResponse = {
 
 function StatusBadge({ status }: { status: JobStatus }) {
   const styles: Record<JobStatus, string> = {
-    PENDING: "bg-bg-elevated/70 text-muted",
+    PENDING: "bg-bg-elevated text-muted",
     RUNNING: "bg-accent/20 text-accent-2",
     COMPLETED: "bg-success/20 text-success",
     FAILED: "bg-accent/10 text-accent",
@@ -362,7 +362,7 @@ export default function ProductCollectionPage() {
           </p>
         </div>
 
-        <section className="rounded-lg border border-line bg-panel/80 p-4 space-y-4">
+        <section className="rounded-lg border border-line bg-panel p-4 space-y-4">
           {statusMessage && <p className="text-xs text-muted">{statusMessage}</p>}
 
           {activeStatusJob && (
@@ -473,9 +473,9 @@ export default function ProductCollectionPage() {
           </div>
         </section>
 
-        <section className="rounded-lg border border-line bg-panel/80 overflow-hidden">
+        <section className="rounded-lg border border-line bg-panel overflow-hidden">
           <table className="w-full">
-            <thead className="bg-bg-elevated/70">
+            <thead className="bg-bg-elevated">
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-medium text-muted/80 uppercase tracking-wider">
                   Created
@@ -506,7 +506,7 @@ export default function ProductCollectionPage() {
                 </tr>
               ) : (
                 jobs.map((job) => (
-                  <tr key={job.id} className="hover:bg-bg-elevated/60 transition-colors">
+                  <tr key={job.id} className="hover:bg-bg-elevated transition-colors">
                     <td className="px-4 py-3 text-sm text-muted">
                       {new Date(job.createdAt).toLocaleString("en-US", {
                         month: "short",

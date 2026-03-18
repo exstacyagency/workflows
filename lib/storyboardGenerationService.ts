@@ -21,9 +21,9 @@ type BeatSpec = {
 function buildSoraClipPlan(
   totalDurationSeconds: number,
   preferredClipCount: number,
-  preferredClipDuration: SoraClipLength = 10,
+  preferredClipDuration: SoraClipLength = 8,
 ): SoraClipLength[] {
-  const target = Math.max(10, Math.round(totalDurationSeconds));
+  const target = Math.max(8, Math.round(totalDurationSeconds));
   const memo = new Map<number, SoraClipLength[] | null>();
 
   function comparePlans(a: SoraClipLength[] | null, b: SoraClipLength[] | null): SoraClipLength[] | null {
@@ -55,8 +55,8 @@ function buildSoraClipPlan(
 
   const best = bestPlan(target);
   if (!best) {
-    const fallbackCount = Math.max(1, Math.round(target / 10));
-    return Array.from({ length: fallbackCount }, () => 10);
+    const fallbackCount = Math.max(1, Math.round(target / 8));
+    return Array.from({ length: fallbackCount }, () => 8);
   }
   return best;
 }
@@ -494,7 +494,7 @@ function buildBeatSpecsFromScript(
   const targetDurationFromRaw = normalizePositiveInt(root.targetDuration, 0);
   const sourceBeatCount = beatCountFromRaw;
   const fallbackTargetDuration =
-    targetDurationFromRaw > 0 ? targetDurationFromRaw : Math.max(10, sourceBeatCount * 10);
+    targetDurationFromRaw > 0 ? targetDurationFromRaw : Math.max(8, sourceBeatCount * 8);
   const targetDuration = fallbackTargetDuration;
   const fallbackSecondsPerBeat = targetDuration / Math.max(1, sourceBeatCount);
 
@@ -539,7 +539,8 @@ function buildBeatSpecsFromScript(
     };
   });
 
-  return { beatCount: soraScenes.length, targetDuration, beats: soraScenes };
+  const resolvedTargetDuration = soraScenes.reduce((sum, beat) => sum + beat.clipDurationSeconds, 0);
+  return { beatCount: soraScenes.length, targetDuration: resolvedTargetDuration, beats: soraScenes };
 }
 
 function buildStoryboardUserPrompt(args: {

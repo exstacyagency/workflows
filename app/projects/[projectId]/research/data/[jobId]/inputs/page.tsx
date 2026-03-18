@@ -262,7 +262,7 @@ export default function InputParametersPage() {
       <div className="min-h-screen bg-bg text-white px-8 py-8">
         <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
           <div className="w-8 h-8 border-2 border-accent/20 border-t-accent rounded-full animate-spin" />
-          <p className="text-[10px] font-mono text-muted uppercase tracking-[0.3em] animate-pulse">Trace_Initialising...</p>
+          <p className="text-[10px] font-mono text-muted uppercase tracking-[0.3em] animate-pulse">Loading inputs...</p>
         </div>
       </div>
     );
@@ -287,7 +287,7 @@ export default function InputParametersPage() {
 
   return (
     <div className="min-h-screen bg-bg text-white">
-      <div className="border-b border-line bg-panel/50 backdrop-blur-md px-8 py-6">
+      <div className="border-b border-line bg-transparent backdrop-blur-md px-8 py-6">
         <div className="space-y-4">
           <Link
             href={`/projects/${projectId}/research/data/${jobId}${runId ? `?runId=${runId}` : ''}`}
@@ -310,13 +310,13 @@ export default function InputParametersPage() {
       </div>
 
       <div className="px-8 py-10 space-y-10 max-w-[1400px]">
-        <section className="rounded-card border border-line bg-panel overflow-hidden shadow-panel">
-          <div className="border-b border-line bg-bg-elevated/50 px-6 py-3 flex items-center justify-between">
-            <h2 className="text-[10px] font-mono text-white uppercase tracking-[0.2em] font-bold">Request Payload</h2>
+        <section className="rounded-card border border-line bg-panel p-6 shadow-panel space-y-4">
+          <div className="rounded-card border border-line bg-panel px-6 py-3 flex items-center justify-between">
+            <h2 className="text-[10px] font-mono text-muted uppercase tracking-[0.2em] font-bold">Request Payload</h2>
             <div className="text-[9px] font-mono text-muted uppercase opacity-40">JSON</div>
           </div>
-          <div className="p-6 bg-bg/40">
-            <pre className="text-[11px] font-mono text-muted/80 leading-relaxed whitespace-pre-wrap break-words scrollbar-thin scrollbar-thumb-line">
+          <div className="p-6 bg-transparent">
+            <pre className="text-[11px] font-mono text-accent-2 leading-relaxed whitespace-pre-wrap break-words scrollbar-thin scrollbar-thumb-line">
               {JSON.stringify(payload, null, 2)}
             </pre>
           </div>
@@ -324,11 +324,11 @@ export default function InputParametersPage() {
 
         {redditInputs && (
           <section className="rounded-card border border-line bg-panel overflow-hidden shadow-panel">
-            <div className="border-b border-line bg-bg-elevated/50 px-6 py-3 flex items-center justify-between">
+            <div className="border-b border-line bg-bg-elevated px-6 py-3 flex items-center justify-between">
               <h2 className="text-[10px] font-mono text-accent uppercase tracking-[0.2em] font-bold">Reddit Research Settings</h2>
               <div className="text-[9px] font-mono text-muted uppercase opacity-40">Configuration</div>
             </div>
-            <div className="p-6 bg-bg/40">
+            <div className="p-6 bg-transparent">
               <pre className="text-[11px] font-mono text-muted/80 leading-relaxed whitespace-pre-wrap break-words scrollbar-thin scrollbar-thumb-line">
                 {JSON.stringify(redditInputs, null, 2)}
               </pre>
@@ -338,11 +338,11 @@ export default function InputParametersPage() {
 
         {amazonInputs.requests.length > 0 && (
           <section className="rounded-card border border-line bg-panel overflow-hidden shadow-panel">
-            <div className="border-b border-line bg-bg-elevated/50 px-6 py-3 flex items-center justify-between">
+            <div className="border-b border-line bg-bg-elevated px-6 py-3 flex items-center justify-between">
               <h2 className="text-[10px] font-mono text-success uppercase tracking-[0.2em] font-bold">Amazon Research Settings</h2>
               <div className="text-[9px] font-mono text-muted uppercase opacity-40">Batch Requests</div>
             </div>
-            <div className="p-6 bg-bg/40">
+            <div className="p-6 bg-transparent">
               <pre className="text-[11px] font-mono text-muted/80 leading-relaxed whitespace-pre-wrap break-words scrollbar-thin scrollbar-thumb-line">
                 {JSON.stringify(amazonInputs, null, 2)}
               </pre>
@@ -351,11 +351,11 @@ export default function InputParametersPage() {
         )}
 
         <section className="rounded-card border border-line bg-panel overflow-hidden shadow-panel">
-          <div className="border-b border-line bg-bg-elevated/50 px-6 py-3 flex items-center justify-between">
+          <div className="border-b border-line bg-bg-elevated px-6 py-3 flex items-center justify-between">
             <h2 className="text-[10px] font-mono text-accent-2 uppercase tracking-[0.2em] font-bold">Observed Search Queries</h2>
             <div className="text-[9px] font-mono text-muted uppercase opacity-40">Reddit Queries</div>
           </div>
-          <div className="px-6 py-6 pb-2 bg-bg/20">
+          <div className="px-6 py-6 pb-2 bg-transparent">
              {observedQueries.length === 0 ? (
                 <div className="flex flex-col items-center justify-center p-12 space-y-2 border border-dashed border-line/20 rounded">
                   <p className="text-[10px] font-mono text-muted uppercase tracking-widest opacity-40">No search query data found</p>

@@ -159,7 +159,7 @@ export default function UsagePage() {
         <div className="relative text-center space-y-3">
           <p className="text-[11px] font-mono text-muted uppercase tracking-[0.2em] opacity-70">Total Platform Spend</p>
           <p className="text-6xl font-bold text-white tracking-tight drop-shadow-sm">{formatCost(totalSpend)}</p>
-          <div className="inline-flex items-center px-3 py-1 rounded-pill bg-panel/5 border border-line text-[10px] font-mono text-muted uppercase tracking-wider">
+          <div className="inline-flex items-center px-3 py-1 rounded-pill bg-transparent border border-line text-[10px] font-mono text-muted uppercase tracking-wider">
             {filteredJobs.length} {filteredJobs.length === 1 ? 'JOB' : 'JOBS'} RECORDED
           </div>
         </div>
@@ -172,7 +172,7 @@ export default function UsagePage() {
           className={`px-6 py-2 rounded-pill text-[11px] font-bold uppercase tracking-wider transition-all ${
             dateFilter === "all"
               ? "bg-accent text-bg shadow-lg shadow-accent/20"
-              : "text-muted hover:text-white hover:bg-panel/5"
+              : "text-muted hover:text-white hover:bg-transparent"
           }`}
         >
           All Time
@@ -182,7 +182,7 @@ export default function UsagePage() {
           className={`px-6 py-2 rounded-pill text-[11px] font-bold uppercase tracking-wider transition-all ${
             dateFilter === "today"
               ? "bg-accent text-bg shadow-lg shadow-accent/20"
-              : "text-muted hover:text-white hover:bg-panel/5"
+              : "text-muted hover:text-white hover:bg-transparent"
           }`}
         >
           Today
@@ -192,7 +192,7 @@ export default function UsagePage() {
           className={`px-6 py-2 rounded-pill text-[11px] font-bold uppercase tracking-wider transition-all ${
             dateFilter === "week"
               ? "bg-accent text-bg shadow-lg shadow-accent/20"
-              : "text-muted hover:text-white hover:bg-panel/5"
+              : "text-muted hover:text-white hover:bg-transparent"
           }`}
         >
           Last 7 Days
@@ -202,7 +202,7 @@ export default function UsagePage() {
           className={`px-6 py-2 rounded-pill text-[11px] font-bold uppercase tracking-wider transition-all ${
             dateFilter === "month"
               ? "bg-accent text-bg shadow-lg shadow-accent/20"
-              : "text-muted hover:text-white hover:bg-panel/5"
+              : "text-muted hover:text-white hover:bg-transparent"
           }`}
         >
           Last 30 Days
@@ -246,7 +246,7 @@ export default function UsagePage() {
         <h2 className="text-sm font-bold text-white uppercase tracking-tight">Financial Record</h2>
         <div className="rounded-card border border-line bg-panel overflow-hidden shadow-panel backdrop-blur-panel">
           <table className="w-full">
-            <thead className="bg-bg-elevated/50 border-b border-line">
+            <thead className="bg-bg-elevated border-b border-line">
               <tr>
                 <th className="px-5 py-3 text-left text-[10px] font-mono text-muted uppercase tracking-widest">
                   Date
@@ -274,7 +274,7 @@ export default function UsagePage() {
                 </tr>
               ) : (
                 filteredJobs.map((job) => (
-                  <tr key={job.id} className="hover:bg-bg-elevated/40 transition-colors">
+                  <tr key={job.id} className="hover:bg-bg-elevated transition-colors">
                     <td className="px-5 py-4 text-xs text-text font-mono">
                       {formatDate(job.createdAt)}
                     </td>

@@ -3,6 +3,7 @@
 
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { JobStatus, JobType } from "@prisma/client";
 import toast, { Toaster } from "react-hot-toast";
 import Link from "next/link";
@@ -39,6 +40,7 @@ type CharacterOption = {
   name: string;
   productId?: string;
   runId?: string | null;
+  seedVideoUrl?: string | null;
   characterUserName?: string | null;
   soraCharacterId?: string | null;
   creatorVisualPrompt?: string | null;
@@ -63,6 +65,7 @@ type ProjectRunMetadata = {
 type ProductionStep = {
   key: string;
   label: string;
+  description: string;
   jobType: JobType;
   status: "not_started" | "running" | "completed" | "failed";
   canRun: boolean;
@@ -313,7 +316,7 @@ function AddBeatExpansion({
           className="btn btn-secondary !min-h-[28px] !px-4 text-[9px] uppercase font-bold tracking-[0.15em] border-line/50 hover:border-accent/40 transition-all flex items-center gap-2 group"
         >
           <span className="text-accent opacity-60 group-hover:opacity-100 transition-opacity text-xs">+</span>
-          Initialize_Sequence_Node
+          Start Workflow
         </button>
       </div>
     );
@@ -322,7 +325,7 @@ function AddBeatExpansion({
   return (
     <div className="rounded-card border border-line bg-panel p-6 space-y-5 animate-in fade-in zoom-in-95 duration-300">
       <div className="space-y-2">
-         <span className="text-[9px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Node_Identifier</span>
+         <span className="text-[9px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Node ID</span>
          <input
            type="text"
            value={label}
@@ -330,7 +333,7 @@ function AddBeatExpansion({
              setLabel(event.target.value);
              setError(null);
            }}
-           placeholder="SCN_DESCRIPTOR"
+           placeholder="Scene description"
            disabled={disabled || loading}
            className="w-full bg-panel border border-line/40 rounded-card px-4 py-2 text-[12px] font-mono text-white/70 focus:border-accent/40 focus:ring-1 focus:ring-accent/20 transition-all"
          />
@@ -355,7 +358,7 @@ function AddBeatExpansion({
               Synthesizing...
             </>
           ) : (
-            "Neural_Expansion"
+            "Expansion"
           )}
         </button>
         <button
@@ -369,7 +372,7 @@ function AddBeatExpansion({
 
       {error && (
         <div className="p-4 rounded-card border border-danger/30 bg-danger/5 flex items-center justify-between gap-4 animate-in slide-in-from-top-2">
-          <span className="text-[10px] font-mono text-danger uppercase tracking-widest">Protocol_Error: {error}</span>
+          <span className="text-[10px] font-mono text-danger uppercase tracking-widest">Error: {error}</span>
           <button
             onClick={() => void runGenerateWithAi()}
             disabled={disabled || loading}
@@ -465,6 +468,7 @@ export default function CreativeStudioPage() {
   const [sceneGeneratingNumber, setSceneGeneratingNumber] = useState<number | null>(null);
   const [videoGeneratingNumber, setVideoGeneratingNumber] = useState<number | null>(null);
   const [sceneApprovingNumber, setSceneApprovingNumber] = useState<number | null>(null);
+  const [collapsedSteps, setCollapsedSteps] = useState<Record<string, boolean>>({});
   const [sceneActionError, setSceneActionError] = useState<string | null>(null);
   const [resettingVideoImageJobId, setResettingVideoImageJobId] = useState<string | null>(null);
   const [cleaningOrphanedJobs, setCleaningOrphanedJobs] = useState(false);
@@ -472,6 +476,7 @@ export default function CreativeStudioPage() {
   const [expandedCompletedStepKeys, setExpandedCompletedStepKeys] = useState<Record<string, boolean>>({});
   const [showRunManagerModal, setShowRunManagerModal] = useState(false);
   const [showMissingProductImageWarning, setShowMissingProductImageWarning] = useState(false);
+  const [characterPreview, setCharacterPreview] = useState<{ url: string; name: string } | null>(null);
   const [pendingVideoStep, setPendingVideoStep] = useState<ProductionStep | null>(null);
   const [projectRunsById, setProjectRunsById] = useState<Record<string, ProjectRunMetadata>>({});
   const selectedProductRef = useRef<string | null>(selectedProductIdFromUrl);
@@ -589,6 +594,10 @@ export default function CreativeStudioPage() {
         name: String(entry?.name ?? "Character"),
         productId: String(entry?.productId ?? ""),
         runId: entry?.runId ? String(entry.runId) : null,
+        seedVideoUrl:
+          typeof entry?.seedVideoUrl === "string" && entry.seedVideoUrl.trim().length > 0
+            ? entry.seedVideoUrl
+            : null,
         characterUserName:
           typeof entry?.characterUserName === "string" ? entry.characterUserName : null,
         soraCharacterId:
@@ -882,15 +891,16 @@ export default function CreativeStudioPage() {
     () => products.find((p) => p.id === selectedProductId) ?? null,
     [products, selectedProductId],
   );
+  const selectedRunCharacter = useMemo(
+    () => runCharacters.find((char) => char.id === selectedStoryboardCharacterId) ?? null,
+    [runCharacters, selectedStoryboardCharacterId],
+  );
   const allCharacters = useMemo(() => runCharacters, [runCharacters]);
   const hasSelectedProductCreatorReference = Boolean(
     String(selectedProduct?.creatorReferenceImageUrl ?? "").trim(),
   );
   const hasSelectedProductReferenceImage = Boolean(
     String(selectedProduct?.productReferenceImageUrl ?? "").trim(),
-  );
-  const hasSelectedProductSoraCharacter = Boolean(
-    String(selectedProduct?.soraCharacterId ?? "").trim(),
   );
   const latestCompletedStoryboardJob = useMemo(
     () => {
@@ -1091,14 +1101,54 @@ export default function CreativeStudioPage() {
     return value.toFixed(digits);
   }
 
-  function getSummaryText(resultSummary: unknown): string {
+function getSummaryText(resultSummary: unknown, job?: Job | null): string {
+  const sanitizeSummary = (value: string): string => {
+    const cleaned = value
+      .replace(/Video frames saved:/gi, "Video frames generated:")
+        .replace(
+          /Video generated:\s+\S+(?:\s+\(\+\d+\s+more\))?/gi,
+          (match) => {
+            const moreMatch = match.match(/\(\+(\d+)\s+more\)/i);
+            const totalScenes = moreMatch ? Number(moreMatch[1]) + 1 : 1;
+            return `Video scenes generated: ${totalScenes}`;
+          },
+        )
+        .replace(/,?\s*scriptId=[^) ,]+/gi, "")
+        .replace(/,?\s*words=\d+/gi, "")
+        .replace(/\(\s*,\s*/g, "(")
+        .replace(/\(\s*\)/g, "")
+        .replace(/\s{2,}/g, " ")
+        .trim();
+      return cleaned;
+    };
+    const payloadObj =
+      job?.payload && typeof job.payload === "object" && !Array.isArray(job.payload)
+        ? (job.payload as Record<string, unknown>)
+        : null;
+    if (job?.type === JobType.VIDEO_IMAGE_GENERATION && payloadObj) {
+      const payloadTasks = Array.isArray(payloadObj.tasks) ? payloadObj.tasks : [];
+      const payloadResult =
+        payloadObj.result && typeof payloadObj.result === "object" && !Array.isArray(payloadObj.result)
+          ? (payloadObj.result as Record<string, unknown>)
+          : null;
+      const resultImages = Array.isArray(payloadResult?.images) ? payloadResult.images : [];
+      const successfulTaskCount = payloadTasks.filter((task) => {
+        if (!task || typeof task !== "object" || Array.isArray(task)) return false;
+        const url = String((task as Record<string, unknown>).url ?? "").trim();
+        return Boolean(url);
+      }).length;
+      const generatedFrameCount = Math.max(resultImages.length, successfulTaskCount);
+      if (generatedFrameCount > 0) {
+        return `Video frames generated: ${generatedFrameCount}`;
+      }
+    }
     if (typeof resultSummary === "string" && resultSummary.trim()) {
-      return resultSummary;
+      return sanitizeSummary(resultSummary);
     }
     if (resultSummary && typeof resultSummary === "object") {
       const summaryField = (resultSummary as Record<string, unknown>).summary;
       if (typeof summaryField === "string" && summaryField.trim()) {
-        return summaryField;
+        return sanitizeSummary(summaryField);
       }
     }
     return "Job completed";
@@ -2693,6 +2743,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
     {
       key: "script",
       label: "Generate Script",
+      description: "Write the ad script using your selected strategy and available research.",
       jobType: JobType.SCRIPT_GENERATION,
       status: getStepStatus(JobType.SCRIPT_GENERATION),
       canRun: true, // Can always run, but quality depends on research
@@ -2702,6 +2753,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
     {
       key: "storyboard",
       label: "Create Storyboard",
+      description: "Turn the script into scene-by-scene shots with voiceover and visual direction.",
       jobType: JobType.STORYBOARD_GENERATION,
       status: getStepStatus(JobType.STORYBOARD_GENERATION),
       canRun: hasCompletedJob(JobType.SCRIPT_GENERATION),
@@ -2712,6 +2764,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
     {
       key: "image_prompts",
       label: "Generate Image Prompts",
+      description: "Create first-frame and last-frame prompts for each storyboard scene.",
       jobType: "IMAGE_PROMPT_GENERATION" as JobType,
       status: isImagePromptJobStuck
         ? "failed"
@@ -2724,6 +2777,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
     {
       key: "video_images",
       label: "Generate First Frames",
+      description: "Create the first frame images used to guide each generated video scene.",
       jobType: JobType.VIDEO_IMAGE_GENERATION,
       status: videoImagesDerivedStatus,
       canRun:
@@ -2744,6 +2798,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
     {
       key: "video_prompts",
       label: "Generate Video Prompts",
+      description: "Write motion prompts for each scene using the storyboard and first frames.",
       jobType: JobType.VIDEO_PROMPT_GENERATION,
       status: getStepStatus(JobType.VIDEO_PROMPT_GENERATION),
       canRun: getStepStatus(JobType.VIDEO_IMAGE_GENERATION) === "completed",
@@ -2754,6 +2809,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
     {
       key: "video",
       label: "Generate Video",
+      description: "Render the final video scenes from your prompts and scene inputs.",
       jobType: JobType.VIDEO_GENERATION,
       status: getStepStatus(JobType.VIDEO_GENERATION),
       canRun: hasCompletedJob(JobType.VIDEO_PROMPT_GENERATION),
@@ -2764,6 +2820,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
     {
       key: "review",
       label: "Edit Video",
+      description: "Trim, keep, and merge your generated scenes into one finished video.",
       jobType: JobType.VIDEO_REVIEW,
       status: getStepStatus(JobType.VIDEO_REVIEW),
       canRun: hasCompletedJob(JobType.VIDEO_GENERATION),
@@ -3005,6 +3062,28 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
       ...prev,
       [stepKey]: !prev[stepKey],
     }));
+  }
+
+  function isStepCollapsed(stepKey: string, status: ProductionStep["status"]): boolean {
+    if (stepKey in collapsedSteps) return collapsedSteps[stepKey];
+    return status === "completed" || status === "not_started";
+  }
+
+  function toggleStepCollapsed(stepKey: string, status: ProductionStep["status"]) {
+    setCollapsedSteps((prev) => ({
+      ...prev,
+      [stepKey]: !isStepCollapsed(stepKey, status),
+    }));
+  }
+
+  function getOutputToggleLabel(step: ProductionStep, isExpanded: boolean): string {
+    const labelMap: Record<string, string> = {
+      storyboard: "Storyboard",
+      image_prompts: "Image Prompts",
+      video_prompts: "Video Prompts",
+    };
+    const noun = labelMap[step.key] ?? step.label.replace(/^Generate\s+/i, "").replace(/^Create\s+/i, "");
+    return `${isExpanded ? "Close" : "View"} ${noun}`;
   }
 
   async function refreshStoryboardForOutput(storyboardId: string) {
@@ -3761,99 +3840,28 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
 
   return (
     <div className="min-h-screen bg-bg text-white pb-20">
-      {/* Header */}
-      <div className="border-b border-line bg-panel backdrop-blur-md px-8 py-6 sticky top-0 z-40">
-        <div className="flex items-center justify-between gap-6">
+      <div className="px-8 py-10 max-w-[1400px] mx-auto space-y-8">
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
           <div className="space-y-4">
             <Link
               href={`/projects/${projectId}`}
-              className="text-[11px] font-mono text-muted hover:text-white uppercase tracking-widest transition-colors inline-block"
+              className="text-[11px] font-mono text-muted hover:text-white mb-6 inline-block uppercase tracking-wider transition-colors"
             >
               ← Back to Project
             </Link>
             <div className="flex items-center gap-4">
-              <h1 className="text-4xl font-bold tracking-tight text-white">Creative Studio</h1>
+              <h1 className="text-4xl font-bold text-white tracking-tight">Creative Studio</h1>
               <div className="status-chip subtle uppercase tracking-widest text-[9px]">
                 Studio Active
               </div>
             </div>
             <p className="text-xs text-muted font-mono uppercase tracking-widest opacity-60">
-              Workflow: <span className="text-accent-2">Creative Production</span> 
-              <span className="mx-3 opacity-20">|</span> 
+              Workflow: <span className="text-accent-2">Ad Creation</span>
+              <span className="mx-3 opacity-20">|</span>
               Project: <span className="text-white">{projectId.substring(0, 8)}</span>
             </p>
           </div>
-          
-          <div className="flex items-center gap-3">
-            <Link
-              href={`/projects/${projectId}/usage`}
-              className="btn btn-secondary !min-h-[40px] px-6 text-[10px] font-bold uppercase tracking-widest"
-            >
-              Usage Analytics
-            </Link>
-            {lastRefresh && (
-              <div className="status-chip subtle flex items-center gap-2 px-4 py-2 opacity-50">
-                <span className="relative flex h-1.5 w-1.5">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-accent"></span>
-                </span>
-                <span className="text-[9px] font-mono uppercase tracking-widest">
-                  Last Refresh: {Math.floor((new Date().getTime() - lastRefresh.getTime()) / 1000)}s
-                </span>
-              </div>
-            )}
-          </div>
         </div>
-      </div>
-
-      <div className="px-8 py-10 max-w-[1400px] mx-auto space-y-8">
-        <section className="app-surface space-y-3">
-          <div className="app-panel-header">
-            <div>
-              <h2 className="app-section-title text-white">Research Hub</h2>
-              <p className="text-sm text-muted mt-1 italic">
-                Return to the research workspace to inspect customer insight, ad analysis, and supporting inputs.
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center justify-between gap-4">
-            <p className="app-status-line">
-              Open Research Hub to validate the evidence feeding your current creative decisions.
-            </p>
-            <Link
-              href={
-                selectedProductId
-                  ? `/projects/${projectId}/research-hub?productId=${selectedProductId}`
-                  : `/projects/${projectId}/research-hub`
-              }
-              className="app-button app-button--primary text-sm font-medium"
-            >
-              Open Research Hub
-            </Link>
-          </div>
-        </section>
-
-        <section className="app-surface space-y-3">
-          <div className="app-panel-header">
-            <div>
-              <h2 className="app-section-title text-white">Usage and Cost</h2>
-              <p className="text-sm text-muted mt-1 italic">
-                Review spend, usage events, and settled provider costs for this project.
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center justify-between gap-4">
-            <p className="app-status-line">
-              Check cost impact and usage history while iterating on creative production.
-            </p>
-            <Link
-              href={`/projects/${projectId}/usage`}
-              className="app-button app-button--primary text-sm font-medium"
-            >
-              Open Usage & Costs
-            </Link>
-          </div>
-        </section>
 
         {error && (
           <div className="rounded-card border border-danger/20 bg-danger/5 p-4 flex items-center justify-between gap-4 animate-in fade-in slide-in-from-top-2">
@@ -3862,137 +3870,131 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
           </div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Product Selection */}
-          <div className="rounded-card border border-line bg-panel p-6 space-y-4">
-            <div className="flex items-center gap-3 mb-2">
-              <span className="text-[9px] font-mono text-accent uppercase tracking-widest font-bold">Selected Product</span>
-            </div>
-            {products.length > 0 ? (
-              <div className="space-y-4">
-                <div className="p-4 rounded-card border border-line/30 bg-transparent">
-                  <div className="text-[10px] font-mono text-muted uppercase tracking-widest mb-1 opacity-60">Active Product</div>
-                  <div className="text-lg font-black text-white tracking-tight truncate">
-                    {selectedProduct ? selectedProduct.name : "No Product Selected"}
+        <div className="rounded-card border border-line bg-panel p-8 shadow-panel backdrop-blur-panel mb-12">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+            <div className="space-y-6">
+              <div>
+                <p className="card-label mb-4">Product Focus</p>
+                {products.length > 0 ? (
+                  <div className="space-y-4">
+                    <div className="flex flex-col gap-2">
+                      <label className="text-[10px] font-mono text-muted uppercase tracking-[0.2em] ml-1">Active Product</label>
+                      <select
+                        value={selectedProductId || ""}
+                        onChange={(e) => {
+                          const nextProductId = e.target.value;
+                          setSelectedProductId(nextProductId);
+                          const url = new URL(window.location.href);
+                          url.searchParams.set("productId", nextProductId);
+                          url.searchParams.delete("product");
+                          router.replace(url.pathname + url.search, { scroll: false });
+                        }}
+                        className="w-full bg-bg-elevated border border-line rounded-card px-4 py-3 text-sm text-white font-mono outline-none focus:border-accent/40 transition-colors cursor-pointer"
+                      >
+                        {products.map((product) => (
+                          <option key={product.id} value={product.id} className="bg-bg text-white">
+                            {product.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
-                  {selectedProduct?.amazonAsin && (
-                    <div className="text-[9px] font-mono text-accent-2/60 uppercase tracking-widest mt-1">ID: {selectedProduct.amazonAsin}</div>
-                  )}
-                </div>
-                <select
-                  value={selectedProductId || ""}
-                  onChange={(e) => {
-                    const nextProductId = e.target.value;
-                    setSelectedProductId(nextProductId);
-                    const url = new URL(window.location.href);
-                    url.searchParams.set("productId", nextProductId);
-                    url.searchParams.delete("product");
-                    router.replace(url.pathname + url.search, { scroll: false });
-                  }}
-                  className="w-full h-10 bg-panel border-line rounded-card px-3 text-[11px] font-mono text-muted uppercase tracking-widest focus:border-accent/50 focus:text-white outline-none transition-all"
-                >
-                  {products.map((product) => (
-                    <option key={product.id} value={product.id} className="bg-bg text-white">
-                      {product.name}
-                    </option>
-                  ))}
-                </select>
-                <Link
-                  href={`/projects/${projectId}`}
-                  className="text-[10px] font-mono text-accent-2 hover:text-white uppercase tracking-widest transition-colors inline-block pt-2"
-                >
-                  ← Manage Products
-                </Link>
-              </div>
-            ) : (
-              <p className="text-[10px] font-mono text-muted uppercase tracking-widest opacity-40">No entries detected.</p>
-            )}
-          </div>
-
-          {/* Research Context */}
-          <div className="rounded-card border border-line bg-panel p-6 space-y-4 col-span-1 lg:col-span-2">
-            <div className="flex items-center justify-between gap-3 mb-2">
-              <span className="text-[9px] font-mono text-accent uppercase tracking-widest font-bold">Research Context</span>
-              <div className="status-chip subtle uppercase tracking-widest text-[9px]">
-                {sortedRuns.length} Runs Available
+                ) : (
+                  <p className="text-sm text-danger/80 font-mono uppercase tracking-widest py-4 border border-danger/20 bg-danger/5 rounded-card text-center">
+                    NO_PRODUCTS_ADDED
+                  </p>
+                )}
               </div>
             </div>
-            
-            <div className="flex flex-col md:flex-row gap-4">
-              <div className="flex-1 space-y-4">
-                <select
-                  value={selectedRunId || "no-active"}
-                  onChange={(e) => {
-                    const value = e.target.value === "no-active" ? null : e.target.value;
-                    setSelectedRunId(value);
-                  }}
-                  className="w-full h-10 bg-panel border-line rounded-card px-4 text-[11px] font-mono text-muted uppercase tracking-widest focus:border-accent/50 focus:text-white outline-none transition-all"
-                >
-                  <option value="no-active" className="bg-bg">No Active Run</option>
-                  {sortedRuns.map((run) => (
-                    <option key={run.runId} value={run.runId} className="bg-bg">
-                      {run.displayLabel} [{formatRunDate(run.createdAt)}]
-                    </option>
-                  ))}
-                </select>
-                
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    onClick={() => setShowRunManagerModal(true)}
-                    className="btn btn-secondary !min-h-[36px] px-6 text-[9px] uppercase font-bold tracking-widest"
-                  >
-                    Manage Runs
-                  </button>
-                  <Link
-                    href={selectedRunId ? `/projects/${projectId}/creative-studio/run-data/${selectedRunId}` : "#"}
-                    className={`btn btn-secondary !min-h-[36px] px-6 text-[9px] uppercase font-bold tracking-widest ${!selectedRunId ? "opacity-30 cursor-not-allowed pointer-events-none" : ""}`}
-                  >
-                    View Run Data
-                  </Link>
-                  <RunManagementModal
-                    projectId={projectId}
-                    open={showRunManagerModal}
-                    onClose={() => setShowRunManagerModal(false)}
-                    onRunsChanged={handleRunsChanged}
-                  />
+
+            <div className="space-y-6">
+              <div>
+                <p className="card-label mb-4">Campaign Run</p>
+                <div className="space-y-4">
+                  <div className="flex flex-col gap-2">
+                    <label className="text-[10px] font-mono text-muted uppercase tracking-[0.2em] ml-1">Active Run</label>
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <select
+                        value={selectedRunId || "no-active"}
+                        onChange={(e) => {
+                          const value = e.target.value === "no-active" ? null : e.target.value;
+                          setSelectedRunId(value);
+                        }}
+                        className="flex-1 bg-bg-elevated border border-line rounded-card px-4 py-3 text-sm text-white font-mono outline-none focus:border-accent/40 transition-colors cursor-pointer"
+                      >
+                      <option value="no-active" className="bg-bg text-white">No Active Run</option>
+                        {sortedRuns.map((run) => (
+                          <option key={run.runId} value={run.runId} className="bg-bg text-white">
+                            {run.displayLabel}
+                          </option>
+                        ))}
+                      </select>
+                      {selectedRunId ? (
+                        <Link
+                          href={`/projects/${projectId}/creative-studio/run-data/${selectedRunId}`}
+                          className="btn btn-secondary !min-h-[46px] px-6 text-[10px]"
+                        >
+                          View Run Data
+                        </Link>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled
+                          className="btn btn-secondary !min-h-[46px] px-6 text-[10px] opacity-50 cursor-not-allowed"
+                        >
+                          View Run Data
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setShowRunManagerModal(true)}
+                        className="btn btn-secondary !min-h-[46px] px-6 text-[10px]"
+                      >
+                        Run Manager
+                      </button>
+                      <RunManagementModal
+                        projectId={projectId}
+                        open={showRunManagerModal}
+                        onClose={() => setShowRunManagerModal(false)}
+                        onRunsChanged={handleRunsChanged}
+                      />
+                    </div>
+                  </div>
+
                 </div>
               </div>
-
-              {orphanedJobsCount > 0 && (
-                <div className="w-px bg-line/30 mx-2 hidden md:block" />
-              )}
-
-              {orphanedJobsCount > 0 && (
-                <div className="flex-1 space-y-3">
-                  <p className="text-[10px] font-mono text-danger/80 uppercase tracking-widest leading-relaxed">
-                    Found {orphanedJobsCount} jobs not attached to a run.
-                  </p>
-                  <button
-                    onClick={() => void handleCleanupOrphanedJobs()}
-                    disabled={cleaningOrphanedJobs}
-                    className="btn btn-danger !min-h-[36px] w-full px-6 text-[9px] uppercase font-bold tracking-widest"
-                  >
-                    {cleaningOrphanedJobs ? "Cleaning..." : "Clean Up Jobs"}
-                  </button>
-                </div>
-              )}
             </div>
           </div>
         </div>
 
-        {selectedProduct && !hasSelectedProductSoraCharacter && (
+        {orphanedJobsCount > 0 && (
+          <div className="rounded-card border border-danger/20 bg-danger/5 p-5 flex items-center justify-between gap-6 animate-in slide-in-from-right-4 duration-700">
+              <p className="text-[10px] font-mono text-danger/80 uppercase tracking-widest leading-relaxed">
+                Found {orphanedJobsCount} jobs not attached to a run.
+              </p>
+            <button
+              onClick={() => void handleCleanupOrphanedJobs()}
+              disabled={cleaningOrphanedJobs}
+              className="btn btn-danger !min-h-[36px] px-6 text-[9px] uppercase font-bold tracking-widest whitespace-nowrap"
+            >
+              {cleaningOrphanedJobs ? "Cleaning..." : "Clean Up Jobs"}
+            </button>
+          </div>
+        )}
+
+        {selectedProduct && !selectedStoryboardCharacterId && (
           <div className="rounded-card border border-accent/20 bg-accent/5 p-5 flex items-center justify-between gap-6 animate-in slide-in-from-right-4 duration-700">
             <div className="flex items-center gap-4">
               <span className="text-xl">⚠️</span>
               <p className="text-[11px] font-mono text-accent uppercase tracking-widest leading-relaxed">
-                <span className="font-black">Character setup recommended:</span> add a character profile for more consistent creative output.
+                <span className="font-black">Character recommended:</span> add a character for more consistent ads.
               </p>
             </div>
             <Link
               href={`/products/${selectedProduct.id}`}
               className="btn btn-secondary !min-h-[36px] px-6 text-[9px] uppercase font-bold tracking-widest whitespace-nowrap"
             >
-              Set Up Character →
+              Set Up Character
             </Link>
           </div>
         )}
@@ -4000,7 +4002,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
         {/* Character Casting Section */}
         <div className="rounded-card border border-line bg-panel p-6 space-y-6">
           <div className="flex items-center gap-3">
-            <span className="text-[9px] font-mono text-accent uppercase tracking-widest font-bold">Character Casting</span>
+            <span className="text-[9px] font-mono text-accent uppercase tracking-widest font-bold">Character</span>
           </div>
 
           <div className="space-y-4">
@@ -4008,25 +4010,82 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
               <p className="text-[10px] font-mono text-muted uppercase tracking-[0.2em] opacity-40 italic">Select a run to load matching characters.</p>
             ) : runCharacters.length === 0 ? (
               <div className="p-4 rounded-card border border-accent/20 bg-accent/5">
-                <p className="text-[10px] font-mono text-accent uppercase tracking-widest">No matching characters found for this run.</p>
+                <p className="text-[10px] font-mono text-accent uppercase tracking-widest">No characters found for this run.</p>
               </div>
             ) : (
-              <div className="flex flex-col md:flex-row items-center gap-6">
-                <select
-                  value={selectedStoryboardCharacterId ?? ""}
-                  onChange={(event) => setSelectedStoryboardCharacterId(event.target.value || null)}
-                  className="w-full md:w-auto h-12 bg-panel border-line rounded-card px-6 text-[11px] font-mono text-white uppercase tracking-widest focus:border-accent/50 outline-none transition-all"
-                >
-                  {runCharacters.map((char) => (
-                    <option key={char.id} value={char.id} className="bg-bg">
-                      {(char.productName ? `${char.productName} :: ` : "") + char.name.toUpperCase()}
-                    </option>
-                  ))}
-                </select>
-                <div className="flex-1">
-                  <p className="text-[10px] font-mono text-muted uppercase tracking-widest opacity-60 leading-relaxed">
-                    Selected entity will be injected into <span className="text-white">ON_CAMERA</span> storyboard clusters.
-                  </p>
+              <div className="space-y-4">
+                <div className="flex flex-col gap-2">
+                  <label className="text-[10px] font-mono text-muted uppercase tracking-[0.2em] ml-1">
+                    Active Character
+                  </label>
+                  <select
+                    value={selectedStoryboardCharacterId ?? ""}
+                    onChange={(event) => setSelectedStoryboardCharacterId(event.target.value || null)}
+                    className="w-full md:max-w-md h-12 bg-bg-elevated border border-line rounded-card px-4 text-[11px] font-mono text-white uppercase tracking-widest focus:border-accent/50 outline-none transition-all"
+                  >
+                    {runCharacters.map((char) => (
+                      <option key={char.id} value={char.id} className="bg-bg">
+                        {char.name.toUpperCase()}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="rounded-card border border-line bg-bg-elevated p-5 flex flex-col md:flex-row items-start gap-5 overflow-hidden">
+                  <div className="w-28 h-28 rounded-card border border-line overflow-hidden bg-panel flex items-center justify-center flex-shrink-0">
+                    {selectedRunCharacter?.seedVideoUrl ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setCharacterPreview({
+                            url: selectedRunCharacter.seedVideoUrl!,
+                            name: selectedRunCharacter.name,
+                          })
+                        }
+                        className="w-full h-full inline-flex rounded-card focus:outline-none focus:ring-2 focus:ring-accent/20"
+                      >
+                        <img
+                          src={selectedRunCharacter.seedVideoUrl}
+                          alt={selectedRunCharacter.name}
+                          className="w-full h-full object-cover object-top cursor-zoom-in"
+                        />
+                      </button>
+                    ) : (
+                      <span className="text-[10px] font-mono text-muted uppercase tracking-widest opacity-50">
+                        No Image
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex-1 space-y-3 min-w-0">
+                    <p className="text-lg font-bold text-white tracking-tight">
+                      {selectedRunCharacter?.name ?? "No Character Selected"}
+                    </p>
+                    {selectedRunCharacter?.creatorVisualPrompt && (
+                      <div className="space-y-1">
+                        {selectedRunCharacter.creatorVisualPrompt
+                          .split("\n")
+                          .map((line) => line.trim())
+                          .filter(Boolean)
+                          .map((line, i) => {
+                            const colonIndex = line.indexOf(":");
+                            if (colonIndex === -1) {
+                              return (
+                                <p key={i} className="text-[11px] font-mono text-white/50 leading-relaxed">
+                                  {line}
+                                </p>
+                              );
+                            }
+                            const label = line.slice(0, colonIndex).trim();
+                            const value = line.slice(colonIndex + 1).trim();
+                            return (
+                              <div key={i} className="flex gap-2 text-[11px] font-mono leading-relaxed">
+                                <span className="text-muted/50 shrink-0">{label}:</span>
+                                <span className="text-white/70">{value}</span>
+                              </div>
+                            );
+                          })}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
@@ -4034,27 +4093,27 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
         </div>
 
       {/* Production Pipeline */}
-      <div className="rounded-card border border-line bg-panel p-8 space-y-8">
+      <div className="rounded-card border border-line bg-panel p-8 space-y-10">
         <div className="flex items-center justify-between">
           <div className="space-y-1">
-            <h2 className="text-xl font-bold text-white tracking-tight">Production_Pipeline</h2>
-            <p className="text-[10px] font-mono text-muted uppercase tracking-widest opacity-60">Sequential_Execution_Chain</p>
+            <h2 className="text-xl font-bold text-white tracking-tight">Ad Workflow</h2>
+            <p className="text-[10px] font-mono text-muted uppercase tracking-widest opacity-60">Step-by-step ad creation</p>
           </div>
         </div>
 
         {!hasSelectedRunWithJobs ? (
           <div className="rounded-card border border-line/50 bg-transparent p-12 text-center space-y-6">
             <div className="space-y-2">
-              <p className="text-sm font-mono text-white uppercase tracking-widest">Null_Sequence_Detected</p>
+              <p className="text-sm font-mono text-white uppercase tracking-widest">No workflow started</p>
               <p className="text-[11px] text-muted max-w-md mx-auto leading-relaxed">
-                Initialize a creative sequence to activate job monitoring and pipeline diagnostics.
+                Start a workflow to see your ad jobs and progress here.
               </p>
             </div>
             <button
               onClick={() => handleStepRunClick(steps[0])}
               className="btn btn-primary !min-h-[44px] px-8 text-[11px] font-black uppercase tracking-[0.2em]"
             >
-              Initialize_Sequence
+              Start Workflow
             </button>
           </div>
         ) : (
@@ -4105,6 +4164,8 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                     .map((panel, panelIndex) => ({
                       panelIndex,
                       panelType: panel.panelType,
+                      startTime: panel.startTime,
+                      endTime: panel.endTime,
                       prompt: String(panel.videoPrompt ?? "").trim(),
                     }))
                 : [];
@@ -4193,139 +4254,278 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                     : step.status === "running"
                       ? "Running"
                       : "Run";
+            const isCollapsed =
+              isStepCollapsed(step.key, step.status) &&
+              step.status !== "running";
             return (
               <div
                 key={step.key}
-                className="rounded-card border border-line bg-transparent overflow-hidden group hover:border-accent/30 transition-all duration-500 mb-4"
+                className={`rounded-card border overflow-hidden transition-all duration-300 mb-4 ${
+                  step.status === "running"
+                    ? "border-accent/40 bg-transparent"
+                    : step.status === "failed"
+                    ? "border-danger/30 bg-transparent"
+                    : isCollapsed
+                    ? "border-line/40 bg-transparent opacity-70 hover:opacity-100"
+                    : "border-line bg-transparent"
+                }`}
               >
-                <div className="px-6 py-5 flex items-center justify-between gap-6 border-b border-line/20">
+                <div
+                  className={`px-6 py-4 flex items-center justify-between gap-6 ${!isCollapsed ? "border-b border-line/20" : ""} ${step.status === "completed" ? "cursor-pointer" : ""}`}
+                  onClick={() => {
+                    if (step.status === "completed" || step.status === "not_started" || step.status === "failed") {
+                      toggleStepCollapsed(step.key, step.status);
+                    }
+                  }}
+                >
                   <div className="flex items-center gap-4 flex-1">
-                    <div className="w-8 h-8 rounded-card bg-panel border border-line flex items-center justify-center text-[10px] font-mono text-accent font-bold">
-                      {String(index + 1).padStart(2, "0")}
+                    <div className={`w-7 h-7 rounded-card border flex items-center justify-center text-[10px] font-mono font-bold shrink-0 ${
+                      step.status === "completed" ? "border-accent/30 text-accent bg-accent/5" :
+                      step.status === "running" ? "border-accent text-accent animate-pulse" :
+                      step.status === "failed" ? "border-danger/30 text-danger" :
+                      "border-line text-muted/40"
+                    }`}>
+                      {step.status === "completed" ? "✓" : String(index + 1).padStart(2, "0")}
                     </div>
-                    <div className="space-y-0.5">
-                      <div className="text-[10px] font-mono text-muted uppercase tracking-widest opacity-60">
-                        Step_ID: {step.key.toUpperCase()}
-                      </div>
-                      <h3 className="text-[13px] font-black text-white uppercase tracking-widest">
+                    <div className="space-y-0.5 min-w-0">
+                      <h3 className={`text-[13px] font-black uppercase tracking-widest ${isCollapsed ? "text-white/50" : "text-white"}`}>
                         {step.label}
                       </h3>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center gap-6">
-                    <div className="status-chip subtle !px-4 !py-1.5 uppercase tracking-widest text-[9px] font-bold">
-                      {step.status.replace("_", " ")}
-                    </div>
-                    
-                    <div className="flex items-center gap-3">
-                      {!isSceneControlStep ? (
-                        <>
-                          {isCancelableJob(step.lastJob) && step.lastJob ? (
-                            <button
-                              type="button"
-                              onClick={() => void cancelJob(step.lastJob!.id)}
-                              disabled={Boolean(cancellingJobIds[step.lastJob.id])}
-                              className="btn btn-danger !min-h-[32px] px-4 text-[9px] uppercase font-bold tracking-widest"
-                            >
-                              {cancellingJobIds[step.lastJob.id] ? "Wiping..." : "Abort"}
-                            </button>
-                          ) : null}
-                          <button
-                            onClick={() => handleStepRunClick(step)}
-                            disabled={isPrimaryActionDisabled}
-                            className={`btn ${isPrimaryActionDisabled ? "btn-secondary opacity-50" : "btn-primary"} !min-h-[32px] px-6 text-[9px] uppercase font-bold tracking-widest flex items-center gap-2`}
-                          >
-                            {submitting === step.key && <Spinner />}
-                            {primaryActionLabel}
-                          </button>
-                        </>
-                      ) : (
-                        <div className="flex items-center gap-4">
-                          <span className="text-[9px] font-mono text-muted uppercase tracking-widest opacity-40">Scene_Interface_Locked</span>
-                          {runningVideoImageJobId && (
-                            <button
-                              type="button"
-                              onClick={() => void handleResetVideoImageJob(runningVideoImageJobId)}
-                              disabled={isResettingVideoImageJob}
-                              className="btn btn-danger !min-h-[30px] px-4 text-[8px] uppercase font-bold tracking-widest"
-                            >
-                              {isResettingVideoImageJob ? "Resetting..." : "Purge_Sequence"}
-                            </button>
-                          )}
-                        </div>
+                      {!isCollapsed && (
+                        <p className="text-xs text-muted/80">{step.description}</p>
                       )}
                     </div>
                   </div>
+
+                  <div className="flex items-center gap-3 shrink-0" onClick={e => e.stopPropagation()}>
+                    {step.status === "running" && (
+                      <div className="flex items-center gap-2 text-[10px] font-mono text-accent uppercase tracking-widest animate-pulse">
+                        <Spinner />
+                        <span>Running</span>
+                      </div>
+                    )}
+                    {step.status === "failed" && (
+                      <div className="status-chip !px-3 !py-1 text-[8px] font-bold uppercase tracking-widest bg-danger/10 text-danger border-danger/20">
+                        Failed
+                      </div>
+                    )}
+                    {isCancelableJob(step.lastJob) && step.lastJob && (
+                      <button
+                        type="button"
+                        onClick={() => void cancelJob(step.lastJob!.id)}
+                        disabled={Boolean(cancellingJobIds[step.lastJob.id])}
+                        className="btn btn-danger !min-h-[28px] px-4 text-[9px] uppercase font-bold tracking-widest"
+                      >
+                        {cancellingJobIds[step.lastJob.id] ? "Cancelling..." : "Cancel"}
+                      </button>
+                    )}
+                    {isCollapsed ? (
+                      <button
+                        type="button"
+                        onClick={() => toggleStepCollapsed(step.key, step.status)}
+                        className="btn btn-secondary !min-h-[28px] px-4 text-[9px] uppercase font-bold tracking-widest opacity-50 hover:opacity-100"
+                      >
+                        Expand
+                      </button>
+                    ) : !isSceneControlStep ? (
+                      <button
+                        onClick={() => handleStepRunClick(step)}
+                        disabled={isPrimaryActionDisabled}
+                        className={`btn ${isPrimaryActionDisabled ? "btn-secondary opacity-50" : "btn-primary"} !min-h-[32px] px-6 text-[9px] uppercase font-bold tracking-widest flex items-center gap-2`}
+                      >
+                        {submitting === step.key && <Spinner />}
+                        {primaryActionLabel}
+                      </button>
+                    ) : runningVideoImageJobId ? (
+                      <button
+                        type="button"
+                        onClick={() => void handleResetVideoImageJob(runningVideoImageJobId)}
+                        disabled={isResettingVideoImageJob}
+                        className="btn btn-danger !min-h-[30px] px-4 text-[8px] uppercase font-bold tracking-widest"
+                      >
+                        {isResettingVideoImageJob ? "Resetting..." : "Reset Scene"}
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
 
-                <div className="p-6">
-                  {step.locked && (
-                    <div className="flex items-center gap-2 text-[10px] font-mono text-muted uppercase tracking-widest opacity-60 mb-4 animate-pulse">
-                      <span>Locked_Entry:</span>
-                      <span>{step.lockReason}</span>
+                {!isCollapsed && (
+                  <>
+                    <div className={`px-6 ${isOutputExpanded && (step.key === "storyboard" || step.key === "video_prompts") ? "py-0" : "py-4"}`}>
+                      {step.locked && (
+                        <div className="flex items-center gap-2 text-[10px] font-mono text-muted uppercase tracking-widest opacity-60 mb-4 animate-pulse">
+                          <span>Locked:</span>
+                          <span>{step.lockReason}</span>
+                        </div>
+                      )}
+                      {isStuckImagePromptStep && (
+                        <div className="p-3 rounded-card border border-accent/20 bg-accent/5 text-[10px] font-mono text-accent uppercase tracking-widest mb-4">
+                          This step is stuck. Re-run it to continue.
+                        </div>
+                      )}
+                      {step.lastJob && step.status !== "failed" && step.status !== "running" && (
+                        <div className={`flex items-center justify-between gap-4 ${isOutputExpanded && (step.key === "storyboard" || step.key === "video_prompts") ? "py-4" : ""}`}>
+                          <div className="flex items-center gap-3">
+                            <span className="text-[11px] text-muted font-mono leading-relaxed">
+                              {getSummaryText(step.lastJob.resultSummary, step.lastJob)}
+                            </span>
+                            <span className="text-[10px] font-mono text-muted opacity-40">
+                              {new Date(step.lastJob.updatedAt ?? step.lastJob.createdAt).toLocaleString("en-US", {
+                                month: "short",
+                                day: "numeric",
+                                hour: "numeric",
+                                minute: "2-digit",
+                                hour12: true,
+                              })}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-3 shrink-0">
+                            {step.key === "script" && scriptId && (
+                              <>
+                                {isScriptPanelOpen && (
+                                  scriptPanelEditMode ? (
+                                    <>
+                                      <button
+                                        onClick={() => { setScriptPanelEditMode(false); setScriptPanelError(null); }}
+                                        disabled={scriptPanelSaving}
+                                        className="btn btn-secondary !min-h-[32px] px-6 text-[9px] uppercase font-bold tracking-widest"
+                                      >
+                                        Cancel
+                                      </button>
+                                      <button
+                                        onClick={() => void handleSaveScriptPanelEdits()}
+                                        disabled={scriptPanelSaving}
+                                        className="btn btn-primary !min-h-[32px] px-6 text-[9px] uppercase font-bold tracking-widest"
+                                      >
+                                        {scriptPanelSaving ? "Saving..." : "Save Changes"}
+                                      </button>
+                                    </>
+                                  ) : (
+                                    <button
+                                      onClick={() => {
+                                        const beats = extractScriptBeats(scriptPanelData?.rawJson);
+                                        setScriptPanelDraftBeats(beats);
+                                        setScriptPanelCombinedVoDraft(buildCombinedVoDraftFromBeats(beats));
+                                        setScriptPanelEditMode(true);
+                                      }}
+                                      className="btn btn-secondary !min-h-[32px] px-6 text-[9px] uppercase font-bold tracking-widest"
+                                    >
+                                      Edit Script
+                                    </button>
+                                  )
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => { if (isScriptPanelOpen) { closeScriptPanel(); } else { void loadScriptPanel(scriptId); } }}
+                                  className="btn btn-secondary !min-h-[32px] px-6 text-[9px] uppercase font-bold tracking-widest"
+                                >
+                                  {isScriptPanelOpen ? "Close Script" : "View Script"}
+                                </button>
+                              </>
+                            )}
+                            {usesBottomOutputToggle && !(isOutputExpanded && (step.key === "storyboard" || step.key === "video_prompts")) && (
+                              <button
+                                type="button"
+                                onClick={() => toggleCompletedStepOutput(step.key)}
+                                className="btn btn-secondary !min-h-[32px] px-6 text-[9px] uppercase font-bold tracking-widest"
+                              >
+                                {getOutputToggleLabel(step, isOutputExpanded)}
+                              </button>
+                            )}
+                            {step.key === "storyboard" && isOutputExpanded && (
+                              <>
+                                <button
+                                  onClick={storyboardEditMode ? cancelStoryboardEditMode : openStoryboardEditMode}
+                                  className="btn btn-secondary !min-h-[32px] px-6 text-[9px] uppercase font-bold tracking-widest"
+                                >
+                                  {storyboardEditMode ? "Cancel Edit" : "Edit Storyboard"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleCompletedStepOutput(step.key)}
+                                  className="btn btn-secondary !min-h-[32px] px-6 text-[9px] uppercase font-bold tracking-widest"
+                                >
+                                  {getOutputToggleLabel(step, true)}
+                                </button>
+                                {storyboardEditMode && (
+                                  <button
+                                    onClick={() => void handleSaveStoryboardEdits()}
+                                    disabled={storyboardSaving}
+                                    className="btn btn-primary !min-h-[32px] px-6 text-[9px] uppercase font-bold tracking-widest"
+                                  >
+                                    {storyboardSaving ? "Saving..." : "Save Storyboard"}
+                                  </button>
+                                )}
+                              </>
+                            )}
+                            {step.key === "video_prompts" && isOutputExpanded && (
+                              <>
+                                <button
+                                  onClick={videoPromptEditMode ? cancelVideoPromptEditMode : openVideoPromptEditMode}
+                                  className="btn btn-secondary !min-h-[32px] px-6 text-[9px] uppercase font-bold tracking-widest"
+                                >
+                                  {videoPromptEditMode ? "Cancel Edit" : "Edit Prompts"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleCompletedStepOutput(step.key)}
+                                  className="btn btn-secondary !min-h-[32px] px-6 text-[9px] uppercase font-bold tracking-widest"
+                                >
+                                  {getOutputToggleLabel(step, true)}
+                                </button>
+                                {videoPromptEditMode && (
+                                  <button
+                                    onClick={() => void handleSaveVideoPromptEdits()}
+                                    disabled={videoPromptSaving}
+                                    className="btn btn-primary !min-h-[32px] px-6 text-[9px] uppercase font-bold tracking-widest"
+                                  >
+                                    {videoPromptSaving ? "Saving..." : "Save Changes"}
+                                  </button>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      {hasSelectedRunWithJobs && step.status === "failed" && Boolean(step.lastJob?.error) && (
+                        <div className="rounded-card border border-danger/30 bg-danger/5 p-4 flex items-start gap-4">
+                          <div className="w-2 h-2 rounded-full bg-danger mt-1 animate-pulse shrink-0" />
+                          <div className="flex-1">
+                            <p className="text-[10px] font-mono text-danger uppercase tracking-widest font-bold mb-1">Error</p>
+                            <p className="text-[11px] font-mono text-danger/80 leading-relaxed">{getErrorText(step.lastJob?.error)}</p>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  )}
-
-                  {isStuckImagePromptStep && (
-                    <div className="p-3 rounded-card border border-accent/20 bg-accent/5 text-[10px] font-mono text-accent uppercase tracking-widest mb-4">
-                      Sequence_StallDetected: Re-initialize to clear buffer
-                    </div>
-                  )}
-
-                  {step.lastJob && step.status !== "failed" && step.status !== "running" && (
-                    <div className="text-[11px] text-muted font-mono leading-relaxed mb-4">
-                      {getSummaryText(step.lastJob.resultSummary)}
-                    </div>
-                  )}
-
-                </div> {/* End of p-6 content */}
-
-                {usesBottomOutputToggle && (
-                  <div className="px-6 py-4 bg-panel border-t border-line/10 flex justify-end">
-                    <button
-                      type="button"
-                      onClick={() => toggleCompletedStepOutput(step.key)}
-                      className="btn btn-secondary !min-h-[32px] px-6 text-[9px] uppercase font-bold tracking-widest"
-                    >
-                      {isOutputExpanded ? "Collapse_Output" : "Expand_Output"}
-                    </button>
-                  </div>
-                )}
 
               {step.key === "video_images" && (
-                <div className="mt-8 space-y-8 animate-in fade-in slide-in-from-top-4 duration-500">
+                <div className="space-y-6 px-6 pb-6 animate-in fade-in slide-in-from-top-4 duration-500">
                   {!storyboardId ? (
                     <div className="rounded-card border border-danger/30 bg-danger/5 p-12 text-center">
-                      <p className="text-[10px] font-mono text-danger uppercase tracking-widest leading-relaxed">Null_Output_Error: Storyboard_Context_Missing</p>
+                      <p className="text-[10px] font-mono text-danger uppercase tracking-widest leading-relaxed">Storyboard data is missing</p>
                     </div>
                   ) : storyboardPanelLoading && storyboardMatchesCurrentFetch ? (
                     <div className="p-16 text-center animate-pulse">
-                      <p className="text-[10px] font-mono text-muted uppercase tracking-widest">Synchronizing_Scene_Flow...</p>
+                      <p className="text-[10px] font-mono text-muted uppercase tracking-widest">Loading scene data...</p>
                     </div>
                   ) : storyboardPanelError && storyboardMatchesCurrentFetch ? (
                     <div className="p-12 text-center text-danger text-[10px] font-mono uppercase tracking-widest border border-danger/20 rounded-card bg-danger/5">
-                      Protocol_Error: {storyboardPanelError}
+                      Error: {storyboardPanelError}
                     </div>
                   ) : (
                     <div className="space-y-8">
-                      <div className="px-2">
-                        <span className="text-[10px] font-mono text-accent uppercase tracking-widest font-bold">Inception_Frame_Synthesis</span>
-                        <p className="mt-2 text-[11px] font-mono text-muted uppercase tracking-widest opacity-40 leading-relaxed">
-                          Resolve or Regenerate initial-frame metadata for scene synthesis.
-                        </p>
-                      </div>
-
                       {sceneActionError && (
                         <div className="mx-2 p-4 rounded-card border border-danger/20 bg-danger/5 text-[10px] font-mono text-danger uppercase tracking-widest flex items-center gap-3">
                           <div className="w-1.5 h-1.5 rounded-full bg-danger animate-pulse" />
-                          Synthesis_Protocol_Error: {sceneActionError}
+                          Error: {sceneActionError}
                         </div>
                       )}
 
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {sceneFlowRows.map((row) => {
                           const isGenerating = sceneGeneratingNumber === row.sceneNumber;
+                          const hasImage = Boolean(row.firstFrameImageUrl);
+                          const isReviewOpen = row.isReviewOpen;
                           
                           return (
                             <div
@@ -4333,26 +4533,58 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                               className="rounded-card border border-line bg-panel overflow-hidden group hover:border-accent/30 transition-all duration-300"
                             >
                               <div className="px-5 py-3 bg-panel border-b border-line/10 flex items-center justify-between">
-                                <span className="text-[10px] font-mono text-accent font-bold">SCN_{String(row.sceneNumber).padStart(2, "0")}</span>
+                                <span className="text-[10px] font-mono text-accent font-bold">Scene {String(row.sceneNumber).padStart(2, "0")}</span>
                                 <div className="status-chip subtle !px-3 !py-1 uppercase tracking-widest text-[8px] font-bold">
-                                  {isGenerating ? "Synthesizing" : row.hasImages ? "Asset_Ready" : "Pending_Manifest"}
+                                  {isGenerating ? "Generating" : row.hasImages ? "Ready" : "Waiting"}
                                 </div>
                               </div>
                               <div className="p-5 space-y-4">
+                                {isReviewOpen && row.firstFrameImageUrl ? (
+                                  <a
+                                    href={row.firstFrameImageUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="block overflow-hidden rounded-card border border-line bg-bg-elevated transition-colors hover:border-accent/30"
+                                  >
+                                    <div className="px-3 py-2 bg-panel border-b border-line/10 flex items-center justify-between gap-3">
+                                      <span className="text-[8px] font-mono text-muted uppercase tracking-[0.2em] opacity-60">
+                                        Generated Image
+                                      </span>
+                                      <span className="text-[8px] font-mono text-accent uppercase tracking-[0.2em]">
+                                        Open Full Size
+                                      </span>
+                                    </div>
+                                    <div className="aspect-[9/16] overflow-hidden bg-bg">
+                                      <img
+                                        src={row.firstFrameImageUrl}
+                                        alt={`Scene ${row.sceneNumber} generated first frame`}
+                                        className="h-full w-full object-cover"
+                                      />
+                                    </div>
+                                  </a>
+                                ) : null}
+
                                 <div className="space-y-2">
-                                  <span className="text-[8px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Kinetic_Metadata</span>
+                                  <span className="text-[8px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Voiceover</span>
                                   <div className="bg-panel border border-line/10 rounded-card p-3 text-[11px] text-white/50 font-mono leading-relaxed min-h-[60px] line-clamp-3">
-                                    {row.panel?.vo || "No_Audio_Directive"}
+                                    {row.panel?.vo || "No voiceover available"}
                                   </div>
                                 </div>
 
-                                <div className="pt-2">
+                                <div className="flex items-center gap-3 pt-2">
                                   <button
                                     onClick={() => void handleGenerateScene(row.sceneNumber)}
                                     disabled={isGenerating || submitting === step.key}
-                                    className="btn btn-secondary w-full !min-h-[32px] text-[9px] uppercase font-bold tracking-widest"
+                                    className="btn btn-secondary flex-1 !min-h-[32px] text-[9px] uppercase font-bold tracking-widest"
                                   >
-                                    {isGenerating ? "Processing..." : row.hasImages ? "Regenerate_Inception" : "Initialize_Synthesis"}
+                                    {isGenerating ? "Processing..." : row.hasImages ? "Regenerate Images" : "Generate Images"}
+                                  </button>
+                                  <button
+                                    onClick={() => toggleSceneReview(row.sceneNumber)}
+                                    disabled={!hasImage}
+                                    className="btn btn-secondary !min-h-[32px] px-4 text-[9px] uppercase font-bold tracking-widest"
+                                  >
+                                    {isReviewOpen ? "Hide" : "Preview"}
                                   </button>
                                 </div>
                               </div>
@@ -4366,28 +4598,21 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
               )}
 
               {step.key === "video" && (
-                <div className="mt-8 space-y-8 animate-in fade-in slide-in-from-top-4 duration-500">
+                <div className="space-y-6 px-6 pb-6 animate-in fade-in slide-in-from-top-4 duration-500">
                   {!storyboardId ? (
                     <div className="rounded-card border border-danger/30 bg-danger/5 p-12 text-center">
-                      <p className="text-[10px] font-mono text-danger uppercase tracking-widest leading-relaxed">Null_Output_Error: Storyboard_Context_Missing</p>
+                      <p className="text-[10px] font-mono text-danger uppercase tracking-widest leading-relaxed">Storyboard data is missing</p>
                     </div>
                   ) : storyboardPanelLoading && storyboardMatchesCurrentFetch ? (
                     <div className="p-16 text-center animate-pulse">
-                      <p className="text-[10px] font-mono text-muted uppercase tracking-widest">Synchronizing_Kinetic_Manifest...</p>
+                      <p className="text-[10px] font-mono text-muted uppercase tracking-widest">Loading video data...</p>
                     </div>
                   ) : storyboardPanelError && storyboardMatchesCurrentFetch ? (
                     <div className="p-12 text-center text-danger text-[10px] font-mono uppercase tracking-widest border border-danger/20 rounded-card bg-danger/5">
-                      Protocol_Error: {storyboardPanelError}
+                      Error: {storyboardPanelError}
                     </div>
                   ) : (
                     <div className="space-y-8">
-                       <div className="px-2">
-                        <span className="text-[10px] font-mono text-accent uppercase tracking-widest font-bold">Kinetic_Rendering_Engine</span>
-                        <p className="mt-2 text-[11px] font-mono text-muted uppercase tracking-widest opacity-40 leading-relaxed">
-                          Finalize scene motion and acoustic sync.
-                        </p>
-                      </div>
-
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {sceneFlowRows.map((row) => {
                           const isGenerating = videoGeneratingNumber === row.sceneNumber;
@@ -4400,13 +4625,13 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                               className="rounded-card border border-line bg-panel overflow-hidden group hover:border-accent/30 transition-all duration-300"
                             >
                               <div className="px-5 py-3 bg-panel border-b border-line/10 flex items-center justify-between">
-                                <span className="text-[10px] font-mono text-accent font-bold">SCN_{String(row.sceneNumber).padStart(2, "0")}</span>
+                                <span className="text-[10px] font-mono text-accent font-bold">Scene {String(row.sceneNumber).padStart(2, "0")}</span>
                                 <div className="status-chip subtle !px-3 !py-1 uppercase tracking-widest text-[8px] font-bold">
-                                  {isGenerating ? "Synthesizing" : hasVideo ? "Render_Complete" : "Pending_Render"}
+                                  {isGenerating ? "Generating" : hasVideo ? "Ready" : "Waiting"}
                                 </div>
                               </div>
 
-                              {row.lockReason && (
+                              {row.locked && row.lockReason && (
                                 <div className="px-5 py-2 flex items-center gap-2 text-[9px] font-mono text-muted uppercase tracking-widest opacity-60 bg-panel border-b border-line/5">
                                   <span>Locked:</span>
                                   <span>{row.lockReason}</span>
@@ -4420,7 +4645,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                                     disabled={row.locked || isGenerating || videoGeneratingNumber !== null || submitting === step.key}
                                     className="btn btn-secondary flex-1 !min-h-[32px] text-[9px] uppercase font-bold tracking-widest"
                                   >
-                                    {isGenerating ? "Synthesizing..." : hasVideo ? "Re-render" : "Execute_Render"}
+                                    {isGenerating ? "Generating..." : hasVideo ? "Re-render" : "Generate Video"}
                                   </button>
                                   <button
                                     onClick={() => toggleSceneVideoReview(row.sceneNumber)}
@@ -4450,11 +4675,11 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                 </div>
               )}
 
-              {step.key === "review" && (
-                <div className="mt-8 space-y-8 animate-in fade-in slide-in-from-top-4 duration-500">
+              {!isCollapsed && step.key === "review" && (
+                <div className="space-y-6 px-6 pb-6 animate-in fade-in slide-in-from-top-4 duration-500">
                   {!storyboardId ? (
                     <div className="rounded-card border border-danger/30 bg-danger/5 p-12 text-center">
-                      <p className="text-[10px] font-mono text-danger uppercase tracking-widest leading-relaxed">Null_Output_Error: Storyboard_Context_Missing</p>
+                      <p className="text-[10px] font-mono text-danger uppercase tracking-widest leading-relaxed">Storyboard data is missing</p>
                     </div>
                   ) : (
                     <div className="rounded-card border border-line bg-transparent overflow-hidden">
@@ -4480,96 +4705,32 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                 </div>
               )}
 
-
-              {step.key === "script" && step.status === "completed" && scriptId && (
-                <div className="mt-8 flex justify-between items-center">
-                  <div className="flex items-center gap-3">
-                    <span className="text-[9px] font-mono text-accent uppercase tracking-widest font-bold">Inference_Result</span>
-                    <span className="text-[10px] font-mono text-muted uppercase tracking-widest opacity-40">Ref_{scriptId.substring(0, 8)}</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (isScriptPanelOpen) {
-                        closeScriptPanel();
-                      } else {
-                        void loadScriptPanel(scriptId);
-                      }
-                    }}
-                    className="text-[10px] font-mono text-accent-2 hover:text-white uppercase tracking-widest transition-colors flex items-center gap-2"
-                  >
-                    <span className="w-1.5 h-1.5 rounded-full bg-accent-2 animate-pulse" />
-                    {isScriptPanelOpen ? "Close_Editor" : "Open_Editor"}
-                  </button>
-                </div>
-              )}
-
               {step.key === "script" && step.status === "completed" && isScriptPanelOpen && (
-                <div className="mt-8 space-y-8 animate-in fade-in slide-in-from-top-4 duration-500">
+                <div className="mt-6 space-y-6 px-6 pb-6 animate-in fade-in slide-in-from-top-4 duration-500">
                   {scriptPanelLoading ? (
                     <div className="p-16 text-center animate-pulse">
-                      <p className="text-[10px] font-mono text-muted uppercase tracking-widest">Synchronizing_Script_Manifest...</p>
+                      <p className="text-[10px] font-mono text-muted uppercase tracking-widest">Loading script...</p>
                     </div>
                   ) : scriptPanelError ? (
                     <div className="p-12 text-center text-danger text-[10px] font-mono uppercase tracking-widest border border-danger/20 rounded-card bg-danger/5">
-                      Protocol_Error: {scriptPanelError}
+                      Error: {scriptPanelError}
                     </div>
                   ) : scriptPanelData ? (
                     <div className="space-y-6">
-                      <div className="flex items-center justify-between px-2">
-                        <div className="flex items-center gap-4">
-                          <span className="text-[10px] font-mono text-accent uppercase tracking-widest font-bold">Script_Unit_Manifest</span>
-                          <span className="text-[11px] font-mono text-muted uppercase tracking-widest opacity-40">
-                             ID: {scriptPanelData.id.substring(0, 12)} • {scriptPanelData.wordCount ?? "---"} Words
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                           {scriptPanelEditMode ? (
-                             <div className="flex items-center gap-3">
-                               <button
-                                 onClick={() => {
-                                   setScriptPanelEditMode(false);
-                                   setScriptPanelError(null);
-                                 }}
-                                 disabled={scriptPanelSaving}
-                                 className="btn btn-secondary !min-h-[32px] px-6 text-[9px] uppercase font-bold tracking-widest"
-                               >
-                                 Abort_Edit
-                               </button>
-                               <button
-                                 onClick={() => void handleSaveScriptPanelEdits()}
-                                 disabled={scriptPanelSaving}
-                                 className="btn btn-primary !min-h-[32px] px-6 text-[9px] uppercase font-bold tracking-widest"
-                               >
-                                 {scriptPanelSaving ? "Committing..." : "Commit_Changes"}
-                               </button>
-                             </div>
-                           ) : (
-                             <button
-                               onClick={() => {
-                                 const beats = extractScriptBeats(scriptPanelData.rawJson);
-                                 setScriptPanelDraftBeats(beats);
-                                 setScriptPanelCombinedVoDraft(buildCombinedVoDraftFromBeats(beats));
-                                 setScriptPanelEditMode(true);
-                               }}
-                               className="btn btn-secondary !min-h-[32px] px-6 text-[9px] uppercase font-bold tracking-widest"
-                             >
-                               Modify_Directive
-                             </button>
-                           )}
-                        </div>
-                      </div>
-
                       <div className="rounded-card border border-line bg-panel overflow-hidden group hover:border-accent/30 transition-all duration-300">
-                        <div className="px-6 py-4 bg-panel border-b border-line/10 flex items-center justify-between">
-                          <span className="text-[11px] font-mono text-accent-2 font-bold tracking-tighter uppercase whitespace-pre">Audio_Synthesis_Path</span>
-                          <span className="text-[8px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Script_Output</span>
+                        <div className="px-8 py-4 bg-panel border-b border-line/10 flex items-center justify-between">
+                          <div className="flex items-center gap-4">
+                            <span className="text-[11px] font-mono text-accent-2 font-bold tracking-tighter uppercase whitespace-pre">Script</span>
+                            <span className="text-[8px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">
+                              {scriptPanelData.wordCount ?? "---"} Words
+                            </span>
+                          </div>
                         </div>
                         <div className="p-8">
                           {scriptPanelEditMode ? (
                             <div className="space-y-6">
                               <div className="p-4 rounded-card border border-accent-2/20 bg-accent-2/5 text-[10px] font-mono text-accent-2 uppercase tracking-widest leading-relaxed">
-                                <span className="opacity-60">System_Note:</span> Maintain &quot;Beat N:&quot; headers to preserve sequential sync logic.
+                                <span className="opacity-60">Note:</span> Keep the &quot;Beat N:&quot; headers so the sequence stays in order.
                               </div>
                               <textarea
                                 value={scriptPanelCombinedVoDraft}
@@ -4579,7 +4740,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                             </div>
                           ) : (
                             <div className="text-[14px] text-white/80 leading-[1.8] whitespace-pre-wrap font-mono selection:bg-accent-2/30 selection:text-white">
-                              {buildCombinedVoDraftFromBeats(extractScriptBeats(scriptPanelData.rawJson)) || "Null_Audio_Output"}
+                              {buildCombinedVoDraftFromBeats(extractScriptBeats(scriptPanelData.rawJson)) || "No script available"}
                             </div>
                           )}
                         </div>
@@ -4587,33 +4748,33 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                     </div>
                   ) : (
                     <div className="p-12 text-center text-muted text-[10px] font-mono uppercase tracking-widest border border-line/20 rounded-card bg-transparent">
-                      Null_Data_Error: Script_Reference_Broken
+                      Script reference is missing
                     </div>
                   )}
                 </div>
               )}
 
-              {scriptSources && (
+              {scriptSources && isScriptPanelOpen && (
                 <div className="mt-6 border border-line/10 rounded-card bg-panel overflow-hidden">
                   <details className="group">
                     <summary className="px-6 py-4 cursor-pointer flex items-center justify-between text-[10px] font-mono text-muted uppercase tracking-widest font-bold hover:bg-panel transition-colors list-none">
                       <div className="flex items-center gap-3">
                         <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
-                        Inference_Dependency_Manifest
+                        Source Inputs
                       </div>
                       <span className="opacity-40 transition-transform group-open:rotate-180">▼</span>
                     </summary>
                     <div className="px-8 pb-6 pt-2 space-y-3">
                       <div className="flex justify-between text-[10px] font-mono">
-                        <span className="text-muted/60 uppercase tracking-widest">Customer_Protocol:</span>
+                        <span className="text-muted/60 uppercase tracking-widest">Customer Research:</span>
                         <span className="text-accent-2">{formatMetadataDate(scriptSources.customerAnalysisRunDate)}</span>
                       </div>
                       <div className="flex justify-between text-[10px] font-mono">
-                        <span className="text-muted/60 uppercase tracking-widest">Pattern_Baseline:</span>
+                        <span className="text-muted/60 uppercase tracking-widest">Ad Analysis:</span>
                         <span className="text-accent-2">{formatMetadataDate(scriptSources.patternAnalysisRunDate)}</span>
                       </div>
                       <div className="flex justify-between text-[10px] font-mono">
-                        <span className="text-muted/60 uppercase tracking-widest">Product_Intelligence:</span>
+                        <span className="text-muted/60 uppercase tracking-widest">Product Research:</span>
                         <span className="text-accent-2">{formatMetadataDate(scriptSources.productIntelDate)}</span>
                       </div>
                     </div>
@@ -4622,57 +4783,29 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
               )}
 
               {step.key === "storyboard" && step.status === "completed" && isOutputExpanded && (
-                <div className="mt-8 space-y-8 animate-in fade-in slide-in-from-top-4 duration-500">
+                <div className="mt-6 space-y-6 px-6 pb-6 animate-in fade-in slide-in-from-top-4 duration-500">
                   {!storyboardId ? (
                     <div className="rounded-card border border-danger/30 bg-danger/5 p-12 text-center">
-                      <p className="text-[10px] font-mono text-danger uppercase tracking-widest leading-relaxed">Null_Output_Error: Storyboard_Generation_Failed</p>
+                      <p className="text-[10px] font-mono text-danger uppercase tracking-widest leading-relaxed">Storyboard could not be loaded</p>
                     </div>
                   ) : storyboardPanelLoading && storyboardMatchesCurrentFetch ? (
                     <div className="p-16 text-center animate-pulse">
-                      <p className="text-[10px] font-mono text-muted uppercase tracking-widest">Synchronizing_Sequence_Data...</p>
+                      <p className="text-[10px] font-mono text-muted uppercase tracking-widest">Loading storyboard...</p>
                     </div>
                   ) : storyboardPanelError && storyboardMatchesCurrentFetch ? (
                     <div className="p-12 text-center text-danger text-[10px] font-mono uppercase tracking-widest border border-danger/20 rounded-card bg-danger/5">
-                      Protocol_Error: {storyboardPanelError}
+                      Error: {storyboardPanelError}
                     </div>
                   ) : storyboardPanels.length === 0 ? (
                     <div className="rounded-card border border-danger/30 bg-danger/5 p-12 text-center">
-                      <p className="text-[10px] font-mono text-danger uppercase tracking-widest">Zero_Unit_Exception: No_Panels_Resolved</p>
+                      <p className="text-[10px] font-mono text-danger uppercase tracking-widest">No storyboard scenes available</p>
                     </div>
                   ) : (
                     <div className="space-y-8">
-                      <div className="flex items-center justify-between px-2">
-                        <div className="flex items-center gap-4">
-                          <span className="text-[10px] font-mono text-accent uppercase tracking-widest font-bold">Sequence_Manifest</span>
-                          <span className="text-[11px] font-mono text-muted uppercase tracking-widest opacity-40">
-                             {storyboardEditMode
-                              ? `Edit_Mode: ${storyboardDraftPanels.length}_Units`
-                              : `Resolved: ${storyboardPanels.length}_Units`}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                           {storyboardEditMode && (
-                             <button
-                               onClick={() => void handleSaveStoryboardEdits()}
-                               disabled={storyboardSaving}
-                               className="btn btn-primary !min-h-[32px] px-6 text-[9px] uppercase font-bold tracking-widest"
-                             >
-                               {storyboardSaving ? "Committing..." : "Commit_Sequence"}
-                             </button>
-                           )}
-                           <button
-                             onClick={storyboardEditMode ? cancelStoryboardEditMode : openStoryboardEditMode}
-                             className="btn btn-secondary !min-h-[32px] px-6 text-[9px] uppercase font-bold tracking-widest"
-                           >
-                             {storyboardEditMode ? "Abort_Edit" : "Enter_Sequence_Editor"}
-                           </button>
-                        </div>
-                      </div>
-
                       {storyboardSaveError && (
                         <div className="mx-2 p-4 rounded-card border border-danger/20 bg-danger/5 text-[10px] font-mono text-danger uppercase tracking-widest flex items-center gap-3">
                           <div className="w-1.5 h-1.5 rounded-full bg-danger animate-pulse" />
-                          Critical_Save_Failure: {storyboardSaveError}
+                          Save failed: {storyboardSaveError}
                         </div>
                       )}
 
@@ -4682,11 +4815,13 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                             key={`${panel.beatLabel}-${panel.startTime}-${panel.endTime}-${panelIndex}`}
                             className="rounded-card border border-line bg-panel overflow-hidden group hover:border-accent/30 transition-all duration-300"
                           >
-                            <div className="px-5 py-3 bg-panel border-b border-line/10 flex items-center justify-between">
-                              <div className="flex items-center gap-4">
-                                <span className="text-[10px] font-mono text-accent font-bold">Panel_{String(panelIndex + 1).padStart(2, "0")}</span>
+                            <div className="px-6 py-4 bg-panel border-b border-line/10 flex items-center justify-between">
+                              <div className="flex items-center gap-6">
+                                <span className="text-[11px] font-mono text-accent font-bold tracking-tighter">
+                                  Scene {String(panelIndex + 1).padStart(2, "0")}
+                                </span>
                                 <div className="flex items-center gap-2">
-                                  <span className="text-[9px] font-mono text-muted uppercase tracking-widest opacity-40">Timing_Window:</span>
+                                  <span className="text-[9px] font-mono text-muted uppercase tracking-widest opacity-40">Timing:</span>
                                   <span className="text-[10px] font-mono text-white font-bold">{formatStoryboardPanelTiming(panel)}</span>
                                 </div>
                                 <div className="status-chip subtle !px-3 !py-1 uppercase tracking-widest text-[8px] font-bold">
@@ -4731,7 +4866,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                                       disabled={storyboardRegeneratingIndex === panelIndex || storyboardSaving}
                                       className="btn btn-secondary !min-h-[26px] px-3 text-[8px] font-black uppercase tracking-widest text-accent border-accent/30 bg-accent/5"
                                     >
-                                      {storyboardRegeneratingIndex === panelIndex ? "Syncing..." : "Re-generate"}
+                                      {storyboardRegeneratingIndex === panelIndex ? "Generating..." : "Regenerate"}
                                     </button>
                                     <button
                                       type="button"
@@ -4742,38 +4877,15 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                                       Delete
                                     </button>
                                   </div>
-                                ) : (
-                                  <span className="text-[9px] font-mono text-muted uppercase tracking-widest opacity-40">System_Locked</span>
-                                )}
+                                ) : null}
                               </div>
                             </div>
                             <div className="p-8 space-y-8 bg-panel">
-                              <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-                                <div className="space-y-4">
+                              {storyboardEditMode ? (
+                                <div className="space-y-4 pt-1">
                                   <div className="flex items-center justify-between border-b border-line/5 pb-2">
-                                    <span className="text-[9px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Auditory_Manifest (VO)</span>
-                                    <span className="w-1.5 h-1.5 rounded-full bg-accent-2/40" />
-                                  </div>
-                                  <div className="w-full bg-transparent border border-line/20 rounded-card p-5 text-[14px] text-white/80 font-sans leading-relaxed min-h-[100px] whitespace-pre-wrap">
-                                    {panel.vo || "No_Audio_Data"}
-                                  </div>
-                                </div>
-                                <div className="space-y-4">
-                                  <div className="flex items-center justify-between border-b border-line/5 pb-2">
-                                    <span className="text-[9px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Visual_Directives (Prompt)</span>
-                                    <span className="w-1.5 h-1.5 rounded-full bg-accent/40" />
-                                  </div>
-                                  <div className="w-full bg-transparent border border-line/20 rounded-card p-5 text-[13px] font-mono text-accent-2/70 leading-relaxed min-h-[100px] whitespace-pre-wrap">
-                                    {panel.videoPrompt || "No_Visual_Directives"}
-                                  </div>
-                                </div>
-                              </div>
-
-                              {storyboardEditMode && (
-                                <div className="space-y-4 pt-4 border-t border-line/5">
-                                  <div className="flex items-center justify-between">
-                                    <span className="text-[9px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Beat_Synthesis_Editor</span>
-                                    <span className="text-[8px] font-mono text-accent/60 uppercase tracking-widest font-bold">Inference_Override_Active</span>
+                                    <span className="text-[9px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Storyboard Editor</span>
+                                    <span className="text-[8px] font-mono text-accent/60 uppercase tracking-widest font-bold">Manual Edit Active</span>
                                   </div>
                                   <textarea
                                     value={storyboardBeatEditorDrafts[panelIndex] ?? buildStoryboardBeatEditorText(panel)}
@@ -4781,30 +4893,37 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                                       const nextValue = e.target.value;
                                       setStoryboardBeatEditorDrafts((prev) =>
                                         storyboardDraftPanels.map((draftPanel, index) =>
-                                          index === panelIndex ? nextValue : (typeof prev[index] === "string" ? prev[index] : buildStoryboardBeatEditorText(draftPanel))
+                                          index === panelIndex
+                                            ? nextValue
+                                            : typeof prev[index] === "string"
+                                              ? prev[index]
+                                              : buildStoryboardBeatEditorText(draftPanel)
                                         )
                                       );
                                       const parsed = parseStoryboardBeatEditorText(nextValue, panel);
                                       updateStoryboardDraftPanel(panelIndex, (prev) => ({
                                         ...prev,
-                                        ...parsed
+                                        ...parsed,
                                       }));
                                     }}
                                     className="w-full bg-panel border border-line/40 rounded-card p-6 text-[12px] font-mono text-white/70 focus:border-accent/40 focus:ring-1 focus:ring-accent/20 transition-all leading-relaxed min-h-[240px]"
                                   />
+                                  <div className="flex justify-start pt-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleAddStoryboardPanel(panelIndex)}
+                                      disabled={storyboardSaving}
+                                      className="btn btn-secondary !min-h-[32px] px-6 text-[9px] uppercase font-bold tracking-widest"
+                                    >
+                                      + Add Scene
+                                    </button>
+                                  </div>
                                 </div>
-                              )}
-
-                              {storyboardEditMode && (
-                                <div className="flex justify-start pt-4">
-                                   <button
-                                     type="button"
-                                     onClick={() => handleAddStoryboardPanel(panelIndex)}
-                                     disabled={storyboardSaving}
-                                     className="btn btn-secondary !min-h-[32px] px-6 text-[9px] uppercase font-bold tracking-widest"
-                                   >
-                                     + Insert_Sequence_Unit
-                                   </button>
+                              ) : (
+                                <div className="space-y-4">
+                                  <div className="w-full bg-transparent border border-line/20 rounded-card p-6 text-[12px] font-mono text-white/70 leading-relaxed min-h-[240px] whitespace-pre-wrap">
+                                    {buildStoryboardBeatEditorText(panel) || "No storyboard available"}
+                                  </div>
                                 </div>
                               )}
                             </div>
@@ -4816,32 +4935,32 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                 </div>
               )}
               {step.key === "image_prompts" && step.status === "completed" && isOutputExpanded && (
-                <div className="mt-8 space-y-8 animate-in fade-in slide-in-from-top-4 duration-500">
+                <div className="mt-6 space-y-6 animate-in fade-in slide-in-from-top-4 duration-500">
                   {!storyboardId ? (
                     <div className="rounded-card border border-danger/30 bg-danger/5 p-12 text-center">
-                      <p className="text-[10px] font-mono text-danger uppercase tracking-widest leading-relaxed">Null_Output_Error: Storyboard_Context_Missing</p>
+                      <p className="text-[10px] font-mono text-danger uppercase tracking-widest leading-relaxed">Storyboard data is missing</p>
                     </div>
                   ) : storyboardPanelLoading && storyboardMatchesCurrentFetch ? (
                     <div className="p-16 text-center animate-pulse">
-                      <p className="text-[10px] font-mono text-muted uppercase tracking-widest">Synchronizing_Inference_Assets...</p>
+                      <p className="text-[10px] font-mono text-muted uppercase tracking-widest">Loading image prompts...</p>
                     </div>
                   ) : storyboardPanelError && storyboardMatchesCurrentFetch ? (
                     <div className="p-12 text-center text-danger text-[10px] font-mono uppercase tracking-widest border border-danger/20 rounded-card bg-danger/5">
-                      Protocol_Error: {storyboardPanelError}
+                      Error: {storyboardPanelError}
                     </div>
                   ) : imagePromptRows.length === 0 ? (
                     <div className="rounded-card border border-danger/30 bg-danger/5 p-12 text-center">
-                      <p className="text-[10px] font-mono text-danger uppercase tracking-widest">Zero_Unit_Exception: No_Visual_Directives_Resolved</p>
+                      <p className="text-[10px] font-mono text-danger uppercase tracking-widest">No video prompt available</p>
                     </div>
                   ) : (
                     <div className="space-y-8">
                       <div className="flex items-center justify-between px-2">
                         <div className="flex items-center gap-4">
-                          <span className="text-[10px] font-mono text-accent uppercase tracking-widest font-bold">Image_Directives_Manifest</span>
+                          <span className="text-[10px] font-mono text-accent uppercase tracking-widest font-bold">Image Prompts</span>
                           <span className="text-[11px] font-mono text-muted uppercase tracking-widest opacity-40">
                              {imagePromptEditMode
-                              ? `Edit_Mode: ${imagePromptDrafts.length}_Units`
-                              : `Resolved: ${imagePromptRows.length}_Units`}
+                              ? `Editing: ${imagePromptDrafts.length} scenes`
+                              : `${imagePromptRows.length} scenes`}
                           </span>
                         </div>
                         <div className="flex items-center gap-3">
@@ -4851,14 +4970,14 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                                disabled={imagePromptSaving}
                                className="btn btn-primary !min-h-[32px] px-6 text-[9px] uppercase font-bold tracking-widest"
                              >
-                               {imagePromptSaving ? "Committing..." : "Commit_Changes"}
+                               {imagePromptSaving ? "Saving..." : "Save Changes"}
                              </button>
                            )}
                            <button
                              onClick={imagePromptEditMode ? cancelImagePromptEditMode : openImagePromptEditMode}
                              className="btn btn-secondary !min-h-[32px] px-6 text-[9px] uppercase font-bold tracking-widest"
                            >
-                             {imagePromptEditMode ? "Abort_Edit" : "Enter_Directive_Editor"}
+                             {imagePromptEditMode ? "Cancel Edit" : "Edit Prompts"}
                            </button>
                         </div>
                       </div>
@@ -4866,7 +4985,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                       {imagePromptSaveError && (
                         <div className="mx-2 p-4 rounded-card border border-danger/20 bg-danger/5 text-[10px] font-mono text-danger uppercase tracking-widest flex items-center gap-3">
                           <div className="w-1.5 h-1.5 rounded-full bg-danger animate-pulse" />
-                          Critical_Save_Failure: {imagePromptSaveError}
+                          Save failed: {imagePromptSaveError}
                         </div>
                       )}
 
@@ -4889,19 +5008,19 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                               className="rounded-card border border-line bg-panel overflow-hidden group hover:border-accent/30 transition-all duration-300"
                             >
                               <div className="px-6 py-4 bg-panel border-b border-line/10 flex items-center justify-between">
-                                <span className="text-[11px] font-mono text-accent font-bold tracking-tighter">SCN_{String(row.sceneNumber).padStart(2, "0")}</span>
-                                <span className="text-[8px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Visual_Asset_Directives</span>
+                                <span className="text-[11px] font-mono text-accent font-bold tracking-tighter">Scene {String(row.sceneNumber).padStart(2, "0")}</span>
+                                <span className="text-[8px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Image Prompts</span>
                               </div>
                               <div className="p-6 space-y-6">
                                 <div className="space-y-3">
-                                  <span className="text-[8px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Context_VO</span>
+                                  <span className="text-[8px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Voiceover</span>
                                   <div className="bg-panel border border-line/10 rounded-card p-4 text-[12px] text-white/60 leading-relaxed italic">
-                                    &quot;{row.vo || "No_Audio_Data"}&quot;
+                                    &quot;{row.vo || "No voiceover available"}&quot;
                                   </div>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                   <div className="space-y-3">
-                                    <span className="text-[8px] font-mono text-accent-2/60 uppercase tracking-[0.2em]">Start_Frame_Directive</span>
+                                    <span className="text-[8px] font-mono text-accent-2/60 uppercase tracking-[0.2em]">First Frame Prompt</span>
                                     {imagePromptEditMode ? (
                                       <textarea
                                         value={firstFramePrompt}
@@ -4915,12 +5034,12 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                                       />
                                     ) : (
                                       <div className="w-full bg-transparent border border-line/20 rounded-card p-4 text-[11px] font-mono text-accent-2/70 leading-relaxed min-h-[120px]">
-                                        {firstFramePrompt || "Null_Directive"}
+                                        {firstFramePrompt || "No prompt"}
                                       </div>
                                     )}
                                   </div>
                                   <div className="space-y-3">
-                                    <span className="text-[8px] font-mono text-accent/60 uppercase tracking-[0.2em]">End_Frame_Directive</span>
+                                    <span className="text-[8px] font-mono text-accent/60 uppercase tracking-[0.2em]">Last Frame Prompt</span>
                                     {imagePromptEditMode ? (
                                       <textarea
                                         value={lastFramePrompt}
@@ -4934,7 +5053,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                                       />
                                     ) : (
                                       <div className="w-full bg-transparent border border-line/20 rounded-card p-4 text-[11px] font-mono text-accent/70 leading-relaxed min-h-[120px]">
-                                        {lastFramePrompt || "Null_Directive"}
+                                        {lastFramePrompt || "No prompt"}
                                       </div>
                                     )}
                                   </div>
@@ -4950,57 +5069,29 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
               )}
 
               {step.key === "video_prompts" && step.status === "completed" && isOutputExpanded && (
-                <div className="mt-8 space-y-8 animate-in fade-in slide-in-from-top-4 duration-500">
+                <div className="mt-6 space-y-6 px-6 pb-6 animate-in fade-in slide-in-from-top-4 duration-500">
                   {!storyboardId ? (
                     <div className="rounded-card border border-danger/30 bg-danger/5 p-12 text-center">
-                      <p className="text-[10px] font-mono text-danger uppercase tracking-widest leading-relaxed">Null_Output_Error: Storyboard_Context_Missing</p>
+                      <p className="text-[10px] font-mono text-danger uppercase tracking-widest leading-relaxed">Storyboard data is missing</p>
                     </div>
                   ) : storyboardPanelLoading && storyboardMatchesCurrentFetch ? (
                     <div className="p-16 text-center animate-pulse">
-                      <p className="text-[10px] font-mono text-muted uppercase tracking-widest">Synchronizing_Kinetic_Synthesis...</p>
+                      <p className="text-[10px] font-mono text-muted uppercase tracking-widest">Loading video prompts...</p>
                     </div>
                   ) : storyboardPanelError && storyboardMatchesCurrentFetch ? (
                     <div className="p-12 text-center text-danger text-[10px] font-mono uppercase tracking-widest border border-danger/20 rounded-card bg-danger/5">
-                      Protocol_Error: {storyboardPanelError}
+                      Error: {storyboardPanelError}
                     </div>
                   ) : videoPromptRows.length === 0 ? (
                     <div className="rounded-card border border-danger/30 bg-danger/5 p-12 text-center">
-                      <p className="text-[10px] font-mono text-danger uppercase tracking-widest">Zero_Unit_Exception: No_Kinetic_Directives_Resolved</p>
+                      <p className="text-[10px] font-mono text-danger uppercase tracking-widest">No video prompts available</p>
                     </div>
                   ) : (
                     <div className="space-y-8">
-                      <div className="flex items-center justify-between px-2">
-                        <div className="flex items-center gap-4">
-                          <span className="text-[10px] font-mono text-accent uppercase tracking-widest font-bold">Kinetic_Directives_Manifest</span>
-                          <span className="text-[11px] font-mono text-muted uppercase tracking-widest opacity-40">
-                             {videoPromptEditMode
-                              ? `Edit_Mode: ${videoPromptDrafts.length}_Units`
-                              : `Resolved: ${videoPromptRows.length}_Units`}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                           {videoPromptEditMode && (
-                             <button
-                               onClick={() => void handleSaveVideoPromptEdits()}
-                               disabled={videoPromptSaving}
-                               className="btn btn-primary !min-h-[32px] px-6 text-[9px] uppercase font-bold tracking-widest"
-                             >
-                               {videoPromptSaving ? "Committing..." : "Commit_Changes"}
-                             </button>
-                           )}
-                           <button
-                             onClick={videoPromptEditMode ? cancelVideoPromptEditMode : openVideoPromptEditMode}
-                             className="btn btn-secondary !min-h-[32px] px-6 text-[9px] uppercase font-bold tracking-widest"
-                           >
-                             {videoPromptEditMode ? "Abort_Edit" : "Enter_Kinetic_Editor"}
-                           </button>
-                        </div>
-                      </div>
-
                       {videoPromptSaveError && (
                         <div className="mx-2 p-4 rounded-card border border-danger/20 bg-danger/5 text-[10px] font-mono text-danger uppercase tracking-widest flex items-center gap-3">
                           <div className="w-1.5 h-1.5 rounded-full bg-danger animate-pulse" />
-                          Critical_Save_Failure: {videoPromptSaveError}
+                          Save failed: {videoPromptSaveError}
                         </div>
                       )}
 
@@ -5017,38 +5108,54 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                             >
                               <div className="px-6 py-4 bg-panel border-b border-line/10 flex items-center justify-between">
                                 <div className="flex items-center gap-6">
-                                  <span className="text-[11px] font-mono text-accent font-bold tracking-tighter">SCN_{String(row.panelIndex + 1).padStart(2, "0")}</span>
+                                  <span className="text-[11px] font-mono text-accent font-bold tracking-tighter">
+                                    Scene {String(row.panelIndex + 1).padStart(2, "0")}
+                                  </span>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[9px] font-mono text-muted uppercase tracking-widest opacity-40">Timing:</span>
+                                    <span className="text-[10px] font-mono text-white font-bold">
+                                      {formatStoryboardPanelTiming({
+                                        startTime: row.startTime,
+                                        endTime: row.endTime,
+                                      } as StoryboardPanel)}
+                                    </span>
+                                  </div>
                                   <div className="status-chip subtle !px-3 !py-1 uppercase tracking-widest text-[8px] font-bold">
-                                    {row.panelType === "B_ROLL_ONLY" ? "Cutaway_Asset" : "Primary_Capture"}
+                                    {row.panelType === "B_ROLL_ONLY" ? "Cutaway" : "Primary"}
                                   </div>
                                 </div>
-                                <span className="text-[8px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Kinetic_Synthesis_Directive</span>
                               </div>
-                              <div className="p-6 space-y-4">
+                              <div className="p-8 space-y-8 bg-panel">
                                 {videoPromptEditMode ? (
-                                  <div className="space-y-4">
+                                  <div className="space-y-4 pt-1">
+                                    <div className="flex items-center justify-between border-b border-line/5 pb-2">
+                                      <span className="text-[9px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Prompt Editor</span>
+                                      <span className="text-[8px] font-mono text-accent/60 uppercase tracking-widest font-bold">Manual Edit Active</span>
+                                    </div>
                                     <textarea
                                       value={promptValue}
                                       onChange={(event) =>
                                         updateVideoPromptDraft(row.panelIndex, event.target.value)
                                       }
                                       disabled={videoPromptSaving}
-                                      className="w-full bg-panel border border-line/40 rounded-card p-6 text-[12px] font-mono text-white/70 focus:border-accent/40 focus:ring-1 focus:ring-accent/20 transition-all leading-relaxed min-h-[140px]"
+                                      className="w-full bg-panel border border-line/40 rounded-card p-6 text-[12px] font-mono text-white/70 focus:border-accent/40 focus:ring-1 focus:ring-accent/20 transition-all leading-relaxed min-h-[240px]"
                                     />
-                                    <div className="flex justify-end">
+                                    <div className="flex justify-start pt-2">
                                       <button
                                         type="button"
                                         onClick={() => void handleRegenerateVideoPrompt(row.panelIndex)}
                                         disabled={videoPromptRegeneratingIndex === row.panelIndex || videoPromptSaving}
-                                        className="btn btn-secondary !min-h-[28px] px-4 text-[8px] font-bold uppercase tracking-widest text-accent border-accent/20 bg-accent/5 hover:bg-accent/10 transition-colors"
+                                        className="btn btn-secondary !min-h-[32px] px-6 text-[9px] uppercase font-bold tracking-widest"
                                       >
-                                        {videoPromptRegeneratingIndex === row.panelIndex ? "Syncing..." : "Re-generate_Inference"}
+                                        {videoPromptRegeneratingIndex === row.panelIndex ? "Generating..." : "Regenerate Prompt"}
                                       </button>
                                     </div>
                                   </div>
                                 ) : (
-                                  <div className="w-full bg-transparent border border-line/20 rounded-card p-6 text-[12px] font-mono text-white/70 leading-relaxed min-h-[100px] whitespace-pre-wrap">
-                                    {promptValue || "Null_Kinetic_Directive"}
+                                  <div className="space-y-4">
+                                    <div className="w-full bg-transparent border border-line/20 rounded-card p-5 text-[13px] font-mono text-accent-2/70 leading-relaxed min-h-[100px] whitespace-pre-wrap">
+                                      {promptValue || "No prompt"}
+                                    </div>
                                   </div>
                                 )}
                               </div>
@@ -5064,7 +5171,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
               {step.status === "running" && (
                 <div className="mt-6 flex items-center gap-3 px-4 py-3 rounded-card border border-accent/20 bg-accent/5 animate-pulse">
                   <Spinner />
-                  <span className="text-[10px] font-mono text-accent uppercase tracking-widest font-bold">Inference_Engine_Active...</span>
+                  <span className="text-[10px] font-mono text-accent uppercase tracking-widest font-bold">Generation in progress...</span>
                 </div>
               )}
 
@@ -5072,11 +5179,13 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                 <div className="mt-6 rounded-card border border-danger/30 bg-danger/5 p-4 flex items-start gap-4">
                   <div className="w-2 h-2 rounded-full bg-danger mt-1 animate-pulse" />
                   <div className="flex-1">
-                    <p className="text-[10px] font-mono text-danger uppercase tracking-widest font-bold mb-1">Critical_Process_Failure</p>
+                    <p className="text-[10px] font-mono text-danger uppercase tracking-widest font-bold mb-1">Job failed</p>
                     <p className="text-[11px] font-mono text-danger/80 leading-relaxed">{getErrorText(step.lastJob?.error)}</p>
                   </div>
                 </div>
               )}
+                  </>
+                )}
             </div>
           );
         })}
@@ -5088,7 +5197,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
         <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 bg-overlay backdrop-blur-sm animate-in fade-in duration-300" onClick={() => { if (!scriptModalSubmitting) { setShowScriptModal(false); resetScriptModal(); } }}>
           <div className="w-full max-w-2xl bg-bg border border-line rounded-card overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300 max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="px-6 py-4 bg-panel border-b border-line/10 flex items-center justify-between">
-              <span className="text-[11px] font-mono text-accent font-bold uppercase tracking-widest">Script_Inference_Orchestrator</span>
+              <span className="text-[11px] font-mono text-accent font-bold uppercase tracking-widest">Create Script</span>
               <button
                 onClick={() => { if (!scriptModalSubmitting) { setShowScriptModal(false); resetScriptModal(); } }}
                 className="text-muted hover:text-white transition-colors text-xl font-mono"
@@ -5101,31 +5210,31 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
               {scriptModalMode === "choose" ? (
                 <div className="space-y-6">
                   <div className="space-y-2">
-                    <span className="text-[10px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Choose_Protocol</span>
+                    <span className="text-[10px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Choose Method</span>
                     <p className="text-[12px] text-white/50 leading-relaxed">Select the synthesis architecture for this script iteration.</p>
                   </div>
                   <div className="grid grid-cols-1 gap-4">
                     <button onClick={() => void handleChooseGenerateWithAi("swipe_template")} disabled={scriptModalSubmitting} className="btn btn-secondary !justify-start px-6 py-4 h-auto group bg-panel border-line/10 hover:border-accent/30 transition-all">
                       <div className="text-left space-y-1">
-                        <div className="text-[11px] font-mono text-accent uppercase tracking-widest group-hover:text-accent transition-colors">Select_Ad_Template_From_Swipe</div>
+                        <div className="text-[11px] font-mono text-accent uppercase tracking-widest group-hover:text-accent transition-colors">Select Ad Template From Swipe</div>
                         <div className="text-[9px] text-muted uppercase tracking-widest opacity-40">Leverage existing high-performance creative structures.</div>
                       </div>
                     </button>
                     <button onClick={() => void handleChooseGenerateWithAi("research_formula")} disabled={scriptModalSubmitting} className="btn btn-secondary !justify-start px-6 py-4 h-auto group bg-panel border-line/10 hover:border-accent/30 transition-all">
                       <div className="text-left space-y-1">
-                        <div className="text-[11px] font-mono text-accent uppercase tracking-widest group-hover:text-accent transition-colors">Use_Formula_From_Research</div>
+                        <div className="text-[11px] font-mono text-accent uppercase tracking-widest group-hover:text-accent transition-colors">Use Formula From Research</div>
                         <div className="text-[9px] text-muted uppercase tracking-widest opacity-40">Derive script structure from validated market insights.</div>
                       </div>
                     </button>
                     <button onClick={() => void handleChooseGenerateWithAi("upload_template")} disabled={scriptModalSubmitting} className="btn btn-secondary !justify-start px-6 py-4 h-auto group bg-panel border-line/10 hover:border-accent/30 transition-all">
                       <div className="text-left space-y-1">
-                        <div className="text-[11px] font-mono text-accent uppercase tracking-widest group-hover:text-accent transition-colors">Upload_Transcript_As_Template</div>
-                        <div className="text-[9px] text-muted uppercase tracking-widest opacity-40">Inject custom baseline for synthesis.</div>
+                        <div className="text-[11px] font-mono text-accent uppercase tracking-widest group-hover:text-accent transition-colors">Upload Transcript As Template</div>
+                        <div className="text-[9px] text-muted uppercase tracking-widest opacity-40">Use your own transcript as the starting point.</div>
                       </div>
                     </button>
                     <button onClick={() => { setScriptModalMode("upload"); setScriptModalError(null); }} disabled={scriptModalSubmitting} className="btn btn-secondary !justify-start px-6 py-4 h-auto group bg-panel border-line/10 hover:border-accent/30 transition-all">
                       <div className="text-left space-y-1">
-                        <div className="text-[11px] font-mono text-muted uppercase tracking-widest group-hover:text-white transition-colors">Manual_Script_Initialization</div>
+                        <div className="text-[11px] font-mono text-muted uppercase tracking-widest group-hover:text-white transition-colors">Manual Script Setup</div>
                         <div className="text-[9px] text-muted uppercase tracking-widest opacity-40">Direct entry of pre-resolved audio assets.</div>
                       </div>
                     </button>
@@ -5134,7 +5243,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
               ) : scriptModalMode === "ai" ? (
                 <div className="space-y-6">
                    <div className="space-y-2">
-                    <span className="text-[10px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Knowledge_Synchronization</span>
+                    <span className="text-[10px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Research Sync</span>
                     <p className="text-[12px] text-white/50 leading-relaxed uppercase tracking-widest">Attach validated research unit to power inference.</p>
                   </div>
 
@@ -5147,7 +5256,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                       {scriptResearchRuns.length === 0 ? (
                         <div className="space-y-4">
                           <div className="p-4 rounded-card border border-warning/30 bg-warning/5 text-[10px] font-mono text-warning uppercase tracking-widest leading-relaxed">
-                            Zero_Unit_Exception: No validated research data found. Output will be generic.
+                            No validated research data found. Output may be generic.
                           </div>
                           <label className="flex items-center gap-3 cursor-pointer group">
                             <input
@@ -5157,13 +5266,13 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                               disabled={scriptModalSubmitting}
                               className="accent-accent"
                             />
-                            <span className="text-[11px] font-mono text-muted group-hover:text-white transition-colors">Acknowledge_Generic_Inference_Mode</span>
+                            <span className="text-[11px] font-mono text-muted group-hover:text-white transition-colors">Use standard generation</span>
                           </label>
                         </div>
                       ) : (
                         <div className="space-y-6">
                           <div className="space-y-3">
-                            <span className="text-[9px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Resolved_Research_Runs</span>
+                            <span className="text-[9px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Available Research Runs</span>
                             <select
                               value={selectedScriptResearchJobId}
                               onChange={(e) => setSelectedScriptResearchJobId(e.target.value)}
@@ -5176,7 +5285,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                                 });
                                 return (
                                   <option key={run.jobId} value={run.jobId} className="bg-bg">
-                                    {timestamp} {run.runId ? ` • RUN_${run.runId}` : ""}
+                                    {timestamp} {run.runId ? ` • Run ${run.runId}` : ""}
                                   </option>
                                 );
                               })}
@@ -5188,14 +5297,14 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                               <div className="flex flex-col gap-1 px-2">
                                 <span className="text-[9px] font-mono text-muted uppercase tracking-widest opacity-40">Job_Ref: {selectedScriptResearchJobId}</span>
                                 {selectedScriptResearchRun?.runId && (
-                                  <span className="text-[9px] font-mono text-muted uppercase tracking-widest opacity-40">Run_Ref: {selectedScriptResearchRun.runId}</span>
+                                  <span className="text-[9px] font-mono text-muted uppercase tracking-widest opacity-40">Run: {selectedScriptResearchRun.runId}</span>
                                 )}
                               </div>
 
                               {scriptRunSummaryLoading ? (
-                                <p className="text-[10px] font-mono text-muted uppercase tracking-widest px-2 animate-pulse">Syncing_Source_Manifest...</p>
+                                <p className="text-[10px] font-mono text-muted uppercase tracking-widest px-2 animate-pulse">Loading source data...</p>
                               ) : scriptRunSummaryError ? (
-                                <div className="p-4 rounded-card border border-danger/30 bg-danger/5 text-[10px] font-mono text-danger uppercase tracking-widest">Manifest_Sync_Error: {scriptRunSummaryError}</div>
+                                <div className="p-4 rounded-card border border-danger/30 bg-danger/5 text-[10px] font-mono text-danger uppercase tracking-widest">Source data error: {scriptRunSummaryError}</div>
                               ) : scriptRunSummary ? (
                                 <div className="rounded-card border border-line/10 bg-panel overflow-hidden divide-y divide-line/10">
                                   {(() => {
@@ -5205,9 +5314,9 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                                     const product = getSourceRowContent(scriptRunSummary.productCollection, [productLabel, scriptRunSummary.productCollection.completedAt ? formatMetadataDate(scriptRunSummary.productCollection.completedAt) : ""].filter(Boolean).join(" • "));
                                     
                                     return [
-                                      { label: "Customer_Analysis", value: customer.text, missing: customer.missing },
-                                      { label: "Pattern_Analysis", value: pattern.text, missing: pattern.missing },
-                                      { label: "Product_Intelligence", value: product.text, missing: product.missing },
+                                      { label: "Customer Research", value: customer.text, missing: customer.missing },
+                                      { label: "Ad Analysis", value: pattern.text, missing: pattern.missing },
+                                      { label: "Product Research", value: product.text, missing: product.missing },
                                     ].map((row) => (
                                       <div key={row.label} className="px-5 py-3 flex items-start justify-between gap-6 hover:bg-transparent transition-colors">
                                         <span className="text-[10px] font-mono text-muted font-bold uppercase tracking-widest opacity-60 shrink-0">{row.label}</span>
@@ -5225,14 +5334,14 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                       )}
 
                       <div className="space-y-4 pt-6 border-t border-line/10">
-                         <span className="text-[10px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Synthesis_Strategy</span>
+                         <span className="text-[10px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Script Strategy</span>
                          <div className="grid grid-cols-1 gap-3">
                            {[
-                             { id: 'swipe_template', label: 'Swipe_Inference', sub: 'Match proven creative structures.' },
-                             { id: 'research_formula', label: 'Formulaic_Synthesis', sub: 'Direct mapping from insights.' },
-                             { id: 'upload_template', label: 'Manual_Baseline', sub: 'Inject custom transcript logic.' },
+                             { id: 'swipe_template', label: 'Use Swipe Ad', sub: 'Match a proven ad structure.' },
+                             { id: 'research_formula', label: 'Use Research Formula', sub: 'Build from your research insights.' },
+                             { id: 'upload_template', label: 'Upload Transcript', sub: 'Start from your own transcript.' },
                            ].map((strategy) => (
-                             <label key={strategy.id} className={`flex items-start gap-4 p-4 rounded-card border transition-all cursor-pointer ${scriptGenerationStrategy === strategy.id ? 'border-accent bg-accent/5' : 'border-line/10 bg-panel/10 hover:border-line/30'}`}>
+                             <label key={strategy.id} className={`flex items-start gap-4 p-4 rounded-card border transition-all cursor-pointer ${scriptGenerationStrategy === strategy.id ? 'border-accent bg-accent/5' : 'border-line/10 bg-transparent hover:border-line/30'}`}>
                                <input
                                  type="radio"
                                  name="script-strategy"
@@ -5256,8 +5365,8 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
               ) : (
                 <div className="space-y-8">
                   <div className="space-y-2">
-                    <span className="text-[10px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Manual_Entry_Interface</span>
-                    <p className="text-[12px] text-white/50 leading-relaxed uppercase tracking-widest">Bypass AI synthesis and commit audio directives directly.</p>
+                    <span className="text-[10px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Manual Entry</span>
+                    <p className="text-[12px] text-white/50 leading-relaxed uppercase tracking-widest">Skip AI and paste the transcript yourself.</p>
                   </div>
                   <textarea
                     value={scriptUploadText}
@@ -5288,7 +5397,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                 disabled={scriptModalSubmitting}
                 className="btn btn-primary !min-h-[40px] px-10 text-[10px] uppercase font-bold tracking-widest"
               >
-                {scriptModalSubmitting ? "Orchestrating..." : scriptModalMode === "upload" ? "Commit_Script" : "Execute_Inference"}
+                {scriptModalSubmitting ? "Generating..." : scriptModalMode === "upload" ? "Save Script" : "Generate Script"}
               </button>
             </div>
           </div>
@@ -5299,7 +5408,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
         <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 bg-overlay backdrop-blur-sm animate-in fade-in duration-300" onClick={() => { if (!storyboardModalSubmitting) { setShowStoryboardModal(false); setStoryboardModalMode("choose"); setManualStoryboardPanels([]); } }}>
           <div className="w-full max-w-2xl bg-bg border border-line rounded-card overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300 max-h-[95vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="px-6 py-4 bg-panel border-b border-line/10 flex items-center justify-between">
-              <span className="text-[11px] font-mono text-accent font-bold uppercase tracking-widest">Sequence_Manifest_Orchestrator</span>
+              <span className="text-[11px] font-mono text-accent font-bold uppercase tracking-widest">Storyboard Builder</span>
               <button
                 onClick={() => { if (!storyboardModalSubmitting) { setShowStoryboardModal(false); setStoryboardModalMode("choose"); setManualStoryboardPanels([]); } }}
                 className="text-muted hover:text-white transition-colors text-xl font-mono"
@@ -5331,7 +5440,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
               ) : (
                 <div className="space-y-8">
                   <div className="space-y-2">
-                    <span className="text-[10px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Unit_Expansion_Interface</span>
+                    <span className="text-[10px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Manual Storyboard</span>
                     <p className="text-[12px] text-white/50 leading-relaxed uppercase tracking-widest">Synchronize visual metadata with temporal markers.</p>
                   </div>
                   <div className="space-y-6">
@@ -5343,22 +5452,22 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                         </div>
                         <div className="p-6 space-y-5">
                           <div className="space-y-2">
-                             <span className="text-[8px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Context_VO</span>
+                             <span className="text-[8px] font-mono text-muted uppercase tracking-[0.2em] opacity-40">Voiceover</span>
                              <div className="bg-panel p-3 rounded-card text-[11px] font-mono text-muted leading-relaxed line-clamp-2 italic">&quot;{panel.vo}&quot;</div>
                           </div>
                           <div className="grid grid-cols-1 gap-4">
                              <div className="space-y-2">
-                               <span className="text-[8px] font-mono text-accent-2/60 uppercase tracking-[0.2em]">Visual_Directive</span>
+                               <span className="text-[8px] font-mono text-accent-2/60 uppercase tracking-[0.2em]">Visual Direction</span>
                                <textarea
                                  value={panel.visualDescription}
                                  onChange={(e) => updateManualStoryboardPanel(index, "visualDescription", e.target.value)}
                                  className="w-full bg-panel border border-line/20 rounded-card p-3 text-[11px] font-mono text-white/70 min-h-[80px]"
-                                 placeholder="Inference_Directives..."
+                                 placeholder="Describe the shot..."
                                />
                              </div>
                              <div className="grid grid-cols-2 gap-4">
                                <div className="space-y-2">
-                                  <span className="text-[8px] font-mono text-muted uppercase tracking-[0.2em]">Creator_Action</span>
+                                  <span className="text-[8px] font-mono text-muted uppercase tracking-[0.2em]">Creator Action</span>
                                   <input
                                     value={panel.creatorAction}
                                     onChange={(e) => updateManualStoryboardPanel(index, "creatorAction", e.target.value)}
@@ -5366,7 +5475,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                                   />
                                </div>
                                <div className="space-y-2">
-                                  <span className="text-[8px] font-mono text-muted uppercase tracking-[0.2em]">Graphic_Overlay</span>
+                                  <span className="text-[8px] font-mono text-muted uppercase tracking-[0.2em]">Text Overlay</span>
                                   <input
                                     value={panel.textOverlay}
                                     onChange={(e) => updateManualStoryboardPanel(index, "textOverlay", e.target.value)}
@@ -5392,14 +5501,14 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                 }}
                 className="btn btn-secondary !min-h-[40px] px-8 text-[10px] uppercase font-bold tracking-widest"
               >
-                {storyboardModalMode === "choose" ? "Cancel" : "Back_To_Protocol"}
+                {storyboardModalMode === "choose" ? "Cancel" : "Back"}
               </button>
               <button
                 onClick={() => void handleGenerateStoryboardWithMode(storyboardModalMode === "choose" ? "ai" : "manual", manualStoryboardPanels)}
                 disabled={storyboardModalSubmitting}
                 className={`btn !min-h-[40px] px-10 text-[10px] uppercase font-bold tracking-widest ${storyboardModalMode === "choose" ? 'btn-primary' : 'btn-primary'}`}
               >
-                {storyboardModalSubmitting ? "Constructing..." : storyboardModalMode === "choose" ? "Automated_Build" : "Commit_Manifest"}
+                {storyboardModalSubmitting ? "Generating..." : storyboardModalMode === "choose" ? "Generate Storyboard" : "Save Storyboard"}
               </button>
             </div>
           </div>
@@ -5410,24 +5519,24 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
         <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 bg-overlay backdrop-blur-sm animate-in fade-in duration-300">
           <div className="w-full max-w-md bg-bg border border-danger/30 rounded-card overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300">
             <div className="px-6 py-4 bg-danger/5 border-b border-danger/10">
-              <span className="text-[11px] font-mono text-danger font-bold uppercase tracking-widest">System_Alert: Asset_Reference_Missing</span>
+              <span className="text-[11px] font-mono text-danger font-bold uppercase tracking-widest">Warning: Product image missing</span>
             </div>
             <div className="p-8 space-y-6">
               <p className="text-[13px] text-white/70 leading-relaxed font-mono uppercase tracking-tight">
-                No primary product reference image detected in cloud storage. Logic suggests inferior synthesis quality without visual anchor.
+                No product reference image found. Your generated ads may look worse without one.
               </p>
               <div className="flex flex-col gap-3 pt-4">
                 <button
                   onClick={() => { setShowMissingProductImageWarning(false); setPendingVideoStep(null); void router.push(`/projects/${projectId}/products`); }}
                   className="btn btn-primary !min-h-[44px] text-[10px] uppercase font-bold tracking-widest"
                 >
-                  Return_To_Asset_Configuration
+                  Go To Product Assets
                 </button>
                 <button
                   onClick={() => { const step = pendingVideoStep; setShowMissingProductImageWarning(false); setPendingVideoStep(null); if (step) { void runStep(step); } }}
                   className="btn btn-secondary border-danger/20 hover:border-danger/40 !min-h-[44px] text-[10px] uppercase font-bold tracking-widest"
                 >
-                  Proceed_Under_Degraded_Conditions
+                  Continue Anyway
                 </button>
               </div>
             </div>
@@ -5435,18 +5544,68 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
         </div>
       )}
 
+      <div className="px-8 py-10 max-w-[1400px] mx-auto space-y-8">
+        <section className="space-y-4">
+          <div>
+            <h2 className="app-section-title text-white">Research Hub</h2>
+          </div>
+          <div className="app-surface space-y-3">
+            <p className="text-sm text-muted italic">
+              Return to the research workspace to inspect customer insight, ad analysis, and supporting inputs.
+            </p>
+            <div className="flex items-center justify-between gap-4">
+              <p className="app-status-line">
+                Open Research Hub to review the inputs for this ad.
+              </p>
+              <Link
+                href={
+                  selectedProductId
+                    ? `/projects/${projectId}/research-hub?productId=${selectedProductId}`
+                    : `/projects/${projectId}/research-hub`
+                }
+                className="app-button app-button--primary text-sm font-medium"
+              >
+                Open Research Hub
+              </Link>
+            </div>
+          </div>
+        </section>
+
+        <section className="space-y-4">
+          <div>
+            <h2 className="app-section-title text-white">Usage and Cost</h2>
+          </div>
+          <div className="app-surface space-y-3">
+            <p className="text-sm text-muted italic">
+              Review spend, usage events, and settled provider costs for this project.
+            </p>
+            <div className="flex items-center justify-between gap-4">
+              <p className="app-status-line">
+                Check spend and usage while building ads.
+              </p>
+              <Link
+                href={`/projects/${projectId}/usage`}
+                className="app-button app-button--primary text-sm font-medium"
+              >
+                Open Usage & Costs
+              </Link>
+            </div>
+          </div>
+        </section>
+      </div>
+
       <div className="mt-16 pt-12 border-t border-line/10 space-y-8 pb-12">
         <div className="flex items-center justify-between gap-4 px-2">
            <div className="flex items-center gap-4">
-             <span className="text-[11px] font-mono text-accent font-bold uppercase tracking-widest shrink-0">Historical_Protocol_History</span>
+             <span className="text-[11px] font-mono text-accent font-bold uppercase tracking-widest shrink-0">Recent Jobs</span>
              <div className="h-[1px] w-32 bg-line/20 hidden md:block" />
-             <span className="text-[9px] font-mono text-muted uppercase tracking-widest opacity-40">System_Archive_Log</span>
+             <span className="text-[9px] font-mono text-muted uppercase tracking-widest opacity-40">Job History</span>
            </div>
            <Link
              href={`/projects/${projectId}/research-hub`}
              className="btn btn-secondary !min-h-[32px] px-6 text-[9px] uppercase font-bold tracking-widest text-accent border-accent/20 bg-accent/5 hover:bg-accent/10 transition-colors"
            >
-             Return_To_Central_Command
+             Back To Research Hub
            </Link>
         </div>
 
@@ -5469,7 +5628,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                     {job.status}
                   </div>
                 </div>
-                <div className="text-[9px] font-mono text-muted/40 uppercase tracking-widest truncate">Ref_{job.id}</div>
+                <div className="text-[9px] font-mono text-muted/40 uppercase tracking-widest truncate">Job ID: {job.id}</div>
               </div>
               
               {isCancelableJob(job) && (
@@ -5478,13 +5637,44 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                   disabled={Boolean(cancellingJobIds[job.id])}
                   className="btn btn-danger w-full !min-h-[28px] text-[8px] uppercase font-bold tracking-widest"
                 >
-                  {cancellingJobIds[job.id] ? "Wiping..." : "Abort_Session"}
+                  {cancellingJobIds[job.id] ? "Canceling..." : "Cancel Job"}
                 </button>
               )}
             </div>
           ))}
         </div>
       </div>
+
+      {characterPreview &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[2147483647] flex items-center justify-center p-4"
+            style={{ backgroundColor: "rgba(0, 0, 0, 0.8)" }}
+            onClick={() => setCharacterPreview(null)}
+          >
+            <div
+              className="w-full max-w-[360px] rounded-card border border-line bg-bg p-3"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <p className="m-0 text-sm font-medium text-white">{characterPreview.name}</p>
+                <button
+                  type="button"
+                  onClick={() => setCharacterPreview(null)}
+                  className="btn btn-secondary !min-h-[28px] px-3 text-[10px] font-bold uppercase tracking-widest"
+                >
+                  Close
+                </button>
+              </div>
+              <img
+                src={characterPreview.url}
+                alt={`${characterPreview.name} preview`}
+                className="block max-h-[80vh] max-w-full w-auto mx-auto rounded-card border border-line object-contain"
+              />
+            </div>
+          </div>,
+          document.body,
+        )}
 
       <Toaster position="bottom-right" />
     </div>

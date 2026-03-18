@@ -526,20 +526,13 @@ export function VideoEditorStep({ storyboardId, projectId, scenes, onComplete }:
   }, [defaultClips, storageKey]);
 
   return (
-    <div style={{
-      display: "grid",
-      gridTemplateColumns: "196px 1fr 236px",
-      gap: 16,
-      height: "100%",
-      minHeight: 600,
-    }}>
+    <div
+      className="grid h-full min-h-[600px] gap-4 lg:grid-cols-[196px_minmax(0,1fr)_236px]"
+    >
 
       {/* ── LEFT RAIL ── */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 4, overflowY: "auto" }}>
-        <div style={{
-          fontSize: 10, fontWeight: 700, letterSpacing: "0.1em",
-          color: "rgb(75, 85, 99)", textTransform: "uppercase", marginBottom: 8, paddingLeft: 2,
-        }}>
+      <div className="flex flex-col gap-2 overflow-y-auto rounded-card border border-line bg-panel p-3">
+        <div className="pl-1 text-[10px] font-bold uppercase tracking-widest text-muted/70">
           Select a clip to edit
         </div>
 
@@ -551,63 +544,54 @@ export function VideoEditorStep({ storyboardId, projectId, scenes, onComplete }:
             <button
               key={clip.sceneId}
               onClick={() => setActiveSceneId(clip.sceneId)}
-              style={{
-                display: "block",
-                width: "100%",
-                textAlign: "left",
-                padding: "10px 12px",
-                borderRadius: 7,
-                border: `2px solid ${isActive ? "rgb(59, 130, 246)" : "rgb(31, 41, 55)"}`,
-                background: isActive ? "rgb(14, 30, 54)" : "rgb(13, 17, 23)",
-                cursor: "pointer",
-                transition: "border-color 0.12s, background 0.12s",
-                position: "relative",
-              }}
+              className={`relative block w-full rounded-card border px-3 py-3 text-left transition-all ${
+                isActive
+                  ? "border-accent-2/50 bg-bg-elevated"
+                  : "border-line bg-transparent hover:border-line/60"
+              }`}
             >
               {/* Active indicator bar */}
               {isActive && (
-                <div style={{
-                  position: "absolute", left: 0, top: "15%", bottom: "15%",
-                  width: 3, background: "rgb(59, 130, 246)", borderRadius: "0 2px 2px 0",
-                }} />
+                <div
+                  className="absolute bottom-[15%] left-0 top-[15%] w-[3px] rounded-r-sm bg-accent-2"
+                />
               )}
 
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                <div style={{
-                  width: 20, height: 20, borderRadius: 4, flexShrink: 0,
-                  background: isActive ? "rgb(29, 78, 216)" : "rgb(26, 32, 48)",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 10, fontWeight: 700,
-                  color: isActive ? "rgb(255, 255, 255)" : "rgb(107, 114, 128)",
-                }}>
+              <div className="mb-1 flex items-center gap-2">
+                <div
+                  className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-[4px] text-[10px] font-bold ${
+                    isActive ? "bg-accent-2 text-bg" : "bg-bg-elevated text-muted"
+                  }`}
+                >
                   {index + 1}
                 </div>
-                <span style={{
-                  fontSize: 12, fontWeight: 600,
-                  color: isActive ? "rgb(229, 231, 235)" : "rgb(156, 163, 175)",
-                  whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-                  flex: 1, minWidth: 0,
-                }}>
+                <span
+                  className={`min-w-0 flex-1 truncate text-[12px] font-semibold ${
+                    isActive ? "text-white" : "text-muted"
+                  }`}
+                >
                   {clip.beatLabel || `Scene ${clip.sceneNumber}`}
                 </span>
               </div>
 
-              <div style={{
-                fontSize: 10, color: "rgb(75, 85, 99)",
-                whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-                paddingLeft: 28,
-              }}>
+              <div className="truncate pl-7 text-[10px] text-muted/70">
                 {clip.vo}
               </div>
 
-              <div style={{ display: "flex", justifyContent: "space-between", marginTop: 5, paddingLeft: 28 }}>
-                <span style={{ fontSize: 10, color: isTrimmed ? "rgb(245, 158, 11)" : "rgb(55, 65, 81)", fontVariantNumeric: "tabular-nums" }}>
+              <div className="mt-1 flex justify-between pl-7">
+                <span
+                  className={`text-[10px] tabular-nums ${
+                    isTrimmed ? "text-accent" : "text-muted/50"
+                  }`}
+                >
                   {isTrimmed
                     ? `${(clip.trimEnd - clip.trimStart).toFixed(1)}s / ${clip.durationSec}s`
                     : `${clip.durationSec}s`}
                 </span>
                 {isTrimmed && (
-                  <span style={{ fontSize: 8, color: "rgb(217, 119, 6)", fontWeight: 700 }}>TRIMMED</span>
+                  <span className="text-[8px] font-bold uppercase tracking-widest text-accent">
+                    Trimmed
+                  </span>
                 )}
               </div>
             </button>
@@ -616,21 +600,13 @@ export function VideoEditorStep({ storyboardId, projectId, scenes, onComplete }:
       </div>
 
       {/* ── CENTER: PLAYER + SCRUBBER ── */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
+      <div className="flex min-w-0 flex-col gap-4">
         {activeClip ? (
           <>
-            <div style={{ display: "flex", justifyContent: "center" }}>
-              <div style={{
-                position: "relative",
-                aspectRatio: "9/16",
-                width: "calc(440px * 9 / 16)",
-                maxHeight: 440,
-                borderRadius: 12,
-                overflow: "hidden",
-                background: "rgb(0, 0, 0)",
-                border: "1px solid rgb(31, 41, 55)",
-                boxShadow: "0 4px 24px rgba(0,0,0,0.5)",
-              }}>
+            <div className="flex justify-center rounded-card border border-line bg-panel p-5">
+              <div
+                className="relative aspect-[9/16] w-[247px] max-h-[440px] overflow-hidden rounded-card border border-line bg-bg shadow-panel"
+              >
                 <video
                   ref={videoRef}
                   key={activeClip.sceneId}
@@ -640,29 +616,21 @@ export function VideoEditorStep({ storyboardId, projectId, scenes, onComplete }:
                   style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
                   onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
                 />
-                <div style={{
-                  position: "absolute", top: 10, left: 10,
-                  padding: "3px 8px", background: "rgba(0,0,0,0.65)",
-                  borderRadius: 5, fontSize: 11, color: "rgb(229, 231, 235)", fontWeight: 600,
-                  backdropFilter: "blur(4px)", pointerEvents: "none",
-                }}>
+                <div
+                  className="pointer-events-none absolute left-3 top-3 rounded-pill border border-line bg-panel px-3 py-1 text-[10px] font-mono font-semibold uppercase tracking-widest text-white backdrop-blur-panel"
+                >
                   {activeClip.beatLabel || `Scene ${activeClip.sceneNumber}`}
                 </div>
               </div>
             </div>
 
             {/* Scrubber */}
-            <div style={{
-              padding: "14px 16px 10px",
-              background: "rgb(10, 13, 20)",
-              borderRadius: 10,
-              border: "1px solid rgb(26, 32, 48)",
-            }}>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
-                <span style={{ fontSize: 10, fontWeight: 700, color: "rgb(75, 85, 99)", letterSpacing: "0.1em", textTransform: "uppercase" }}>
+            <div className="rounded-card border border-line bg-panel p-4">
+              <div className="mb-3 flex justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-muted/70">
                   ✂ Trim
                 </span>
-                <span style={{ fontSize: 10, color: "rgb(55, 65, 81)", fontVariantNumeric: "tabular-nums" }}>
+                <span className="text-[10px] tabular-nums text-muted/50">
                   playhead {currentTime.toFixed(2)}s
                 </span>
               </div>
@@ -675,100 +643,87 @@ export function VideoEditorStep({ storyboardId, projectId, scenes, onComplete }:
             </div>
 
             {activeClip.vo && (
-              <div style={{
-                padding: "9px 13px", background: "rgb(13, 17, 23)",
-                border: "1px solid rgb(26, 32, 48)", borderRadius: 7,
-                fontSize: 11, color: "rgb(75, 85, 99)", lineHeight: 1.5, fontStyle: "italic",
-              }}>
+              <div className="rounded-card border border-line bg-panel px-4 py-3 text-[11px] italic leading-relaxed text-muted">
                 &quot;{activeClip.vo}&quot;
               </div>
             )}
           </>
         ) : (
-          <div style={{
-            flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
-            border: "1px dashed rgb(26, 32, 48)", borderRadius: 12, color: "rgb(55, 65, 81)", fontSize: 13,
-          }}>
+          <div className="flex flex-1 items-center justify-center rounded-card border border-dashed border-line bg-panel p-10 text-[13px] text-muted/60">
             Select a clip from the left to edit
           </div>
         )}
       </div>
 
       {/* ── RIGHT PANEL ── */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div className="flex flex-col gap-4">
 
         {activeClip && (
-          <div style={{ padding: "12px 14px", background: "rgb(13, 17, 23)", borderRadius: 8, border: "1px solid rgb(26, 32, 48)" }}>
-            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", color: "rgb(55, 65, 81)", textTransform: "uppercase", marginBottom: 8 }}>
+          <div className="rounded-card border border-line bg-panel p-4">
+            <div className="mb-2 text-[10px] font-bold uppercase tracking-widest text-muted/70">
               Active Clip
             </div>
-            <div style={{ fontSize: 12, color: "rgb(229, 231, 235)", fontWeight: 600, marginBottom: 10 }}>
+            <div className="mb-3 text-[12px] font-semibold text-white">
               {activeClip.beatLabel || `Scene ${activeClip.sceneNumber}`}
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-              <div style={{ background: "rgb(17, 24, 39)", borderRadius: 5, padding: "6px 8px" }}>
-                <div style={{ fontSize: 9, color: "rgb(55, 65, 81)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 2 }}>Full</div>
-                <div style={{ fontSize: 13, color: "rgb(156, 163, 175)", fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="rounded-card bg-bg-elevated px-3 py-2">
+                <div className="mb-1 text-[9px] uppercase tracking-[0.06em] text-muted/60">Full</div>
+                <div className="text-[13px] font-semibold tabular-nums text-muted">
                   {activeClip.durationSec}s
                 </div>
               </div>
-              <div style={{ background: "rgb(17, 24, 39)", borderRadius: 5, padding: "6px 8px" }}>
-                <div style={{ fontSize: 9, color: "rgb(55, 65, 81)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 2 }}>Kept</div>
-                <div style={{ fontSize: 13, color: "rgb(245, 158, 11)", fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>
+              <div className="rounded-card bg-bg-elevated px-3 py-2">
+                <div className="mb-1 text-[9px] uppercase tracking-[0.06em] text-muted/60">Kept</div>
+                <div className="text-[13px] font-semibold tabular-nums text-accent">
                   {(activeClip.trimEnd - activeClip.trimStart).toFixed(1)}s
                 </div>
               </div>
             </div>
             <button
               onClick={() => toggleIncluded(activeClip.sceneId)}
-              style={{
-                marginTop: 10, width: "100%", padding: "7px 0", borderRadius: 6,
-                border: `1px solid ${activeClip.included ? "rgb(22, 101, 52)" : "rgb(55, 65, 81)"}`,
-                background: activeClip.included ? "rgb(5, 46, 22)" : "transparent",
-                color: activeClip.included ? "rgb(74, 222, 128)" : "rgb(107, 114, 128)",
-                fontSize: 12, fontWeight: 600, cursor: "pointer",
-              }}
+              className={`mt-3 w-full rounded-pill border px-4 py-2 text-[12px] font-semibold transition-colors ${
+                activeClip.included
+                  ? "border-success/30 bg-success/10 text-success"
+                  : "border-line bg-transparent text-muted"
+              }`}
             >
               {activeClip.included ? "✓ Included in merge" : "✕ Excluded — click to add"}
             </button>
           </div>
         )}
 
-        <div style={{ padding: "12px 14px", background: "rgb(13, 17, 23)", borderRadius: 8, border: "1px solid rgb(26, 32, 48)", fontSize: 12, color: "rgb(107, 114, 128)" }}>
-          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", color: "rgb(55, 65, 81)", textTransform: "uppercase", marginBottom: 10 }}>
+        <div className="rounded-card border border-line bg-panel p-4 text-[12px] text-muted">
+          <div className="mb-3 text-[10px] font-bold uppercase tracking-widest text-muted/70">
             Export Summary
           </div>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+          <div className="mb-2 flex justify-between">
             <span>Clips included</span>
-            <span style={{ color: "rgb(229, 231, 235)", fontWeight: 600 }}>{includedClips.length} / {clips.length}</span>
+            <span className="font-semibold text-white">{includedClips.length} / {clips.length}</span>
           </div>
-          <div style={{ display: "flex", justifyContent: "space-between" }}>
+          <div className="flex justify-between">
             <span>Est. duration</span>
-            <span style={{ color: "rgb(229, 231, 235)", fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
+            <span className="font-semibold tabular-nums text-white">
               {totalTrimmedDuration.toFixed(1)}s
             </span>
           </div>
         </div>
 
         {error && (
-          <div style={{ padding: "10px 12px", background: "rgb(26, 10, 10)", border: "1px solid rgb(127, 29, 29)", borderRadius: 8, color: "rgb(248, 113, 113)", fontSize: 12 }}>
+          <div className="rounded-card border border-danger/30 bg-danger/10 px-4 py-3 text-[12px] text-danger">
             {error}
           </div>
         )}
 
         {mergedUrl && (
-          <div style={{ padding: "12px 14px", background: "rgb(5, 46, 22)", border: "1px solid rgb(22, 101, 52)", borderRadius: 8, fontSize: 12, color: "rgb(74, 222, 128)" }}>
-            <div style={{ fontWeight: 600, marginBottom: 8 }}>✓ Merged successfully</div>
+          <div className="rounded-card border border-success/30 bg-success/10 p-4 text-[12px] text-success">
+            <div className="mb-2 font-semibold">✓ Merged successfully</div>
             <a
               href={mergedUrl}
               target="_blank"
               rel="noopener noreferrer"
               download
-              style={{
-                display: "block", padding: "8px 0", background: "rgb(22, 163, 74)",
-                color: "rgb(255, 255, 255)", borderRadius: 6, textDecoration: "none",
-                fontSize: 12, fontWeight: 600, textAlign: "center",
-              }}
+              className="block rounded-pill bg-[linear-gradient(135deg,var(--accent),#f4e9b5)] px-4 py-2 text-center text-[12px] font-semibold text-[#111] no-underline"
             >
               ↓ Export Merged Video
             </a>
@@ -778,14 +733,9 @@ export function VideoEditorStep({ storyboardId, projectId, scenes, onComplete }:
         <button
           onClick={handleMerge}
           disabled={merging || includedClips.length === 0}
-          style={{
-            padding: "13px 0", borderRadius: 8,
-            background: merging ? "rgb(31, 41, 55)" : includedClips.length === 0 ? "rgb(13, 17, 23)" : "rgb(37, 99, 235)",
-            border: `1px solid ${merging || includedClips.length === 0 ? "rgb(31, 41, 55)" : "rgb(59, 130, 246)"}`,
-            color: includedClips.length === 0 ? "rgb(55, 65, 81)" : "rgb(255, 255, 255)",
-            fontSize: 14, fontWeight: 700,
-            cursor: merging || includedClips.length === 0 ? "not-allowed" : "pointer",
-          }}
+          className={`btn !min-h-[44px] w-full text-[14px] font-bold ${
+            merging || includedClips.length === 0 ? "btn-secondary opacity-50" : "btn-primary"
+          }`}
         >
           {merging ? "Merging…" : mergedUrl ? "Re-merge" : "Merge Video"}
         </button>
@@ -793,22 +743,13 @@ export function VideoEditorStep({ storyboardId, projectId, scenes, onComplete }:
         <button
           type="button"
           onClick={handleResetEdits}
-          style={{
-            padding: "10px 0",
-            borderRadius: 8,
-            background: "transparent",
-            border: "1px solid rgb(51, 65, 85)",
-            color: "rgb(148, 163, 184)",
-            fontSize: 12,
-            fontWeight: 600,
-            cursor: "pointer",
-          }}
+          className="btn btn-secondary !min-h-[40px] w-full text-[12px] font-semibold"
         >
           Reset edits
         </button>
 
         {includedClips.length === 0 && (
-          <div style={{ fontSize: 11, color: "rgb(55, 65, 81)", textAlign: "center" }}>
+          <div className="text-center text-[11px] text-muted/60">
             Include at least one clip to merge
           </div>
         )}

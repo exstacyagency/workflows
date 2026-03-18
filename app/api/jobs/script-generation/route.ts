@@ -27,7 +27,7 @@ const ScriptGenerationSchema = ProjectJobSchema.extend({
   forceNew: z.boolean().optional(),
   targetDuration: z.number().int().min(1).max(180).default(30),
   beatCount: z.number().int().min(1).max(10).optional(),
-  clipDurationSeconds: z.union([z.literal(10), z.literal(15)]).default(10),
+  clipDurationSeconds: z.literal(8).default(8),
   beatRatios: z
     .array(
       z.object({

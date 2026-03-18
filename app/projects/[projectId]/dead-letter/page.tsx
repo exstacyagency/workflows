@@ -242,7 +242,7 @@ export default function DeadLetterPage({
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-bg-elevated/50 border-b border-line">
+              <thead className="bg-bg-elevated border-b border-line">
                 <tr>
                   <th className="px-5 py-3 text-left text-[10px] font-mono text-muted uppercase tracking-widest">Type</th>
                   <th className="px-5 py-3 text-left text-[10px] font-mono text-muted uppercase tracking-widest">Attempts</th>
@@ -257,7 +257,7 @@ export default function DeadLetterPage({
                   const rec = getRecommendation(j.lastError ?? j.error);
 
                   return [
-                    <tr key={j.id} className="hover:bg-bg-elevated/40 transition-colors">
+                    <tr key={j.id} className="hover:bg-bg-elevated transition-colors">
                       <td className="px-5 py-4 text-xs font-mono text-accent-2">{j.type}</td>
                       <td className="px-5 py-4 text-xs text-muted">{j.attempts}</td>
                       <td className="px-5 py-4 text-xs text-muted font-mono">{fmtNextRun(j.nextRunAt)}</td>
@@ -303,7 +303,7 @@ export default function DeadLetterPage({
                       </td>
                     </tr>,
                     expandedId === j.id ? (
-                      <tr key={`${j.id}:details`} className="bg-bg-elevated/20 border-t border-line">
+                      <tr key={`${j.id}:details`} className="bg-bg-elevated border-t border-line">
                         <td colSpan={6} className="p-6 space-y-4">
                           <div className="flex items-center gap-3 flex-wrap">
                             <div className="text-[11px] font-mono text-muted uppercase tracking-widest">

@@ -152,7 +152,7 @@ export function ProjectProductsPanel({ projectId, initialProducts }: Props) {
                     setError(null);
                   }
                 }}
-                className="rounded-pill border border-line bg-transparent px-4 py-2 text-xs font-medium text-muted hover:text-white hover:bg-panel/5 transition-all"
+                className="rounded-pill border border-line bg-transparent px-4 py-2 text-xs font-medium text-muted hover:text-white hover:bg-transparent transition-all"
               >
                 Cancel
               </button>

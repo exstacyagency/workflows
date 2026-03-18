@@ -473,7 +473,7 @@ export default function CustomerProfilePage() {
           </div>
         </section>
 
-        <section className="bg-panel/80 border border-line rounded-xl p-4 space-y-4">
+        <section className="bg-panel border border-line rounded-xl p-4 space-y-4">
           <h2 className="text-lg font-semibold">Snapshot history</h2>
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
@@ -485,7 +485,7 @@ export default function CustomerProfilePage() {
                 <p className="text-xs text-muted/60">No avatars captured yet.</p>
               ) : (
                 avatarHistory.map(item => (
-                  <div key={item.id} className="rounded-lg border border-line bg-bg/60 px-3 py-2 space-y-1">
+                  <div key={item.id} className="rounded-lg border border-line bg-panel px-3 py-2 space-y-1">
                     <div className="flex items-center justify-between text-xs text-muted/80">
                       <span>{formatDate(item.createdAt)}</span>
                       <span className={item.archivedAt ? 'text-accent' : 'text-success'}>
@@ -539,7 +539,7 @@ export default function CustomerProfilePage() {
                 <p className="text-xs text-muted/60">No product intelligence captured yet.</p>
               ) : (
                 productHistory.map(item => (
-                  <div key={item.id} className="rounded-lg border border-line bg-bg/60 px-3 py-2 space-y-1">
+                  <div key={item.id} className="rounded-lg border border-line bg-panel px-3 py-2 space-y-1">
                     <div className="flex items-center justify-between text-xs text-muted/80">
                       <span>{formatDate(item.createdAt)}</span>
                       <span className={item.archivedAt ? 'text-accent' : 'text-success'}>

@@ -106,12 +106,11 @@ export default function StudioHomePage() {
       <section className="rounded-xl border border-line bg-panel p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-white">
-            Victora · Studio Command Center
+            Victora Studio
           </h1>
           <WhoAmI />
           <p className="text-sm text-muted mt-1">
-            Monitor your production pipeline, resume active projects, and launch
-            new cinematic workflows.
+            Manage projects, monitor jobs, and keep production moving.
           </p>
         </div>
         <div className="flex flex-col items-start md:items-end gap-2">
@@ -160,7 +159,7 @@ export default function StudioHomePage() {
           </div>
         </div>
         {showCreateForm && (
-          <div className="rounded-lg border border-line bg-bg/70 p-3 space-y-3">
+          <div className="rounded-lg border border-line bg-panel p-3 space-y-3">
             <label
               htmlFor="project-name"
               className="block text-xs font-medium text-white/90"
@@ -206,7 +205,7 @@ export default function StudioHomePage() {
           {projects.map((project) => (
             <div
               key={project.id}
-              className="flex items-center justify-between rounded-lg border border-line bg-bg/70 px-4 py-3"
+              className="flex items-center justify-between rounded-lg border border-line bg-panel px-4 py-3"
             >
               <div className="space-y-1">
                 <div className="text-sm font-medium text-white">

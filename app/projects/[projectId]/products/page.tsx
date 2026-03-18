@@ -262,7 +262,7 @@ export default function ProjectProductsPage() {
       <div className="min-h-screen bg-bg text-white px-8 py-8">
         <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
           <div className="w-8 h-8 border-2 border-accent/20 border-t-accent rounded-full animate-spin" />
-          <p className="text-[10px] font-mono text-muted uppercase tracking-[0.3em] animate-pulse">Syncing_Inventory...</p>
+          <p className="text-[10px] font-mono text-muted uppercase tracking-[0.3em] animate-pulse">Loading products...</p>
         </div>
       </div>
     );
@@ -390,7 +390,7 @@ export default function ProjectProductsPage() {
                           disabled={deletingProductId === product.id}
                           className="ml-auto inline-flex items-center rounded-pill border border-line bg-panel px-5 py-2 text-[0.82rem] text-text transition-all hover:bg-panel-strong disabled:opacity-50"
                         >
-                          {deletingProductId === product.id ? "Wiping..." : "Purge_Asset"}
+                          {deletingProductId === product.id ? "Deleting..." : "Delete Product"}
                         </button>
                       </div>
                     </div>
@@ -408,7 +408,7 @@ export default function ProjectProductsPage() {
                       ) : (
                         <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center space-y-3 opacity-30">
                           <div className="w-10 h-10 border border-line rounded flex items-center justify-center text-xl">🖼️</div>
-                          <span className="text-[9px] font-mono uppercase tracking-[0.2em] leading-tight">Thumbnail_Missing</span>
+                          <span className="text-[9px] font-mono uppercase tracking-[0.2em] leading-tight">No Image</span>
                         </div>
                       )}
                     </div>
@@ -420,7 +420,7 @@ export default function ProjectProductsPage() {
                         <div className="grid gap-8 lg:grid-cols-2">
                           <div className="space-y-6">
                             <div className="space-y-2">
-                              <label className="text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Catalogue_Label</label>
+                              <label className="text-[10px] font-mono text-muted uppercase tracking-widest font-bold">Product Name</label>
                               <input
                                 value={editingDraft.name}
                                 onChange={(event) => setEditingDraft((prev) => prev ? { ...prev, name: event.target.value } : prev)}
@@ -430,7 +430,7 @@ export default function ProjectProductsPage() {
                             </div>
                             
                             <div className="space-y-3">
-                              <label className="text-[10px] font-mono text-muted uppercase tracking-widest font-bold block">Visual_Reference_Vector</label>
+                              <label className="text-[10px] font-mono text-muted uppercase tracking-widest font-bold block">Product Image</label>
                               <div className="flex flex-wrap gap-3">
                                 <button
                                   type="button"
@@ -439,9 +439,9 @@ export default function ProjectProductsPage() {
                                     input?.click();
                                   }}
                                   disabled={uploadingReferenceProductId === product.id}
-                                  className="px-6 h-10 rounded-pill border border-line bg-bg-elevated/50 text-[10px] font-mono text-white uppercase tracking-widest hover:bg-panel transition-all hover:text-bg font-bold disabled:opacity-40"
+                                  className="px-6 h-10 rounded-pill border border-line bg-bg-elevated text-[10px] font-mono text-white uppercase tracking-widest hover:bg-panel transition-all hover:text-bg font-bold disabled:opacity-40"
                                 >
-                                  {uploadingReferenceProductId === product.id ? "Transferring_Data..." : "Upload_Source_Frame"}
+                                  {uploadingReferenceProductId === product.id ? "Uploading..." : "Upload Image"}
                                 </button>
                                 
                                 {editingDraft.productReferenceImageUrl && (
@@ -451,7 +451,7 @@ export default function ProjectProductsPage() {
                                     disabled={deletingReferenceProductId === product.id}
                                     className="px-6 h-10 rounded-pill border border-danger/40 bg-danger/5 text-[10px] font-mono text-danger uppercase tracking-widest hover:bg-danger/20 transition-all font-bold"
                                   >
-                                    Clear_Frame
+                                    Remove Image
                                   </button>
                                 )}
                                 
@@ -481,7 +481,7 @@ export default function ProjectProductsPage() {
                               />
                             ) : (
                               <div className="py-12 opacity-20">
-                                <span className="text-[10px] font-mono uppercase tracking-[0.3em]">No_Image_Cached</span>
+                                <span className="text-[10px] font-mono uppercase tracking-[0.3em]">No image uploaded</span>
                               </div>
                             )}
                           </div>
@@ -493,14 +493,14 @@ export default function ProjectProductsPage() {
                             disabled={savingProductId === product.id}
                             className="btn btn-secondary !min-h-[40px] px-8 text-[10px] font-bold uppercase tracking-widest"
                           >
-                            Abort_Changes
+                            Cancel
                           </button>
                           <button
                             onClick={() => void saveEditedProduct(product.id)}
                             disabled={savingProductId === product.id}
                             className="btn btn-primary !min-h-[40px] px-10 text-[10px] font-bold uppercase tracking-widest"
                           >
-                            {savingProductId === product.id ? "Encrypting..." : "Commit_Overrides"}
+                            {savingProductId === product.id ? "Saving..." : "Save Changes"}
                           </button>
                         </div>
                       </div>

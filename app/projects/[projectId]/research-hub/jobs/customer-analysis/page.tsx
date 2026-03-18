@@ -163,7 +163,7 @@ export default function CustomerAnalysisJobsPage() {
 
   return (
     <div className="min-h-screen bg-bg text-white">
-      <div className="border-b border-line bg-panel/50 backdrop-blur-md px-8 py-6 sticky top-0 z-30">
+      <div className="border-b border-line bg-panel backdrop-blur-md px-8 py-6 sticky top-0 z-30">
         <div className="flex items-center justify-between gap-6">
           <div className="space-y-4">
             <Link
@@ -207,7 +207,7 @@ export default function CustomerAnalysisJobsPage() {
 
                 <div className="rounded-card border border-line bg-panel overflow-hidden shadow-panel backdrop-blur-panel">
                   <div className="border-b border-line bg-panel px-6 py-3">
-                    <h3 className="text-[9px] font-mono text-accent uppercase tracking-[0.2em] font-bold">Synthesis_Cycle_Log</h3>
+                    <h3 className="text-[9px] font-mono text-accent uppercase tracking-[0.2em] font-bold">Run History</h3>
                   </div>
                   <table className="w-full text-left border-collapse">
                     <thead className="border-b border-line bg-panel">

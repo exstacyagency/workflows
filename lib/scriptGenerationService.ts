@@ -573,10 +573,10 @@ function buildDefaultBeatLabels(beatCount: number): string[] {
 function buildDefaultBeatPlan(
   targetDuration: number,
   beatCount: number,
-  clipDurationSeconds: 10 | 15,
+  clipDurationSeconds: 8,
 ): BeatPlanEntry[] {
   const safeDuration = normalizeTargetDurationValue(targetDuration);
-  const safeClipDuration = clipDurationSeconds === 15 ? 15 : 10;
+  const safeClipDuration: 8 = 8;
   const computedBeatCount = beatsForClipDuration(safeDuration, safeClipDuration);
   const safeBeatCount = normalizeBeatCountValue(beatCount || computedBeatCount);
   const labels = buildDefaultBeatLabels(safeBeatCount);
@@ -636,7 +636,7 @@ function buildBeatPlanFromPatternData(
   rawPatternJson: unknown,
   targetDuration: number,
   beatCount: number,
-  clipDurationSeconds: 10 | 15,
+  clipDurationSeconds: 8,
 ): {
   beats: BeatPlanEntry[];
   source: "timingPatterns" | "prescriptiveGuidance.body" | "default";
@@ -1456,7 +1456,7 @@ function buildScriptPrompt(args: {
   patternRawJson: unknown;
   swipeFile: SwipeFileSelection | null;
   targetDuration: number;
-  clipDurationSeconds: 10 | 15;
+  clipDurationSeconds: 8;
   patterns: Pattern[];
   antiPatterns: AntiPattern[];
   stackingRules: StackingRule[];
@@ -1793,7 +1793,7 @@ type ScriptJobPayload = {
 type ScriptGenerationJobConfig = {
   customerAnalysisJobId: string | null;
   targetDuration: number;
-  clipDurationSeconds: 10 | 15;
+  clipDurationSeconds: 8;
   scriptStrategy: ScriptStrategy;
   swipeTemplateAdId: string | null;
 };
@@ -1803,7 +1803,7 @@ async function getRequestedScriptGenerationConfig(jobId?: string): Promise<Scrip
     return {
       customerAnalysisJobId: null,
       targetDuration: DEFAULT_SCRIPT_TARGET_DURATION,
-      clipDurationSeconds: 10,
+      clipDurationSeconds: 8,
       scriptStrategy: "swipe_template",
       swipeTemplateAdId: null,
     };
@@ -1827,8 +1827,7 @@ async function getRequestedScriptGenerationConfig(jobId?: string): Promise<Scrip
   const swipeTemplateAdIdRaw =
     typeof payload?.swipeTemplateAdId === "string" ? payload.swipeTemplateAdId.trim() : "";
   const targetDuration = normalizeTargetDurationValue(payload?.targetDuration);
-  const clipDurationSecondsRaw = payload?.clipDurationSeconds;
-  const clipDurationSeconds: 10 | 15 = clipDurationSecondsRaw === 15 ? 15 : 10;
+  const clipDurationSeconds: 8 = 8;
   return {
     customerAnalysisJobId: selectedId || null,
     targetDuration,
@@ -2379,7 +2378,7 @@ export async function runScriptGeneration(args: {
   jobId?: string;
   customerAnalysisJobId?: string;
   targetDuration?: number;
-  clipDurationSeconds?: 10 | 15;
+  clipDurationSeconds?: 8;
   scriptStrategy?: ScriptStrategy;
   swipeTemplateAdId?: string | null;
 }) {
@@ -2407,12 +2406,7 @@ export async function runScriptGeneration(args: {
   const selectedTargetDuration = normalizeTargetDurationValue(
     targetDuration ?? requestedConfig.targetDuration
   );
-  const selectedClipDurationSeconds: 10 | 15 =
-    clipDurationSeconds === 15
-      ? 15
-      : requestedConfig.clipDurationSeconds === 15
-        ? 15
-        : 10;
+  const selectedClipDurationSeconds: 8 = 8;
   const selectedScriptStrategy: ScriptStrategy =
     scriptStrategy ?? requestedConfig.scriptStrategy;
   const selectedSwipeTemplateAdId =
