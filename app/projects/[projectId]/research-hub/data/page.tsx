@@ -659,7 +659,7 @@ export default function ResearchHubDataPage() {
   }
 
   return (
-    <div className="px-8 py-8 max-w-7xl mx-auto space-y-10">
+    <div className="px-8 py-8 max-w-7xl mx-auto space-y-8">
       <PageHeader
         backHref={`/projects/${projectId}/research-hub`}
         backLabel="Back to Research Hub"
@@ -938,7 +938,7 @@ export default function ResearchHubDataPage() {
                       </td>
                       <td className="px-6 py-4">
                         {row.isSwipeFile ? (
-                          <div className="status-chip info !text-label-xs !px-1.5 !py-0 !h-4 uppercase tracking-widest">Swipe</div>
+                          <StatusChip variant="info" className="!text-label-xs !px-1.5 !py-0 !h-4 uppercase tracking-widest">Swipe</StatusChip>
                         ) : (
                           <span className="text-muted/20">—</span>
                         )}
@@ -949,18 +949,20 @@ export default function ResearchHubDataPage() {
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <div className={`status-chip !text-label-xs !px-1.5 !py-0 !h-4 ${
-                          row.viable === true ? 'success' : row.viable === false ? 'danger' : 'subtle'
-                        }`}>
+                        <StatusChip
+                          variant={row.viable === true ? "success" : row.viable === false ? "danger" : "subtle"}
+                          className="!text-label-xs !px-1.5 !py-0 !h-4"
+                        >
                           {row.viable === true ? 'YES' : row.viable === false ? 'NO' : 'NULL'}
-                        </div>
+                        </StatusChip>
                       </td>
                       <td className="px-6 py-4 opacity-40">
-                        <div className={`status-chip !text-label-xs !px-1.5 !py-0 !h-4 ${
-                          row.rawViable === true ? 'success' : row.rawViable === false ? 'danger' : 'subtle'
-                        }`}>
+                        <StatusChip
+                          variant={row.rawViable === true ? "success" : row.rawViable === false ? "danger" : "subtle"}
+                          className="!text-label-xs !px-1.5 !py-0 !h-4"
+                        >
                           {row.rawViable === true ? 'YES' : row.rawViable === false ? 'NO' : 'NULL'}
-                        </div>
+                        </StatusChip>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-body-sm font-mono text-white opacity-80 uppercase tracking-tight">
@@ -998,9 +1000,7 @@ export default function ResearchHubDataPage() {
       {!loading && !error && focusJobType === "pattern-analysis" && (
         <div className="space-y-4">
           {!patternJob ? (
-            <SectionCard padding="lg" className="text-center space-y-4 font-mono">
-              <p className="text-muted text-xs uppercase tracking-widest opacity-40">No pattern analysis result found for this run.</p>
-            </SectionCard>
+            <EmptyState title="No pattern analysis result found for this run." />
           ) : (
             <div className="space-y-8">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

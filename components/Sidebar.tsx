@@ -30,7 +30,7 @@ function SidebarLink({ href, label }: NavItem) {
       ].join(" ")}
     >
       <span className={active ? "text-accent" : ""}>{label}</span>
-      {active && <span className="w-1.5 h-1.5 rounded-full bg-accent shadow-[0_0_8px_rgba(232,209,122,0.4)]" />}
+      {active && <span className="w-1.5 h-1.5 rounded-full bg-accent shadow-panel" />}
     </Link>
   );
 }

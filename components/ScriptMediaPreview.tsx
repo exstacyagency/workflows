@@ -93,7 +93,7 @@ export function ScriptMediaPreview({ script }: Props) {
           type="button"
           onClick={handleGetVideo}
           disabled={loading}
-          className="text-xs px-3 py-1.5 rounded-inner bg-bg-elevated hover:bg-panel-strong disabled:opacity-50 border border-line text-muted hover:text-white font-mono transition-all"
+          className="btn btn-secondary !min-h-[32px] px-4 text-label disabled:opacity-50"
         >
           {loading ? "Fetching link…" : "Get video link"}
         </button>

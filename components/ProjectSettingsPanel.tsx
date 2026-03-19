@@ -70,42 +70,48 @@ export function ProjectSettingsPanel({
   }
 
   return (
-    <SectionCard className="space-y-4" padding="sm">
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-white tracking-tight">Project Settings</h2>
+    <div className="space-y-6">
+      <div className="flex items-center justify-between border-b border-line pb-4">
+        <div>
+          <p className="eyebrow">Project Settings</p>
+          <p className="text-body-sm font-mono text-muted uppercase tracking-widest">
+            Update the project name and description used across workflows.
+          </p>
+        </div>
       </div>
+      <SectionCard className="space-y-4" padding="sm">
+        {error && <p className="text-xs text-accent font-mono">{error}</p>}
+        {notice && <p className="text-xs text-success font-mono">{notice}</p>}
 
-      {error && <p className="text-xs text-accent font-mono">{error}</p>}
-      {notice && <p className="text-xs text-success font-mono">{notice}</p>}
+        <form onSubmit={handleSave} className="space-y-3">
+          <div className="space-y-2">
+            <label className="block text-body-sm font-mono text-muted uppercase tracking-wider">Project Name</label>
+            <input
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              className="w-full rounded-pill border border-line bg-panel px-4 py-2 text-sm text-white placeholder:text-muted/40 outline-none focus:border-accent/40 transition-colors"
+              placeholder="Project name"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="block text-body-sm font-mono text-muted uppercase tracking-wider">Description</label>
+            <textarea
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              className="w-full rounded-card border border-line bg-bg-elevated px-4 py-2 text-sm text-white placeholder:text-muted/40 outline-none focus:border-accent/40 transition-colors min-h-[80px]"
+              placeholder="Optional project description"
+            />
+          </div>
 
-      <form onSubmit={handleSave} className="space-y-3">
-        <div className="space-y-2">
-          <label className="block text-body-sm font-mono text-muted uppercase tracking-wider">Project Name</label>
-          <input
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            className="w-full rounded-pill border border-line bg-panel px-4 py-2 text-sm text-white placeholder:text-muted/40 outline-none focus:border-accent/40 transition-colors"
-            placeholder="Project name"
-          />
-        </div>
-        <div className="space-y-2">
-          <label className="block text-body-sm font-mono text-muted uppercase tracking-wider">Description</label>
-          <textarea
-            value={description}
-            onChange={(event) => setDescription(event.target.value)}
-            className="w-full rounded-card border border-line bg-bg-elevated px-4 py-2 text-sm text-white placeholder:text-muted/40 outline-none focus:border-accent/40 transition-colors min-h-[80px]"
-            placeholder="Optional project description"
-          />
-        </div>
-
-        <button
-          type="submit"
-          disabled={saving || !hasPendingChanges}
-          className="btn btn-primary !min-h-[36px] px-5 text-xs font-bold shadow-[0_0_15px_rgba(232,209,122,0.15)]"
-        >
-          {saving ? "Saving..." : "Save Settings"}
-        </button>
-      </form>
-    </SectionCard>
+          <button
+            type="submit"
+            disabled={saving || !hasPendingChanges}
+            className="btn btn-primary !min-h-[36px] px-5 text-xs font-bold shadow-panel"
+          >
+            {saving ? "Saving..." : "Save Settings"}
+          </button>
+        </form>
+      </SectionCard>
+    </div>
   );
 }

@@ -77,14 +77,16 @@ export function ProjectProductsPanel({ projectId, initialProducts }: Props) {
   }
 
   return (
-    <SectionCard className="space-y-4" padding="sm">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="space-y-6">
+      <div className="flex items-center justify-between border-b border-line pb-4">
         <div>
-          <h2 className="text-sm font-semibold text-white tracking-tight">Products</h2>
-          <p className="text-xs text-muted italic">
+          <p className="eyebrow">Products</p>
+          <p className="text-body-sm font-mono text-muted uppercase tracking-widest">
             Create or select a product to begin research and creative workflows.
           </p>
         </div>
+      </div>
+      <SectionCard className="space-y-4" padding="sm">
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex flex-col items-start gap-2">
             <select
@@ -110,64 +112,64 @@ export function ProjectProductsPanel({ projectId, initialProducts }: Props) {
             </Link>
           </div>
         </div>
-      </div>
 
-      {!hasProducts && (
-        <EmptyState
-          title="No Products Created Yet"
-          description="Add your first product to start research and creative workflows."
-        />
-      )}
+        {!hasProducts && (
+          <EmptyState
+            title="No Products Created Yet"
+            description="Add your first product to start research and creative workflows."
+          />
+        )}
 
-      <SectionCard padding="none" className="overflow-hidden">
-      <details
-        ref={createDetailsRef}
-        className="overflow-hidden"
-      >
-        <summary className="list-none select-none px-4 py-3 cursor-pointer hover:bg-panel/[0.02] transition-colors">
-          <span className="btn btn-primary !min-h-[36px] px-6">
-            + Create New Product
-          </span>
-        </summary>
-        <div className="border-t border-line p-5">
-          <form onSubmit={handleCreateProduct} className="space-y-4">
-            <div>
-              <label className="block text-body-sm font-mono text-muted uppercase tracking-wider mb-2">Product Name</label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full rounded-pill border border-line bg-panel px-4 py-2 text-sm text-white placeholder:text-muted/40 outline-none focus:border-accent/40 transition-colors"
-                placeholder="e.g., ClearGlow Serum"
-                required
-              />
+        <SectionCard padding="none" className="overflow-hidden">
+          <details
+            ref={createDetailsRef}
+            className="overflow-hidden"
+          >
+            <summary className="list-none select-none px-4 py-3 cursor-pointer hover:bg-panel/[0.02] transition-colors">
+              <span className="btn btn-primary !min-h-[36px] px-6">
+                + Create New Product
+              </span>
+            </summary>
+            <div className="border-t border-line p-5">
+              <form onSubmit={handleCreateProduct} className="space-y-4">
+                <div>
+                  <label className="block text-body-sm font-mono text-muted uppercase tracking-wider mb-2">Product Name</label>
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="w-full rounded-pill border border-line bg-panel px-4 py-2 text-sm text-white placeholder:text-muted/40 outline-none focus:border-accent/40 transition-colors"
+                    placeholder="e.g., ClearGlow Serum"
+                    required
+                  />
+                </div>
+                {error && <p className="text-xs text-accent">{error}</p>}
+                <div className="flex justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!submitting && createDetailsRef.current) {
+                        createDetailsRef.current.open = false;
+                        setError(null);
+                      }
+                    }}
+                    className="btn btn-secondary !min-h-[32px] px-4 text-label"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className="btn btn-primary !min-h-[36px] px-6 text-label shadow-panel disabled:opacity-50"
+                  >
+                    {submitting ? "Creating..." : "Create Product"}
+                  </button>
+                </div>
+              </form>
             </div>
-            {error && <p className="text-xs text-accent">{error}</p>}
-            <div className="flex justify-end gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => {
-                  if (!submitting && createDetailsRef.current) {
-                    createDetailsRef.current.open = false;
-                    setError(null);
-                  }
-                }}
-                className="rounded-pill border border-line bg-transparent px-4 py-2 text-xs font-medium text-muted hover:text-white hover:bg-transparent transition-all"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={submitting}
-                className="rounded-pill bg-accent px-5 py-2 text-xs font-bold text-bg hover:bg-accent/90 disabled:opacity-50 shadow-[0_0_15px_rgba(232,209,122,0.15)] transition-all"
-              >
-                {submitting ? "Creating..." : "Create Product"}
-              </button>
-            </div>
-          </form>
-        </div>
-      </details>
+          </details>
+        </SectionCard>
       </SectionCard>
-    </SectionCard>
+    </div>
   );
 }

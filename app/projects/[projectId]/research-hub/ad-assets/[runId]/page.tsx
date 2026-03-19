@@ -334,7 +334,7 @@ export default function AdAssetsViewerPage() {
       <div className="px-8 py-8 max-w-7xl mx-auto space-y-8">
         <SectionCard padding="none" className="overflow-hidden">
           <div className="px-6 py-4 border-b border-line bg-bg-elevated flex items-center justify-between">
-            <h2 className="text-label font-mono text-muted uppercase tracking-[0.2em] font-bold">Creative Assets</h2>
+            <p className="eyebrow !mb-0">Creative Assets</p>
             {highlightOcr && (
               <div className="flex items-center gap-4 text-label-sm font-mono uppercase tracking-widest">
                 <span className="flex items-center gap-2">
@@ -397,9 +397,9 @@ export default function AdAssetsViewerPage() {
                     <td className="px-5 py-4">
                       {row.isSwipeFile ? (
                         <div className="flex flex-col gap-1.5">
-                          <span className="status-chip warning !text-label-xs uppercase font-bold tracking-widest !py-0.5">
+                          <StatusChip variant="warning" className="!text-label-xs uppercase font-bold tracking-widest !py-0.5">
                             Swipe_File
-                          </span>
+                          </StatusChip>
                           {row.swipeViews !== null && (
                             <span className="text-label font-mono text-accent uppercase tracking-widest whitespace-nowrap">
                               {Math.round(row.swipeViews).toLocaleString()} VIEWS

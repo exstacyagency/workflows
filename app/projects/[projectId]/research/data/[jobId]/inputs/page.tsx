@@ -302,7 +302,7 @@ export default function InputParametersPage() {
       <div className="px-8 py-8 max-w-7xl mx-auto space-y-8">
         <SectionCard className="space-y-4">
           <SectionCard padding="none" className="px-6 py-3 flex items-center justify-between">
-            <h2 className="text-label font-mono text-muted uppercase tracking-[0.2em] font-bold">Request Payload</h2>
+            <p className="eyebrow !mb-0">Request Payload</p>
             <div className="text-label-sm font-mono text-muted uppercase opacity-40">JSON</div>
           </SectionCard>
           <div className="p-6 bg-transparent">
@@ -315,7 +315,7 @@ export default function InputParametersPage() {
         {redditInputs && (
           <SectionCard padding="none" className="overflow-hidden">
             <div className="border-b border-line bg-bg-elevated px-6 py-3 flex items-center justify-between">
-              <h2 className="text-label font-mono text-accent uppercase tracking-[0.2em] font-bold">Reddit Research Settings</h2>
+              <p className="eyebrow !mb-0">Reddit Research Settings</p>
               <div className="text-label-sm font-mono text-muted uppercase opacity-40">Configuration</div>
             </div>
             <div className="p-6 bg-transparent">
@@ -329,7 +329,7 @@ export default function InputParametersPage() {
         {amazonInputs.requests.length > 0 && (
           <SectionCard padding="none" className="overflow-hidden">
             <div className="border-b border-line bg-bg-elevated px-6 py-3 flex items-center justify-between">
-              <h2 className="text-label font-mono text-success uppercase tracking-[0.2em] font-bold">Amazon Research Settings</h2>
+              <p className="eyebrow !mb-0">Amazon Research Settings</p>
               <div className="text-label-sm font-mono text-muted uppercase opacity-40">Batch Requests</div>
             </div>
             <div className="p-6 bg-transparent">
@@ -342,7 +342,7 @@ export default function InputParametersPage() {
 
         <SectionCard padding="none" className="overflow-hidden">
           <div className="border-b border-line bg-bg-elevated px-6 py-3 flex items-center justify-between">
-            <h2 className="text-label font-mono text-accent-2 uppercase tracking-[0.2em] font-bold">Observed Search Queries</h2>
+            <p className="eyebrow !mb-0">Observed Search Queries</p>
             <div className="text-label-sm font-mono text-muted uppercase opacity-40">Reddit Queries</div>
           </div>
           <div className="px-6 py-6 pb-2 bg-transparent">

@@ -5,7 +5,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { getJobTypeLabel } from "@/lib/jobLabels";
 import RunManagementModal from "@/components/RunManagementModal";
-import { EmptyState, PageHeader, SectionCard, StatusChip } from "@/components/ui";
+import { EmptyState, PageHeader, SectionCard, SectionLinkCard, StatusChip } from "@/components/ui";
 
 // Types
 type JobStatus = "NOT_STARTED" | "PENDING" | "RUNNING" | "COMPLETED" | "FAILED";
@@ -1462,10 +1462,10 @@ export default function ResearchHubPage() {
                             <button
                               onClick={() => runStep(stepWithStatus, track.key)}
                               disabled={!canRunAnalysis || isRunning}
-                              className={`inline-flex items-center gap-2 rounded-pill px-4 py-2 text-sm font-bold ${
+                              className={`btn !min-h-[32px] px-4 text-label ${
                                 !canRunAnalysis || isRunning
-                                  ? "cursor-not-allowed bg-panel-strong text-muted"
-                                  : "app-gold-gradient text-[#111]"
+                                  ? "btn-secondary cursor-not-allowed opacity-50 text-muted"
+                                  : "btn-primary text-bg"
                               }`}
                               title={!canRunAnalysis ? "Complete Customer Collection first" : undefined}
                             >
@@ -1476,10 +1476,10 @@ export default function ResearchHubPage() {
                                 <button
                                   onClick={() => runStep(stepWithStatus, track.key)}
                                   disabled={isRunning || isCollecting}
-                                  className={`inline-flex items-center rounded-pill px-4 py-2 text-sm font-bold ${
+                                  className={`btn !min-h-[32px] px-4 text-label ${
                                     isRunning || isCollecting
-                                      ? "cursor-not-allowed bg-panel-strong text-muted/40"
-                                      : "app-gold-gradient text-[#111]"
+                                      ? "btn-secondary cursor-not-allowed opacity-50 text-muted/40"
+                                      : "btn-primary text-bg"
                                   }`}
                                 >
                                   Run
@@ -1497,10 +1497,10 @@ export default function ResearchHubPage() {
                                       (stepWithStatus.label === "Customer Analysis" && !canRunAnalysis) ||
                                       (stepWithStatus.label === "Customer Analysis" && analysisRunning)
                                     }
-                                    className={`inline-flex items-center rounded-pill px-4 py-2 text-sm font-bold ${
+                                    className={`btn !min-h-[32px] px-4 text-label ${
                                       locked || isRunning || (isCustomerCollectionStep && hasRunningJob) || (stepWithStatus.label === "Customer Analysis" && (analysisRunning || !canRunAnalysis))
-                                        ? "cursor-not-allowed bg-panel-strong text-muted/40"
-                                        : "app-gold-gradient text-[#111]"
+                                        ? "btn-secondary cursor-not-allowed opacity-50 text-muted/40"
+                                        : "btn-primary text-bg"
                                     }`}
                                   >
                                     {isRunning
@@ -1588,57 +1588,44 @@ export default function ResearchHubPage() {
         })}
       </div>
 
-      <section className="mt-8 space-y-4">
-        <div>
-          <h2 className="app-section-title text-white">Creative Studio</h2>
-        </div>
-        <SectionCard className="space-y-3">
-          <p className="text-sm text-muted italic">
-            Move approved research into script generation, storyboards, and production output.
-          </p>
-          <div className="flex items-center justify-between gap-4">
-            <p className="app-status-line">
-              Open Creative Studio to turn the current project context into production-ready creative assets.
-            </p>
-            <Link
-              href={
-                selectedProductId
-                  ? `/projects/${projectId}/creative-studio?productId=${selectedProductId}`
-                  : `/projects/${projectId}/creative-studio`
-              }
-              className="app-button app-button--primary text-sm font-medium"
-            >
-              Open Creative Studio
-            </Link>
-          </div>
-        </SectionCard>
-      </section>
+      <SectionLinkCard
+        className="mt-8"
+        eyebrow="Creative Studio"
+        description="Move approved research into script generation, storyboards, and production output."
+        status="Open Creative Studio to turn the current project context into production-ready creative assets."
+        sectionShell
+        action={
+          <Link
+            href={
+              selectedProductId
+                ? `/projects/${projectId}/creative-studio?productId=${selectedProductId}`
+                : `/projects/${projectId}/creative-studio`
+            }
+            className="btn btn-primary !min-h-[36px] px-6 shrink-0"
+          >
+            Open Creative Studio
+          </Link>
+        }
+      />
 
-      <section className="space-y-4">
-        <div>
-          <h2 className="app-section-title text-white">Usage and Cost</h2>
-        </div>
-        <SectionCard className="space-y-3">
-          <p className="text-sm text-muted italic">
-            Review provider usage, spend, and settled job costs for this project.
-          </p>
-          <div className="flex items-center justify-between gap-4">
-            <p className="app-status-line">
-              Track cost breakdowns and usage activity without leaving the current project scope.
-            </p>
-            <Link
-              href={`/projects/${projectId}/usage`}
-              className="app-button app-button--primary text-sm font-medium"
-            >
-              Open Usage & Costs
-            </Link>
-          </div>
-        </SectionCard>
-      </section>
+      <SectionLinkCard
+        eyebrow="Usage And Cost"
+        description="Review provider usage, spend, and settled job costs for this project."
+        status="Track cost breakdowns and usage activity without leaving the current project scope."
+        sectionShell
+        action={
+          <Link
+            href={`/projects/${projectId}/usage`}
+            className="btn btn-primary !min-h-[36px] px-6 shrink-0"
+          >
+            Open Usage & Costs
+          </Link>
+        }
+      />
 
       {/* Recent Jobs */}
       <div className="mt-8 border-t border-line pt-6">
-        <h2 className="app-section-title mb-4 text-white">Recent Jobs</h2>
+        <p className="eyebrow mb-4">Recent Jobs</p>
         <div className="app-list">
           {recentResearchJobs.map(job => {
             const rs = job.resultSummary as any;
@@ -1652,7 +1639,7 @@ export default function ResearchHubPage() {
                     <div className="mt-2">
                       <button
                         onClick={() => cancelJob(job.id)}
-                        className="px-2 py-1 text-xs text-accent hover:text-accent border border-accent/30 rounded"
+                        className="btn btn-danger !min-h-[28px] px-3 text-label"
                       >
                         Cancel
                       </button>
@@ -1932,7 +1919,7 @@ function CustomerResearchModal({
 
             {/* Reddit Search Settings */}
             <div className="border-t border-line pt-6 mt-6">
-              <h3 className="text-lg font-semibold text-white mb-4">Reddit Search Settings</h3>
+              <p className="eyebrow">Reddit Search Settings</p>
               <p className="text-sm text-muted mb-6">
                 Reddit search is problem-focused. Use optional fields below to control intent, keywords, and alternatives.
               </p>
@@ -2033,13 +2020,13 @@ function CustomerResearchModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="flex-1 px-4 py-2 rounded bg-bg-elevated hover:bg-panel-strong text-muted font-medium"
+                className="btn btn-secondary flex-1 !min-h-[36px] px-4"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="flex-1 px-4 py-2 rounded bg-success hover:bg-success/90 text-white font-medium"
+                className="btn btn-primary flex-1 !min-h-[36px] px-4"
               >
                 Run
               </button>
@@ -2078,14 +2065,14 @@ function CustomerResearchModal({
                 <button
                   type="button"
                   onClick={onClose}
-                  className="px-4 py-2 bg-bg-elevated hover:bg-panel-strong rounded text-sm"
+                  className="btn btn-secondary !min-h-[36px] px-4"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={uploading || !uploadFile}
-                  className="px-4 py-2 bg-accent hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed rounded text-sm"
+                  className="btn btn-primary !min-h-[36px] px-4 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {uploading ? "Uploading..." : "Upload & Add Data"}
                 </button>
@@ -2307,13 +2294,13 @@ function AdCollectionModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="flex-1 px-4 py-2 rounded bg-bg-elevated hover:bg-panel-strong text-muted font-medium"
+                className="btn btn-secondary flex-1 !min-h-[36px] px-4"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="flex-1 px-4 py-2 rounded bg-accent hover:bg-accent/90 text-bg font-medium"
+                className="btn btn-primary flex-1 !min-h-[36px] px-4"
               >
                 Run
               </button>
@@ -2351,14 +2338,14 @@ function AdCollectionModal({
                 <button
                   type="button"
                   onClick={onClose}
-                  className="px-4 py-2 bg-bg-elevated hover:bg-panel-strong rounded text-sm"
+                  className="btn btn-secondary !min-h-[36px] px-4"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={uploading || !uploadFile}
-                  className="px-4 py-2 bg-accent hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed rounded text-sm"
+                  className="btn btn-primary !min-h-[36px] px-4 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {uploading ? "Uploading..." : "Upload & Add Data"}
                 </button>
@@ -2528,13 +2515,13 @@ function ProductCollectionModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="flex-1 px-4 py-2 rounded bg-bg-elevated hover:bg-panel-strong text-muted font-medium"
+                className="btn btn-secondary flex-1 !min-h-[36px] px-4"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="flex-1 px-4 py-2 rounded bg-accent hover:bg-accent/90 text-bg font-medium"
+                className="btn btn-primary flex-1 !min-h-[36px] px-4"
               >
                 Run
               </button>
@@ -2572,14 +2559,14 @@ function ProductCollectionModal({
                 <button
                   type="button"
                   onClick={onClose}
-                  className="px-4 py-2 bg-bg-elevated hover:bg-panel-strong rounded text-sm"
+                  className="btn btn-secondary !min-h-[36px] px-4"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={uploading || !uploadFile}
-                  className="px-4 py-2 bg-accent hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed rounded text-sm"
+                  className="btn btn-primary !min-h-[36px] px-4 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {uploading ? "Uploading..." : "Upload & Add Data"}
                 </button>

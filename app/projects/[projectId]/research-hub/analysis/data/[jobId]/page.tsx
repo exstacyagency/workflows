@@ -128,8 +128,8 @@ export default function CustomerAnalysisDataPage() {
         {showInputs && (
           <SectionCard padding="none" className="overflow-hidden">
             <div className="border-b border-line bg-bg-elevated px-6 py-3 flex items-center justify-between">
-              <h2 className="text-label font-mono text-accent uppercase tracking-[0.2em] font-bold">Input Parameters</h2>
-              <div className="text-label-sm font-mono text-muted uppercase opacity-40">Request Data</div>
+              <p className="eyebrow !mb-0">Input Parameters</p>
+              <p className="eyebrow !mb-0 opacity-60">Request Data</p>
             </div>
             <div className="p-6 bg-panel">
               {inputsLoading && (
@@ -155,8 +155,8 @@ export default function CustomerAnalysisDataPage() {
         {payload?.persona && (
           <SectionCard padding="none" className="overflow-hidden">
             <div className="border-b border-line bg-bg-elevated px-6 py-3 flex items-center justify-between">
-              <h2 className="text-label font-mono text-white uppercase tracking-[0.2em] font-bold">Analysis Output</h2>
-              <div className="text-label-sm font-mono text-muted uppercase opacity-40">Persona Profile</div>
+              <p className="eyebrow !mb-0">Analysis Output</p>
+              <p className="eyebrow !mb-0 opacity-60">Persona Profile</p>
             </div>
             <div className="p-6 bg-transparent">
               <pre className="text-body-xs font-mono text-white leading-relaxed whitespace-pre-wrap break-words scrollbar-thin scrollbar-thumb-line">

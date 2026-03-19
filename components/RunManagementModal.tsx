@@ -206,8 +206,7 @@ export default function RunManagementModal({
   return createPortal(
     <div
       onClick={onClose}
-      className="fixed inset-0 z-[9999] flex items-center justify-center p-6 backdrop-blur-sm"
-      style={{ backgroundColor: "rgba(9, 9, 11, 0.82)" }}
+      className="fixed inset-0 z-[9999] flex items-center justify-center p-6 backdrop-blur-sm bg-overlay"
     >
       <div
         onClick={(e) => e.stopPropagation()}
@@ -231,8 +230,8 @@ export default function RunManagementModal({
 
         <div className="px-8 pb-8 overflow-hidden flex flex-col">
           {error && (
-            <div className="mb-4 rounded-card border border-danger/20 bg-danger/5 p-3 text-xs text-danger font-mono uppercase tracking-widest">
-              {error}
+            <div className="mb-4">
+              <EmptyState title={error} variant="error" />
             </div>
           )}
 

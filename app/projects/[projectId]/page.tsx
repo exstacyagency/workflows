@@ -1,33 +1,12 @@
 import { prisma } from '@/lib/prisma';
 import { JobStatus } from '@prisma/client';
 import { notFound } from 'next/navigation';
-import { getJobTypeLabel } from '@/lib/jobLabels';
 import { ProjectProductsPanel } from '@/components/ProjectProductsPanel';
 import { ProjectSettingsPanel } from '@/components/ProjectSettingsPanel';
-import { PageHeader, SectionCard, StatusChip } from '@/components/ui';
+import { PageHeader, SectionCard, SectionLinkCard } from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
-
-function statusBadge(status: 'pending' | 'running' | 'failed' | 'completed') {
-  const labelMap: Record<typeof status, string> = {
-    pending: 'Pending',
-    running: 'Running',
-    failed: 'Needs Attention',
-    completed: 'Completed',
-  };
-  const variantMap: Record<typeof status, "info" | "running" | "danger" | "success"> = {
-    pending: "info",
-    running: "running",
-    failed: "danger",
-    completed: "success",
-  };
-  return (
-    <StatusChip variant={variantMap[status]} className={status === "pending" ? "opacity-60" : ""}>
-      {labelMap[status]}
-    </StatusChip>
-  );
-}
 
 const dateFormatter = new Intl.DateTimeFormat('en-US', {
   month: 'short',
@@ -167,118 +146,84 @@ export default async function ProjectDashboardPage({ params }: Params) {
         initialDescription={project.description}
       />
 
-      <SectionCard className="space-y-3">
-        <div className="app-panel-header">
-          <div>
-            <h2 className="app-section-title text-white">Research Hub</h2>
-            <p className="text-sm text-muted mt-1 italic">
-              Explore customer research, ad analysis, and product intelligence for this project.
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center justify-between gap-4">
-          <p className="app-status-line">
-            Open the research workspace to run collection, analysis, and review completed outputs.
-          </p>
+      <SectionLinkCard
+        eyebrow="Research Hub"
+        description="Explore customer research, ad analysis, and product intelligence for this project."
+        status="Open the research workspace to run collection, analysis, and review completed outputs."
+        sectionShell
+        action={
           <a
             href={
               primaryProductId
                 ? `/projects/${projectId}/research-hub?productId=${primaryProductId}`
                 : `/projects/${projectId}/research-hub`
             }
-            className="app-button app-button--primary text-sm font-medium"
+            className="btn btn-primary !min-h-[36px] px-6 shrink-0"
           >
             Open Research Hub
           </a>
-        </div>
-      </SectionCard>
+        }
+      />
 
-      <SectionCard className="space-y-3">
-        <div className="app-panel-header">
-          <div>
-            <h2 className="app-section-title text-white">Creative Studio</h2>
-            <p className="text-sm text-muted mt-1 italic">
-              Turn approved research into scripts, storyboards, prompts, and videos.
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center justify-between gap-4">
-          <p className="app-status-line">
-            Jump into the production pipeline to create and manage creative assets for this project.
-          </p>
+      <SectionLinkCard
+        eyebrow="Creative Studio"
+        description="Turn approved research into scripts, storyboards, prompts, and videos."
+        status="Jump into the production pipeline to create and manage creative assets for this project."
+        sectionShell
+        action={
           <a
             href={
               primaryProductId
                 ? `/projects/${projectId}/creative-studio?productId=${primaryProductId}`
                 : `/projects/${projectId}/creative-studio`
             }
-            className="app-button app-button--primary text-sm font-medium"
+            className="btn btn-primary !min-h-[36px] px-6 shrink-0"
           >
             Open Creative Studio
           </a>
-        </div>
-      </SectionCard>
+        }
+      />
 
-      <SectionCard className="space-y-3">
-        <div className="app-panel-header">
-          <div>
-            <h2 className="app-section-title text-white">Usage and Cost</h2>
-            <p className="text-sm text-muted mt-1 italic">
-              Review spend, settled provider usage, and project-level execution costs.
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center justify-between gap-4">
-          <p className="app-status-line">
-            Monitor billing activity and cost breakdowns across every job run for this project.
-          </p>
+      <SectionLinkCard
+        eyebrow="Usage And Cost"
+        description="Review spend, settled provider usage, and project-level execution costs."
+        status="Monitor billing activity and cost breakdowns across every job run for this project."
+        sectionShell
+        action={
           <a
             href={`/projects/${projectId}/usage`}
-            className="app-button app-button--primary text-sm font-medium"
+            className="btn btn-primary !min-h-[36px] px-6 shrink-0"
           >
             Open Usage & Costs
           </a>
-        </div>
-      </SectionCard>
+        }
+      />
 
-      <SectionCard className="space-y-3 overflow-hidden">
-        <div className="app-panel-header">
-          <h2 className="app-section-title text-white">Recent Jobs</h2>
-          <span className="app-status-line">Latest 12 runs</span>
-        </div>
+      <div className="mt-8 border-t border-line pt-6">
+        <p className="eyebrow mb-4">Recent Jobs</p>
         {recentJobs.length === 0 ? (
           <p className="text-xs text-muted italic">Jobs will appear once workflows begin.</p>
         ) : (
           <div className="app-list">
             {recentJobs.map(job => (
-              <div key={job.id} className="app-list-item">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-medium text-white tracking-tight">{getJobTypeLabel(job.type)}</p>
-                  {statusBadge(
-                    job.status === JobStatus.RUNNING
-                      ? 'running'
-                      : job.status === JobStatus.FAILED
-                        ? 'failed'
-                        : job.status === JobStatus.COMPLETED
-                          ? 'completed'
-                          : 'pending'
-                  )}
+              <div key={job.id} className="app-list-item flex items-start justify-between gap-4">
+                <div className="flex-1">
+                  <div className="text-sm font-medium text-white">{job.type}</div>
+                  <div className="text-xs text-muted">{new Date(job.createdAt).toLocaleString()}</div>
                 </div>
-                <p className="text-label text-muted font-mono uppercase opacity-60">
-                  Started {dateFormatter.format(job.createdAt)} · Updated {dateFormatter.format(job.updatedAt)}
-                </p>
-                {job.resultSummary && (
-                  <p className="text-xs text-muted mt-2 font-mono bg-panel p-2 rounded-card border border-line/30">
-                    {typeof job.resultSummary === "string"
-                      ? job.resultSummary
-                      : JSON.stringify(job.resultSummary)}
-                  </p>
-                )}
+                <div className={`app-chip ${
+                  job.status === 'COMPLETED' ? 'app-chip--success' :
+                  job.status === 'FAILED' ? 'app-chip--danger' :
+                  job.status === 'RUNNING' ? 'app-chip--info' :
+                  ''
+                }`}>
+                  {job.status}
+                </div>
               </div>
             ))}
           </div>
         )}
-      </SectionCard>
+      </div>
     </div>
   );
 }

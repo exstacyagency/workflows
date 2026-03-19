@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { PageHeader } from "@/components/ui";
+import { EmptyState, PageHeader, SectionCard, StatusChip } from "@/components/ui";
 import { getJobTypeLabel } from "@/lib/jobLabels";
 
 type JobStatus = "PENDING" | "RUNNING" | "COMPLETED" | "FAILED";
@@ -43,17 +43,17 @@ type ProductsResponse = {
 };
 
 function StatusBadge({ status }: { status: JobStatus }) {
-  const styles: Record<JobStatus, string> = {
-    PENDING: "bg-bg-elevated text-muted",
-    RUNNING: "bg-accent/20 text-accent-2",
-    COMPLETED: "bg-success/20 text-success",
-    FAILED: "bg-accent/10 text-accent",
+  const variants: Record<JobStatus, "subtle" | "info" | "success" | "warning"> = {
+    PENDING: "subtle",
+    RUNNING: "info",
+    COMPLETED: "success",
+    FAILED: "warning",
   };
 
   return (
-    <span className={`inline-flex items-center rounded-inner px-2 py-1 text-xs font-medium ${styles[status]}`}>
+    <StatusChip variant={variants[status]} className="!px-2 !py-1 !text-body-xs">
       {status}
-    </span>
+    </StatusChip>
   );
 }
 
@@ -348,7 +348,7 @@ export default function ProductCollectionPage() {
   };
 
   return (
-    <main className="min-h-screen bg-bg text-white px-6 py-6">
+    <main className="px-8 py-8 max-w-7xl mx-auto space-y-8">
       <div className="mx-auto max-w-4xl space-y-6">
         <PageHeader
           backHref={`/projects/${projectId}/research-hub${selectedProductId ? `?productId=${selectedProductId}` : ""}`}
@@ -357,11 +357,11 @@ export default function ProductCollectionPage() {
           description="Collect structured product intelligence from a main product URL."
         />
 
-        <section className="rounded-inner border border-line bg-panel p-4 space-y-4">
+        <SectionCard className="space-y-4" padding="sm">
           {statusMessage && <p className="text-xs text-muted">{statusMessage}</p>}
 
           {activeStatusJob && (
-            <div className="rounded-inner border p-3 bg-panel border-line">
+            <SectionCard padding="sm">
               <p
                 className={`text-sm font-medium ${
                   activeStatusJob.status === "RUNNING"
@@ -379,7 +379,7 @@ export default function ProductCollectionPage() {
               {activeStatusJob.status === "FAILED" && activeStatusJob.error && (
                 <p className="mt-2 text-xs text-accent">{activeStatusJob.error}</p>
               )}
-            </div>
+            </SectionCard>
           )}
 
           <div>
@@ -423,10 +423,10 @@ export default function ProductCollectionPage() {
             <button
               onClick={runCollection}
               disabled={!selectedProductId || isCollecting}
-              className={`px-4 py-2 rounded text-sm font-medium flex items-center gap-2 ${
+              className={`btn ${!selectedProductId || isCollecting ? "btn-secondary opacity-50 cursor-not-allowed" : "btn-primary"} !min-h-[36px] px-4 text-label flex items-center gap-2 ${
                 !selectedProductId || isCollecting
-                  ? "bg-panel-strong text-muted cursor-not-allowed"
-                  : "bg-accent hover:bg-accent/90 text-bg"
+                  ? ""
+                  : ""
               }`}
             >
               {inFlightJob ? inFlightJob.status : isSubmitting ? "Starting..." : "Run"}
@@ -444,14 +444,14 @@ export default function ProductCollectionPage() {
             {latestCompletedJob ? (
               <Link
                 href={`/projects/${projectId}/research/data/${latestCompletedJob.id}?runId=${latestCompletedJob.runId ?? latestCompletedJob.id}`}
-                className="inline-block rounded-pill bg-accent px-4 py-2 text-xs font-medium text-bg hover:bg-accent/90"
+                className="btn btn-primary !min-h-[32px] px-4 text-label"
               >
                 View Product Data
               </Link>
             ) : (
               <button
                 disabled
-                className="px-4 py-2 bg-bg-elevated text-muted rounded opacity-50 cursor-not-allowed text-xs"
+                className="btn btn-secondary !min-h-[36px] px-4 text-label opacity-50 cursor-not-allowed"
               >
                 View Product Data
               </button>
@@ -466,9 +466,9 @@ export default function ProductCollectionPage() {
               </Link>
             )}
           </div>
-        </section>
+        </SectionCard>
 
-        <section className="rounded-inner border border-line bg-panel overflow-hidden">
+        <SectionCard padding="none" className="overflow-hidden">
           <table className="w-full">
             <thead className="bg-bg-elevated">
               <tr>
@@ -495,8 +495,8 @@ export default function ProductCollectionPage() {
                 </tr>
               ) : jobs.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-4 py-6 text-sm text-muted">
-                    No product collection jobs yet.
+                  <td colSpan={4} className="px-4 py-6">
+                    <EmptyState title="No product collection jobs yet" />
                   </td>
                 </tr>
               ) : (
@@ -541,7 +541,7 @@ export default function ProductCollectionPage() {
               )}
             </tbody>
           </table>
-        </section>
+        </SectionCard>
       </div>
     </main>
   );

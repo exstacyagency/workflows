@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import { PageHeader, SectionCard, StatusChip } from "@/components/ui";
+import { EmptyState, PageHeader, SectionCard, StatusChip } from "@/components/ui";
 import { JobStatus, JobType } from "@prisma/client";
 import { getJobTypeLabel } from "@/lib/jobLabels";
 
@@ -190,7 +190,7 @@ export default function ResearchRunDataPage() {
           <button
             onClick={toggleAll}
             disabled={jobs.length === 0}
-            className="px-4 py-2 rounded-pill border border-line bg-bg-elevated text-label font-mono text-muted uppercase tracking-widest hover:text-white transition-colors"
+            className="btn btn-secondary !min-h-[32px] px-4 text-label"
           >
             {allSelected ? "Clear Selection" : "Select All Jobs"}
           </button>
@@ -200,7 +200,7 @@ export default function ResearchRunDataPage() {
           <button
             onClick={() => void deleteJobs("selected")}
             disabled={selectedIds.length === 0 || deleting}
-            className="px-4 py-2 rounded-pill border border-danger/20 bg-danger/5 text-label font-mono text-danger uppercase tracking-widest hover:bg-danger/10 transition-all font-bold"
+            className="btn btn-danger !min-h-[32px] px-4 text-label"
           >
             Delete Selected ({selectedIds.length})
           </button>
@@ -208,7 +208,7 @@ export default function ResearchRunDataPage() {
           <button
             onClick={() => void deleteJobs("all")}
             disabled={jobs.length === 0 || deleting}
-            className="px-4 py-2 rounded-pill border border-danger/40 bg-danger/10 text-label font-mono text-danger uppercase tracking-widest hover:bg-danger/20 transition-all font-bold"
+            className="btn btn-danger !min-h-[32px] px-4 text-label"
           >
              Delete All Jobs
           </button>
@@ -220,7 +220,7 @@ export default function ResearchRunDataPage() {
 
         <SectionCard padding="none" className="overflow-hidden">
           <div className="px-6 py-3 border-b border-line bg-bg-elevated">
-            <h2 className="text-label font-mono text-accent uppercase tracking-[0.2em] font-bold">Run Jobs</h2>
+            <p className="eyebrow !mb-0">Run Jobs</p>
           </div>
           <table className="w-full text-left border-collapse">
             <thead className="bg-bg-elevated border-b border-line">
@@ -243,8 +243,8 @@ export default function ResearchRunDataPage() {
             <tbody className="divide-y divide-line/30">
               {jobs.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="p-10 text-center text-label font-mono text-muted uppercase tracking-widest opacity-40">
-                    No jobs found for this run
+                  <td colSpan={6} className="p-6">
+                    <EmptyState title="No jobs found for this run" />
                   </td>
                 </tr>
               ) : (

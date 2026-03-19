@@ -120,7 +120,7 @@ export default function ProjectsPage() {
           <button
             type="submit"
             disabled={creating}
-            className="btn btn-primary !min-h-[36px] px-6 text-xs font-bold shadow-[0_0_15px_rgba(232,209,122,0.15)]"
+            className="btn btn-primary !min-h-[36px] px-6 text-xs font-bold shadow-panel"
           >
             {creating ? "Creating…" : "Create Project"}
           </button>
@@ -168,7 +168,7 @@ export default function ProjectsPage() {
               <div className="flex items-center gap-2">
                 <Link
                   href={`/projects/${project.id}`}
-                  className="inline-flex items-center rounded-pill border border-line bg-transparent px-4 py-2 text-body-sm font-bold uppercase tracking-wider text-muted transition-all hover:bg-bg-elevated hover:text-white"
+                  className="btn btn-secondary !min-h-[32px] px-4 text-label"
                 >
                   Open
                 </Link>

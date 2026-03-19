@@ -410,13 +410,15 @@ export default function ResearchDataPage() {
                   {filteredRows.map((row) => (
                     <tr key={row.id} className="hover:bg-accent/5 transition-colors group align-top">
                       <td className="p-4">
-                        <div className={`status-chip !text-label-xs !px-1.5 !py-0 !h-4 uppercase tracking-widest ${
-                          getDisplayType(row) === 'review' ? 'success' : 
-                          getDisplayType(row) === 'post' ? 'info' : 
-                          getDisplayType(row) === 'comment' ? 'subtle' : 'subtle'
-                        }`}>
+                        <StatusChip variant={
+                          getDisplayType(row) === 'review'
+                            ? 'success'
+                            : getDisplayType(row) === 'post'
+                              ? 'info'
+                              : 'subtle'
+                        } className="!text-label-xs !px-1.5 !py-0 !h-4 uppercase tracking-widest">
                           {getDisplayType(row)}
-                        </div>
+                        </StatusChip>
                       </td>
                       <td className="p-4">
                          <div className="font-mono text-muted uppercase group-hover:text-accent-2 transition-colors">
