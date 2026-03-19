@@ -222,7 +222,7 @@ export default function DeadLetterPage({
 
       <SectionCard padding="none" className="overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 border-b border-line">
-          <h2 className="text-sm font-bold text-white uppercase tracking-tight">Failed Jobs</h2>
+          <p className="eyebrow !mb-0">Failed Jobs</p>
           <p className="text-label font-mono text-muted/40 uppercase tracking-widest">{loading ? "Loading…" : `${jobs.length} items recorded`}</p>
         </div>
 

@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { EmptyState, PageHeader, SectionCard } from "@/components/ui";
 
 export type ProductSetupData = {
   id: string;
@@ -454,7 +455,7 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
 
         {/* Custom fields */}
         {isCustom && (
-          <div className="space-y-2 rounded-inner border border-line bg-panel p-4">
+          <SectionCard className="space-y-2" padding="sm">
             <p className="text-xs text-muted mb-3">All fields required</p>
             {CUSTOM_FIELDS.map(({ key, placeholder }) => (
               <div key={key} className="flex items-start gap-3">
@@ -468,12 +469,12 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
                 />
               </div>
             ))}
-          </div>
+          </SectionCard>
         )}
 
         {/* Anchor preview */}
         {resolvedAnchor && (
-          <div className="rounded-inner border border-line bg-panel">
+          <SectionCard padding="none">
             <button
               type="button"
               onClick={() => setAnchorPreviewOpen((v) => !v)}
@@ -487,7 +488,7 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
                 {resolvedAnchor}
               </pre>
             )}
-          </div>
+          </SectionCard>
         )}
 
         {missingFields.length > 0 && (
@@ -500,11 +501,13 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
   }
 
   function StageList() {
-    if (stages.length === 0) return <p className="text-xs text-muted">No pipeline jobs yet.</p>;
+    if (stages.length === 0) {
+      return <EmptyState title="No pipeline jobs yet" />;
+    }
     return (
       <div className="space-y-2">
         {stages.map((stage) => (
-          <div key={stage.type} className="rounded-inner border border-line bg-panel p-3">
+          <SectionCard key={stage.type} padding="sm">
             <div className="flex items-center justify-between gap-3">
               <p className="text-sm text-white">{stage.label}</p>
               <div className="flex items-center gap-2">
@@ -522,7 +525,7 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
                     type="button"
                     onClick={() => void handleCancelCharacterJob(stage.jobId!)}
                     disabled={cancellingCharacterJobId === stage.jobId}
-                    className="inline-flex items-center rounded border border-accent/30 bg-accent/10 px-2 py-1 text-body-sm font-medium text-accent hover:bg-accent/20 disabled:opacity-60"
+                    className="btn btn-danger !min-h-[28px] px-3 text-label disabled:opacity-60"
                   >
                     {cancellingCharacterJobId === stage.jobId ? "Cancelling..." : "Cancel"}
                   </button>
@@ -530,7 +533,7 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
               </div>
             </div>
             {stage.error && <p className="mt-2 text-xs text-accent">{stage.error}</p>}
-          </div>
+          </SectionCard>
         ))}
       </div>
     );
@@ -538,37 +541,34 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
 
   return (
     <div className="px-8 py-8 max-w-7xl mx-auto space-y-8">
-      {/* Header */}
-      <section className="rounded-card border border-line bg-panel p-5">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-body-sm uppercase tracking-widest text-muted">Product Setup</p>
-            <h1 className="text-2xl font-semibold text-white">{product.name}</h1>
-            <p className="text-sm text-muted mt-1">
-              Create your own custom character.
-            </p>
-          </div>
-          <Link
-            href={`/projects/${product.project.id}/products`}
-            className="inline-flex items-center rounded-inner border border-line bg-panel px-3 py-2 text-xs font-medium text-white hover:bg-bg-elevated"
-          >
-            Back to Products
-          </Link>
-        </div>
-      </section>
+      <SectionCard padding="md">
+        <PageHeader
+          eyebrow="Product Setup"
+          title={product.name}
+          description="Create your own custom character."
+          actions={
+            <Link
+              href={`/projects/${product.project.id}/products`}
+              className="btn btn-secondary !min-h-[32px] px-4 text-label"
+            >
+              Back to Products
+            </Link>
+          }
+        />
+      </SectionCard>
 
       {error && (
-        <section className="rounded-inner border border-accent/30 bg-accent/10 p-4">
+        <SectionCard padding="sm" className="border-accent/30 bg-accent/10">
           <p className="text-sm text-accent">{error}</p>
-        </section>
+        </SectionCard>
       )}
 
-      <section className="rounded-card border border-line bg-panel p-5 space-y-4">
-        <h2 className="text-sm font-semibold text-white">Character Generation</h2>
+      <SectionCard padding="md" className="space-y-4">
+        <p className="eyebrow !mb-0">Character Generation</p>
 
         {!effectiveCharacterId ? (
           <>
-            <div className="space-y-4 rounded-inner border border-line bg-panel p-4">
+            <SectionCard className="space-y-4" padding="sm">
               {/* Run selector */}
               <div className="space-y-1">
                 <label className="text-xs text-muted">Attach to Run</label>
@@ -595,7 +595,7 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
                 {isGenerating ? "Starting..." : "Generate Character"}
               </button>
 
-            </div>
+            </SectionCard>
 
             <StageList />
             {hasFailedStage && (
@@ -607,7 +607,7 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
         ) : (
           <div className="space-y-4">
             {resolvedAvatarImageUrl && (
-              <div className="rounded-inner border border-line bg-panel p-3">
+              <SectionCard padding="sm">
                 <p className="mb-2 text-xs text-muted">Current avatar</p>
                 <button
                   type="button"
@@ -626,7 +626,7 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
                     className="rounded cursor-zoom-in"
                   />
                 </button>
-              </div>
+              </SectionCard>
             )}
 
             <div className="flex items-center justify-between">
@@ -645,7 +645,7 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
                   type="button"
                   onClick={() => void handleReset()}
                   disabled={isResetting}
-                  className="inline-flex items-center rounded-inner border border-accent/30 bg-accent/10 px-3 py-2 text-xs font-medium text-accent hover:bg-accent/20 disabled:opacity-60"
+                  className="btn btn-danger !min-h-[32px] px-4 text-label disabled:opacity-60"
                 >
                   {isResetting ? "Resetting..." : "Reset All"}
                 </button>
@@ -669,7 +669,7 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
 
             {/* Character list */}
             <div className="space-y-3">
-              <div className="flex items-center justify-between rounded-inner border border-line bg-panel p-3">
+              <SectionCard padding="sm" className="flex items-center justify-between">
                 <label className="inline-flex items-center gap-2 text-xs text-muted">
                   <input
                     type="checkbox"
@@ -688,10 +688,10 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
                 >
                   {isDeletingCharacters ? "Deleting..." : `Delete Selected (${selectedCharacterIds.length})`}
                 </button>
-              </div>
+              </SectionCard>
 
               {product.characters.map((char) => (
-                <div key={char.id} className="rounded-inner border border-line bg-panel p-4 space-y-2">
+                <SectionCard key={char.id} padding="sm" className="space-y-2">
                   <div className="flex items-center justify-between gap-3">
                     <label className="inline-flex items-center gap-2">
                       <input
@@ -770,13 +770,13 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
                       </p>
                     ))}
                   </div>
-                </div>
+                </SectionCard>
               ))}
             </div>
 
             {/* Add character panel */}
             {addingCharacter && (
-              <div className="space-y-4 rounded-inner border border-line bg-panel p-4">
+              <SectionCard className="space-y-4" padding="sm">
                 <p className="text-xs text-muted">Generate an additional character for this product.</p>
                 <CharacterSelector />
                 <div className="flex gap-2">
@@ -799,13 +799,13 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
                 {hasInFlightStage && (
                   <p className="text-xs text-accent">Pipeline already running — wait for it to finish.</p>
                 )}
-              </div>
+              </SectionCard>
             )}
 
             {hasInFlightStage && <StageList />}
           </div>
         )}
-      </section>
+      </SectionCard>
 
       {isMounted &&
         avatarPreview &&

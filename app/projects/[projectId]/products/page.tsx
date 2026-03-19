@@ -272,42 +272,33 @@ export default function ProjectProductsPage() {
   return (
     <div className="min-h-screen bg-bg text-white pb-20">
       <div className="border-b border-line bg-transparent backdrop-blur-md px-8 py-6 sticky top-0 z-30">
-        <div className="flex items-center justify-between gap-6">
-          <div className="space-y-4">
-            <Link
-              href={`/projects/${projectId}`}
-              className="text-body-sm font-mono text-muted hover:text-white uppercase tracking-widest transition-colors inline-block"
-            >
-              ← Back to Project
-            </Link>
-            <div className="flex items-center gap-4">
-              <h1 className="text-4xl font-bold tracking-tight text-white">Product Library</h1>
-              <div className="status-chip subtle uppercase tracking-widest text-label-sm">
+        <PageHeader
+          backHref={`/projects/${projectId}`}
+          backLabel="Back to Project"
+          title="Product Library"
+          description={`View: Product Management | Project: ${projectId.substring(0, 8)}`}
+          actions={
+            <>
+              <StatusChip variant="subtle">
                 {sortedProducts.length} Products
-              </div>
-            </div>
-            <p className="text-xs text-muted font-mono uppercase tracking-widest opacity-60">
-              View: <span className="text-accent-2">Product Management</span> 
-              <span className="mx-3 opacity-20">|</span> 
-              Project: <span className="text-white">{projectId.substring(0, 8)}</span>
-            </p>
-          </div>
-          
-          <button
-            onClick={() => void loadProducts()}
-            className="btn btn-secondary !min-h-[40px] px-6 text-label font-bold uppercase tracking-widest"
-          >
-            Refresh Products
-          </button>
-        </div>
+              </StatusChip>
+              <button
+                onClick={() => void loadProducts()}
+                className="btn btn-secondary !min-h-[40px] px-6 text-label font-bold uppercase tracking-widest"
+              >
+                Refresh Products
+              </button>
+            </>
+          }
+        />
       </div>
 
       <div className="px-8 py-8 max-w-7xl mx-auto space-y-8">
         {error && (
-          <div className="rounded-card border border-danger/20 bg-danger/5 p-4 flex items-center justify-between gap-4 animate-in fade-in slide-in-from-top-2">
+          <SectionCard className="flex items-center justify-between gap-4 animate-in fade-in slide-in-from-top-2 border-danger/20 bg-danger/5" padding="sm">
             <p className="text-body-sm font-mono text-danger uppercase tracking-widest">{error}</p>
-            <button onClick={() => setError(null)} className="text-muted/20 hover:text-white transition-colors">✕</button>
-          </div>
+            <button onClick={() => setError(null)} className="btn btn-secondary !min-h-[32px] px-4 text-label">Close</button>
+          </SectionCard>
         )}
 
         {sortedProducts.length === 0 ? (
@@ -315,12 +306,13 @@ export default function ProjectProductsPage() {
         ) : (
           <div className="grid gap-8">
             {sortedProducts.map((product) => (
-              <div
+              <SectionCard
                 key={product.id}
-                className={`rounded-card border backdrop-blur-panel transition-all duration-300 ${
+                padding="none"
+                className={`backdrop-blur-panel transition-all duration-300 ${
                   editingProductId === product.id 
-                    ? "border-line bg-panel shadow-panel" 
-                    : "border-line bg-panel shadow-panel hover:border-line/60"
+                    ? ""
+                    : "hover:border-line/60"
                 }`}
               >
                 <div className="px-6 py-4 border-b border-line/50 bg-bg-elevated flex items-center justify-between">
@@ -415,7 +407,7 @@ export default function ProjectProductsPage() {
 
                   {editingProductId === product.id && editingDraft && (
                     <div className="mt-8 pt-8 border-t border-line/50 animate-in fade-in slide-in-from-top-4 duration-500">
-                      <div className="rounded-card border border-accent/20 bg-accent/5 p-8 space-y-8">
+                      <SectionCard className="space-y-8 border-accent/20 bg-accent/5" padding="lg">
                         <div className="grid gap-8 lg:grid-cols-2">
                           <div className="space-y-6">
                             <div className="space-y-2">
@@ -438,7 +430,7 @@ export default function ProjectProductsPage() {
                                     input?.click();
                                   }}
                                   disabled={uploadingReferenceProductId === product.id}
-                                  className="px-6 h-10 rounded-pill border border-line bg-bg-elevated text-label font-mono text-white uppercase tracking-widest hover:bg-panel transition-all hover:text-bg font-bold disabled:opacity-40"
+                                  className="btn btn-secondary !min-h-[36px] px-6 text-label disabled:opacity-40"
                                 >
                                   {uploadingReferenceProductId === product.id ? "Uploading..." : "Upload Image"}
                                 </button>
@@ -448,7 +440,7 @@ export default function ProjectProductsPage() {
                                     type="button"
                                     onClick={() => void handleDeleteProductReferenceImage(product.id)}
                                     disabled={deletingReferenceProductId === product.id}
-                                    className="px-6 h-10 rounded-pill border border-danger/40 bg-danger/5 text-label font-mono text-danger uppercase tracking-widest hover:bg-danger/20 transition-all font-bold"
+                                    className="btn btn-danger !min-h-[36px] px-6 text-label"
                                   >
                                     Remove Image
                                   </button>
@@ -502,11 +494,11 @@ export default function ProjectProductsPage() {
                             {savingProductId === product.id ? "Saving..." : "Save Changes"}
                           </button>
                         </div>
-                      </div>
+                      </SectionCard>
                     </div>
                   )}
                 </div>
-              </div>
+              </SectionCard>
             ))}
           </div>
         )}

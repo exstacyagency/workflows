@@ -471,14 +471,14 @@ export default function AllResearchDataPage() {
               <button
                 onClick={handleDeleteSelected}
                 disabled={selectedCount === 0 || bulkDeleting || deletingAll}
-                className="px-4 py-2 rounded-pill border border-danger/20 bg-danger/5 text-danger font-mono font-bold uppercase tracking-widest text-label-sm hover:bg-danger/10 hover:text-danger disabled:opacity-20 transition-all"
+                className="btn btn-danger !min-h-[32px] px-4 text-label disabled:opacity-20"
               >
                 {bulkDeleting ? 'Purging...' : `Purge (${selectedCount})`}
               </button>
               <button
                 onClick={handleDeleteAll}
                 disabled={deletingAll || bulkDeleting || totalCount === 0}
-                className="px-4 py-2 rounded-pill border border-danger/40 bg-danger/10 text-danger font-mono font-bold uppercase tracking-widest text-label-sm hover:bg-danger/20 disabled:opacity-20 transition-all"
+                className="btn btn-danger !min-h-[32px] px-4 text-label disabled:opacity-20"
               >
                 {deletingAll ? 'Wiping...' : 'Wipe Database'}
               </button>
@@ -520,7 +520,7 @@ export default function AllResearchDataPage() {
         <SectionCard padding="lg">
           <div className="flex items-center gap-4 mb-6">
             <div className="h-px flex-1 bg-line/50"></div>
-            <h2 className="text-label font-mono font-bold text-muted uppercase tracking-[0.4em] opacity-50">Theme Breakdown</h2>
+            <p className="eyebrow !mb-0 opacity-50">Theme Breakdown</p>
             <div className="h-px flex-1 bg-line/50"></div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -545,7 +545,7 @@ export default function AllResearchDataPage() {
       {/* Filters Hub */}
       <div className="space-y-6 pt-4">
         <div className="flex items-center gap-4">
-          <h2 className="text-label font-mono font-bold text-muted uppercase tracking-[0.3em] opacity-60">Research Filters</h2>
+          <p className="eyebrow !mb-0 opacity-60">Research Filters</p>
           <div className="h-px flex-1 bg-line/30"></div>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
@@ -733,9 +733,9 @@ export default function AllResearchDataPage() {
                               />
                             </td>
                             <td className="p-5">
-                              <span className="status-chip info !py-0.5 !text-label-xs font-black uppercase tracking-tighter opacity-80 group-hover:opacity-100 transition-opacity">
+                              <StatusChip variant="info" className="!py-0.5 !text-label-xs font-black uppercase tracking-tighter opacity-80 group-hover:opacity-100 transition-opacity">
                                 {row.type || 'RAW'}
-                              </span>
+                              </StatusChip>
                             </td>
                             <td className="p-5 text-muted text-label font-mono uppercase tracking-widest opacity-60 group-hover:opacity-80 transition-opacity">{getDisplaySource(row)}</td>
                             <td className="p-5">
@@ -814,7 +814,7 @@ export default function AllResearchDataPage() {
                               {row.jobId ? (
                                 <Link
                                   href={`/projects/${projectId}/research/data/${row.jobId}`}
-                                  className="inline-flex items-center justify-center h-8 w-8 rounded-card border border-line bg-bg-elevated hover:bg-accent-2 hover:border-accent-2 group/job transition-all"
+                                  className="btn btn-secondary !min-h-[32px] h-8 w-8 px-0 justify-center group/job"
                                   title="View Parent Job"
                                 >
                                   <span className="text-label font-mono text-white group-hover/job:text-bg font-black">ID</span>
@@ -832,7 +832,7 @@ export default function AllResearchDataPage() {
                                     <div className="lg:col-span-2 space-y-4">
                                       <div className="flex items-center gap-3">
                                         <div className="h-2 w-2 rounded-full bg-accent animate-pulse"></div>
-                                        <h4 className="text-label font-mono text-accent uppercase tracking-[0.3em] font-black">Extracted Semantic Payload</h4>
+                                        <p className="eyebrow !mb-0">Extracted Semantic Payload</p>
                                       </div>
                                       <div className="text-base text-text/95 leading-relaxed font-sans bg-panel p-8 rounded-card border border-line shadow-inner overflow-hidden">
                                         <div className="overflow-x-auto">
@@ -842,19 +842,19 @@ export default function AllResearchDataPage() {
                                     </div>
                                     <div className="space-y-6">
                                       <div className="space-y-4">
-                                        <h4 className="text-label font-mono text-accent-2 uppercase tracking-[0.3em] font-black">Row Metadata</h4>
+                                        <p className="eyebrow !mb-0">Row Metadata</p>
                                         <div className="bg-panel p-6 rounded-card border border-line overflow-hidden group/meta">
                                           <pre className="text-body-sm text-muted-2 leading-loose font-mono max-h-[400px] overflow-y-auto overflow-x-auto custom-scrollbar">
                                             {JSON.stringify(row.metadata, null, 2)}
                                           </pre>
                                         </div>
                                       </div>
-                                      <div className="p-6 rounded-card border border-accent-2/10 bg-accent-2/5 space-y-4">
-                                        <h4 className="text-label-sm font-mono text-accent-2/60 uppercase tracking-widest font-black">System Actions</h4>
+                                      <SectionCard className="space-y-4" padding="md">
+                                        <p className="eyebrow !mb-0">System Actions</p>
                                         <div className="flex flex-col gap-2">
                                           <Link 
                                             href={`/projects/${projectId}/research/data/${row.jobId}/inputs`}
-                                            className="px-4 py-2 bg-panel border border-line rounded text-label font-mono text-muted hover:text-white hover:border-accent-2/40 transition-all uppercase tracking-widest text-center"
+                                            className="btn btn-secondary !min-h-[36px] px-4 text-label text-center"
                                           >
                                             Inspect Inputs
                                           </Link>
@@ -863,13 +863,13 @@ export default function AllResearchDataPage() {
                                               href={redditUrl}
                                               target="_blank" 
                                               rel="noreferrer"
-                                              className="px-4 py-2 bg-accent-2/10 border border-accent-2/20 rounded text-label font-mono text-accent-2 hover:bg-accent-2/20 transition-all uppercase tracking-widest text-center"
+                                              className="btn btn-primary !min-h-[36px] px-4 text-label text-center"
                                             >
                                               External Context
                                             </a>
                                           )}
                                         </div>
-                                      </div>
+                                      </SectionCard>
                                     </div>
                                   </div>
                                 </div>

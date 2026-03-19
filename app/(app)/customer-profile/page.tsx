@@ -267,8 +267,7 @@ export default function CustomerProfilePage() {
   const editResearchHref = selectedProjectId ? `/projects/${selectedProjectId}/research` : '#';
 
   return (
-    <main className="min-h-screen bg-bg text-white px-4 py-8">
-      <div className="max-w-5xl mx-auto space-y-8">
+    <main className="px-8 py-8 max-w-7xl mx-auto space-y-8">
         <PageHeader
           title="Step 3 - Customer Profile"
           description="Use your Phase 1A research (Reddit + Amazon) to generate a structured customer avatar and product intelligence for a selected project."
@@ -336,7 +335,7 @@ export default function CustomerProfilePage() {
         {hasAnalysis && (
           <SectionCard padding="sm" className="space-y-3">
             <div>
-              <h2 className="text-sm font-semibold text-white">Next steps</h2>
+              <p className="eyebrow !mb-0">Next Steps</p>
               <p className="text-xs text-muted">
                 Move into pattern analysis or jump straight to script work now that Phase 1B is complete.
               </p>
@@ -365,7 +364,7 @@ export default function CustomerProfilePage() {
                 {showMoreActions && (
                   <div className="absolute right-0 mt-2 w-48 rounded-inner border border-line bg-bg/95 shadow-lg">
                     <button
-                      className="w-full text-left px-3 py-2 text-sm text-white hover:bg-bg-elevated"
+                      className="btn btn-secondary w-full !min-h-[36px] justify-start rounded-none border-0 px-3"
                       onClick={() => {
                         setShowMoreActions(false);
                         if (editResearchHref !== '#') {
@@ -386,7 +385,7 @@ export default function CustomerProfilePage() {
         <section className="grid gap-4 md:grid-cols-2">
           {/* Avatar card */}
           <SectionCard padding="sm" className="space-y-3">
-            <h2 className="text-lg font-semibold">Customer avatar</h2>
+            <p className="eyebrow">Customer Avatar</p>
             {!avatar && (
               <EmptyState title="No customer avatar yet" description="Run analysis to see the avatar for this project." />
             )}
@@ -429,7 +428,7 @@ export default function CustomerProfilePage() {
 
           {/* Product intelligence card */}
           <SectionCard padding="sm" className="space-y-3">
-            <h2 className="text-lg font-semibold">Product intelligence</h2>
+            <p className="eyebrow">Product Intelligence</p>
             {!productIntel && (
               <EmptyState title="No product intelligence yet" description="Run analysis to see product intelligence for this project." />
             )}
@@ -468,18 +467,18 @@ export default function CustomerProfilePage() {
         </section>
 
         <SectionCard padding="sm" className="space-y-4">
-          <h2 className="text-lg font-semibold">Snapshot history</h2>
+          <p className="eyebrow">Snapshot History</p>
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-white">Customer avatars</h3>
+                <p className="eyebrow !mb-0">Customer Avatars</p>
                 <span className="text-xs text-muted">{avatarHistory.length} total</span>
               </div>
               {avatarHistory.length === 0 ? (
-                <p className="text-xs text-muted">No avatars captured yet.</p>
+                <EmptyState title="No avatars captured yet" />
               ) : (
                 avatarHistory.map(item => (
-                  <div key={item.id} className="rounded-inner border border-line bg-panel px-3 py-2 space-y-1">
+                  <SectionCard key={item.id} padding="sm" className="space-y-1">
                     <div className="flex items-center justify-between text-xs text-muted">
                       <span>{formatDate(item.createdAt)}</span>
                       <StatusChip variant={item.archivedAt ? 'warning' : 'success'} className="!px-2 !py-0.5 !text-label-xs">
@@ -492,14 +491,14 @@ export default function CustomerProfilePage() {
                     <div className="flex flex-wrap gap-2 text-body-sm">
                       <button
                         onClick={() => downloadJson('avatar', item.id)}
-                        className="px-2 py-1 rounded-inner border border-line text-white hover:bg-bg-elevated"
+                        className="btn btn-secondary !min-h-[28px] px-3 text-label"
                       >
                         Download
                       </button>
                       {item.archivedAt ? (
                         <button
                           onClick={() => mutateSnapshot('avatar', item.id, 'restore')}
-                          className="px-2 py-1 rounded-inner border border-line text-white hover:bg-bg-elevated"
+                          className="btn btn-secondary !min-h-[28px] px-3 text-label"
                         >
                           Restore
                         </button>
@@ -507,33 +506,33 @@ export default function CustomerProfilePage() {
                         <button
                           onClick={() => mutateSnapshot('avatar', item.id, 'archive')}
                           disabled={activeAvatarCount <= 1}
-                          className="px-2 py-1 rounded-inner border border-line text-white hover:bg-bg-elevated disabled:opacity-40"
+                          className="btn btn-secondary !min-h-[28px] px-3 text-label disabled:opacity-40"
                         >
                           Archive
                         </button>
                       )}
                       <button
                         onClick={() => mutateSnapshot('avatar', item.id, 'delete')}
-                        className="px-2 py-1 rounded-inner border border-accent/30 text-accent hover:bg-accent/20"
+                        className="btn btn-danger !min-h-[28px] px-3 text-label"
                       >
                         Delete
                       </button>
                     </div>
-                  </div>
+                  </SectionCard>
                 ))
               )}
             </div>
 
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-white">Product intelligence</h3>
+                <p className="eyebrow !mb-0">Product Intelligence</p>
                 <span className="text-xs text-muted">{productHistory.length} total</span>
               </div>
               {productHistory.length === 0 ? (
-                <p className="text-xs text-muted">No product intelligence captured yet.</p>
+                <EmptyState title="No product intelligence captured yet" />
               ) : (
                 productHistory.map(item => (
-                  <div key={item.id} className="rounded-inner border border-line bg-panel px-3 py-2 space-y-1">
+                  <SectionCard key={item.id} padding="sm" className="space-y-1">
                     <div className="flex items-center justify-between text-xs text-muted">
                       <span>{formatDate(item.createdAt)}</span>
                       <StatusChip variant={item.archivedAt ? 'warning' : 'success'} className="!px-2 !py-0.5 !text-label-xs">
@@ -546,14 +545,14 @@ export default function CustomerProfilePage() {
                     <div className="flex flex-wrap gap-2 text-body-sm">
                       <button
                         onClick={() => downloadJson('intel', item.id)}
-                        className="px-2 py-1 rounded-inner border border-line text-white hover:bg-bg-elevated"
+                        className="btn btn-secondary !min-h-[28px] px-3 text-label"
                       >
                         Download
                       </button>
                       {item.archivedAt ? (
                         <button
                           onClick={() => mutateSnapshot('intel', item.id, 'restore')}
-                          className="px-2 py-1 rounded-inner border border-line text-white hover:bg-bg-elevated"
+                          className="btn btn-secondary !min-h-[28px] px-3 text-label"
                         >
                           Restore
                         </button>
@@ -561,19 +560,19 @@ export default function CustomerProfilePage() {
                         <button
                           onClick={() => mutateSnapshot('intel', item.id, 'archive')}
                           disabled={activeProductCount <= 1}
-                          className="px-2 py-1 rounded-inner border border-line text-white hover:bg-bg-elevated disabled:opacity-40"
+                          className="btn btn-secondary !min-h-[28px] px-3 text-label disabled:opacity-40"
                         >
                           Archive
                         </button>
                       )}
                       <button
                         onClick={() => mutateSnapshot('intel', item.id, 'delete')}
-                        className="px-2 py-1 rounded-inner border border-accent/30 text-accent hover:bg-accent/20"
+                        className="btn btn-danger !min-h-[28px] px-3 text-label"
                       >
                         Delete
                       </button>
                     </div>
-                  </div>
+                  </SectionCard>
                 ))
               )}
             </div>
@@ -582,7 +581,6 @@ export default function CustomerProfilePage() {
             Archived snapshots older than 90 days are automatically removed.
           </p>
         </SectionCard>
-      </div>
     </main>
   );
 }

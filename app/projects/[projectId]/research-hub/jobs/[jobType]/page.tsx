@@ -180,7 +180,7 @@ export default function JobListPage() {
             <div key={group.runId || 'no-run'} className="space-y-4">
               {/* Group Header */}
               <div className="flex items-center justify-between rounded-pill border border-line bg-bg-elevated px-5 py-3 shadow-panel backdrop-blur-panel">
-                <h2 className="text-sm font-bold text-white uppercase tracking-tight">{group.runLabel}</h2>
+                <p className="eyebrow !mb-0">{group.runLabel}</p>
                 <p className="text-label font-mono text-muted uppercase opacity-70">{group.jobs.length} {group.jobs.length === 1 ? 'job' : 'jobs'}</p>
               </div>
 

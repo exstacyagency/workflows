@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import StudioHeader from "./StudioHeader";
 import WhoAmI from "./WhoAmI";
-import { EmptyState, SectionCard } from "@/components/ui";
+import { EmptyState, PageHeader, SectionCard } from "@/components/ui";
 
 type Project = {
   id: string;
@@ -104,44 +104,40 @@ export default function StudioHomePage() {
     <>
       <StudioHeader />
       <div className="px-8 py-8 max-w-7xl mx-auto space-y-8">
-      <SectionCard className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 rounded-card" padding="sm">
-        <div>
-          <h1 className="text-2xl font-semibold text-white">
-            Victora Studio
-          </h1>
-          <WhoAmI />
-          <p className="text-sm text-muted mt-1">
-            Manage projects, monitor jobs, and keep production moving.
-          </p>
-        </div>
-        <div className="flex flex-col items-start md:items-end gap-2">
-          {lastProject ? (
-            <>
-              <div className="text-body-sm uppercase tracking-wide text-muted">
-                Resume Project
+      <SectionCard className="space-y-3 rounded-card" padding="sm">
+        <PageHeader
+          title="Victora Studio"
+          description="Manage projects, monitor jobs, and keep production moving."
+          actions={
+            lastProject ? (
+              <div className="flex flex-col items-start md:items-end gap-2">
+                <div className="text-body-sm uppercase tracking-wide text-muted">
+                  Resume Project
+                </div>
+                <div className="text-sm font-medium text-white">
+                  {lastProject.name}
+                </div>
+                <Link
+                  href={`/projects/${lastProject.id}`}
+                  className="mt-1 btn btn-secondary !min-h-[32px] px-4 text-label"
+                >
+                  Open Project
+                </Link>
               </div>
-              <div className="text-sm font-medium text-white">
-                {lastProject.name}
-              </div>
-              <Link
-                href={`/projects/${lastProject.id}`}
-                className="mt-1 btn btn-primary !min-h-[32px] px-4 text-label"
-              >
-                Open Project
-              </Link>
-            </>
-          ) : (
-            <div className="text-sm text-muted">
-              No projects yet. Once you add projects, you’ll be able to resume
-              them from here.
-            </div>
-          )}
-        </div>
+            ) : (
+              <EmptyState
+                title="No Projects Yet"
+                description="Once you add projects, you’ll be able to resume them from here."
+              />
+            )
+          }
+        />
+        <WhoAmI />
       </SectionCard>
 
       <SectionCard className="space-y-3 rounded-card" padding="sm">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-white">Projects</h2>
+          <p className="eyebrow !mb-0">Projects</p>
           <div className="flex items-center gap-2">
             <button
               onClick={handleStartCreateProject}
@@ -153,14 +149,14 @@ export default function StudioHomePage() {
             <button
               onClick={loadProjects}
               disabled={loading}
-              className="text-xs px-3 py-1 rounded-inner border border-line hover:bg-bg-elevated disabled:opacity-50"
+              className="btn btn-secondary !min-h-[32px] px-4 text-label disabled:opacity-50"
             >
               {loading ? "Refreshing…" : "Refresh"}
             </button>
           </div>
         </div>
         {showCreateForm && (
-          <div className="rounded-inner border border-line bg-panel p-3 space-y-3">
+          <SectionCard className="space-y-3" padding="sm">
             <label
               htmlFor="project-name"
               className="block text-xs font-medium text-white"
@@ -193,7 +189,7 @@ export default function StudioHomePage() {
               </button>
             </div>
             {createError && <p className="text-xs text-accent">{createError}</p>}
-          </div>
+          </SectionCard>
         )}
         {error && <p className="text-xs text-accent">{error}</p>}
         {projects.length === 0 && !loading && (
@@ -204,9 +200,10 @@ export default function StudioHomePage() {
         )}
         <div className="space-y-2">
           {projects.map((project) => (
-            <div
+            <SectionCard
               key={project.id}
-              className="flex items-center justify-between rounded-inner border border-line bg-panel px-4 py-3"
+              padding="none"
+              className="flex items-center justify-between px-4 py-3"
             >
               <div className="space-y-1">
                 <div className="text-sm font-medium text-white">
@@ -224,12 +221,12 @@ export default function StudioHomePage() {
               <div className="flex items-center gap-2">
                 <Link
                   href={`/projects/${project.id}`}
-                  className="text-xs px-3 py-1.5 rounded-inner bg-bg-elevated hover:bg-panel-strong text-white"
+                  className="btn btn-secondary !min-h-[32px] px-4 text-label"
                 >
                   Open
                 </Link>
               </div>
-            </div>
+            </SectionCard>
           ))}
         </div>
       </SectionCard>

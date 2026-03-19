@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { PageHeader, SectionCard, StatusChip } from "@/components/ui";
+import { EmptyState, PageHeader, SectionCard, StatusChip } from "@/components/ui";
 import { getJobTypeLabel } from "@/lib/jobLabels";
 
 type JobType = string;
@@ -164,40 +164,40 @@ export default function UsagePage() {
       <div className="flex flex-wrap gap-2 p-1.5 rounded-pill bg-panel border border-line w-fit">
         <button
           onClick={() => setDateFilter("all")}
-          className={`px-6 py-2 rounded-pill text-body-sm font-bold uppercase tracking-wider transition-all ${
+          className={`btn btn-secondary !min-h-[36px] px-6 ${
             dateFilter === "all"
-              ? "bg-accent text-bg shadow-lg shadow-accent/20"
-              : "text-muted hover:text-white hover:bg-transparent"
+              ? "bg-accent text-bg border-transparent"
+              : ""
           }`}
         >
           All Time
         </button>
         <button
           onClick={() => setDateFilter("today")}
-          className={`px-6 py-2 rounded-pill text-body-sm font-bold uppercase tracking-wider transition-all ${
+          className={`btn btn-secondary !min-h-[36px] px-6 ${
             dateFilter === "today"
-              ? "bg-accent text-bg shadow-lg shadow-accent/20"
-              : "text-muted hover:text-white hover:bg-transparent"
+              ? "bg-accent text-bg border-transparent"
+              : ""
           }`}
         >
           Today
         </button>
         <button
           onClick={() => setDateFilter("week")}
-          className={`px-6 py-2 rounded-pill text-body-sm font-bold uppercase tracking-wider transition-all ${
+          className={`btn btn-secondary !min-h-[36px] px-6 ${
             dateFilter === "week"
-              ? "bg-accent text-bg shadow-lg shadow-accent/20"
-              : "text-muted hover:text-white hover:bg-transparent"
+              ? "bg-accent text-bg border-transparent"
+              : ""
           }`}
         >
           Last 7 Days
         </button>
         <button
           onClick={() => setDateFilter("month")}
-          className={`px-6 py-2 rounded-pill text-body-sm font-bold uppercase tracking-wider transition-all ${
+          className={`btn btn-secondary !min-h-[36px] px-6 ${
             dateFilter === "month"
-              ? "bg-accent text-bg shadow-lg shadow-accent/20"
-              : "text-muted hover:text-white hover:bg-transparent"
+              ? "bg-accent text-bg border-transparent"
+              : ""
           }`}
         >
           Last 30 Days
@@ -206,7 +206,7 @@ export default function UsagePage() {
 
       {/* Breakdown by Job Type */}
       <div className="space-y-4">
-        <h2 className="text-sm font-bold text-white uppercase tracking-tight">Breakdown by Job Type</h2>
+        <p className="eyebrow">Breakdown By Job Type</p>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {Object.entries(byJobType)
             .sort(([, a], [, b]) => b - a)
@@ -227,7 +227,7 @@ export default function UsagePage() {
                       </div>
                       <div className="h-1.5 bg-bg-elevated rounded-full overflow-hidden">
                         <div
-                          className="h-full bg-accent-2 shadow-[0_0_8px_rgba(154,208,255,0.4)]"
+                          className="h-full bg-accent-2 shadow-panel"
                           style={{ width: `${percentage}%` }}
                         />
                       </div>
@@ -242,7 +242,7 @@ export default function UsagePage() {
 
       {/* Jobs Table */}
       <div className="space-y-4">
-        <h2 className="text-sm font-bold text-white uppercase tracking-tight">Financial Record</h2>
+        <p className="eyebrow">Financial Record</p>
         <SectionCard padding="none" className="overflow-hidden">
           <table className="w-full">
             <thead className="bg-bg-elevated border-b border-line">
@@ -267,8 +267,8 @@ export default function UsagePage() {
             <tbody className="divide-y divide-line">
                {filteredJobs.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-5 py-12 text-center text-xs text-muted italic">
-                    No matching ledger entries found.
+                  <td colSpan={5} className="px-5 py-12">
+                    <EmptyState title="No matching ledger entries found" />
                   </td>
                 </tr>
               ) : (

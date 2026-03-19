@@ -183,9 +183,7 @@ export default function CustomerAnalysisJobsPage() {
             {groupedJobs.map((group) => (
               <div key={group.runId || "no-run"} className="space-y-6">
                 <div className="flex items-center justify-between rounded-pill border border-line bg-bg-elevated px-5 py-3 shadow-panel backdrop-blur-panel">
-                  <h2 className="text-sm font-bold uppercase tracking-tight text-white">
-                    {group.runLabel}
-                  </h2>
+                  <p className="eyebrow !mb-0">{group.runLabel}</p>
                   <p className="text-label font-mono uppercase text-muted opacity-70">
                     {group.jobs.length} {group.jobs.length === 1 ? "job" : "jobs"}
                   </p>
@@ -193,7 +191,7 @@ export default function CustomerAnalysisJobsPage() {
 
                 <SectionCard padding="none" className="overflow-hidden">
                   <div className="border-b border-line bg-panel px-6 py-3">
-                    <h3 className="text-label-sm font-mono text-accent uppercase tracking-[0.2em] font-bold">Run History</h3>
+                    <p className="eyebrow !mb-0">Run History</p>
                   </div>
                   <table className="w-full text-left border-collapse">
                     <thead className="border-b border-line bg-panel">

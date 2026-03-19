@@ -140,7 +140,7 @@ export function PipelineStatusDb({ projectId }: Props) {
   return (
     <SectionCard className="space-y-3" padding="sm">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-white tracking-tight">Pipeline Status</h2>
+        <p className="eyebrow !mb-0">Pipeline Status</p>
         <span className="text-body-sm text-muted font-mono opacity-50">AUTO-UPDATE FROM JOB HISTORY</span>
       </div>
       {err && <p className="text-xs text-accent">{err}</p>}

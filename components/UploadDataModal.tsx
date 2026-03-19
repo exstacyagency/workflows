@@ -54,16 +54,7 @@ export function UploadDataModal({ isOpen, onClose, jobId, projectId }: UploadDat
 
   return (
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
-      style={{
-        position: "fixed",
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: "rgba(0, 0, 0, 0.6)",
-        zIndex: 9999,
-      }}
+      className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-overlay"
     >
       <div className="absolute inset-0 bg-overlay" onClick={onClose} />
       <div

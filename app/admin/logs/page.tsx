@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { PageHeader } from "@/components/ui";
+import { EmptyState, PageHeader } from "@/components/ui";
 
 export default function LogsPage() {
   const [files, setFiles] = useState<string[]>([]);
@@ -44,18 +44,18 @@ export default function LogsPage() {
             </div>
             <div className="flex-1 overflow-y-auto">
               {files.length === 0 ? (
-                <p className="px-4 py-6 text-body-sm font-mono text-muted uppercase tracking-widest opacity-40 text-center">
-                  No files found
-                </p>
+                <div className="p-4">
+                  <EmptyState title="No files found" />
+                </div>
               ) : (
                 files.map((f) => (
                   <button
                     key={f}
                     type="button"
                     onClick={() => loadFile(f)}
-                    className={`w-full text-left px-4 py-3 border-b border-line/40 transition-colors text-body-sm font-mono break-all ${
+                    className={`btn btn-secondary w-full !min-h-[44px] justify-start rounded-none border-x-0 border-t-0 px-4 text-body-sm font-mono break-all ${
                       selected === f
-                        ? "bg-accent/10 text-accent border-l-2 border-l-accent"
+                        ? "bg-accent/10 text-accent border-l-2 border-l-accent hover:bg-accent/10 hover:text-accent"
                         : "text-muted hover:bg-panel hover:text-white"
                     }`}
                   >
@@ -73,10 +73,11 @@ export default function LogsPage() {
                 {content}
               </pre>
             ) : (
-              <div className="h-full flex items-center justify-center">
-                <p className="text-body-sm font-mono text-muted uppercase tracking-widest opacity-40">
-                  ← Select a log file to view
-                </p>
+              <div className="h-full p-6 flex items-center justify-center">
+                <EmptyState
+                  title="Select a log file"
+                  description="Choose a log file from the left panel to view its contents."
+                />
               </div>
             )}
           </div>

@@ -10,7 +10,7 @@ import Link from "next/link";
 import RunManagementModal from "@/components/RunManagementModal";
 import { analyzeSwipeTranscript, type SwipeAnalysis } from "@/lib/analyzeSwipeTranscript";
 import { VideoEditorStep } from "./VideoEditorStep";
-import { PageHeader, SectionCard, StatusChip } from "@/components/ui";
+import { EmptyState, PageHeader, SectionCard, SectionLinkCard, StatusChip } from "@/components/ui";
 
 type Job = {
   id: string;
@@ -372,16 +372,16 @@ function AddBeatExpansion({
       </div>
 
       {error && (
-        <div className="p-4 rounded-card border border-danger/30 bg-danger/5 flex items-center justify-between gap-4 animate-in slide-in-from-top-2">
+        <SectionCard className="flex items-center justify-between gap-4 animate-in slide-in-from-top-2 border-danger/30 bg-danger/5" padding="sm">
           <span className="text-label font-mono text-danger uppercase tracking-widest">Error: {error}</span>
           <button
             onClick={() => void runGenerateWithAi()}
             disabled={disabled || loading}
-            className="text-label-sm font-mono text-danger font-bold uppercase tracking-widest hover:underline"
+            className="btn btn-danger !min-h-[28px] px-4 text-label-sm"
           >
             Retry_Sync
           </button>
-        </div>
+        </SectionCard>
       )}
     </SectionCard>
   );
@@ -3824,12 +3824,15 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
     };
     
     return (
-      <div className={`status-chip !px-3 !py-1 text-label-xs font-bold uppercase tracking-[0.2em] ${colors[status]}`}>
+      <StatusChip className={`!px-3 !py-1 text-label-xs font-bold uppercase tracking-[0.2em] ${colors[status]}`}>
         {labels[status]}
-      </div>
+      </StatusChip>
     );
   }
 
+  const anyRunning = jobs.some(
+    (job) => job.status === JobStatus.RUNNING || job.status === JobStatus.PENDING,
+  );
 
   if (loading) {
     return (
@@ -3840,21 +3843,21 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
   }
 
   return (
-    <div className="min-h-screen bg-bg text-white pb-20">
+    <div className="pb-20">
       <div className="px-8 py-8 max-w-7xl mx-auto space-y-8">
         <PageHeader
           backHref={`/projects/${projectId}`}
           backLabel="Back to Project"
-          title="Creative Studio"
-          description={`Workflow: Ad Creation | Project: ${projectId.substring(0, 8)}`}
-          actions={<StatusChip variant="subtle">Studio Active</StatusChip>}
+          title={selectedProduct ? `Creative Studio / ${selectedProduct.name}` : "Creative Studio"}
+          description="Script generation, storyboards, prompts, and production output."
+          actions={anyRunning ? <StatusChip variant="running">Running</StatusChip> : undefined}
         />
 
         {error && (
-          <div className="rounded-card border border-danger/20 bg-danger/5 p-4 flex items-center justify-between gap-4 animate-in fade-in slide-in-from-top-2">
+          <SectionCard className="flex items-center justify-between gap-4 animate-in fade-in slide-in-from-top-2 border-danger/20 bg-danger/5" padding="sm">
             <p className="text-body-sm font-mono text-danger uppercase tracking-widest">{error}</p>
-            <button onClick={() => setError(null)} className="text-muted/20 hover:text-white transition-colors">✕</button>
-          </div>
+            <button onClick={() => setError(null)} className="btn btn-secondary !min-h-[32px] px-4 text-label">Close</button>
+          </SectionCard>
         )}
 
         <SectionCard className="mb-12" padding="lg">
@@ -3887,9 +3890,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                     </div>
                   </div>
                 ) : (
-                  <p className="text-sm text-danger font-mono uppercase tracking-widest py-4 border border-danger/20 bg-danger/5 rounded-card text-center">
-                    No Products Added
-                  </p>
+                  <EmptyState title="No Products Added" variant="error" />
                 )}
               </div>
             </div>
@@ -3955,7 +3956,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
         </SectionCard>
 
         {orphanedJobsCount > 0 && (
-          <div className="rounded-card border border-danger/20 bg-danger/5 p-5 flex items-center justify-between gap-6 animate-in slide-in-from-right-4 duration-700">
+          <SectionCard className="flex items-center justify-between gap-6 animate-in slide-in-from-right-4 duration-700 border-danger/20 bg-danger/5" padding="md">
               <p className="text-label font-mono text-danger uppercase tracking-widest leading-relaxed">
                 Found {orphanedJobsCount} jobs not attached to a run.
               </p>
@@ -3966,11 +3967,11 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
             >
               {cleaningOrphanedJobs ? "Cleaning..." : "Clean Up Jobs"}
             </button>
-          </div>
+          </SectionCard>
         )}
 
         {selectedProduct && !selectedStoryboardCharacterId && (
-          <div className="rounded-card border border-accent/20 bg-accent/5 p-5 flex items-center justify-between gap-6 animate-in slide-in-from-right-4 duration-700">
+          <SectionCard className="flex items-center justify-between gap-6 animate-in slide-in-from-right-4 duration-700 border-accent/20 bg-accent/5" padding="md">
             <div className="flex items-center gap-4">
               <span className="text-xl">⚠️</span>
               <p className="text-body-sm font-mono text-accent uppercase tracking-widest leading-relaxed">
@@ -3983,126 +3984,132 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
             >
               Set Up Character
             </Link>
-          </div>
+          </SectionCard>
         )}
 
-        {/* Character Casting Section */}
-        <SectionCard className="space-y-6">
-          <div className="flex items-center gap-3">
-            <span className="text-label-sm font-mono text-accent uppercase tracking-widest font-bold">Character</span>
-          </div>
-
-          <div className="space-y-4">
-            {!selectedRunId ? (
-              <p className="text-label font-mono text-muted uppercase tracking-[0.2em] opacity-40 italic">Select a run to load matching characters.</p>
-            ) : runCharacters.length === 0 ? (
-              <div className="p-4 rounded-card border border-accent/20 bg-accent/5">
-                <p className="text-label font-mono text-accent uppercase tracking-widest">No characters found for this run.</p>
+        <div className="space-y-8">
+          {/* Character Casting Section */}
+          <div className="space-y-6">
+            <div className="flex items-center justify-between border-b border-line pb-4">
+              <div>
+                <p className="eyebrow">Character Selection</p>
+                <p className="text-body-sm font-mono text-muted uppercase tracking-widest">
+                  Cast and review the active character for this run.
+                </p>
               </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="flex flex-col gap-2">
-                  <label className="text-label font-mono text-muted uppercase tracking-[0.2em] ml-1">
-                    Active Character
-                  </label>
-                  <select
-                    value={selectedStoryboardCharacterId ?? ""}
-                    onChange={(event) => setSelectedStoryboardCharacterId(event.target.value || null)}
-                    className="w-full md:max-w-md h-12 bg-bg-elevated border border-line rounded-card px-4 text-body-sm font-mono text-white uppercase tracking-widest focus:border-accent/50 outline-none transition-all"
-                  >
-                    {runCharacters.map((char) => (
-                      <option key={char.id} value={char.id} className="bg-bg">
-                        {char.name.toUpperCase()}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="rounded-card border border-line bg-bg-elevated p-5 flex flex-col md:flex-row items-start gap-5 overflow-hidden">
-                  <div className="w-28 h-28 rounded-card border border-line overflow-hidden bg-panel flex items-center justify-center flex-shrink-0">
-                    {selectedRunCharacter?.seedVideoUrl ? (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setCharacterPreview({
-                            url: selectedRunCharacter.seedVideoUrl!,
-                            name: selectedRunCharacter.name,
-                          })
-                        }
-                        className="w-full h-full inline-flex rounded-card focus:outline-none focus:ring-2 focus:ring-accent/20"
-                      >
-                        <img
-                          src={selectedRunCharacter.seedVideoUrl}
-                          alt={selectedRunCharacter.name}
-                          className="w-full h-full object-cover object-top cursor-zoom-in"
-                        />
-                      </button>
-                    ) : (
-                      <span className="text-label font-mono text-muted uppercase tracking-widest opacity-50">
-                        No Image
-                      </span>
-                    )}
+            </div>
+            <SectionCard className="space-y-4">
+              {!selectedRunId ? (
+                <p className="text-label font-mono text-muted uppercase tracking-[0.2em] opacity-40 italic">Select a run to load matching characters.</p>
+              ) : runCharacters.length === 0 ? (
+                <SectionCard className="border-accent/20 bg-accent/5" padding="sm">
+                  <p className="text-label font-mono text-accent uppercase tracking-widest">No characters found for this run.</p>
+                </SectionCard>
+              ) : (
+                <div className="space-y-4">
+                  <div className="flex flex-col gap-2">
+                    <label className="text-label font-mono text-muted uppercase tracking-[0.2em] ml-1">
+                      Active Character
+                    </label>
+                    <select
+                      value={selectedStoryboardCharacterId ?? ""}
+                      onChange={(event) => setSelectedStoryboardCharacterId(event.target.value || null)}
+                      className="w-full md:max-w-md h-12 bg-bg-elevated border border-line rounded-card px-4 text-body-sm font-mono text-white uppercase tracking-widest focus:border-accent/50 outline-none transition-all"
+                    >
+                      {runCharacters.map((char) => (
+                        <option key={char.id} value={char.id} className="bg-bg">
+                          {char.name.toUpperCase()}
+                        </option>
+                      ))}
+                    </select>
                   </div>
-                  <div className="flex-1 space-y-3 min-w-0">
-                    <p className="text-lg font-bold text-white tracking-tight">
-                      {selectedRunCharacter?.name ?? "No Character Selected"}
-                    </p>
-                    {selectedRunCharacter?.creatorVisualPrompt && (
-                      <div className="space-y-1">
-                        {selectedRunCharacter.creatorVisualPrompt
-                          .split("\n")
-                          .map((line) => line.trim())
-                          .filter(Boolean)
-                          .map((line, i) => {
-                            const colonIndex = line.indexOf(":");
-                            if (colonIndex === -1) {
+                  <div className="rounded-card border border-line bg-bg-elevated p-5 flex flex-col md:flex-row items-start gap-5 overflow-hidden">
+                    <div className="w-28 h-28 rounded-card border border-line overflow-hidden bg-panel flex items-center justify-center flex-shrink-0">
+                      {selectedRunCharacter?.seedVideoUrl ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setCharacterPreview({
+                              url: selectedRunCharacter.seedVideoUrl!,
+                              name: selectedRunCharacter.name,
+                            })
+                          }
+                          className="w-full h-full inline-flex rounded-card focus:outline-none focus:ring-2 focus:ring-accent/20"
+                        >
+                          <img
+                            src={selectedRunCharacter.seedVideoUrl}
+                            alt={selectedRunCharacter.name}
+                            className="w-full h-full object-cover object-top cursor-zoom-in"
+                          />
+                        </button>
+                      ) : (
+                        <span className="text-label font-mono text-muted uppercase tracking-widest opacity-50">
+                          No Image
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex-1 space-y-3 min-w-0">
+                      <p className="text-lg font-bold text-white tracking-tight">
+                        {selectedRunCharacter?.name ?? "No Character Selected"}
+                      </p>
+                      {selectedRunCharacter?.creatorVisualPrompt && (
+                        <div className="space-y-1">
+                          {selectedRunCharacter.creatorVisualPrompt
+                            .split("\n")
+                            .map((line) => line.trim())
+                            .filter(Boolean)
+                            .map((line, i) => {
+                              const colonIndex = line.indexOf(":");
+                              if (colonIndex === -1) {
+                                return (
+                                  <p key={i} className="text-body-sm font-mono text-muted leading-relaxed">
+                                    {line}
+                                  </p>
+                                );
+                              }
+                              const label = line.slice(0, colonIndex).trim();
+                              const value = line.slice(colonIndex + 1).trim();
                               return (
-                                <p key={i} className="text-body-sm font-mono text-muted leading-relaxed">
-                                  {line}
-                                </p>
+                                <div key={i} className="flex gap-2 text-body-sm font-mono leading-relaxed">
+                                  <span className="text-muted/40 shrink-0">{label}:</span>
+                                  <span className="text-text">{value}</span>
+                                </div>
                               );
-                            }
-                            const label = line.slice(0, colonIndex).trim();
-                            const value = line.slice(colonIndex + 1).trim();
-                            return (
-                              <div key={i} className="flex gap-2 text-body-sm font-mono leading-relaxed">
-                                <span className="text-muted/40 shrink-0">{label}:</span>
-                                <span className="text-text">{value}</span>
-                              </div>
-                            );
-                          })}
-                      </div>
-                    )}
+                            })}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
+            </SectionCard>
           </div>
-        </SectionCard>
 
-      {/* Production Pipeline */}
-      <div className="border border-line bg-panel p-8 rounded-card space-y-10">
-        <div className="flex items-center justify-between">
-          <div className="space-y-1">
-            <p className="eyebrow">Ad Workflow</p>
-            <p className="text-label font-mono text-muted uppercase tracking-widest opacity-60">Step-by-step ad creation</p>
-          </div>
-        </div>
+          {/* Production Pipeline */}
+          <div className="space-y-6">
+            <div className="flex items-center justify-between border-b border-line pb-4">
+              <div>
+                <p className="eyebrow">Ad Workflow</p>
+                <p className="text-body-sm font-mono text-muted uppercase tracking-widest">
+                  Step-by-step ad creation
+                </p>
+              </div>
+            </div>
+            <SectionCard padding="lg">
 
         {!hasSelectedRunWithJobs ? (
-          <div className="rounded-card border border-line/50 bg-transparent p-12 text-center space-y-6">
-            <div className="space-y-2">
-              <p className="text-sm font-mono text-white uppercase tracking-widest">No workflow started</p>
-              <p className="text-body-sm text-muted max-w-md mx-auto leading-relaxed">
-                Start a workflow to see your ad jobs and progress here.
-              </p>
-            </div>
-            <button
-              onClick={() => handleStepRunClick(steps[0])}
-              className="btn btn-primary !min-h-[44px] px-8 text-body-sm font-black uppercase tracking-[0.2em]"
-            >
-              Start Workflow
-            </button>
-          </div>
+          <EmptyState
+            title="No workflow started"
+            description="Start a workflow to see your ad jobs and progress here."
+            action={
+              <button
+                onClick={() => handleStepRunClick(steps[0])}
+                className="btn btn-primary !min-h-[44px] px-8 text-body-sm font-black uppercase tracking-[0.2em]"
+              >
+                Start Workflow
+              </button>
+            }
+          />
         ) : (
         <div>
           {visibleSteps.map((step, index) => {
@@ -4292,9 +4299,9 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                       </div>
                     )}
                     {step.status === "failed" && (
-                      <div className="status-chip !px-3 !py-1 text-label-xs font-bold uppercase tracking-widest bg-danger/10 text-danger border-danger/20">
+                      <StatusChip variant="danger" className="!px-3 !py-1 text-label-xs font-bold uppercase tracking-widest">
                         Failed
-                      </div>
+                      </StatusChip>
                     )}
                     {isCancelableJob(step.lastJob) && step.lastJob && (
                       <button
@@ -4346,9 +4353,9 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                         </div>
                       )}
                       {isStuckImagePromptStep && (
-                        <div className="p-3 rounded-card border border-accent/20 bg-accent/5 text-label font-mono text-accent uppercase tracking-widest mb-4">
+                        <SectionCard className="text-label font-mono text-accent uppercase tracking-widest mb-4 border-accent/20 bg-accent/5" padding="sm">
                           This step is stuck. Re-run it to continue.
-                        </div>
+                        </SectionCard>
                       )}
                       {step.lastJob && step.status !== "failed" && step.status !== "running" && (
                         <div className={`flex items-center justify-between gap-4 ${isOutputExpanded && (step.key === "storyboard" || step.key === "video_prompts") ? "py-4" : ""}`}>
@@ -4475,37 +4482,35 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                         </div>
                       )}
                       {hasSelectedRunWithJobs && step.status === "failed" && Boolean(step.lastJob?.error) && (
-                        <div className="rounded-card border border-danger/30 bg-danger/5 p-4 flex items-start gap-4">
+                        <SectionCard className="flex items-start gap-4 border-danger/30 bg-danger/5" padding="sm">
                           <div className="w-2 h-2 rounded-full bg-danger mt-1 animate-pulse shrink-0" />
                           <div className="flex-1">
                             <p className="text-label font-mono text-danger uppercase tracking-widest font-bold mb-1">Error</p>
                             <p className="text-body-sm font-mono text-danger leading-relaxed">{getErrorText(step.lastJob?.error)}</p>
                           </div>
-                        </div>
+                        </SectionCard>
                       )}
                     </div>
 
               {step.key === "video_images" && (
                 <div className="space-y-6 px-6 pb-6 animate-in fade-in slide-in-from-top-4 duration-500">
                   {!storyboardId ? (
-                    <div className="rounded-card border border-danger/30 bg-danger/5 p-12 text-center">
-                      <p className="text-label font-mono text-danger uppercase tracking-widest leading-relaxed">Storyboard data is missing</p>
-                    </div>
+                    <EmptyState title="Storyboard data is missing" variant="error" />
                   ) : storyboardPanelLoading && storyboardMatchesCurrentFetch ? (
                     <div className="p-16 text-center animate-pulse">
                       <p className="text-label font-mono text-muted uppercase tracking-widest">Loading scene data...</p>
                     </div>
                   ) : storyboardPanelError && storyboardMatchesCurrentFetch ? (
-                    <div className="p-12 text-center text-danger text-label font-mono uppercase tracking-widest border border-danger/20 rounded-card bg-danger/5">
+                    <SectionCard className="text-center text-danger text-label font-mono uppercase tracking-widest border-danger/20 bg-danger/5" padding="lg">
                       Error: {storyboardPanelError}
-                    </div>
+                    </SectionCard>
                   ) : (
                     <div className="space-y-8">
                       {sceneActionError && (
-                        <div className="mx-2 p-4 rounded-card border border-danger/20 bg-danger/5 text-label font-mono text-danger uppercase tracking-widest flex items-center gap-3">
+                        <SectionCard className="mx-2 text-label font-mono text-danger uppercase tracking-widest flex items-center gap-3 border-danger/20 bg-danger/5" padding="sm">
                           <div className="w-1.5 h-1.5 rounded-full bg-danger animate-pulse" />
                           Error: {sceneActionError}
-                        </div>
+                        </SectionCard>
                       )}
 
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -4522,9 +4527,9 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                             >
                               <div className="px-5 py-3 bg-panel border-b border-line/10 flex items-center justify-between">
                                 <span className="text-label font-mono text-accent font-bold">Scene {String(row.sceneNumber).padStart(2, "0")}</span>
-                                <div className="status-chip subtle !px-3 !py-1 uppercase tracking-widest text-label-xs font-bold">
+                                <StatusChip variant="subtle" className="!px-3 !py-1 uppercase tracking-widest text-label-xs font-bold">
                                   {isGenerating ? "Generating" : row.hasImages ? "Ready" : "Waiting"}
-                                </div>
+                                </StatusChip>
                               </div>
                               <div className="p-5 space-y-4">
                                 {isReviewOpen && row.firstFrameImageUrl ? (
@@ -4588,17 +4593,15 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
               {step.key === "video" && (
                 <div className="space-y-6 px-6 pb-6 animate-in fade-in slide-in-from-top-4 duration-500">
                   {!storyboardId ? (
-                    <div className="rounded-card border border-danger/30 bg-danger/5 p-12 text-center">
-                      <p className="text-label font-mono text-danger uppercase tracking-widest leading-relaxed">Storyboard data is missing</p>
-                    </div>
+                    <EmptyState title="Storyboard data is missing" variant="error" />
                   ) : storyboardPanelLoading && storyboardMatchesCurrentFetch ? (
                     <div className="p-16 text-center animate-pulse">
                       <p className="text-label font-mono text-muted uppercase tracking-widest">Loading video data...</p>
                     </div>
                   ) : storyboardPanelError && storyboardMatchesCurrentFetch ? (
-                    <div className="p-12 text-center text-danger text-label font-mono uppercase tracking-widest border border-danger/20 rounded-card bg-danger/5">
+                    <SectionCard className="text-center text-danger text-label font-mono uppercase tracking-widest border-danger/20 bg-danger/5" padding="lg">
                       Error: {storyboardPanelError}
-                    </div>
+                    </SectionCard>
                   ) : (
                     <div className="space-y-8">
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -4615,9 +4618,9 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                             >
                               <div className="px-5 py-3 bg-panel border-b border-line/10 flex items-center justify-between">
                                 <span className="text-label font-mono text-accent font-bold">Scene {String(row.sceneNumber).padStart(2, "0")}</span>
-                                <div className="status-chip subtle !px-3 !py-1 uppercase tracking-widest text-label-xs font-bold">
+                                <StatusChip variant="subtle" className="!px-3 !py-1 uppercase tracking-widest text-label-xs font-bold">
                                   {isGenerating ? "Generating" : hasVideo ? "Ready" : "Waiting"}
-                                </div>
+                                </StatusChip>
                               </div>
 
                               {row.locked && row.lockReason && (
@@ -4667,9 +4670,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
               {!isCollapsed && step.key === "review" && (
                 <div className="space-y-6 px-6 pb-6 animate-in fade-in slide-in-from-top-4 duration-500">
                   {!storyboardId ? (
-                    <div className="rounded-card border border-danger/30 bg-danger/5 p-12 text-center">
-                      <p className="text-label font-mono text-danger uppercase tracking-widest leading-relaxed">Storyboard data is missing</p>
-                    </div>
+                    <EmptyState title="Storyboard data is missing" variant="error" />
                   ) : (
                       <SectionCard padding="none" className="bg-transparent overflow-hidden">
                        <VideoEditorStep
@@ -4701,9 +4702,9 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                       <p className="text-label font-mono text-muted uppercase tracking-widest">Loading script...</p>
                     </div>
                   ) : scriptPanelError ? (
-                    <div className="p-12 text-center text-danger text-label font-mono uppercase tracking-widest border border-danger/20 rounded-card bg-danger/5">
+                    <SectionCard className="text-center text-danger text-label font-mono uppercase tracking-widest border-danger/20 bg-danger/5" padding="lg">
                       Error: {scriptPanelError}
-                    </div>
+                    </SectionCard>
                   ) : scriptPanelData ? (
                     <div className="space-y-6">
                       <SectionCard padding="none" className="overflow-hidden group hover:border-accent/30 transition-all duration-300">
@@ -4718,9 +4719,9 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                         <div className="p-8">
                           {scriptPanelEditMode ? (
                             <div className="space-y-6">
-                              <div className="p-4 rounded-card border border-accent-2/20 bg-accent-2/5 text-label font-mono text-accent-2 uppercase tracking-widest leading-relaxed">
+                              <SectionCard className="text-label font-mono text-accent-2 uppercase tracking-widest leading-relaxed border-accent-2/20 bg-accent-2/5" padding="sm">
                                 <span className="opacity-60">Note:</span> Keep the &quot;Beat N:&quot; headers so the sequence stays in order.
-                              </div>
+                              </SectionCard>
                               <textarea
                                 value={scriptPanelCombinedVoDraft}
                                 onChange={(e) => setScriptPanelCombinedVoDraft(e.target.value)}
@@ -4736,9 +4737,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                       </SectionCard>
                     </div>
                   ) : (
-                    <div className="p-12 text-center text-muted text-label font-mono uppercase tracking-widest border border-line/20 rounded-card bg-transparent">
-                      Script reference is missing
-                    </div>
+                    <EmptyState title="Script reference is missing" />
                   )}
                 </div>
               )}
@@ -4774,28 +4773,24 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
               {step.key === "storyboard" && step.status === "completed" && isOutputExpanded && (
                 <div className="mt-6 space-y-6 px-6 pb-6 animate-in fade-in slide-in-from-top-4 duration-500">
                   {!storyboardId ? (
-                    <div className="rounded-card border border-danger/30 bg-danger/5 p-12 text-center">
-                      <p className="text-label font-mono text-danger uppercase tracking-widest leading-relaxed">Storyboard could not be loaded</p>
-                    </div>
+                    <EmptyState title="Storyboard could not be loaded" variant="error" />
                   ) : storyboardPanelLoading && storyboardMatchesCurrentFetch ? (
                     <div className="p-16 text-center animate-pulse">
                       <p className="text-label font-mono text-muted uppercase tracking-widest">Loading storyboard...</p>
                     </div>
                   ) : storyboardPanelError && storyboardMatchesCurrentFetch ? (
-                    <div className="p-12 text-center text-danger text-label font-mono uppercase tracking-widest border border-danger/20 rounded-card bg-danger/5">
+                    <SectionCard className="text-center text-danger text-label font-mono uppercase tracking-widest border-danger/20 bg-danger/5" padding="lg">
                       Error: {storyboardPanelError}
-                    </div>
+                    </SectionCard>
                   ) : storyboardPanels.length === 0 ? (
-                    <div className="rounded-card border border-danger/30 bg-danger/5 p-12 text-center">
-                      <p className="text-label font-mono text-danger uppercase tracking-widest">No storyboard scenes available</p>
-                    </div>
+                    <EmptyState title="No storyboard scenes available" variant="error" />
                   ) : (
                     <div className="space-y-8">
                       {storyboardSaveError && (
-                        <div className="mx-2 p-4 rounded-card border border-danger/20 bg-danger/5 text-label font-mono text-danger uppercase tracking-widest flex items-center gap-3">
+                        <SectionCard className="mx-2 text-label font-mono text-danger uppercase tracking-widest flex items-center gap-3 border-danger/20 bg-danger/5" padding="sm">
                           <div className="w-1.5 h-1.5 rounded-full bg-danger animate-pulse" />
                           Save failed: {storyboardSaveError}
-                        </div>
+                        </SectionCard>
                       )}
 
                       <div className="space-y-8">
@@ -4814,9 +4809,9 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                                   <span className="text-label-sm font-mono text-muted uppercase tracking-widest opacity-40">Timing:</span>
                                   <span className="text-label font-mono text-white font-bold">{formatStoryboardPanelTiming(panel)}</span>
                                 </div>
-                                <div className="status-chip subtle !px-3 !py-1 uppercase tracking-widest text-label-xs font-bold">
+                                <StatusChip variant="subtle" className="!px-3 !py-1 uppercase tracking-widest text-label-xs font-bold">
                                   {panel.panelType === "B_ROLL_ONLY" ? "Cutaway" : "Primary"}
-                                </div>
+                                </StatusChip>
                               </div>
                               <div className="flex items-center gap-3">
                                 {storyboardEditMode ? (
@@ -4927,9 +4922,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
               {step.key === "image_prompts" && step.status === "completed" && isOutputExpanded && (
                 <div className="mt-6 space-y-6 animate-in fade-in slide-in-from-top-4 duration-500">
                   {!storyboardId ? (
-                    <div className="rounded-card border border-danger/30 bg-danger/5 p-12 text-center">
-                      <p className="text-label font-mono text-danger uppercase tracking-widest leading-relaxed">Storyboard data is missing</p>
-                    </div>
+                    <EmptyState title="Storyboard data is missing" variant="error" />
                   ) : storyboardPanelLoading && storyboardMatchesCurrentFetch ? (
                     <div className="p-16 text-center animate-pulse">
                       <p className="text-label font-mono text-muted uppercase tracking-widest">Loading image prompts...</p>
@@ -4939,14 +4932,12 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                       Error: {storyboardPanelError}
                     </div>
                   ) : imagePromptRows.length === 0 ? (
-                    <div className="rounded-card border border-danger/30 bg-danger/5 p-12 text-center">
-                      <p className="text-label font-mono text-danger uppercase tracking-widest">No video prompt available</p>
-                    </div>
+                    <EmptyState title="No video prompt available" variant="error" />
                   ) : (
                     <div className="space-y-8">
                       <div className="flex items-center justify-between px-2">
                         <div className="flex items-center gap-4">
-                          <span className="text-label font-mono text-accent uppercase tracking-widest font-bold">Image Prompts</span>
+                          <span className="eyebrow !mb-0">Image Prompts</span>
                           <span className="text-body-sm font-mono text-muted uppercase tracking-widest opacity-40">
                              {imagePromptEditMode
                               ? `Editing: ${imagePromptDrafts.length} scenes`
@@ -4973,10 +4964,10 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                       </div>
 
                       {imagePromptSaveError && (
-                        <div className="mx-2 p-4 rounded-card border border-danger/20 bg-danger/5 text-label font-mono text-danger uppercase tracking-widest flex items-center gap-3">
+                        <SectionCard className="mx-2 text-label font-mono text-danger uppercase tracking-widest flex items-center gap-3 border-danger/20 bg-danger/5" padding="sm">
                           <div className="w-1.5 h-1.5 rounded-full bg-danger animate-pulse" />
                           Save failed: {imagePromptSaveError}
-                        </div>
+                        </SectionCard>
                       )}
 
                       <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
@@ -5062,9 +5053,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
               {step.key === "video_prompts" && step.status === "completed" && isOutputExpanded && (
                 <div className="mt-6 space-y-6 px-6 pb-6 animate-in fade-in slide-in-from-top-4 duration-500">
                   {!storyboardId ? (
-                    <div className="rounded-card border border-danger/30 bg-danger/5 p-12 text-center">
-                      <p className="text-label font-mono text-danger uppercase tracking-widest leading-relaxed">Storyboard data is missing</p>
-                    </div>
+                    <EmptyState title="Storyboard data is missing" variant="error" />
                   ) : storyboardPanelLoading && storyboardMatchesCurrentFetch ? (
                     <div className="p-16 text-center animate-pulse">
                       <p className="text-label font-mono text-muted uppercase tracking-widest">Loading video prompts...</p>
@@ -5074,16 +5063,14 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                       Error: {storyboardPanelError}
                     </div>
                   ) : videoPromptRows.length === 0 ? (
-                    <div className="rounded-card border border-danger/30 bg-danger/5 p-12 text-center">
-                      <p className="text-label font-mono text-danger uppercase tracking-widest">No video prompts available</p>
-                    </div>
+                    <EmptyState title="No video prompts available" variant="error" />
                   ) : (
                     <div className="space-y-8">
                       {videoPromptSaveError && (
-                        <div className="mx-2 p-4 rounded-card border border-danger/20 bg-danger/5 text-label font-mono text-danger uppercase tracking-widest flex items-center gap-3">
+                        <SectionCard className="mx-2 text-label font-mono text-danger uppercase tracking-widest flex items-center gap-3 border-danger/20 bg-danger/5" padding="sm">
                           <div className="w-1.5 h-1.5 rounded-full bg-danger animate-pulse" />
                           Save failed: {videoPromptSaveError}
-                        </div>
+                        </SectionCard>
                       )}
 
                       <div className="space-y-6">
@@ -5112,9 +5099,9 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                                       } as StoryboardPanel)}
                                     </span>
                                   </div>
-                                  <div className="status-chip subtle !px-3 !py-1 uppercase tracking-widest text-label-xs font-bold">
+                                  <StatusChip variant="subtle" className="!px-3 !py-1 uppercase tracking-widest text-label-xs font-bold">
                                     {row.panelType === "B_ROLL_ONLY" ? "Cutaway" : "Primary"}
-                                  </div>
+                                  </StatusChip>
                                 </div>
                               </div>
                               <div className="p-8 space-y-8 bg-panel">
@@ -5161,20 +5148,20 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
               )}
 
               {step.status === "running" && (
-                <div className="mt-6 flex items-center gap-3 px-4 py-3 rounded-card border border-accent/20 bg-accent/5 animate-pulse">
+                <SectionCard className="mt-6 flex items-center gap-3 border-accent/20 bg-accent/5 animate-pulse" padding="sm">
                   <Spinner />
                   <span className="text-label font-mono text-accent uppercase tracking-widest font-bold">Generation in progress...</span>
-                </div>
+                </SectionCard>
               )}
 
               {hasSelectedRunWithJobs && step.status === "failed" && Boolean(step.lastJob?.error) && (
-                <div className="mt-6 rounded-card border border-danger/30 bg-danger/5 p-4 flex items-start gap-4">
+                <SectionCard className="mt-6 flex items-start gap-4 border-danger/30 bg-danger/5" padding="sm">
                   <div className="w-2 h-2 rounded-full bg-danger mt-1 animate-pulse" />
                   <div className="flex-1">
                     <p className="text-label font-mono text-danger uppercase tracking-widest font-bold mb-1">Job failed</p>
                     <p className="text-body-sm font-mono text-danger leading-relaxed">{getErrorText(step.lastJob?.error)}</p>
                   </div>
-                </div>
+                </SectionCard>
               )}
                   </>
                 )}
@@ -5182,8 +5169,10 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
           );
         })}
         </div>
-    )}
-      </div>
+        )}
+            </SectionCard>
+          </div>
+        </div>
       </div>
 
       {showScriptModal && (
@@ -5297,7 +5286,9 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                               {scriptRunSummaryLoading ? (
                                 <p className="text-label font-mono text-muted uppercase tracking-widest px-2 animate-pulse">Loading source data...</p>
                               ) : scriptRunSummaryError ? (
-                                <div className="p-4 rounded-card border border-danger/30 bg-danger/5 text-label font-mono text-danger uppercase tracking-widest">Source data error: {scriptRunSummaryError}</div>
+                                <SectionCard className="text-label font-mono text-danger uppercase tracking-widest border-danger/30 bg-danger/5" padding="sm">
+                                  Source data error: {scriptRunSummaryError}
+                                </SectionCard>
                               ) : scriptRunSummary ? (
                                 <div className="rounded-card border border-line/10 bg-panel overflow-hidden divide-y divide-line/10">
                                   {(() => {
@@ -5538,103 +5529,70 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
       )}
 
       <div className="px-8 py-8 max-w-7xl mx-auto space-y-8">
-        <section className="space-y-4">
-          <div>
-            <h2 className="app-section-title text-white">Research Hub</h2>
-          </div>
-          <SectionCard className="space-y-3">
-            <p className="text-sm text-muted italic">
-              Return to the research workspace to inspect customer insight, ad analysis, and supporting inputs.
-            </p>
-            <div className="flex items-center justify-between gap-4">
-              <p className="app-status-line">
-                Open Research Hub to review the inputs for this ad.
-              </p>
-              <Link
-                href={
-                  selectedProductId
-                    ? `/projects/${projectId}/research-hub?productId=${selectedProductId}`
-                    : `/projects/${projectId}/research-hub`
-                }
-                className="app-button app-button--primary text-sm font-medium"
-              >
-                Open Research Hub
-              </Link>
-            </div>
-          </SectionCard>
-        </section>
+        <SectionLinkCard
+          eyebrow="Research Hub"
+          description="Return to the research workspace to inspect customer insight, ad analysis, and supporting inputs."
+          status="Open Research Hub to review the inputs for this ad."
+          sectionShell
+          action={
+            <Link
+              href={selectedProductId
+                ? `/projects/${projectId}/research-hub?productId=${selectedProductId}`
+                : `/projects/${projectId}/research-hub`}
+              className="btn btn-primary !min-h-[36px] px-6 shrink-0"
+            >
+              Open Research Hub
+            </Link>
+          }
+        />
 
-        <section className="space-y-4">
-          <div>
-            <h2 className="app-section-title text-white">Usage and Cost</h2>
-          </div>
-          <SectionCard className="space-y-3">
-            <p className="text-sm text-muted italic">
-              Review spend, usage events, and settled provider costs for this project.
-            </p>
-            <div className="flex items-center justify-between gap-4">
-              <p className="app-status-line">
-                Check spend and usage while building ads.
-              </p>
-              <Link
-                href={`/projects/${projectId}/usage`}
-                className="app-button app-button--primary text-sm font-medium"
-              >
-                Open Usage & Costs
-              </Link>
-            </div>
-          </SectionCard>
-        </section>
-      </div>
-
-      <div className="mt-16 pt-12 border-t border-line/10 space-y-8 pb-12">
-        <div className="flex items-center justify-between gap-4 px-2">
-           <div className="flex items-center gap-4">
-             <span className="text-body-sm font-mono text-accent font-bold uppercase tracking-widest shrink-0">Recent Jobs</span>
-             <div className="h-[1px] w-32 bg-line/20 hidden md:block" />
-             <span className="text-label-sm font-mono text-muted uppercase tracking-widest opacity-40">Job History</span>
-           </div>
-           <Link
-             href={`/projects/${projectId}/research-hub`}
-             className="btn btn-secondary !min-h-[32px] px-6 text-label-sm uppercase font-bold tracking-widest text-accent border-accent/20 bg-accent/5 hover:bg-accent/10 transition-colors"
-           >
-             Back To Research Hub
-           </Link>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-          {recentCreativeJobs.map((job) => (
-            <SectionCard key={job.id} padding="none" className="p-5 flex flex-col justify-between gap-6 hover:border-accent/30 transition-all group">
-              <div className="space-y-4">
-                <div className="flex items-start justify-between">
-                  <div className="space-y-1">
-                    <div className="text-body-xs font-mono text-white font-bold uppercase tracking-wide group-hover:text-accent transition-colors">{getRunJobName(job)}</div>
-                    <div className="text-label-sm font-mono text-muted uppercase tracking-widest opacity-60">
-                      {new Date(job.updatedAt ?? job.createdAt).toLocaleString()}
-                    </div>
+        <SectionLinkCard
+          eyebrow="Usage And Cost"
+          description="Review spend, usage events, and settled provider costs for this project."
+          status="Check spend and usage while building ads."
+          sectionShell
+          action={
+            <Link
+              href={`/projects/${projectId}/usage`}
+              className="btn btn-primary !min-h-[36px] px-6 shrink-0"
+            >
+              Open Usage & Costs
+            </Link>
+          }
+        />
+        <div className="mt-8 border-t border-line pt-6">
+          <p className="eyebrow mb-4">Recent Jobs</p>
+          <div className="app-list">
+            {recentCreativeJobs.map(job => {
+              const isCancelable = job.status === "RUNNING" || job.status === "PENDING";
+              return (
+                <div key={job.id} className="app-list-item flex items-start justify-between gap-4">
+                  <div className="flex-1">
+                    <div className="text-sm font-medium text-white">{getRunJobName(job)}</div>
+                    <div className="text-xs text-muted">{new Date(job.createdAt).toLocaleString()}</div>
+                    {isCancelable && (
+                      <div className="mt-2">
+                        <button
+                          onClick={() => void cancelJob(job.id)}
+                          className="btn btn-danger !min-h-[28px] px-3 text-label"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    )}
                   </div>
-                  <div className={`status-chip !px-3 !py-1 text-label-xs font-bold uppercase tracking-widest ${
-                    job.status === JobStatus.COMPLETED ? 'bg-accent/10 text-accent border-accent/20' :
-                    job.status === JobStatus.FAILED ? 'bg-danger/10 text-danger border-danger/20' :
-                    'bg-accent-2/10 text-accent-2 border-accent-2/20 animate-pulse'
+                  <div className={`app-chip ${
+                    job.status === 'COMPLETED' ? 'app-chip--success' :
+                    job.status === 'FAILED' ? 'app-chip--danger' :
+                    job.status === 'RUNNING' ? 'app-chip--info' :
+                    ''
                   }`}>
                     {job.status}
                   </div>
                 </div>
-                <div className="text-label-sm font-mono text-muted/40 uppercase tracking-widest truncate">Job ID: {job.id}</div>
-              </div>
-              
-              {isCancelableJob(job) && (
-                <button
-                  onClick={() => void cancelJob(job.id)}
-                  disabled={Boolean(cancellingJobIds[job.id])}
-                  className="btn btn-danger w-full !min-h-[28px] text-label-xs uppercase font-bold tracking-widest"
-                >
-                  {cancellingJobIds[job.id] ? "Canceling..." : "Cancel Job"}
-                </button>
-              )}
-            </SectionCard>
-          ))}
+              );
+            })}
+          </div>
         </div>
       </div>
 
@@ -5642,11 +5600,12 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
         createPortal(
           <div
             className="fixed inset-0 z-[2147483647] flex items-center justify-center p-4"
-            style={{ backgroundColor: "rgba(0, 0, 0, 0.8)" }}
+            style={undefined}
             onClick={() => setCharacterPreview(null)}
           >
+            <div className="absolute inset-0 bg-overlay" />
             <div
-              className="w-full max-w-[360px] rounded-card border border-line bg-bg p-3"
+              className="relative w-full max-w-[360px] rounded-card border border-line bg-bg p-3"
               onClick={(event) => event.stopPropagation()}
             >
               <div className="mb-2 flex items-center justify-between gap-3">
