@@ -13,6 +13,7 @@ export const JOB_TYPE_LABELS = {
   VIDEO_GENERATION: "Video Generation",
   VIDEO_REVIEW: "Video Edit",
   VIDEO_UPSCALER: "Video Upscale",
+  MERGE_NEXT: "Merge Scenes",
   IMAGE_PROMPT_GENERATION: "Image Prompt Generation",
   CREATOR_AVATAR_GENERATION: "Avatar Generation",
   CHARACTER_SEED_VIDEO: "Character Seed Video",

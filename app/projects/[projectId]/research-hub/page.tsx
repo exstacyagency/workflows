@@ -136,13 +136,14 @@ export default function ResearchHubPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const selectedProductFromUrl = searchParams.get('productId') || searchParams.get('product');
+  const selectedRunFromUrl = searchParams.get('runId');
   const projectId = params?.projectId as string;
 
   const [loading, setLoading] = useState(true);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [previousJobs, setPreviousJobs] = useState<Job[]>([]);
   const [runningStep, setRunningStep] = useState<string | null>(null);
-  const [currentRunId, setCurrentRunId] = useState<string | null>(null);
+  const [currentRunId, setCurrentRunId] = useState<string | null>(selectedRunFromUrl);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(selectedProductFromUrl);
   const [products, setProducts] = useState<ProductOption[]>([]);
   const [pauseAutoRefresh, setPauseAutoRefresh] = useState(false);
@@ -161,7 +162,7 @@ export default function ResearchHubPage() {
     assetsWithOcr: 0,
   });
   const selectedProductRef = useRef<string | null>(selectedProductId);
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(selectedRunFromUrl);
   const [projectRunsById, setProjectRunsById] = useState<Record<string, ProjectRunMetadata>>({});
 
   // Modal states
@@ -169,6 +170,22 @@ export default function ResearchHubPage() {
   const [pendingStep, setPendingStep] = useState<{ step: ResearchStep; trackKey: string } | null>(null);
   const [showNewRunModal, setShowNewRunModal] = useState(false);
   const [showRunManagerModal, setShowRunManagerModal] = useState(false);
+
+  const setRunSelection = useCallback(
+    (nextRunId: string | null) => {
+      setSelectedRunId(nextRunId);
+      setCurrentRunId(nextRunId);
+
+      const url = new URL(window.location.href);
+      if (nextRunId) {
+        url.searchParams.set("runId", nextRunId);
+      } else {
+        url.searchParams.delete("runId");
+      }
+      router.replace(url.pathname + url.search, { scroll: false });
+    },
+    [router],
+  );
 
   useEffect(() => {
     selectedProductRef.current = selectedProductId;
@@ -478,11 +495,10 @@ export default function ResearchHubPage() {
       setStatusMessage(`${getRunJobName(job)} completed`);
       const jobSubtype = String(job.payload?.jobType || job.metadata?.jobType || "").trim();
       if (jobSubtype === "ad_raw_collection" && job.runId) {
-        setCurrentRunId(job.runId);
-        setSelectedRunId(job.runId);
+        setRunSelection(job.runId);
       }
     });
-  }, [jobs, previousJobs]);
+  }, [jobs, previousJobs, setRunSelection]);
 
   // Define research tracks
   const tracks: ResearchTrack[] = [
@@ -892,8 +908,7 @@ export default function ResearchHubPage() {
       }
 
       if (data.runId) {
-        setCurrentRunId(data.runId);
-        setSelectedRunId(data.runId);
+        setRunSelection(data.runId);
         void loadProjectRuns();
       }
 
@@ -999,8 +1014,7 @@ export default function ResearchHubPage() {
       }
       const data = await response.json().catch(() => ({}));
       if (data?.runId) {
-        setCurrentRunId(data.runId);
-        setSelectedRunId(data.runId);
+        setRunSelection(data.runId);
         void loadProjectRuns();
       }
 
@@ -1015,7 +1029,7 @@ export default function ResearchHubPage() {
   };
 
   const handleStartNewRun = () => {
-    setCurrentRunId(null);
+    setRunSelection(null);
     setShowNewRunModal(false);
     setStatusMessage("New research run started");
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1025,49 +1039,14 @@ export default function ResearchHubPage() {
     async (event: { type: "renamed" | "deleted"; runId: string }) => {
       if (event.type === "deleted") {
         if (selectedRunId === event.runId) {
-          setSelectedRunId(null);
-        }
-        if (currentRunId === event.runId) {
-          setCurrentRunId(null);
+          setRunSelection(null);
         }
       }
       await loadProjectRuns();
       await loadJobs(selectedProductId || undefined, { silent: true });
     },
-    [currentRunId, loadJobs, loadProjectRuns, selectedProductId, selectedRunId],
+    [loadJobs, loadProjectRuns, selectedProductId, selectedRunId, setRunSelection],
   );
-
-  const handleViewStepData = (step: ResearchStep & { lastJob?: Job }) => {
-    const payloadRunId = String(step.lastJob?.payload?.runId ?? "").trim();
-    const runId = step.lastJob?.runId || payloadRunId || currentRunId;
-
-    if (step.id === "ad-collection" || step.id === "ad-ocr") {
-      if (!runId) {
-        setStatusMessage("No runId found for this ad job.");
-        return;
-      }
-      const query = step.id === "ad-ocr" ? "?focus=ocr" : "";
-      router.push(`/projects/${projectId}/research-hub/ad-assets/${runId}${query}`);
-      return;
-    }
-
-    if (step.id === "ad-quality-gate") {
-      if (!runId) {
-        setStatusMessage("No runId found for this quality assessment job.");
-        return;
-      }
-      router.push(`/projects/${projectId}/research-hub/data?jobType=ad-quality-gate&runId=${runId}`);
-      return;
-    }
-
-    if (step.id === "pattern-analysis") {
-      if (!runId) {
-        setStatusMessage("No runId found for this ad analysis job.");
-        return;
-      }
-      router.push(`/projects/${projectId}/research-hub/data?jobType=pattern-analysis&runId=${runId}`);
-    }
-  };
 
   const StatusBadge = ({ status }: { status: JobStatus }) => {
     return (
@@ -1100,7 +1079,7 @@ export default function ResearchHubPage() {
   }
 
   return (
-    <div className="px-8 py-8 max-w-7xl mx-auto space-y-8">
+    <div className="px-8 py-8 max-w-7xl mx-auto space-y-10">
       {/* New Run Confirmation Modal */}
       {showNewRunModal && (
         <div className="fixed inset-0 bg-overlay backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -1132,7 +1111,7 @@ export default function ResearchHubPage() {
       <PageHeader
         backHref={`/projects/${projectId}`}
         backLabel="Back to Project"
-        title={selectedProduct ? `Research Hub / ${selectedProduct.name}` : "Research Hub"}
+        title="Research Hub"
         description="Multi-track customer research, ad research, and product research."
         actions={anyRunning ? <StatusChip variant="running">Running</StatusChip> : undefined}
       />
@@ -1187,8 +1166,7 @@ export default function ResearchHubPage() {
                       value={selectedRunId || "no-active"}
                       onChange={(e) => {
                         const value = e.target.value === "no-active" ? null : e.target.value;
-                        setSelectedRunId(value);
-                        setCurrentRunId(value);
+                        setRunSelection(value);
                       }}
                       className="flex-1 bg-bg-elevated border border-line rounded-card px-4 py-3 text-sm text-white font-mono outline-none focus:border-accent/40 transition-colors cursor-pointer"
                     >
@@ -1265,7 +1243,7 @@ export default function ResearchHubPage() {
       </SectionCard>
 
       {/* Research Tracks */}
-      <div className="space-y-8">
+      <div className="space-y-10">
           {updatedTracks.map((track) => {
             const completion = calculateCompletion(track);
             
@@ -1341,6 +1319,20 @@ export default function ResearchHubPage() {
 	                          stepRunId ? `?runId=${stepRunId}` : ""
 	                        }`
 	                      : null;
+                      const stepViewDataHref =
+                        stepWithStatus.id === "ad-collection" && stepRunId
+                          ? `/projects/${projectId}/research-hub/ad-assets/${stepRunId}`
+                          : stepWithStatus.id === "ad-ocr" && stepRunId
+                            ? `/projects/${projectId}/research-hub/ad-assets/${stepRunId}?focus=ocr`
+                            : stepWithStatus.id === "ad-transcripts"
+                              ? `/projects/${projectId}/research-hub/data?jobType=ad-transcripts${
+                                  stepRunId ? `&runId=${stepRunId}` : ""
+                                }`
+                              : stepWithStatus.id === "ad-quality-gate" && stepRunId
+                                ? `/projects/${projectId}/research-hub/data?jobType=ad-quality-gate&runId=${stepRunId}`
+                                : stepWithStatus.id === "pattern-analysis" && stepRunId
+                                  ? `/projects/${projectId}/research-hub/data?jobType=pattern-analysis&runId=${stepRunId}`
+                                  : null;
 	                    return (
                       <SectionCard
                         key={stepWithStatus.id}
@@ -1387,14 +1379,12 @@ export default function ResearchHubPage() {
                         <div className="ml-auto flex-shrink-0 flex items-center gap-3">
                           <div className="flex items-center gap-2">
                           {showAlwaysHistoryButton && (
-                            <button
-                              onClick={() => {
-                                router.push(historyUrl);
-                              }}
+                            <Link
+                              href={historyUrl}
                               className="btn btn-secondary !min-h-[32px] px-4 text-label"
                             >
                               View Run History
-                            </button>
+                            </Link>
                           )}
                           {stepWithStatus.jobType === "CUSTOMER_RESEARCH" ? (
                             customerResearchJob && (
@@ -1433,26 +1423,13 @@ export default function ResearchHubPage() {
 	                                  View Data
 	                                </Link>
 	                              )}
-	                              {((stepWithStatus.id === "ad-collection" && selectedRunId) ||
-                                  stepWithStatus.id === "ad-ocr" ||
-                                  stepWithStatus.id === "ad-transcripts" ||
-                                  stepWithStatus.id === "ad-quality-gate" ||
-                                  stepWithStatus.id === "pattern-analysis") && (
-                                <button
-                                  onClick={() => {
-                                    if (stepWithStatus.id === "ad-transcripts") {
-                                      const payloadRunId = String(stepWithStatus.lastJob?.payload?.runId ?? "").trim();
-                                      const runId = stepWithStatus.lastJob?.runId || payloadRunId || currentRunId;
-                                      const runQuery = runId ? `&runId=${runId}` : "";
-                                      router.push(`/projects/${projectId}/research-hub/data?jobType=ad-transcripts${runQuery}`);
-                                      return;
-                                    }
-                                    handleViewStepData(stepWithStatus);
-                                  }}
+	                              {stepViewDataHref && (
+                                <Link
+                                  href={stepViewDataHref}
                                   className="btn btn-secondary !min-h-[32px] px-4 text-label"
                                 >
 	                                  View Data
-	                                </button>
+	                                </Link>
 	                              )}
 	                            </div>
                           ))}
@@ -1624,7 +1601,7 @@ export default function ResearchHubPage() {
       />
 
       {/* Recent Jobs */}
-      <div className="mt-8 border-t border-line pt-6">
+      <div className="mt-8">
         <p className="eyebrow mb-4">Recent Jobs</p>
         <div className="app-list">
           {recentResearchJobs.map(job => {

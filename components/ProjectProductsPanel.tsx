@@ -104,6 +104,22 @@ export function ProjectProductsPanel({ projectId, initialProducts }: Props) {
             </select>
           </div>
           <div className="flex items-center gap-2">
+            {selectedProductId ? (
+              <Link
+                href={`/products/${selectedProductId}`}
+                className="btn btn-secondary !min-h-[32px] px-4 text-label"
+              >
+                Character Creation
+              </Link>
+            ) : (
+              <button
+                type="button"
+                disabled
+                className="btn btn-secondary !min-h-[32px] px-4 text-label opacity-50 cursor-not-allowed"
+              >
+                Character Creation
+              </button>
+            )}
             <Link
               href={`/projects/${projectId}/products`}
               className="btn btn-secondary !min-h-[32px] px-4 text-label"

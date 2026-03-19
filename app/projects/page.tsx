@@ -82,55 +82,72 @@ export default function ProjectsPage() {
 
   return (
     <div className="px-8 py-8 max-w-7xl mx-auto space-y-8">
+      <a
+        href="/studio"
+        className="text-label font-mono text-muted hover:text-white uppercase tracking-widest transition-colors inline-block"
+      >
+        ← Back to Studio
+      </a>
       <PageHeader
         title="Projects"
-        description="Create and manage your projects. Each project flows through the full research → script → storyboard → video pipeline."
         actions={<CreateProjectButton />}
       />
       {error && (
         <p className="text-xs text-danger font-mono">{error}</p>
       )}
 
-      {/* New Project form */}
-      <SectionCard className="space-y-4" padding="sm">
-        <p className="eyebrow">New Project</p>
-        <form onSubmit={handleCreate} className="space-y-3">
-          <div className="space-y-2">
-            <label className="card-label">
-              Name <span className="text-danger">*</span>
-            </label>
-            <input
-              className="w-full rounded-pill border border-line bg-panel px-4 py-2 text-sm text-white placeholder:text-muted/40 outline-none focus:border-accent/40 transition-colors"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. ClearGlow Acne Serum Launch"
-            />
+      <div className="space-y-6">
+        <div className="flex items-center justify-between border-b border-line pb-4">
+          <div>
+            <p className="eyebrow">New Project</p>
+            <p className="text-body-sm font-mono text-muted uppercase tracking-widest">
+              Start a new workflow from research through video production.
+            </p>
           </div>
-          <div className="space-y-2">
-            <label className="card-label">
-              Description
-            </label>
-            <textarea
-              className="w-full rounded-card border border-line bg-bg-elevated px-4 py-2 text-sm text-white placeholder:text-muted/40 outline-none focus:border-accent/40 transition-colors min-h-[80px]"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Optional short description to remind you what this project is about."
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={creating}
-            className="btn btn-primary !min-h-[36px] px-6 text-xs font-bold shadow-panel"
-          >
-            {creating ? "Creating…" : "Create Project"}
-          </button>
-        </form>
-      </SectionCard>
+        </div>
+        <SectionCard className="space-y-4" padding="sm">
+          <form onSubmit={handleCreate} className="space-y-3">
+            <div className="space-y-2">
+              <label className="card-label">
+                Name <span className="text-danger">*</span>
+              </label>
+              <input
+                className="w-full rounded-pill border border-line bg-panel px-4 py-2 text-sm text-white placeholder:text-muted/40 outline-none focus:border-accent/40 transition-colors"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. ClearGlow Acne Serum Launch"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="card-label">
+                Description
+              </label>
+              <textarea
+                className="w-full rounded-card border border-line bg-bg-elevated px-4 py-2 text-sm text-white placeholder:text-muted/40 outline-none focus:border-accent/40 transition-colors min-h-[80px]"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Optional short description to remind you what this project is about."
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={creating}
+              className="btn btn-primary !min-h-[36px] px-6 text-xs font-bold shadow-panel"
+            >
+              {creating ? "Creating…" : "Create Project"}
+            </button>
+          </form>
+        </SectionCard>
+      </div>
 
-      {/* Projects list */}
-      <SectionCard className="space-y-4" padding="sm">
-        <div className="flex items-center justify-between">
-          <p className="eyebrow">Existing Projects</p>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between border-b border-line pb-4">
+          <div>
+            <p className="eyebrow">Existing Projects</p>
+            <p className="text-body-sm font-mono text-muted uppercase tracking-widest">
+              Open and manage the projects already in motion.
+            </p>
+          </div>
           <button
             onClick={loadProjects}
             disabled={loading}
@@ -139,44 +156,46 @@ export default function ProjectsPage() {
             {loading ? "Refreshing…" : "Refresh"}
           </button>
         </div>
-        {projects.length === 0 && !loading && (
-          <EmptyState
-            title="No Projects Yet"
-            description="Create your first project using the form above."
-          />
-        )}
-        <div className="space-y-2">
-          {projects.map((project) => (
-            <SectionCard
-              key={project.id}
-              padding="none"
-              className="flex cursor-pointer items-center justify-between px-5 py-4"
-            >
-              <div className="space-y-1.5">
-                <div className="text-sm font-bold text-white tracking-tight">
-                  {project.name}
-                </div>
-                {project.description && (
-                  <div className="text-xs text-muted italic">
-                    {project.description}
+        <SectionCard className="space-y-4" padding="sm">
+          {projects.length === 0 && !loading && (
+            <EmptyState
+              title="No Projects Yet"
+              description="Create your first project using the form above."
+            />
+          )}
+          <div className="space-y-2">
+            {projects.map((project) => (
+              <SectionCard
+                key={project.id}
+                padding="none"
+                className="flex cursor-pointer items-center justify-between px-5 py-4"
+              >
+                <div className="space-y-1.5">
+                  <div className="text-sm font-bold text-white tracking-tight">
+                    {project.name}
                   </div>
-                )}
-                <div className="text-label font-mono text-accent-2/40 uppercase tracking-widest">
-                  ID: {project.id}
+                  {project.description && (
+                    <div className="text-xs text-muted italic">
+                      {project.description}
+                    </div>
+                  )}
+                  <div className="text-label font-mono text-accent-2/40 uppercase tracking-widest">
+                    ID: {project.id}
+                  </div>
                 </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <Link
-                  href={`/projects/${project.id}`}
-                  className="btn btn-secondary !min-h-[32px] px-4 text-label"
-                >
-                  Open
-                </Link>
-              </div>
-            </SectionCard>
-          ))}
-        </div>
-      </SectionCard>
+                <div className="flex items-center gap-2">
+                  <Link
+                    href={`/projects/${project.id}`}
+                    className="btn btn-secondary !min-h-[32px] px-4 text-label"
+                  >
+                    Open
+                  </Link>
+                </div>
+              </SectionCard>
+            ))}
+          </div>
+        </SectionCard>
+      </div>
     </div>
   );
 }

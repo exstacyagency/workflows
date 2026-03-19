@@ -335,9 +335,11 @@ export default function ProjectProductsPage() {
                         <p className="text-xl font-bold text-white tracking-tight">
                           {product.name}
                         </p>
-                        <p className="text-label font-mono text-muted uppercase tracking-[0.33em] pt-1 opacity-60">
-                          {product.amazonAsin ? `ASIN: ${product.amazonAsin}` : "ASIN: NOT ADDED"}
-                        </p>
+                        {product.amazonAsin && (
+                          <p className="text-label font-mono text-muted uppercase tracking-[0.33em] pt-1 opacity-60">
+                            ASIN: {product.amazonAsin}
+                          </p>
+                        )}
                       </div>
 
                       {product.productProblemSolved && (
@@ -361,19 +363,7 @@ export default function ProjectProductsPage() {
                           href={`/products/${product.id}`}
                           className="btn btn-secondary !min-h-[36px] px-6"
                         >
-                          Product Setup
-                        </Link>
-                        <Link
-                          href={`/projects/${projectId}/research-hub?productId=${product.id}`}
-                          className="btn btn-secondary !min-h-[36px] px-6"
-                        >
-                          Research Hub
-                        </Link>
-                        <Link
-                          href={`/projects/${projectId}/creative-studio?productId=${product.id}`}
-                          className="btn btn-secondary !min-h-[36px] px-6"
-                        >
-                          Creative Studio
+                          Character Creation
                         </Link>
 
                         <button
