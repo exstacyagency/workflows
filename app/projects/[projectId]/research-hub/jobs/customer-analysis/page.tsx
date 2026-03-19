@@ -175,7 +175,7 @@ export default function CustomerAnalysisJobsPage() {
         />
       </div>
 
-      <div className="px-8 py-10 space-y-12 max-w-[1400px]">
+      <div className="px-8 py-8 max-w-7xl mx-auto space-y-8">
         {groupedJobs.length === 0 ? (
           <EmptyState title="No Analysis Runs Found" description="No analysis runs found for this project." />
         ) : (

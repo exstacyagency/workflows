@@ -81,28 +81,19 @@ export default function ProjectsPage() {
   }
 
   return (
-    <div className="px-6 py-6 space-y-6">
-      {/* Header */}
-      <SectionCard className="flex flex-col gap-2" padding="md">
-        <PageHeader
-          title="Projects"
-          description="Create and manage your projects. Each project flows through the full research → script → storyboard → video pipeline."
-        />
-        {error && (
-          <p className="text-xs text-danger font-mono">
-            {error}
-          </p>
-        )}
-        <div className="pt-2">
-          <CreateProjectButton />
-        </div>
-      </SectionCard>
+    <div className="px-8 py-8 max-w-7xl mx-auto space-y-8">
+      <PageHeader
+        title="Projects"
+        description="Create and manage your projects. Each project flows through the full research → script → storyboard → video pipeline."
+        actions={<CreateProjectButton />}
+      />
+      {error && (
+        <p className="text-xs text-danger font-mono">{error}</p>
+      )}
 
       {/* New Project form */}
       <SectionCard className="space-y-4" padding="sm">
-        <h2 className="text-sm font-semibold text-white tracking-tight uppercase">
-          New Project
-        </h2>
+        <p className="eyebrow">New Project</p>
         <form onSubmit={handleCreate} className="space-y-3">
           <div className="space-y-2">
             <label className="card-label">
@@ -139,9 +130,7 @@ export default function ProjectsPage() {
       {/* Projects list */}
       <SectionCard className="space-y-4" padding="sm">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-white tracking-tight uppercase">
-            Existing Projects
-          </h2>
+          <p className="eyebrow">Existing Projects</p>
           <button
             onClick={loadProjects}
             disabled={loading}

@@ -240,7 +240,7 @@ export default function ResearchDataPage() {
         />
       </div>
 
-      <div className="px-8 py-10 space-y-10 max-w-[1600px] mx-auto">
+      <div className="px-8 py-8 max-w-7xl mx-auto space-y-8">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           <SectionCard className="space-y-2">
             <p className="text-label font-mono text-muted uppercase tracking-widest opacity-40">Capture Count</p>

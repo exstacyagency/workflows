@@ -5,7 +5,7 @@ export default function IndexPage() {
     <div className="site-shell marketing-shell">
       <header className="site-header">
         <div className="container header-inner">
-          <a href="#top" className="brand">Kairos AI</a>
+          <a href="#top" className="brand">Victora</a>
           <div className="flex items-center gap-3">
             <Link href="/studio" className="nav-cta">Enter Studio</Link>
             <a href="mailto:hello@kairos.ai" className="nav-cta">Book Demo</a>
@@ -24,7 +24,7 @@ export default function IndexPage() {
                 <span>Start building from signal.</span>
               </h1>
               <p className="lede">
-                Kairos helps performance teams turn customer insight, competitor patterns,
+                Victora helps performance teams turn customer insight, competitor patterns,
                 and product intelligence into stronger creative bets.
               </p>
               <div className="hero-actions">
@@ -34,7 +34,7 @@ export default function IndexPage() {
               </div>
             </div>
 
-            <div className="hero-visual" aria-label="Kairos pipeline concept board">
+            <div className="hero-visual" aria-label="Victora pipeline concept board">
               <article className="signal-card reddit-card">
                 <p className="card-label">Reddit • r/SkincareAddiction</p>
                 <p className="card-copy">“Love the texture but the pump broke after 2 days...”</p>
@@ -65,7 +65,7 @@ export default function IndexPage() {
               </article>
 
               <div className="pipeline-core">
-                <p className="core-kicker">Kairos Pipeline</p>
+                <p className="core-kicker">Victora Pipeline</p>
                 <h2>Unified Concept Board</h2>
               </div>
             </div>
@@ -95,7 +95,7 @@ export default function IndexPage() {
                 lives across disconnected tools.
               </p>
               <p className="body-copy"><strong>That’s how teams end up guessing what to make.</strong></p>
-              <p className="body-copy accent">Kairos turns that mess into one system.</p>
+              <p className="body-copy accent">Victora turns that mess into one system.</p>
             </div>
           </div>
         </section>
@@ -103,10 +103,10 @@ export default function IndexPage() {
         <section id="workflow" className="section workflow-section">
           <div className="container">
             <div className="section-heading narrow">
-              <p className="eyebrow">The Kairos pipeline</p>
-              <h2>How Kairos turns signal into creative direction.</h2>
+              <p className="eyebrow">The Victora pipeline</p>
+              <h2>How Victora turns signal into creative direction.</h2>
               <p>
-                Kairos brings research, analysis, strategy, and creative production into one workflow —
+                Victora brings research, analysis, strategy, and creative production into one workflow —
                 so your team can make better decisions before production starts.
               </p>
             </div>
@@ -164,11 +164,11 @@ export default function IndexPage() {
         <section className="section why-section">
           <div className="container why-grid">
             <div>
-              <p className="eyebrow">Why Kairos</p>
+              <p className="eyebrow">Why Victora</p>
               <h2>Winning creative starts upstream.</h2>
               <p className="body-copy">
                 Most tools start at the generation layer, assuming you already know what to make.
-                Kairos starts with evidence — what customers want, what competitors are proving,
+                Victora starts with evidence — what customers want, what competitors are proving,
                 and what the market is already telling you.
               </p>
               <p className="body-copy">
@@ -204,7 +204,7 @@ export default function IndexPage() {
               <p className="eyebrow">Creative studio</p>
               <h2>Where better inputs become creative output.</h2>
               <p className="body-copy">
-                Kairos doesn’t stop at insight. It turns research into scripts, storyboards,
+                Victora doesn’t stop at insight. It turns research into scripts, storyboards,
                 scenes, and creative assets your team can actually use.
               </p>
               <p className="body-copy">So insight doesn’t die in a doc — it moves into production.</p>
@@ -253,7 +253,7 @@ export default function IndexPage() {
               <p className="eyebrow">Operators</p>
               <h2>Built for repeatable execution.</h2>
               <p className="body-copy">
-                Better outcomes come from repeatable systems, not isolated guesses. Kairos is built for teams
+                Better outcomes come from repeatable systems, not isolated guesses. Victora is built for teams
                 that need visible runs, structured workflows, and a better way to move from research to production.
               </p>
               <p className="body-copy">Not prompt roulette. Not scattered docs. A system your team can reuse, refine, and scale.</p>
@@ -283,7 +283,7 @@ export default function IndexPage() {
           <div className="container cta-box">
             <h2>Build a repeatable ad pipeline, not a pile of prompts.</h2>
             <p>
-              Stop guessing what to make. Use Kairos to turn fragmented signal into creative direction,
+              Stop guessing what to make. Use Victora to turn fragmented signal into creative direction,
               production output, and a stronger shot at winning.
             </p>
             <div className="hero-actions centered">
@@ -296,8 +296,8 @@ export default function IndexPage() {
 
       <footer className="site-footer">
         <div className="container footer-inner">
-          <a href="#top" className="brand">Kairos AI</a>
-          <p>© 2026 Kairos. All rights reserved.</p>
+          <a href="#top" className="brand">Victora</a>
+          <p>© 2026 Victora. All rights reserved.</p>
         </div>
       </footer>
     </div>

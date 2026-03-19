@@ -429,7 +429,7 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
               onChange={(e) => setNewCharacterName(e.target.value)}
               placeholder="e.g. Maya"
               maxLength={120}
-              className="w-full rounded-md border border-line bg-panel px-3 py-2 text-sm text-white placeholder:text-muted focus:border-accent-2 focus:outline-none"
+              className="w-full rounded-inner border border-line bg-panel px-3 py-2 text-sm text-white placeholder:text-muted focus:border-accent-2 focus:outline-none"
             />
           </div>
           <p className="text-xs text-muted mb-2">Character archetype</p>
@@ -439,7 +439,7 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
                 key={preset.id}
                 type="button"
                 onClick={() => setSelectedPresetId(preset.id)}
-                className={`rounded-lg border p-3 text-left transition-colors ${
+                className={`rounded-inner border p-3 text-left transition-colors ${
                   selectedPresetId === preset.id
                     ? "border-accent-2 bg-accent/10 text-accent-2"
                     : "border-line bg-panel text-muted hover:border-muted/40"
@@ -454,7 +454,7 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
 
         {/* Custom fields */}
         {isCustom && (
-          <div className="space-y-2 rounded-lg border border-line bg-panel p-4">
+          <div className="space-y-2 rounded-inner border border-line bg-panel p-4">
             <p className="text-xs text-muted mb-3">All fields required</p>
             {CUSTOM_FIELDS.map(({ key, placeholder }) => (
               <div key={key} className="flex items-start gap-3">
@@ -464,7 +464,7 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
                   value={customFields[key] ?? ""}
                   onChange={(e) => setCustomFields((prev) => ({ ...prev, [key]: e.target.value }))}
                   placeholder={placeholder}
-                  className="flex-1 rounded-md border border-line bg-panel px-3 py-2 text-xs text-white placeholder:text-muted focus:border-accent-2 focus:outline-none"
+                  className="flex-1 rounded-inner border border-line bg-panel px-3 py-2 text-xs text-white placeholder:text-muted focus:border-accent-2 focus:outline-none"
                 />
               </div>
             ))}
@@ -473,7 +473,7 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
 
         {/* Anchor preview */}
         {resolvedAnchor && (
-          <div className="rounded-lg border border-line bg-panel">
+          <div className="rounded-inner border border-line bg-panel">
             <button
               type="button"
               onClick={() => setAnchorPreviewOpen((v) => !v)}
@@ -504,7 +504,7 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
     return (
       <div className="space-y-2">
         {stages.map((stage) => (
-          <div key={stage.type} className="rounded-md border border-line bg-panel p-3">
+          <div key={stage.type} className="rounded-inner border border-line bg-panel p-3">
             <div className="flex items-center justify-between gap-3">
               <p className="text-sm text-white">{stage.label}</p>
               <div className="flex items-center gap-2">
@@ -537,9 +537,9 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
   }
 
   return (
-    <div className="px-6 py-6 space-y-6">
+    <div className="px-8 py-8 max-w-7xl mx-auto space-y-8">
       {/* Header */}
-      <section className="rounded-xl border border-line bg-panel p-5">
+      <section className="rounded-card border border-line bg-panel p-5">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-body-sm uppercase tracking-widest text-muted">Product Setup</p>
@@ -550,7 +550,7 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
           </div>
           <Link
             href={`/projects/${product.project.id}/products`}
-            className="inline-flex items-center rounded-md border border-line bg-panel px-3 py-2 text-xs font-medium text-white hover:bg-bg-elevated"
+            className="inline-flex items-center rounded-inner border border-line bg-panel px-3 py-2 text-xs font-medium text-white hover:bg-bg-elevated"
           >
             Back to Products
           </Link>
@@ -558,24 +558,24 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
       </section>
 
       {error && (
-        <section className="rounded-lg border border-accent/30 bg-accent/10 p-4">
+        <section className="rounded-inner border border-accent/30 bg-accent/10 p-4">
           <p className="text-sm text-accent">{error}</p>
         </section>
       )}
 
-      <section className="rounded-xl border border-line bg-panel p-5 space-y-4">
+      <section className="rounded-card border border-line bg-panel p-5 space-y-4">
         <h2 className="text-sm font-semibold text-white">Character Generation</h2>
 
         {!effectiveCharacterId ? (
           <>
-            <div className="space-y-4 rounded-lg border border-line bg-panel p-4">
+            <div className="space-y-4 rounded-inner border border-line bg-panel p-4">
               {/* Run selector */}
               <div className="space-y-1">
                 <label className="text-xs text-muted">Attach to Run</label>
                 <select
                   value={selectedRunId ?? ""}
                   onChange={(e) => handleRunChange(e.target.value || null)}
-                  className="w-full rounded-md border border-line bg-panel px-3 py-2 text-sm text-white focus:border-accent-2 focus:outline-none"
+                  className="w-full rounded-inner border border-line bg-panel px-3 py-2 text-sm text-white focus:border-accent-2 focus:outline-none"
                 >
                   <option value="">No active run (create new)</option>
                   {product.runs.map((r) => (
@@ -607,7 +607,7 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
         ) : (
           <div className="space-y-4">
             {resolvedAvatarImageUrl && (
-              <div className="rounded-lg border border-line bg-panel p-3">
+              <div className="rounded-inner border border-line bg-panel p-3">
                 <p className="mb-2 text-xs text-muted">Current avatar</p>
                 <button
                   type="button"
@@ -645,7 +645,7 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
                   type="button"
                   onClick={() => void handleReset()}
                   disabled={isResetting}
-                  className="inline-flex items-center rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-xs font-medium text-accent hover:bg-accent/20 disabled:opacity-60"
+                  className="inline-flex items-center rounded-inner border border-accent/30 bg-accent/10 px-3 py-2 text-xs font-medium text-accent hover:bg-accent/20 disabled:opacity-60"
                 >
                   {isResetting ? "Resetting..." : "Reset All"}
                 </button>
@@ -658,7 +658,7 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
               <select
                 value={selectedRunId ?? ""}
                 onChange={(e) => handleRunChange(e.target.value || null)}
-                className="w-full rounded-md border border-line bg-panel px-3 py-2 text-sm text-white focus:border-accent-2 focus:outline-none"
+                className="w-full rounded-inner border border-line bg-panel px-3 py-2 text-sm text-white focus:border-accent-2 focus:outline-none"
               >
                 <option value="">No active run (create new)</option>
                 {product.runs.map((r) => (
@@ -669,7 +669,7 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
 
             {/* Character list */}
             <div className="space-y-3">
-              <div className="flex items-center justify-between rounded-lg border border-line bg-panel p-3">
+              <div className="flex items-center justify-between rounded-inner border border-line bg-panel p-3">
                 <label className="inline-flex items-center gap-2 text-xs text-muted">
                   <input
                     type="checkbox"
@@ -691,7 +691,7 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
               </div>
 
               {product.characters.map((char) => (
-                <div key={char.id} className="rounded-lg border border-line bg-panel p-4 space-y-2">
+                <div key={char.id} className="rounded-inner border border-line bg-panel p-4 space-y-2">
                   <div className="flex items-center justify-between gap-3">
                     <label className="inline-flex items-center gap-2">
                       <input
@@ -711,7 +711,7 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
                         type="text"
                         value={editingCharacterName}
                         onChange={(e) => setEditingCharacterName(e.target.value)}
-                        className="flex-1 rounded-md border border-line bg-panel px-2 py-1 text-sm text-white focus:border-accent-2 focus:outline-none"
+                        className="flex-1 rounded-inner border border-line bg-panel px-2 py-1 text-sm text-white focus:border-accent-2 focus:outline-none"
                         maxLength={120}
                       />
                     ) : (
@@ -776,7 +776,7 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
 
             {/* Add character panel */}
             {addingCharacter && (
-              <div className="space-y-4 rounded-lg border border-line bg-panel p-4">
+              <div className="space-y-4 rounded-inner border border-line bg-panel p-4">
                 <p className="text-xs text-muted">Generate an additional character for this product.</p>
                 <CharacterSelector />
                 <div className="flex gap-2">

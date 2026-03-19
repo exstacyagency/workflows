@@ -212,7 +212,7 @@ export default function CreativeRunDataPage() {
         />
       </div>
 
-      <div className="mx-auto max-w-[1200px] space-y-8 px-8 py-10">
+      <div className="px-8 py-8 max-w-7xl mx-auto space-y-8">
         <SectionCard className="flex flex-wrap items-center gap-4" padding="md">
           <button
             onClick={toggleAll}

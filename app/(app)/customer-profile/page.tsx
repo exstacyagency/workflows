@@ -282,7 +282,7 @@ export default function CustomerProfilePage() {
                 Project
               </label>
               <select
-                className="w-full rounded-lg bg-bg border border-line px-3 py-2 text-sm"
+                className="w-full rounded-inner bg-bg border border-line px-3 py-2 text-sm"
                 value={selectedProjectId}
                 onChange={e => setSelectedProjectId(e.target.value)}
               >
@@ -301,7 +301,7 @@ export default function CustomerProfilePage() {
                 Problem it solves <span className="text-muted text-xs">(optional)</span>
               </label>
             <textarea
-              className="w-full rounded-lg bg-bg border border-line px-3 py-2 text-sm min-h-[80px]"
+              className="w-full rounded-inner bg-bg border border-line px-3 py-2 text-sm min-h-[80px]"
               value={productProblem}
               onChange={e => setProductProblem(e.target.value)}
               placeholder="Describe the main problem this product solves in the customer's life."
@@ -363,7 +363,7 @@ export default function CustomerProfilePage() {
                   More actions ▾
                 </button>
                 {showMoreActions && (
-                  <div className="absolute right-0 mt-2 w-48 rounded-md border border-line bg-bg/95 shadow-lg">
+                  <div className="absolute right-0 mt-2 w-48 rounded-inner border border-line bg-bg/95 shadow-lg">
                     <button
                       className="w-full text-left px-3 py-2 text-sm text-white hover:bg-bg-elevated"
                       onClick={() => {
@@ -479,7 +479,7 @@ export default function CustomerProfilePage() {
                 <p className="text-xs text-muted">No avatars captured yet.</p>
               ) : (
                 avatarHistory.map(item => (
-                  <div key={item.id} className="rounded-lg border border-line bg-panel px-3 py-2 space-y-1">
+                  <div key={item.id} className="rounded-inner border border-line bg-panel px-3 py-2 space-y-1">
                     <div className="flex items-center justify-between text-xs text-muted">
                       <span>{formatDate(item.createdAt)}</span>
                       <StatusChip variant={item.archivedAt ? 'warning' : 'success'} className="!px-2 !py-0.5 !text-label-xs">
@@ -492,14 +492,14 @@ export default function CustomerProfilePage() {
                     <div className="flex flex-wrap gap-2 text-body-sm">
                       <button
                         onClick={() => downloadJson('avatar', item.id)}
-                        className="px-2 py-1 rounded-md border border-line text-white hover:bg-bg-elevated"
+                        className="px-2 py-1 rounded-inner border border-line text-white hover:bg-bg-elevated"
                       >
                         Download
                       </button>
                       {item.archivedAt ? (
                         <button
                           onClick={() => mutateSnapshot('avatar', item.id, 'restore')}
-                          className="px-2 py-1 rounded-md border border-line text-white hover:bg-bg-elevated"
+                          className="px-2 py-1 rounded-inner border border-line text-white hover:bg-bg-elevated"
                         >
                           Restore
                         </button>
@@ -507,14 +507,14 @@ export default function CustomerProfilePage() {
                         <button
                           onClick={() => mutateSnapshot('avatar', item.id, 'archive')}
                           disabled={activeAvatarCount <= 1}
-                          className="px-2 py-1 rounded-md border border-line text-white hover:bg-bg-elevated disabled:opacity-40"
+                          className="px-2 py-1 rounded-inner border border-line text-white hover:bg-bg-elevated disabled:opacity-40"
                         >
                           Archive
                         </button>
                       )}
                       <button
                         onClick={() => mutateSnapshot('avatar', item.id, 'delete')}
-                        className="px-2 py-1 rounded-md border border-accent/30 text-accent hover:bg-accent/20"
+                        className="px-2 py-1 rounded-inner border border-accent/30 text-accent hover:bg-accent/20"
                       >
                         Delete
                       </button>
@@ -533,7 +533,7 @@ export default function CustomerProfilePage() {
                 <p className="text-xs text-muted">No product intelligence captured yet.</p>
               ) : (
                 productHistory.map(item => (
-                  <div key={item.id} className="rounded-lg border border-line bg-panel px-3 py-2 space-y-1">
+                  <div key={item.id} className="rounded-inner border border-line bg-panel px-3 py-2 space-y-1">
                     <div className="flex items-center justify-between text-xs text-muted">
                       <span>{formatDate(item.createdAt)}</span>
                       <StatusChip variant={item.archivedAt ? 'warning' : 'success'} className="!px-2 !py-0.5 !text-label-xs">
@@ -546,14 +546,14 @@ export default function CustomerProfilePage() {
                     <div className="flex flex-wrap gap-2 text-body-sm">
                       <button
                         onClick={() => downloadJson('intel', item.id)}
-                        className="px-2 py-1 rounded-md border border-line text-white hover:bg-bg-elevated"
+                        className="px-2 py-1 rounded-inner border border-line text-white hover:bg-bg-elevated"
                       >
                         Download
                       </button>
                       {item.archivedAt ? (
                         <button
                           onClick={() => mutateSnapshot('intel', item.id, 'restore')}
-                          className="px-2 py-1 rounded-md border border-line text-white hover:bg-bg-elevated"
+                          className="px-2 py-1 rounded-inner border border-line text-white hover:bg-bg-elevated"
                         >
                           Restore
                         </button>
@@ -561,14 +561,14 @@ export default function CustomerProfilePage() {
                         <button
                           onClick={() => mutateSnapshot('intel', item.id, 'archive')}
                           disabled={activeProductCount <= 1}
-                          className="px-2 py-1 rounded-md border border-line text-white hover:bg-bg-elevated disabled:opacity-40"
+                          className="px-2 py-1 rounded-inner border border-line text-white hover:bg-bg-elevated disabled:opacity-40"
                         >
                           Archive
                         </button>
                       )}
                       <button
                         onClick={() => mutateSnapshot('intel', item.id, 'delete')}
-                        className="px-2 py-1 rounded-md border border-accent/30 text-accent hover:bg-accent/20"
+                        className="px-2 py-1 rounded-inner border border-accent/30 text-accent hover:bg-accent/20"
                       >
                         Delete
                       </button>

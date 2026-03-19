@@ -51,7 +51,7 @@ function StatusBadge({ status }: { status: JobStatus }) {
   };
 
   return (
-    <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ${styles[status]}`}>
+    <span className={`inline-flex items-center rounded-inner px-2 py-1 text-xs font-medium ${styles[status]}`}>
       {status}
     </span>
   );
@@ -357,11 +357,11 @@ export default function ProductCollectionPage() {
           description="Collect structured product intelligence from a main product URL."
         />
 
-        <section className="rounded-lg border border-line bg-panel p-4 space-y-4">
+        <section className="rounded-inner border border-line bg-panel p-4 space-y-4">
           {statusMessage && <p className="text-xs text-muted">{statusMessage}</p>}
 
           {activeStatusJob && (
-            <div className="rounded-lg border p-3 bg-panel border-line">
+            <div className="rounded-inner border p-3 bg-panel border-line">
               <p
                 className={`text-sm font-medium ${
                   activeStatusJob.status === "RUNNING"
@@ -398,7 +398,7 @@ export default function ProductCollectionPage() {
                 url.searchParams.delete("product");
                 router.replace(url.pathname + url.search, { scroll: false });
               }}
-              className="w-full rounded-md border border-line bg-bg-elevated px-3 py-2 text-sm text-white"
+              className="w-full rounded-inner border border-line bg-bg-elevated px-3 py-2 text-sm text-white"
             >
               {products.length === 0 && <option value="">No products found</option>}
               {products.map((product) => (
@@ -415,7 +415,7 @@ export default function ProductCollectionPage() {
               value={productUrl}
               onChange={(event) => setProductUrl(event.target.value)}
               placeholder="https://example.com/products/..."
-              className="w-full rounded-md border border-line bg-bg-elevated px-3 py-2 text-sm text-white"
+              className="w-full rounded-inner border border-line bg-bg-elevated px-3 py-2 text-sm text-white"
             />
           </div>
 
@@ -468,7 +468,7 @@ export default function ProductCollectionPage() {
           </div>
         </section>
 
-        <section className="rounded-lg border border-line bg-panel overflow-hidden">
+        <section className="rounded-inner border border-line bg-panel overflow-hidden">
           <table className="w-full">
             <thead className="bg-bg-elevated">
               <tr>

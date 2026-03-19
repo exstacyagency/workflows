@@ -59,7 +59,7 @@ export default function TopBar() {
         <span className="hidden md:inline-block">
           Command Palette
         </span>
-        <StatusChip variant="info" className="!rounded-md !px-2 !py-1 !normal-case !tracking-normal">
+        <StatusChip variant="info" className="!rounded-inner !px-2 !py-1 !normal-case !tracking-normal">
           ⌘K
         </StatusChip>
       </div>

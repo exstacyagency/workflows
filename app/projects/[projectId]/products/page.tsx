@@ -302,7 +302,7 @@ export default function ProjectProductsPage() {
         </div>
       </div>
 
-      <div className="px-8 py-10 max-w-[1200px] mx-auto space-y-12">
+      <div className="px-8 py-8 max-w-7xl mx-auto space-y-8">
         {error && (
           <div className="rounded-card border border-danger/20 bg-danger/5 p-4 flex items-center justify-between gap-4 animate-in fade-in slide-in-from-top-2">
             <p className="text-body-sm font-mono text-danger uppercase tracking-widest">{error}</p>
@@ -325,7 +325,7 @@ export default function ProjectProductsPage() {
               >
                 <div className="px-6 py-4 border-b border-line/50 bg-bg-elevated flex items-center justify-between">
                   <div className="flex items-center gap-4">
-                    <span className="text-label-sm font-mono text-muted/40 uppercase tracking-[0.2em] font-bold">Product Record</span>
+                    <span className="eyebrow !mb-0">Product Record</span>
                     <div className="h-3 w-px bg-line/50" />
                     <span className="text-label-sm font-mono text-accent-2/60 uppercase tracking-widest">{product.id}</span>
                   </div>
@@ -340,9 +340,9 @@ export default function ProjectProductsPage() {
                   <div className="flex flex-col lg:flex-row justify-between gap-8">
                     <div className="space-y-6 flex-1">
                       <div className="space-y-1">
-                        <h2 className="text-3xl font-black text-white tracking-tight leading-none">
+                        <p className="text-xl font-bold text-white tracking-tight">
                           {product.name}
-                        </h2>
+                        </p>
                         <p className="text-label font-mono text-muted uppercase tracking-[0.33em] pt-1 opacity-60">
                           {product.amazonAsin ? `ASIN: ${product.amazonAsin}` : "ASIN: NOT ADDED"}
                         </p>
@@ -387,7 +387,7 @@ export default function ProjectProductsPage() {
                         <button
                           onClick={() => void handleDeleteProduct(product.id)}
                           disabled={deletingProductId === product.id}
-                          className="ml-auto btn btn-secondary !min-h-[36px] px-6 disabled:opacity-50"
+                          className="ml-auto btn btn-danger !min-h-[36px] px-6 disabled:opacity-50"
                         >
                           {deletingProductId === product.id ? "Deleting..." : "Delete Product"}
                         </button>

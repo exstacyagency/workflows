@@ -103,8 +103,8 @@ export default function StudioHomePage() {
   return (
     <>
       <StudioHeader />
-      <div className="px-6 py-6 space-y-8">
-      <SectionCard className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 rounded-xl" padding="sm">
+      <div className="px-8 py-8 max-w-7xl mx-auto space-y-8">
+      <SectionCard className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 rounded-card" padding="sm">
         <div>
           <h1 className="text-2xl font-semibold text-white">
             Victora Studio
@@ -139,7 +139,7 @@ export default function StudioHomePage() {
         </div>
       </SectionCard>
 
-      <SectionCard className="space-y-3 rounded-xl" padding="sm">
+      <SectionCard className="space-y-3 rounded-card" padding="sm">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-white">Projects</h2>
           <div className="flex items-center gap-2">
@@ -153,14 +153,14 @@ export default function StudioHomePage() {
             <button
               onClick={loadProjects}
               disabled={loading}
-              className="text-xs px-3 py-1 rounded-md border border-line hover:bg-bg-elevated disabled:opacity-50"
+              className="text-xs px-3 py-1 rounded-inner border border-line hover:bg-bg-elevated disabled:opacity-50"
             >
               {loading ? "Refreshing…" : "Refresh"}
             </button>
           </div>
         </div>
         {showCreateForm && (
-          <div className="rounded-lg border border-line bg-panel p-3 space-y-3">
+          <div className="rounded-inner border border-line bg-panel p-3 space-y-3">
             <label
               htmlFor="project-name"
               className="block text-xs font-medium text-white"
@@ -173,7 +173,7 @@ export default function StudioHomePage() {
               value={projectName}
               onChange={(e) => setProjectName(e.target.value)}
               placeholder="Optional: defaults to timestamp name"
-              className="w-full rounded-md bg-bg border border-line px-3 py-2 text-sm text-white"
+              className="w-full rounded-inner bg-bg border border-line px-3 py-2 text-sm text-white"
               disabled={creatingProject}
             />
             <div className="flex items-center gap-2">
@@ -206,7 +206,7 @@ export default function StudioHomePage() {
           {projects.map((project) => (
             <div
               key={project.id}
-              className="flex items-center justify-between rounded-lg border border-line bg-panel px-4 py-3"
+              className="flex items-center justify-between rounded-inner border border-line bg-panel px-4 py-3"
             >
               <div className="space-y-1">
                 <div className="text-sm font-medium text-white">
@@ -224,7 +224,7 @@ export default function StudioHomePage() {
               <div className="flex items-center gap-2">
                 <Link
                   href={`/projects/${project.id}`}
-                  className="text-xs px-3 py-1.5 rounded-md bg-bg-elevated hover:bg-panel-strong text-white"
+                  className="text-xs px-3 py-1.5 rounded-inner bg-bg-elevated hover:bg-panel-strong text-white"
                 >
                   Open
                 </Link>

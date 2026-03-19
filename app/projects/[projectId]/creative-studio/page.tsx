@@ -3841,7 +3841,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
 
   return (
     <div className="min-h-screen bg-bg text-white pb-20">
-      <div className="px-8 py-10 max-w-[1400px] mx-auto space-y-8">
+      <div className="px-8 py-8 max-w-7xl mx-auto space-y-8">
         <PageHeader
           backHref={`/projects/${projectId}`}
           backLabel="Back to Project"
@@ -5537,12 +5537,12 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
         </div>
       )}
 
-      <div className="px-8 py-10 max-w-[1400px] mx-auto space-y-8">
+      <div className="px-8 py-8 max-w-7xl mx-auto space-y-8">
         <section className="space-y-4">
           <div>
             <h2 className="app-section-title text-white">Research Hub</h2>
           </div>
-          <div className="app-surface space-y-3">
+          <SectionCard className="space-y-3">
             <p className="text-sm text-muted italic">
               Return to the research workspace to inspect customer insight, ad analysis, and supporting inputs.
             </p>
@@ -5561,14 +5561,14 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                 Open Research Hub
               </Link>
             </div>
-          </div>
+          </SectionCard>
         </section>
 
         <section className="space-y-4">
           <div>
             <h2 className="app-section-title text-white">Usage and Cost</h2>
           </div>
-          <div className="app-surface space-y-3">
+          <SectionCard className="space-y-3">
             <p className="text-sm text-muted italic">
               Review spend, usage events, and settled provider costs for this project.
             </p>
@@ -5583,7 +5583,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                 Open Usage & Costs
               </Link>
             </div>
-          </div>
+          </SectionCard>
         </section>
       </div>
 
