@@ -299,7 +299,7 @@ export default function InputParametersPage() {
         />
       </div>
 
-      <div className="px-8 py-10 space-y-10 max-w-[1400px]">
+      <div className="px-8 py-8 max-w-7xl mx-auto space-y-8">
         <SectionCard className="space-y-4">
           <SectionCard padding="none" className="px-6 py-3 flex items-center justify-between">
             <h2 className="text-label font-mono text-muted uppercase tracking-[0.2em] font-bold">Request Payload</h2>

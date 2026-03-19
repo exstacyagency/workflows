@@ -457,7 +457,7 @@ export default function AllResearchDataPage() {
   }
 
   return (
-    <div className="min-h-screen bg-bg text-text space-y-8 px-8 py-8">
+    <div className="px-8 py-8 max-w-7xl mx-auto space-y-8">
       {/* Header */}
       <div className="border-b border-line bg-panel backdrop-blur-panel -mx-8 -mt-8 px-8 py-6 sticky top-0 z-30">
         <PageHeader
@@ -888,7 +888,7 @@ export default function AllResearchDataPage() {
               <div className="flex items-center gap-3 text-label font-mono text-muted uppercase tracking-[0.4em] opacity-30">
                 <span>Research Results</span>
                 <span className="hidden sm:inline">|</span>
-                <span className="hidden sm:inline pb-0.5">Kairos Research Kernel v4.6</span>
+                <span className="hidden sm:inline pb-0.5">Victora Research Kernel v4.6</span>
               </div>
               <div className="flex items-center gap-2">
                 <button

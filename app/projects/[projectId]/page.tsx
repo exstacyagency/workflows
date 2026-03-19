@@ -4,7 +4,7 @@ import { notFound } from 'next/navigation';
 import { getJobTypeLabel } from '@/lib/jobLabels';
 import { ProjectProductsPanel } from '@/components/ProjectProductsPanel';
 import { ProjectSettingsPanel } from '@/components/ProjectSettingsPanel';
-import { PageHeader, StatusChip } from '@/components/ui';
+import { PageHeader, SectionCard, StatusChip } from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -113,17 +113,16 @@ export default async function ProjectDashboardPage({ params }: Params) {
 
   const recentJobs = project.jobs;
 
+  const primaryProductId = products[0]?.id ?? null;
   const stats = [
-    { label: 'Total Jobs', value: project._count.jobs.toString() },
     { label: 'Research Rows', value: project._count.researchRows.toString() },
-    { label: 'Customer Avatars', value: project._count.customerAvatars.toString() },
     { label: 'Video Generations', value: project._count.productIntelligences.toString() },
+    { label: 'Products', value: products.length.toString() },
+    { label: 'Total Jobs', value: project._count.jobs.toString() },
   ];
 
-  const primaryProductId = products[0]?.id ?? null;
-
   return (
-    <div className="app-shell space-y-6">
+    <div className="px-8 py-8 max-w-7xl mx-auto space-y-8">
       <div>
         <a
           href="/studio"
@@ -133,26 +132,25 @@ export default async function ProjectDashboardPage({ params }: Params) {
         </a>
       </div>
 
-      <section className="app-surface app-header">
+      <SectionCard padding="lg">
         <PageHeader
           eyebrow="Project Overview"
           title={project.name}
           description={project.description || 'No description provided yet.'}
         />
-        <div className="app-status-line mt-4">
-          ID: <span className="mono-text">{project.id}</span> · Updated{' '}
-          {dateFormatter.format(project.updatedAt)}
-        </div>
-      </section>
+        <p className="text-body-sm font-mono text-muted mt-4">
+          ID: {project.id} · Updated {dateFormatter.format(project.updatedAt)}
+        </p>
+      </SectionCard>
 
-      <section className="app-grid app-grid--stats">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {stats.map(stat => (
-          <div key={stat.label} className="app-stat">
-            <p className="app-stat-label">{stat.label}</p>
-            <p className="app-stat-value">{stat.value}</p>
-          </div>
+          <SectionCard key={stat.label} padding="md">
+            <p className="eyebrow mb-2">{stat.label}</p>
+            <p className="text-3xl font-bold text-white">{stat.value}</p>
+          </SectionCard>
         ))}
-      </section>
+      </div>
 
       <ProjectProductsPanel
         projectId={projectId}
@@ -169,7 +167,7 @@ export default async function ProjectDashboardPage({ params }: Params) {
         initialDescription={project.description}
       />
 
-      <section className="app-surface space-y-3">
+      <SectionCard className="space-y-3">
         <div className="app-panel-header">
           <div>
             <h2 className="app-section-title text-white">Research Hub</h2>
@@ -193,9 +191,9 @@ export default async function ProjectDashboardPage({ params }: Params) {
             Open Research Hub
           </a>
         </div>
-      </section>
+      </SectionCard>
 
-      <section className="app-surface space-y-3">
+      <SectionCard className="space-y-3">
         <div className="app-panel-header">
           <div>
             <h2 className="app-section-title text-white">Creative Studio</h2>
@@ -219,9 +217,9 @@ export default async function ProjectDashboardPage({ params }: Params) {
             Open Creative Studio
           </a>
         </div>
-      </section>
+      </SectionCard>
 
-      <section className="app-surface space-y-3">
+      <SectionCard className="space-y-3">
         <div className="app-panel-header">
           <div>
             <h2 className="app-section-title text-white">Usage and Cost</h2>
@@ -241,9 +239,9 @@ export default async function ProjectDashboardPage({ params }: Params) {
             Open Usage & Costs
           </a>
         </div>
-      </section>
+      </SectionCard>
 
-      <section className="app-surface space-y-3 overflow-hidden">
+      <SectionCard className="space-y-3 overflow-hidden">
         <div className="app-panel-header">
           <h2 className="app-section-title text-white">Recent Jobs</h2>
           <span className="app-status-line">Latest 12 runs</span>
@@ -280,7 +278,7 @@ export default async function ProjectDashboardPage({ params }: Params) {
             ))}
           </div>
         )}
-      </section>
+      </SectionCard>
     </div>
   );
 }

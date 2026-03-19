@@ -5,7 +5,7 @@ import "./globals.css";
 // no runtime guards at build-time boundaries
 
 export const metadata: Metadata = {
-  title: "Workflows",
+  title: "Victora",
 };
 
 export default function RootLayout({

@@ -19,6 +19,8 @@ module.exports = {
         accent: '#e8d17a',
         'accent-2': '#9ad0ff',
         success: '#90e9a8',
+        warn: '#ffda7d',
+        danger: '#fca5a5',
       },
       fontFamily: {
         sans: ['Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'sans-serif'],

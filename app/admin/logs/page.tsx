@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { PageHeader } from "@/components/ui";
 
 export default function LogsPage() {
   const [files, setFiles] = useState<string[]>([]);
@@ -28,66 +29,58 @@ export default function LogsPage() {
   };
 
   return (
-    <div style={{ display: "flex", height: "100vh", fontFamily: "monospace", fontSize: "12px" }}>
-      <div
-        style={{
-          width: "400px",
-          borderRight: "1px solid rgb(221, 221, 221)",
-          overflow: "auto",
-          background: "rgb(249, 249, 249)",
-        }}
-      >
-        <div
-          style={{
-            padding: "16px",
-            borderBottom: "1px solid rgb(221, 221, 221)",
-            background: "rgb(255, 255, 255)",
-            position: "sticky",
-            top: 0,
-          }}
-        >
-          <h2 style={{ margin: 0 }}>Anthropic Logs</h2>
-          <p style={{ margin: "4px 0 0", color: "rgb(102, 102, 102)", fontSize: "11px" }}>
-            {files.length} files
-          </p>
-        </div>
-        {files.map((f) => (
-          <div
-            key={f}
-            onClick={() => loadFile(f)}
-            style={{
-              padding: "12px 16px",
-              cursor: "pointer",
-              background: selected === f ? "rgb(227, 242, 253)" : "transparent",
-              borderBottom: "1px solid rgb(238, 238, 238)",
-              wordBreak: "break-all",
-            }}
-          >
-            <div style={{ fontWeight: selected === f ? "bold" : "normal" }}>
-              {f.startsWith("request-") ? "📤 " : "📥 "}
-              {f}
+    <div className="min-h-screen bg-bg text-text">
+      <div className="px-8 py-8 max-w-7xl mx-auto space-y-8">
+        <PageHeader
+          eyebrow="Admin"
+          title="Victora Logs"
+          description={`${files.length} log file${files.length === 1 ? "" : "s"} available`}
+        />
+
+        <div className="rounded-card border border-line overflow-hidden flex" style={{ height: "70vh" }}>
+          <div className="w-72 shrink-0 border-r border-line flex flex-col">
+            <div className="px-4 py-3 border-b border-line bg-panel">
+              <p className="text-label font-mono text-muted uppercase tracking-widest">Log Files</p>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              {files.length === 0 ? (
+                <p className="px-4 py-6 text-body-sm font-mono text-muted uppercase tracking-widest opacity-40 text-center">
+                  No files found
+                </p>
+              ) : (
+                files.map((f) => (
+                  <button
+                    key={f}
+                    type="button"
+                    onClick={() => loadFile(f)}
+                    className={`w-full text-left px-4 py-3 border-b border-line/40 transition-colors text-body-sm font-mono break-all ${
+                      selected === f
+                        ? "bg-accent/10 text-accent border-l-2 border-l-accent"
+                        : "text-muted hover:bg-panel hover:text-white"
+                    }`}
+                  >
+                    <span className="mr-2">{f.startsWith("request-") ? "↑" : "↓"}</span>
+                    {f}
+                  </button>
+                ))
+              )}
             </div>
           </div>
-        ))}
-      </div>
-      <div
-        style={{
-          flex: 1,
-          overflow: "auto",
-          background: "rgb(30, 30, 30)",
-          color: "rgb(212, 212, 212)",
-          padding: "20px",
-        }}
-      >
-        {content ? (
-          <pre style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
-            {content}
-          </pre>
-        ) : (
-          <div style={{ color: "rgb(136, 136, 136)", textAlign: "center", marginTop: "100px" }}>
-            ← Select a log file to view
+
+          <div className="flex-1 overflow-auto bg-bg-elevated">
+            {content ? (
+              <pre className="p-6 text-body-sm font-mono text-text leading-relaxed whitespace-pre-wrap break-words">
+                {content}
+              </pre>
+            ) : (
+              <div className="h-full flex items-center justify-center">
+                <p className="text-body-sm font-mono text-muted uppercase tracking-widest opacity-40">
+                  ← Select a log file to view
+                </p>
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

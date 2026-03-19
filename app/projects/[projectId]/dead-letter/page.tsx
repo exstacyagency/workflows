@@ -177,7 +177,7 @@ export default function DeadLetterPage({
   }
 
   return (
-    <div className="px-6 py-6 space-y-6">
+    <div className="px-8 py-8 max-w-7xl mx-auto space-y-8">
       <PageHeader
         eyebrow="Project"
         title="Dead Letter"

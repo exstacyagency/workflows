@@ -124,7 +124,7 @@ export default function CustomerAnalysisDataPage() {
         />
       </div>
 
-      <div className="px-8 py-10 space-y-10 max-w-[1400px]">
+      <div className="px-8 py-8 max-w-7xl mx-auto space-y-8">
         {showInputs && (
           <SectionCard padding="none" className="overflow-hidden">
             <div className="border-b border-line bg-bg-elevated px-6 py-3 flex items-center justify-between">

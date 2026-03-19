@@ -23,7 +23,7 @@ function SidebarLink({ href, label }: NavItem) {
     <Link
       href={href}
       className={[
-        "flex items-center justify-between px-3 py-2 rounded-md text-sm transition-all duration-200",
+        "flex items-center justify-between px-3 py-2 rounded-inner text-sm transition-all duration-200",
         active
           ? "bg-panel text-white border border-accent/30"
           : "text-muted hover:bg-panel-strong hover:text-white border border-transparent",
@@ -41,10 +41,10 @@ export default function Sidebar() {
       {/* Brand */}
       <div className="px-4 py-4 border-b border-line">
         <div className="text-label uppercase tracking-[0.25em] text-accent font-bold">
-          KAIROS
+          VICTORA
         </div>
         <div className="text-lg font-semibold text-white mt-1 tracking-tight">
-          Kairos AI Studio
+          Victora Studio
         </div>
       </div>
 
@@ -74,7 +74,7 @@ export default function Sidebar() {
       {/* Footer */}
       <div className="px-4 py-3 border-t border-line text-body-sm text-muted font-mono">
         <div className="flex items-center justify-between gap-2">
-          <span>KAIROS AI</span>
+          <span>VICTORA</span>
           <StatusChip variant="subtle" className="!px-2 !py-1 !text-label-xs">v1.0</StatusChip>
         </div>
       </div>

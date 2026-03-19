@@ -331,7 +331,7 @@ export default function AdAssetsViewerPage() {
         />
       </div>
 
-      <div className="px-8 py-10">
+      <div className="px-8 py-8 max-w-7xl mx-auto space-y-8">
         <SectionCard padding="none" className="overflow-hidden">
           <div className="px-6 py-4 border-b border-line bg-bg-elevated flex items-center justify-between">
             <h2 className="text-label font-mono text-muted uppercase tracking-[0.2em] font-bold">Creative Assets</h2>

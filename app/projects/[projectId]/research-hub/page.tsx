@@ -1100,7 +1100,7 @@ export default function ResearchHubPage() {
   }
 
   return (
-    <div className="px-8 py-8 max-w-7xl mx-auto space-y-10">
+    <div className="px-8 py-8 max-w-7xl mx-auto space-y-8">
       {/* New Run Confirmation Modal */}
       {showNewRunModal && (
         <div className="fixed inset-0 bg-overlay backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -1372,7 +1372,7 @@ export default function ResearchHubPage() {
 
                           {/* Error Display */}
                           {stepWithStatus.status === "FAILED" && stepWithStatus.lastJob?.error && (
-                            <div className="mt-3 rounded-lg bg-accent/10 border border-accent/30 p-3">
+                            <div className="mt-3 rounded-inner bg-accent/10 border border-accent/30 p-3">
                               <div className="flex items-start gap-3">
                                 <div className="flex-1">
                                   <p className="text-xs font-semibold text-accent mb-1">Error Details:</p>
@@ -1592,7 +1592,7 @@ export default function ResearchHubPage() {
         <div>
           <h2 className="app-section-title text-white">Creative Studio</h2>
         </div>
-        <div className="app-surface space-y-3">
+        <SectionCard className="space-y-3">
           <p className="text-sm text-muted italic">
             Move approved research into script generation, storyboards, and production output.
           </p>
@@ -1611,14 +1611,14 @@ export default function ResearchHubPage() {
               Open Creative Studio
             </Link>
           </div>
-        </div>
+        </SectionCard>
       </section>
 
       <section className="space-y-4">
         <div>
           <h2 className="app-section-title text-white">Usage and Cost</h2>
         </div>
-        <div className="app-surface space-y-3">
+        <SectionCard className="space-y-3">
           <p className="text-sm text-muted italic">
             Review provider usage, spend, and settled job costs for this project.
           </p>
@@ -1633,7 +1633,7 @@ export default function ResearchHubPage() {
               Open Usage & Costs
             </Link>
           </div>
-        </div>
+        </SectionCard>
       </section>
 
       {/* Recent Jobs */}
@@ -1790,7 +1790,7 @@ function CustomerResearchModal({
 
   return (
     <div className="fixed inset-0 bg-overlay flex items-center justify-center z-50 p-4">
-      <div className="bg-panel rounded-lg border border-line max-w-lg w-full max-h-[90vh] overflow-y-auto">
+      <div className="bg-panel rounded-inner border border-line max-w-lg w-full max-h-[90vh] overflow-y-auto">
         <div className="p-6">
           <p className="eyebrow">
             {uploadOnly ? "Upload Market Research" : "Collect Audience Research"}
@@ -2205,7 +2205,7 @@ function AdCollectionModal({
 
   return (
     <div className="fixed inset-0 bg-overlay flex items-center justify-center z-50 p-4">
-      <div className="bg-panel rounded-lg border border-line max-w-lg w-full">
+      <div className="bg-panel rounded-inner border border-line max-w-lg w-full">
         <div className="p-6">
           <p className="eyebrow">Industry Selection</p>
           <p className="text-sm text-muted mb-6">
@@ -2447,7 +2447,7 @@ function ProductCollectionModal({
 
   return (
     <div className="fixed inset-0 bg-overlay flex items-center justify-center z-50 p-4">
-      <div className="bg-panel rounded-lg border border-line max-w-lg w-full max-h-[90vh] overflow-y-auto">
+      <div className="bg-panel rounded-inner border border-line max-w-lg w-full max-h-[90vh] overflow-y-auto">
         <div className="p-6">
           <p className="eyebrow">Product Information</p>
           <p className="text-sm text-muted mb-6">
