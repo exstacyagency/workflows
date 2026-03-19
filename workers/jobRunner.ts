@@ -1370,6 +1370,19 @@ async function runJob(
           },
           summary: `Creator avatar prompt generated (${avatarResult.source})`,
         });
+        try {
+          await settleJobCost({
+            jobId,
+            userId: job.userId,
+            projectId: job.projectId,
+            usageEntries: [],
+          });
+        } catch (error) {
+          console.error("[jobRunner] Failed to settle creator avatar job usage", {
+            jobId,
+            error: String((error as any)?.message ?? error),
+          });
+        }
         return;
       }
 
@@ -1431,6 +1444,31 @@ async function runJob(
               result: { ok: true, productId, taskId: seedTaskId, characterAvatarImageUrl: imageUrl },
               summary: "Character avatar image generated",
             });
+            try {
+              await settleJobCost({
+                jobId,
+                userId: job.userId,
+                projectId: job.projectId,
+                usageEntries: [
+                  {
+                    metric: "imageJobs",
+                    provider: "kie",
+                    model: String(cfg.raw("KIE_CHARACTER_IMAGE_MODEL") || "nano-banana-2"),
+                    units: 1,
+                    costCents: 0,
+                    metadata: {
+                      resolution: "2K",
+                      taskId: seedTaskId,
+                    },
+                  },
+                ],
+              });
+            } catch (error) {
+              console.error("[jobRunner] Failed to settle character seed video job usage", {
+                jobId,
+                error: String((error as any)?.message ?? error),
+              });
+            }
             return;
           }
 

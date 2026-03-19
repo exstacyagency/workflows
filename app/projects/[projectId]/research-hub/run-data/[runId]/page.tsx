@@ -172,7 +172,6 @@ export default function ResearchRunDataPage() {
           description={`Run ID: ${runId} | Jobs: ${jobs.length} Active`}
           actions={
             <>
-              <StatusChip variant="subtle">{runId.substring(0, 8)}</StatusChip>
               <button
                 onClick={() => void loadJobs()}
                 disabled={loading || deleting}

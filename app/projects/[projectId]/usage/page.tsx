@@ -142,8 +142,8 @@ export default function UsagePage() {
   return (
     <div className="px-8 py-8 max-w-7xl mx-auto space-y-8">
       <PageHeader
-        backHref={`/projects/${projectId}/research-hub`}
-        backLabel="Back to Research Hub"
+        backHref={`/projects/${projectId}`}
+        backLabel="Back to Project"
         title="Usage & Metrics"
         description="Track your research job spending and resource allocation."
       />

@@ -131,7 +131,10 @@ export default async function ProductSetupPage({
       elevenLabsVoiceId: char.elevenLabsVoiceId,
       createdAt: char.createdAt.toISOString(),
     })),
-    runs: runs.map((run) => ({ id: run.id, name: run.name })),
+    runs: runs.map((run) => ({
+      id: run.id,
+      name: run.name?.trim() || product.projectName,
+    })),
     selectedRunId,
     project: {
       id: product.projectId,

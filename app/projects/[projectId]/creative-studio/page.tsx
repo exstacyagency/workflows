@@ -3844,11 +3844,11 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
 
   return (
     <div className="pb-20">
-      <div className="px-8 py-8 max-w-7xl mx-auto space-y-8">
+      <div className="px-8 py-8 max-w-7xl mx-auto space-y-10">
         <PageHeader
           backHref={`/projects/${projectId}`}
           backLabel="Back to Project"
-          title={selectedProduct ? `Creative Studio / ${selectedProduct.name}` : "Creative Studio"}
+          title="Creative Studio"
           description="Script generation, storyboards, prompts, and production output."
           actions={anyRunning ? <StatusChip variant="running">Running</StatusChip> : undefined}
         />
@@ -3987,7 +3987,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
           </SectionCard>
         )}
 
-        <div className="space-y-8">
+        <div className="space-y-10">
           {/* Character Casting Section */}
           <div className="space-y-6">
             <div className="flex items-center justify-between border-b border-line pb-4">
@@ -5528,7 +5528,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
         </div>
       )}
 
-      <div className="px-8 py-8 max-w-7xl mx-auto space-y-8">
+      <div className="px-8 py-8 max-w-7xl mx-auto space-y-10">
         <SectionLinkCard
           eyebrow="Research Hub"
           description="Return to the research workspace to inspect customer insight, ad analysis, and supporting inputs."
@@ -5536,9 +5536,15 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
           sectionShell
           action={
             <Link
-              href={selectedProductId
-                ? `/projects/${projectId}/research-hub?productId=${selectedProductId}`
-                : `/projects/${projectId}/research-hub`}
+              href={
+                (() => {
+                  const params = new URLSearchParams();
+                  if (selectedProductId) params.set("productId", selectedProductId);
+                  if (selectedRunId) params.set("runId", selectedRunId);
+                  const query = params.toString();
+                  return `/projects/${projectId}/research-hub${query ? `?${query}` : ""}`;
+                })()
+              }
               className="btn btn-primary !min-h-[36px] px-6 shrink-0"
             >
               Open Research Hub
@@ -5560,7 +5566,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
             </Link>
           }
         />
-        <div className="mt-8 border-t border-line pt-6">
+        <div className="mt-8">
           <p className="eyebrow mb-4">Recent Jobs</p>
           <div className="app-list">
             {recentCreativeJobs.map(job => {
