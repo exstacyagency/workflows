@@ -932,7 +932,11 @@ async function runJob(
         }
 
         const result = await runCancelable(jobId, () => startScriptGenerationJob(job.projectId, fresh));
-        await markCompleted({ jobId, result: { ok: true, ...result } });
+        await markCompleted({
+          jobId,
+          result: { ok: true, ...result },
+          summary: (result as any)?.completionSummary,
+        });
         return;
       }
 

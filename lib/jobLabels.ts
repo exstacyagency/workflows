@@ -3,7 +3,7 @@ export const JOB_TYPE_LABELS = {
   CUSTOMER_ANALYSIS: "Customer Analysis",
   AD_PERFORMANCE: "Ad Collection",
   AD_QUALITY_GATE: "Quality Assessment",
-  PATTERN_ANALYSIS: "Ad Analysis",
+  PATTERN_ANALYSIS: "Pattern Analysis",
   PRODUCT_DATA_COLLECTION: "Product Collection",
   PRODUCT_ANALYSIS: "Product Analysis",
   SCRIPT_GENERATION: "Script Generation",

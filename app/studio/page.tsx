@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import StudioHeader from "./StudioHeader";
 import WhoAmI from "./WhoAmI";
+import GlobalNavMenu from "@/components/GlobalNavMenu";
 import { EmptyState, PageHeader, SectionCard } from "@/components/ui";
 
 type Project = {
@@ -51,9 +52,9 @@ export default function StudioHomePage() {
     <>
       <StudioHeader />
       <div className="px-8 py-8 max-w-7xl mx-auto space-y-8">
+        <GlobalNavMenu offsetTop="top-14" />
         <PageHeader
           title="Victora Studio"
-          description="Manage projects, monitor jobs, and keep production moving."
         />
         <WhoAmI />
 

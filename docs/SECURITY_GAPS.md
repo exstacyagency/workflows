@@ -32,7 +32,7 @@ Audit note:
   Status: Partial leaning Done. Spot checks show strong behavior on key job-read routes, but this has not been exhaustively verified across every job-read endpoint.
 
 ## Secrets & Key Management
-- [ ] Document secret rotation process (Neon, LLM, scrapers)
+- [x] Document secret rotation process (Neon, LLM, scrapers)
   Status: Done. A formal runbook now exists in `docs/SECRET_ROTATION_RUNBOOK.md`.
 - [ ] Separate prod vs dev keys for external providers
   Status: Partial. Required production env has been documented and boot-time production assertions now fail on obvious dev/test values and local URL fallbacks, but provider accounts are not yet structurally separated by environment.
@@ -40,19 +40,19 @@ Audit note:
   Status: Partial. The obvious worker/service env-presence logs were removed, but the repo has not been exhaustively swept and some debug endpoints still exist outside the main worker paths.
 
 ## Data Deletion & Export
-- [ ] Project delete/purge endpoint (admin + owner)
+- [x] Project delete/purge endpoint (admin + owner)
   Status: Done. A project-wide admin+owner purge endpoint with preview and confirmation now exists at `app/api/projects/[projectId]/purge/route.ts`.
 - [ ] Tenant delete/purge endpoint
   Status: Open. Not found.
 - [ ] Project export bundle (JSON + file references)
   Status: Partial. Research export routes and CSV exports exist, but not a full project-wide export bundle across all artifact types.
-- [ ] Data retention policy (artifacts + logs)
+- [x] Data retention policy (artifacts + logs)
   Status: Done. A written retention policy now exists in `docs/DATA_RETENTION_POLICY.md`.
 
 ## External Providers
 - [ ] Reddit strategy: official API + auth or remove/replace scraping path
   Status: Open. Reddit scraping paths are still active.
-- [ ] LLM redaction policy documented (what is sent, what is not)
+- [x] LLM redaction policy documented (what is sent, what is not)
   Status: Done. A written policy now exists in `docs/LLM_REDACTION_POLICY.md`.
 - [ ] Provider failure handling is sanitized + truncated everywhere
   Status: Partial. Some good patterns exist, especially for KIE/external-call wrappers, but this is not consistent across the repo.
@@ -68,7 +68,7 @@ Audit note:
 ## Infrastructure Portability
 - [x] CI DB provisioning path (Neon or ephemeral Postgres for tests)
   Status: Done. Repo/docs evidence supports the current checked status.
-- [ ] One-command "fresh environment" bootstrap for buyers (local + CI)
+- [x] One-command "fresh environment" bootstrap for buyers (local + CI)
   Status: Done. A one-command local bootstrap now exists via `npm run bootstrap:local` backed by `scripts/bootstrap-local.sh`, `.env.example`, and bootstrap docs in `README.md`.
 - [ ] Document portability targets (Vercel, self-hosted, containers)
   Status: Partial. Portability references exist across docs, but not as a complete buyer-grade target matrix/checklist.

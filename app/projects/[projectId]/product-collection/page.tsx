@@ -351,7 +351,16 @@ export default function ProductCollectionPage() {
     <main className="px-8 py-8 max-w-7xl mx-auto space-y-8">
       <div className="mx-auto max-w-4xl space-y-6">
         <PageHeader
-          backHref={`/projects/${projectId}/research-hub${selectedProductId ? `?productId=${selectedProductId}` : ""}`}
+          backHref={`/projects/${projectId}/research-hub${
+            selectedProductId || currentRunId
+              ? `?${[
+                  selectedProductId ? `productId=${encodeURIComponent(selectedProductId)}` : null,
+                  currentRunId ? `runId=${encodeURIComponent(currentRunId)}` : null,
+                ]
+                  .filter(Boolean)
+                  .join("&")}`
+              : ""
+          }`}
           backLabel="Back to Research Hub"
           title="Product Collection"
           description="Collect structured product intelligence from a main product URL."

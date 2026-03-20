@@ -33,6 +33,10 @@ Required checks should include:
 - `golden-e2e` (deterministic snapshot compare)
 - `security-sweep` (PR-safe version)
 
+## Known architectural simplifications
+
+**Run model**: Research runs and creative runs currently share the same `ResearchRun` record. Creative jobs are attached to the same run as the research jobs that sourced them. This is a deliberate simplification — the pipeline works end to end, but a single research run cannot fan out into multiple independent creative runs without modification. The separation path is documented in the main README roadmap under "Creative Run Branching".
+
 ## What's intentionally out of scope
 - Production hosting and billing ops (CI proves correctness; deployment is a separate concern)
 - Non-deterministic model calls during "golden" runs (golden is intentionally deterministic)

@@ -6,6 +6,11 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Victora",
+  icons: {
+    icon: "/v-mark.png",
+    shortcut: "/v-mark.png",
+    apple: "/v-mark.png",
+  },
 };
 
 export default function RootLayout({

@@ -1,9 +1,11 @@
 import { prisma } from '@/lib/prisma';
 import { JobStatus } from '@prisma/client';
 import { notFound } from 'next/navigation';
+import GlobalNavMenu from '@/components/GlobalNavMenu';
 import { ProjectProductsPanel } from '@/components/ProjectProductsPanel';
 import { ProjectSettingsPanel } from '@/components/ProjectSettingsPanel';
 import { PageHeader, SectionCard, SectionLinkCard } from '@/components/ui';
+import { getJobTypeLabel } from '@/lib/jobLabels';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -102,17 +104,11 @@ export default async function ProjectDashboardPage({ params }: Params) {
 
   return (
     <div className="px-8 py-8 max-w-7xl mx-auto space-y-10">
-      <a
-        href="/studio"
-        className="text-label font-mono text-muted hover:text-white uppercase tracking-widest transition-colors inline-block"
-      >
-        ← Back to Studio
-      </a>
+      <GlobalNavMenu projectId={projectId} />
       <SectionCard padding="lg">
         <PageHeader
           eyebrow="Project Overview"
           title={project.name}
-          description={project.description || 'No description provided yet.'}
         />
         <p className="text-body-sm font-mono text-muted mt-4">
           ID: {project.id} · Updated {dateFormatter.format(project.updatedAt)}
@@ -205,7 +201,7 @@ export default async function ProjectDashboardPage({ params }: Params) {
             {recentJobs.map(job => (
               <div key={job.id} className="app-list-item flex items-start justify-between gap-4">
                 <div className="flex-1">
-                  <div className="text-sm font-medium text-white">{job.type}</div>
+                  <div className="text-sm font-medium text-white">{getJobTypeLabel(job.type)}</div>
                   <div className="text-xs text-muted">{new Date(job.createdAt).toLocaleString()}</div>
                 </div>
                 <div className={`app-chip ${
