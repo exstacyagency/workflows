@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import { EmptyState, PageHeader, SectionCard, StatusChip } from "@/components/ui";
+import { EmptyState, LoadingState, PageHeader, SectionCard, StatusChip } from "@/components/ui";
 import { JobStatus, JobType } from "@prisma/client";
 
 type CreativeJob = {
@@ -177,16 +177,7 @@ export default function CreativeRunDataPage() {
   }
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-bg text-white px-8 py-8">
-        <div className="flex min-h-[60vh] flex-col items-center justify-center space-y-4">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent/20 border-t-accent" />
-          <p className="text-label font-mono uppercase tracking-[0.3em] text-muted animate-pulse">
-            Loading run data...
-          </p>
-        </div>
-      </div>
-    );
+    return <LoadingState title="Loading run data" variant="page" />;
   }
 
   return (

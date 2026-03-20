@@ -4,7 +4,7 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
-import { PageHeader, SectionCard, StatusChip } from '@/components/ui';
+import { LoadingState, PageHeader, SectionCard, StatusChip } from '@/components/ui';
 
 interface ResearchRow {
   id: string;
@@ -688,10 +688,7 @@ export default function AllResearchDataPage() {
 
       <div className="space-y-6 pb-20">
         {loading ? (
-          <div className="flex flex-col items-center justify-center py-40 space-y-4">
-            <div className="w-12 h-12 border-2 border-accent-2/10 border-t-accent-2 rounded-full animate-spin"></div>
-            <div className="text-label font-mono text-muted uppercase tracking-[0.4em] animate-pulse">Loading research context...</div>
-          </div>
+          <LoadingState title="Loading research context" variant="section" minHeightClassName="py-28" />
         ) : (
           <>
             <SectionCard padding="none" className="overflow-hidden">

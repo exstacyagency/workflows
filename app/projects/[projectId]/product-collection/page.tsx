@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { EmptyState, PageHeader, SectionCard, StatusChip } from "@/components/ui";
+import { EmptyState, LoadingState, PageHeader, SectionCard, StatusChip } from "@/components/ui";
 import { getJobTypeLabel } from "@/lib/jobLabels";
 
 type JobStatus = "PENDING" | "RUNNING" | "COMPLETED" | "FAILED";
@@ -347,6 +347,9 @@ export default function ProductCollectionPage() {
     }
   };
 
+  const getProductOutputHref = (job: Job) =>
+    `/projects/${projectId}/product-collection/${job.id}${job.runId ? `?runId=${job.runId}` : ""}`;
+
   return (
     <main className="px-8 py-8 max-w-7xl mx-auto space-y-8">
       <div className="mx-auto max-w-4xl space-y-6">
@@ -443,7 +446,7 @@ export default function ProductCollectionPage() {
 
             {latestCompletedJob ? (
               <Link
-                href={`/projects/${projectId}/research/data/${latestCompletedJob.id}?runId=${latestCompletedJob.runId ?? latestCompletedJob.id}`}
+                href={getProductOutputHref(latestCompletedJob)}
                 className="btn btn-primary !min-h-[32px] px-4 text-label"
               >
                 View Product Data
@@ -489,8 +492,8 @@ export default function ProductCollectionPage() {
             <tbody className="divide-y divide-line">
               {loading ? (
                 <tr>
-                  <td colSpan={4} className="px-4 py-6 text-sm text-muted">
-                    Loading jobs...
+                  <td colSpan={4} className="px-4 py-3">
+                    <LoadingState title="Loading jobs" variant="inline" minHeightClassName="py-8" />
                   </td>
                 </tr>
               ) : jobs.length === 0 ? (
@@ -520,7 +523,7 @@ export default function ProductCollectionPage() {
                     <td className="px-4 py-3 text-sm">
                       {job.status === "COMPLETED" ? (
                         <Link
-                          href={`/projects/${projectId}/research/data/${job.id}${job.runId ? `?runId=${job.runId}` : ""}`}
+                          href={getProductOutputHref(job)}
                           className="text-accent-2 hover:text-accent-2 text-sm underline"
                         >
                           View Data →

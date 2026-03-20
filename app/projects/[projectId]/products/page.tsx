@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { EmptyState, PageHeader, SectionCard, StatusChip } from "@/components/ui";
+import { EmptyState, LoadingState, PageHeader, SectionCard, StatusChip } from "@/components/ui";
 
 type ProductItem = {
   id: string;
@@ -259,14 +259,7 @@ export default function ProjectProductsPage() {
   }
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-bg text-white px-8 py-8">
-        <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
-          <div className="w-8 h-8 border-2 border-accent/20 border-t-accent rounded-full animate-spin" />
-          <p className="text-label font-mono text-muted uppercase tracking-[0.3em] animate-pulse">Loading products...</p>
-        </div>
-      </div>
-    );
+    return <LoadingState title="Loading products" variant="page" />;
   }
 
   return (

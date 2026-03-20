@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { getJobTypeLabel } from "@/lib/jobLabels";
-import { EmptyState, PageHeader, SectionCard, StatusChip } from "@/components/ui";
+import { EmptyState, LoadingState, PageHeader, SectionCard, StatusChip } from "@/components/ui";
 
 // Types
 type JobStatus = "NOT_STARTED" | "PENDING" | "RUNNING" | "COMPLETED" | "FAILED";
@@ -26,6 +26,46 @@ interface Job {
   createdAt: string;
   updatedAt: string;
   runId?: string | null;
+}
+
+function getAdPerformanceSubtype(job: Job): string {
+  const payload = job.payload && typeof job.payload === "object" ? job.payload : {};
+  const subtype =
+    typeof payload.jobType === "string"
+      ? payload.jobType
+      : typeof payload.kind === "string"
+        ? payload.kind
+        : "";
+  return subtype.trim();
+}
+
+function getCompletedJobViewHref(projectId: string, job: Job): string | null {
+  const runId = String(job.runId ?? "").trim();
+
+  if (job.type === "PRODUCT_DATA_COLLECTION") {
+    return `/projects/${projectId}/product-collection/${job.id}${runId ? `?runId=${runId}` : ""}`;
+  }
+
+  if (job.type === "AD_PERFORMANCE" && runId) {
+    const subtype = getAdPerformanceSubtype(job);
+    if (subtype === "ad_ocr_collection") {
+      return `/projects/${projectId}/research-hub/ad-assets/${runId}?focus=ocr`;
+    }
+    if (subtype === "ad_transcripts" || subtype === "ad_transcript_collection") {
+      return `/projects/${projectId}/research-hub/data?jobType=ad-transcripts&runId=${runId}`;
+    }
+    return `/projects/${projectId}/research-hub/ad-assets/${runId}`;
+  }
+
+  if (job.type === "AD_QUALITY_GATE" && runId) {
+    return `/projects/${projectId}/research-hub/data?jobType=ad-quality-gate&runId=${runId}`;
+  }
+
+  if (job.type === "PATTERN_ANALYSIS" && runId) {
+    return `/projects/${projectId}/research-hub/data?jobType=pattern-analysis&runId=${runId}`;
+  }
+
+  return `/projects/${projectId}/research/data/${job.id}${runId ? `?runId=${runId}` : ""}`;
 }
 
 interface JobGroup {
@@ -140,12 +180,7 @@ export default function JobListPage() {
   };
 
   if (loading) {
-    return (
-      <div className="px-6 py-6 flex flex-col items-center justify-center min-h-[60vh] space-y-4">
-        <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
-        <p className="text-xs font-mono text-muted uppercase tracking-widest">Initialising Logs...</p>
-      </div>
-    );
+    return <LoadingState title="Loading job history" variant="page" />;
   }
 
   if (error) {
@@ -205,10 +240,7 @@ export default function JobListPage() {
                   </thead>
                   <tbody className="divide-y divide-line">
                     {group.jobs.map((job) => (
-                      <tr
-                        key={job.id}
-                        className="bg-panel-row transition-colors"
-                      >
+                      <tr key={job.id} className="bg-panel-row transition-colors">
                         <td className="px-5 py-4 text-xs text-text font-mono">
                           {formatDate(job.createdAt)}
                         </td>
@@ -219,11 +251,9 @@ export default function JobListPage() {
                           {formatDuration(job.createdAt, job.updatedAt)}
                         </td>
                         <td className="px-5 py-4 text-right">
-                          {job.status === "COMPLETED" ? (
+                          {job.status === "COMPLETED" && getCompletedJobViewHref(projectId, job) ? (
                             <Link
-                              href={`/projects/${projectId}/research/data/${job.id}${
-                                job.runId ? `?runId=${job.runId}` : ""
-                              }`}
+                              href={getCompletedJobViewHref(projectId, job)!}
                               className="text-body-sm font-mono uppercase tracking-wider text-accent-2 underline decoration-accent-2/30 underline-offset-4 transition-all hover:text-white hover:decoration-white"
                             >
                               View Data →

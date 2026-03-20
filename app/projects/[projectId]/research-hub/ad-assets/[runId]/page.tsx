@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
-import { EmptyState, PageHeader, SectionCard, StatusChip } from "@/components/ui";
+import { EmptyState, LoadingState, PageHeader, SectionCard, StatusChip } from "@/components/ui";
 
 type AssetRecord = {
   id: string;
@@ -284,14 +284,7 @@ export default function AdAssetsViewerPage() {
   }
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-bg text-white px-8 py-8">
-        <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
-          <div className="w-8 h-8 border-2 border-accent-2/20 border-t-accent-2 rounded-full animate-spin" />
-          <p className="text-label font-mono text-muted uppercase tracking-[0.3em] animate-pulse">Scanning_Assets...</p>
-        </div>
-      </div>
-    );
+    return <LoadingState title="Loading ad assets" variant="page" />;
   }
 
   if (error) {

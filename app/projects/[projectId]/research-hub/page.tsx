@@ -6,7 +6,7 @@ import Link from "next/link";
 import { getJobTypeLabel } from "@/lib/jobLabels";
 import GlobalNavMenu from "@/components/GlobalNavMenu";
 import RunManagementModal from "@/components/RunManagementModal";
-import { EmptyState, PageHeader, SectionCard, SectionLinkCard, StatusChip } from "@/components/ui";
+import { EmptyState, LoadingState, PageHeader, SectionCard, SectionLinkCard, StatusChip } from "@/components/ui";
 
 // Types
 type JobStatus = "NOT_STARTED" | "PENDING" | "RUNNING" | "COMPLETED" | "FAILED";
@@ -531,7 +531,7 @@ export default function ResearchHubPage() {
     },
     {
       key: "ad",
-      label: "Ad Collection",
+      label: "Ad Research",
       description: "Analyze successful ad patterns",
       color: "sky",
       enabled: true,
@@ -584,7 +584,7 @@ export default function ResearchHubPage() {
     },
     {
       key: "product",
-      label: "Product Collection",
+      label: "Product Research",
       description: "Deep dive into your product features",
       color: "violet",
       enabled: true,
@@ -1071,12 +1071,7 @@ export default function ResearchHubPage() {
   };
 
   if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
-        <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
-        <p className="text-xs font-mono text-muted uppercase tracking-widest">Initialising Hub...</p>
-      </div>
-    );
+    return <LoadingState title="Initializing research hub" variant="page" />;
   }
 
   return (
@@ -1112,8 +1107,6 @@ export default function ResearchHubPage() {
       )}
 
       <PageHeader
-        backHref={`/projects/${projectId}`}
-        backLabel="Back to Project"
         title="Research Hub"
         description="Multi-track customer research, ad research, and product research."
         actions={anyRunning ? <StatusChip variant="running">Running</StatusChip> : undefined}
@@ -1317,11 +1310,12 @@ export default function ResearchHubPage() {
 	                    const payloadRunId = String(stepWithStatus.lastJob?.payload?.runId ?? "").trim();
 	                    const stepRunId =
 	                      stepWithStatus.lastJob?.runId || payloadRunId || currentRunId || selectedRunId || null;
-	                    const stepRawDataHref = stepWithStatus.lastJob
-	                      ? `/projects/${projectId}/research/data/${stepWithStatus.lastJob.id}${
-	                          stepRunId ? `?runId=${stepRunId}` : ""
-	                        }`
-	                      : null;
+	                    const stepProductDataHref =
+	                      stepWithStatus.id === "product-collection" && stepWithStatus.lastJob
+	                        ? `/projects/${projectId}/product-collection/${stepWithStatus.lastJob.id}${
+	                            stepRunId ? `?runId=${stepRunId}` : ""
+	                          }`
+	                        : null;
                       const stepViewDataHref =
                         stepWithStatus.id === "ad-collection" && stepRunId
                           ? `/projects/${projectId}/research-hub/ad-assets/${stepRunId}`
@@ -1418,9 +1412,9 @@ export default function ResearchHubPage() {
                           ) : (
 	                          stepWithStatus.status === "COMPLETED" && stepWithStatus.lastJob && (
 	                            <div className="flex items-center gap-2">
-	                              {stepWithStatus.id === "product-collection" && stepRawDataHref && (
+	                              {stepWithStatus.id === "product-collection" && stepProductDataHref && (
 	                                <Link
-	                                  href={stepRawDataHref}
+	                                  href={stepProductDataHref}
 		                                className="btn btn-secondary !min-h-[32px] px-4 text-label"
 	                                >
 	                                  View Data

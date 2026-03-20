@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import GlobalNavMenu from "@/components/GlobalNavMenu";
-import { EmptyState, PageHeader, SectionCard, StatusChip } from "@/components/ui";
+import { EmptyState, LoadingState, PageHeader, SectionCard, StatusChip } from "@/components/ui";
 import { getJobTypeLabel } from "@/lib/jobLabels";
 
 type JobType = string;
@@ -132,12 +132,7 @@ export default function UsagePage() {
   };
 
   if (loading) {
-    return (
-      <div className="px-6 py-6 flex flex-col items-center justify-center min-h-[60vh] space-y-4">
-        <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
-        <p className="text-xs font-mono text-muted uppercase tracking-widest">Loading usage data...</p>
-      </div>
-    );
+    return <LoadingState title="Loading usage data" variant="page" />;
   }
 
   return (
@@ -145,8 +140,6 @@ export default function UsagePage() {
       <GlobalNavMenu projectId={projectId} />
       <div className="px-8 py-8 max-w-7xl mx-auto space-y-8">
         <PageHeader
-          backHref={`/projects/${projectId}`}
-          backLabel="Back to Project"
           title="Usage & Metrics"
           description="Track your research job spending and resource allocation."
         />

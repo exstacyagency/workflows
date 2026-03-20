@@ -106,12 +106,6 @@ export default async function ProjectDashboardPage({ params }: Params) {
     <>
       <GlobalNavMenu projectId={projectId} />
       <div className="px-8 py-8 max-w-7xl mx-auto space-y-10">
-        <a
-          href="/studio"
-          className="text-label font-mono text-muted hover:text-white uppercase tracking-widest transition-colors inline-block"
-        >
-          ← Back to Studio
-        </a>
         <SectionCard padding="lg">
           <PageHeader
             eyebrow="Project Overview"

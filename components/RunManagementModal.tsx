@@ -2,7 +2,7 @@
 
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { EmptyState, SectionCard, StatusChip } from "@/components/ui";
+import { EmptyState, LoadingState, SectionCard, StatusChip } from "@/components/ui";
 
 type RunItem = {
   id: string;
@@ -236,10 +236,7 @@ export default function RunManagementModal({
           )}
 
           {loading ? (
-            <SectionCard className="py-12 px-6 flex flex-col items-center justify-center space-y-4" padding="none">
-              <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
-              <p className="text-label font-mono text-muted uppercase tracking-widest">Loading campaign runs...</p>
-            </SectionCard>
+            <LoadingState title="Loading campaign runs" variant="section" minHeightClassName="py-12" />
           ) : sortedRuns.length === 0 ? (
             <EmptyState
               title="No Campaign Runs"

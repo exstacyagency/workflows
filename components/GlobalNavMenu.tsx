@@ -38,7 +38,7 @@ export default function GlobalNavMenu({ projectId, offsetTop = "top-4" }: Global
             { label: "Overview", href: `/projects/${projectId}` },
             { label: "Research Hub", href: `/projects/${projectId}/research-hub` },
             { label: "Creative Studio", href: `/projects/${projectId}/creative-studio` },
-            { label: "Usage & Metrics", href: `/projects/${projectId}/usage` },
+            { label: "Usage + Cost", href: `/projects/${projectId}/usage` },
           ]
         : [],
     [projectId],

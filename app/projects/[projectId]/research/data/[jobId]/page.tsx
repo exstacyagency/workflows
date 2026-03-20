@@ -1,10 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useParams, useSearchParams } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
-import { PageHeader, SectionCard, StatusChip } from '@/components/ui';
+import { LoadingState, PageHeader, SectionCard, StatusChip } from '@/components/ui';
 
 interface ResearchRow {
   id: string;
@@ -42,6 +42,7 @@ interface KeywordStat {
 
 export default function ResearchDataPage() {
   const params = useParams();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const projectId = params.projectId as string;
   const jobId = params.jobId as string;
@@ -66,6 +67,7 @@ export default function ResearchDataPage() {
   const [solutionKeywordFilter, setSolutionKeywordFilter] = useState('');
   const [minScoreFilter, setMinScoreFilter] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
+  const [redirectChecked, setRedirectChecked] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -114,8 +116,53 @@ export default function ResearchDataPage() {
   ]);
 
   useEffect(() => {
+    let cancelled = false;
+
+    async function checkForProductCollectionRedirect() {
+      try {
+        const response = await fetch(`/api/projects/${projectId}/jobs/${jobId}`, {
+          cache: 'no-store',
+        });
+        const data = await response.json().catch(() => ({}));
+        const job = data?.job as
+          | {
+              type?: string;
+              runId?: string | null;
+              payload?: Record<string, unknown> | null;
+            }
+          | undefined;
+
+        if (cancelled) return;
+
+        if (response.ok && job?.type === 'PRODUCT_DATA_COLLECTION') {
+          const payload = job.payload && typeof job.payload === 'object' ? job.payload : {};
+          const effectiveRunId =
+            runId || (typeof job.runId === 'string' ? job.runId : '') || String(payload.runId ?? '').trim();
+          router.replace(
+            `/projects/${projectId}/product-collection/${jobId}${effectiveRunId ? `?runId=${effectiveRunId}` : ''}`
+          );
+          return;
+        }
+      } catch (error) {
+        console.error('Failed to resolve job type for research data redirect:', error);
+      }
+
+      if (!cancelled) {
+        setRedirectChecked(true);
+      }
+    }
+
+    checkForProductCollectionRedirect();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [jobId, projectId, router, runId]);
+
+  useEffect(() => {
+    if (!redirectChecked) return;
     loadData();
-  }, [loadData]);
+  }, [loadData, redirectChecked]);
 
   const uniqueSubreddits = useMemo(
     () =>
@@ -130,6 +177,10 @@ export default function ResearchDataPage() {
       ).sort(),
     [rows]
   );
+
+  if (!redirectChecked) {
+    return <LoadingState title="Loading research data" variant="page" />;
+  }
 
   const filteredRows = rows.filter((row) => {
     if (sourceFilter !== 'all') {
@@ -385,10 +436,7 @@ export default function ResearchDataPage() {
         )}
 
         {loading ? (
-          <SectionCard padding="none" className="p-20 flex flex-col items-center justify-center space-y-4">
-             <div className="w-8 h-8 border-2 border-accent/20 border-t-accent rounded-full animate-spin" />
-             <p className="text-label font-mono text-muted uppercase tracking-[0.3em] animate-pulse">Loading research rows...</p>
-          </SectionCard>
+          <LoadingState title="Loading research rows" variant="section" minHeightClassName="py-20" />
         ) : (
           <SectionCard padding="none" className="overflow-hidden">
             <div className="overflow-x-auto">
