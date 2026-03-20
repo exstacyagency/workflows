@@ -447,7 +447,6 @@ export default function AllResearchDataPage() {
             : ''
         }`}
         backLabel="Back to Research Hub"
-        eyebrow="Ad Intelligence"
         title={pageContextLabel}
         description={`${totalCount} signals | ${jobs.length} runs${runIdFromUrl ? ` | Batch: ${runIdFromUrl.slice(0, 8)}` : ''}`}
         actions={
