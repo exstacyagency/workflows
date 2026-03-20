@@ -41,6 +41,7 @@ export default function JobListPage() {
   const projectId = params?.projectId as string;
   const jobType = params?.jobType as string;
   const runId = String(searchParams?.get("runId") ?? "").trim();
+  const subtype = String(searchParams?.get("subtype") ?? "").trim();
   const researchHubBackHref = `/projects/${projectId}/research-hub${runId ? `?runId=${runId}` : ""}`;
 
   const [loading, setLoading] = useState(true);
@@ -53,7 +54,18 @@ export default function JobListPage() {
       const data = await response.json();
 
       if (data.success) {
-        setJobs(data.jobs);
+        const fetchedJobs = Array.isArray(data.jobs) ? (data.jobs as Job[]) : [];
+        const filteredJobs =
+          jobType === "AD_PERFORMANCE" && subtype
+            ? fetchedJobs.filter((job) => {
+                const jobSubtype = String(job.payload?.jobType || job.payload?.kind || "").trim();
+                if (subtype === "ad_transcripts") {
+                  return jobSubtype === "ad_transcripts" || jobSubtype === "ad_transcript_collection";
+                }
+                return jobSubtype === subtype;
+              })
+            : fetchedJobs;
+        setJobs(filteredJobs);
       } else {
         setError(data.error || "Failed to load jobs");
       }
@@ -63,13 +75,22 @@ export default function JobListPage() {
     } finally {
       setLoading(false);
     }
-  }, [projectId, jobType]);
+  }, [jobType, projectId, subtype]);
 
   useEffect(() => {
     if (projectId && jobType) {
       loadJobs();
     }
-  }, [loadJobs, projectId, jobType]);
+  }, [jobType, loadJobs, projectId]);
+
+  const historyTitle = (() => {
+    if (jobType === "AD_PERFORMANCE") {
+      if (subtype === "ad_ocr_collection") return "Ad OCR History";
+      if (subtype === "ad_transcripts") return "Ad Transcripts History";
+      if (subtype === "ad_raw_collection") return "Ad Collection History";
+    }
+    return `${getJobTypeLabel(jobType)} History`;
+  })();
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleString();
@@ -157,7 +178,7 @@ export default function JobListPage() {
         <PageHeader
           backHref={researchHubBackHref}
           backLabel="Back to Research Hub"
-          title={`${getJobTypeLabel(jobType)} History`}
+          title={historyTitle}
         />
         <EmptyState title="Error Loading Jobs" description={error} variant="error" />
       </div>
@@ -170,13 +191,13 @@ export default function JobListPage() {
       <PageHeader
         backHref={researchHubBackHref}
         backLabel="Back to Research Hub"
-        title={`${getJobTypeLabel(jobType)} History`}
+        title={historyTitle}
         description={`${jobs.length} ${jobs.length === 1 ? "ENTRY" : "ENTRIES"} RECORDED`}
       />
 
       {/* Job Groups */}
       {groupedJobs.length === 0 ? (
-        <EmptyState title="No History Found" description={`No ${getJobTypeLabel(jobType).toLowerCase()} history found for this project.`} />
+        <EmptyState title="No History Found" description={`No ${historyTitle.replace(/ History$/, "").toLowerCase()} history found for this project.`} />
       ) : (
         <div className="space-y-6">
           {groupedJobs.map((group) => (

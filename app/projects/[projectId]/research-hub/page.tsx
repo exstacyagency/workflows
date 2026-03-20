@@ -457,11 +457,12 @@ export default function ResearchHubPage() {
     return `/projects/${projectId}/research/data${query ? `?${query}` : ""}`;
   }, [projectId, selectedProduct?.name, selectedProductId, selectedRunId]);
   const adDataHref = useMemo(() => {
-    const params = new URLSearchParams();
-    params.set("jobType", "ad-transcripts");
-    if (selectedRunId) params.set("runId", selectedRunId);
-    return `/projects/${projectId}/research-hub/data?${params.toString()}`;
-  }, [projectId, selectedRunId]);
+    const adOverviewRunId = currentRunId || selectedRunId;
+    if (adOverviewRunId) {
+      return `/projects/${projectId}/research-hub/ad-assets/${adOverviewRunId}`;
+    }
+    return `/projects/${projectId}/research-hub`;
+  }, [currentRunId, projectId, selectedRunId]);
   const productDataHref = useMemo(() => {
     const params = new URLSearchParams();
     params.set("jobType", "PRODUCT_DATA_COLLECTION");
@@ -1303,13 +1304,26 @@ export default function ResearchHubPage() {
                       "product-collection",
                     ]);
                     const showAlwaysHistoryButton = stepsWithAlwaysHistoryButton.has(stepWithStatus.id);
-	                    const historyUrl = currentRunId
-	                      ? stepWithStatus.label === "Customer Analysis"
-	                        ? `/projects/${projectId}/research-hub/jobs/customer-analysis?runId=${currentRunId}`
-	                        : `/projects/${projectId}/research-hub/jobs/${stepWithStatus.jobType}?runId=${currentRunId}`
-	                      : stepWithStatus.label === "Customer Analysis"
-	                        ? `/projects/${projectId}/research-hub/jobs/customer-analysis`
-	                        : `/projects/${projectId}/research-hub/jobs/${stepWithStatus.jobType}`;
+		                    const historyUrl = (() => {
+		                      if (stepWithStatus.label === "Customer Analysis") {
+		                        return currentRunId
+		                          ? `/projects/${projectId}/research-hub/jobs/customer-analysis?runId=${currentRunId}`
+		                          : `/projects/${projectId}/research-hub/jobs/customer-analysis`;
+		                      }
+		                      if (stepWithStatus.jobType === "AD_PERFORMANCE") {
+		                        const params = new URLSearchParams();
+		                        const effectiveHistoryRunId = currentRunId || selectedRunId;
+		                        if (effectiveHistoryRunId) params.set("runId", effectiveHistoryRunId);
+		                        if (stepWithStatus.id === "ad-collection") params.set("subtype", "ad_raw_collection");
+		                        if (stepWithStatus.id === "ad-ocr") params.set("subtype", "ad_ocr_collection");
+		                        if (stepWithStatus.id === "ad-transcripts") params.set("subtype", "ad_transcripts");
+		                        const query = params.toString();
+		                        return `/projects/${projectId}/research-hub/jobs/${stepWithStatus.jobType}${query ? `?${query}` : ""}`;
+		                      }
+		                      return currentRunId
+		                        ? `/projects/${projectId}/research-hub/jobs/${stepWithStatus.jobType}?runId=${currentRunId}`
+		                        : `/projects/${projectId}/research-hub/jobs/${stepWithStatus.jobType}`;
+		                    })();
 	                    const payloadRunId = String(stepWithStatus.lastJob?.payload?.runId ?? "").trim();
 	                    const stepRunId =
 	                      stepWithStatus.lastJob?.runId || payloadRunId || currentRunId || selectedRunId || null;

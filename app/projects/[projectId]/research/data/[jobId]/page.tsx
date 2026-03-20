@@ -415,12 +415,22 @@ export default function ResearchDataPage() {
                   <tr className="bg-bg-elevated border-b border-line">
                     <th className="text-left p-4 font-mono text-muted uppercase tracking-widest font-bold">Type</th>
                     <th className="text-left p-4 font-mono text-muted uppercase tracking-widest font-bold whitespace-nowrap">Source</th>
-                    <th className="text-left p-4 font-mono text-muted uppercase tracking-widest font-bold">Subreddit</th>
-                    <th className="text-left p-4 font-mono text-muted uppercase tracking-widest font-bold">Keyword</th>
+                    {!isProductIntelView && (
+                      <th className="text-left p-4 font-mono text-muted uppercase tracking-widest font-bold">Subreddit</th>
+                    )}
+                    {!isProductIntelView && (
+                      <th className="text-left p-4 font-mono text-muted uppercase tracking-widest font-bold">Keyword</th>
+                    )}
                     <th className="text-left p-4 font-mono text-muted uppercase tracking-widest font-bold">Content</th>
-                    <th className="text-left p-4 font-mono text-muted uppercase tracking-widest font-bold">Intensity</th>
-                    <th className="text-left p-4 font-mono text-muted uppercase tracking-widest font-bold">Trace ID</th>
-                    <th className="text-left p-4 font-mono text-muted uppercase tracking-widest font-bold">Posted</th>
+                    {!isProductIntelView && (
+                      <th className="text-left p-4 font-mono text-muted uppercase tracking-widest font-bold">Intensity</th>
+                    )}
+                    {!isProductIntelView && (
+                      <th className="text-left p-4 font-mono text-muted uppercase tracking-widest font-bold">Trace ID</th>
+                    )}
+                    {!isProductIntelView && (
+                      <th className="text-left p-4 font-mono text-muted uppercase tracking-widest font-bold">Posted</th>
+                    )}
                     <th className="text-left p-4 font-mono text-muted uppercase tracking-widest font-bold whitespace-nowrap">Capture Time</th>
                   </tr>
                 </thead>
@@ -443,42 +453,52 @@ export default function ResearchDataPage() {
                            {getDisplaySource(row)}
                          </div>
                       </td>
-                      <td className="p-4">
-                        <div className="font-mono text-accent-2 uppercase group-hover:text-white transition-colors">
-                          {row.subreddit ? `r/${row.subreddit}` : '—'}
-                        </div>
-                      </td>
-                      <td className="p-4">
-                        <div className="space-y-1">
-                          {row.solutionKeyword && (
-                            <div className="text-label font-mono text-accent uppercase tracking-tight">{row.solutionKeyword}</div>
-                          )}
-                          {row.problemKeyword && (
-                            <div className="text-label-sm font-mono text-muted uppercase tracking-tight opacity-40">{row.problemKeyword}</div>
-                          )}
-                        </div>
-                      </td>
+                      {!isProductIntelView && (
+                        <td className="p-4">
+                          <div className="font-mono text-accent-2 uppercase group-hover:text-white transition-colors">
+                            {row.subreddit ? `r/${row.subreddit}` : '—'}
+                          </div>
+                        </td>
+                      )}
+                      {!isProductIntelView && (
+                        <td className="p-4">
+                          <div className="space-y-1">
+                            {row.solutionKeyword && (
+                              <div className="text-label font-mono text-accent uppercase tracking-tight">{row.solutionKeyword}</div>
+                            )}
+                            {row.problemKeyword && (
+                              <div className="text-label-sm font-mono text-muted uppercase tracking-tight opacity-40">{row.problemKeyword}</div>
+                            )}
+                          </div>
+                        </td>
+                      )}
                       <td className="p-4 max-w-md">
                         <p className="text-muted leading-relaxed group-hover:text-white transition-colors">
                           {row.content.substring(0, 180)}
                           {row.content.length > 180 && '...'}
                         </p>
                       </td>
-                      <td className="p-4">
-                        <div className="font-mono font-bold text-white">
-                          {getDisplayScore(row)}
-                        </div>
-                      </td>
-                      <td className="p-4">
-                        <div className="font-mono text-muted uppercase opacity-40 hover:opacity-100 transition-opacity">
-                          {row.redditId || '—'}
-                        </div>
-                      </td>
-                      <td className="p-4 whitespace-nowrap">
-                        <div className="font-mono text-muted uppercase">
-                          {getPostedTime(row)}
-                        </div>
-                      </td>
+                      {!isProductIntelView && (
+                        <td className="p-4">
+                          <div className="font-mono font-bold text-white">
+                            {getDisplayScore(row)}
+                          </div>
+                        </td>
+                      )}
+                      {!isProductIntelView && (
+                        <td className="p-4">
+                          <div className="font-mono text-muted uppercase opacity-40 hover:opacity-100 transition-opacity">
+                            {row.redditId || '—'}
+                          </div>
+                        </td>
+                      )}
+                      {!isProductIntelView && (
+                        <td className="p-4 whitespace-nowrap">
+                          <div className="font-mono text-muted uppercase">
+                            {getPostedTime(row)}
+                          </div>
+                        </td>
+                      )}
                       <td className="p-4 whitespace-nowrap">
                         <div className="font-mono text-muted/40 uppercase">
                           {new Date(row.createdAt).toLocaleDateString([], { month: '2-digit', day: '2-digit' })}<br/>
