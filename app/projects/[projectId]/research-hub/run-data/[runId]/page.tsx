@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { EmptyState, PageHeader, SectionCard, StatusChip } from "@/components/ui";
@@ -48,6 +49,7 @@ export default function ResearchRunDataPage() {
   const params = useParams();
   const projectId = String(params?.projectId ?? "").trim();
   const runId = String(params?.runId ?? "").trim();
+  const researchHubBackHref = `/projects/${projectId}/research-hub${runId ? `?runId=${runId}` : ""}`;
 
   const [jobs, setJobs] = useState<ResearchJob[]>([]);
   const [loading, setLoading] = useState(false);
@@ -166,10 +168,10 @@ export default function ResearchRunDataPage() {
     <div className="min-h-screen bg-bg text-white">
       <div className="border-b border-line bg-panel backdrop-blur-md px-8 py-6">
         <PageHeader
-          backHref={`/projects/${projectId}/research-hub`}
+          backHref={researchHubBackHref}
           backLabel="Back to Research Hub"
-          title="Run Overview"
-          description={`Run ID: ${runId} | Jobs: ${jobs.length} Active`}
+          title="Run Job History"
+          description={`Run ID: ${runId} | ${jobs.length} ${jobs.length === 1 ? "job" : "jobs"} total`}
           actions={
             <>
               <button
@@ -237,12 +239,13 @@ export default function ResearchRunDataPage() {
                 <th className="p-5 text-label-sm font-mono text-muted uppercase tracking-[0.2em] w-48">Created</th>
                 <th className="p-5 text-label-sm font-mono text-muted uppercase tracking-[0.2em] w-48">Updated</th>
                 <th className="p-5 text-label-sm font-mono text-muted uppercase tracking-[0.2em] w-40">Job ID</th>
+                <th className="p-5 text-label-sm font-mono text-muted uppercase tracking-[0.2em] w-32 text-right">Data</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-line/30">
               {jobs.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="p-6">
+                  <td colSpan={7} className="p-6">
                     <EmptyState title="No jobs found for this run" />
                   </td>
                 </tr>
@@ -272,9 +275,11 @@ export default function ResearchRunDataPage() {
                             ? "success"
                             : job.status === "FAILED"
                               ? "danger"
-                              : "warning"
+                              : job.status === "RUNNING"
+                                ? "running"
+                                : "info"
                         }
-                        className="!py-0.5 !text-label-xs tracking-tighter"
+                        className={job.status === "PENDING" ? "opacity-60" : job.status === "NOT_STARTED" ? "opacity-40" : ""}
                       >
                         {job.status}
                       </StatusChip>
@@ -283,6 +288,29 @@ export default function ResearchRunDataPage() {
                     <td className="p-5 font-mono text-label text-muted uppercase">{formatDate(job.updatedAt)}</td>
                     <td className="p-5 text-label font-mono text-accent-2/40">
                       {job.id}
+                    </td>
+                    <td className="p-5 text-right">
+                      {job.status === "COMPLETED" ? (
+                        <Link
+                          href={(() => {
+                            const subtype = String((job.payload as any)?.jobType || (job.payload as any)?.kind || "").trim();
+                            if (job.type === "AD_PERFORMANCE") {
+                              if (subtype === "ad_ocr_collection") return `/projects/${projectId}/research-hub/data?jobType=ad-ocr&runId=${runId}`;
+                              if (subtype === "ad_transcripts" || subtype === "ad_transcript_collection") return `/projects/${projectId}/research-hub/data?jobType=ad-transcripts&runId=${runId}`;
+                              return `/projects/${projectId}/research-hub/ad-assets/${runId}`;
+                            }
+                            if (job.type === "AD_QUALITY_GATE") return `/projects/${projectId}/research-hub/data?jobType=ad-quality-gate&runId=${runId}`;
+                            if (job.type === "PATTERN_ANALYSIS") return `/projects/${projectId}/research-hub/data?jobType=pattern-analysis&runId=${runId}`;
+                            if (job.type === "CUSTOMER_ANALYSIS") return `/projects/${projectId}/research-hub/analysis/data/${job.id}`;
+                            return `/projects/${projectId}/research/data/${job.id}?runId=${runId}`;
+                          })()}
+                          className="btn btn-secondary !min-h-[28px] px-3 text-label"
+                        >
+                          View Data
+                        </Link>
+                      ) : (
+                        <span className="text-muted opacity-30">—</span>
+                      )}
                     </td>
                   </tr>
                 ))

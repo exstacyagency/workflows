@@ -93,7 +93,7 @@ export async function POST(req: Request) {
           status: "COMPLETED" as any,
           error: null,
           payload: updatedPayload as any,
-          resultSummary: `Video frames generated: ${generatedFrameCount}`,
+          resultSummary: `${generatedFrameCount} ${generatedFrameCount === 1 ? "frame was" : "frames were"} generated`,
         } as any,
       });
 

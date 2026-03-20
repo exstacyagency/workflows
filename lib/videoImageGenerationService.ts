@@ -282,7 +282,7 @@ export async function runVideoImageGenerationJob(args: RunArgs): Promise<void> {
       data: {
         error: null,
         payload: updatedPayload as any,
-        resultSummary: `Video frames generated: ${generatedFrameCount}`,
+        resultSummary: `${generatedFrameCount} ${generatedFrameCount === 1 ? "frame was" : "frames were"} generated`,
       } as any,
     });
     try {

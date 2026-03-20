@@ -20,6 +20,7 @@ type CreativeJob = {
 const CREATIVE_JOB_LABELS: Record<string, string> = {
   SCRIPT_GENERATION: "Generate Script",
   STORYBOARD_GENERATION: "Create Storyboard",
+  MERGE_NEXT: "Merge Scenes",
   IMAGE_PROMPT_GENERATION: "Generate Image Prompts",
   VIDEO_IMAGE_GENERATION: "Generate Images",
   VIDEO_PROMPT_GENERATION: "Generate Video Prompts",
@@ -178,41 +179,29 @@ export default function CreativeRunDataPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-bg text-white px-8 py-8">
-        <div className="flex min-h-[60vh] flex-col items-center justify-center space-y-4">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent/20 border-t-accent" />
-          <p className="text-label font-mono uppercase tracking-[0.3em] text-muted animate-pulse">
-            Loading run data...
-          </p>
-        </div>
+      <div className="px-6 py-6">
+        <p className="text-sm text-muted">Loading run data...</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-bg text-white">
-      <div className="border-b border-line bg-panel px-8 py-6 backdrop-blur-md">
-        <PageHeader
-          backHref={`/projects/${projectId}/creative-studio`}
-          backLabel="Back to Creative Studio"
-          title="Run Overview"
-          description={`Run ID: ${runId} | Jobs: ${jobs.length} Active`}
-          actions={
-            <>
-              <StatusChip variant="subtle">{runId.substring(0, 8)}</StatusChip>
-              <button
-                onClick={() => void loadJobs()}
-                disabled={loading || deleting}
-                className="btn btn-secondary !min-h-[40px] px-6 text-label font-bold uppercase tracking-widest"
-              >
-                Refresh
-              </button>
-            </>
-          }
-        />
-      </div>
-
-      <div className="px-8 py-8 max-w-7xl mx-auto space-y-8">
+    <div className="px-8 py-8 max-w-7xl mx-auto space-y-8">
+      <PageHeader
+        backHref={`/projects/${projectId}/creative-studio`}
+        backLabel="Back to Creative Studio"
+        title="Run Job History"
+        description={`${jobs.length} ${jobs.length === 1 ? "job" : "jobs"} total`}
+        actions={
+          <button
+            onClick={() => void loadJobs()}
+            disabled={loading || deleting}
+            className="btn btn-secondary !min-h-[40px] px-6 text-label font-bold uppercase tracking-widest"
+          >
+            Refresh
+          </button>
+        }
+      />
         <SectionCard className="flex flex-wrap items-center gap-4" padding="md">
           <button
             onClick={toggleAll}
@@ -319,9 +308,11 @@ export default function CreativeRunDataPage() {
                             ? "success"
                             : job.status === "FAILED"
                               ? "danger"
-                              : "warning"
+                              : job.status === "RUNNING"
+                                ? "running"
+                                : "info"
                         }
-                        className="!py-0.5 !text-label-xs tracking-tighter"
+                        className={job.status === "PENDING" ? "opacity-60" : job.status === "NOT_STARTED" ? "opacity-40" : ""}
                       >
                         {job.status}
                       </StatusChip>
@@ -341,7 +332,6 @@ export default function CreativeRunDataPage() {
             </tbody>
           </table>
         </SectionCard>
-      </div>
     </div>
   );
 }

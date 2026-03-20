@@ -84,6 +84,7 @@ export default function AllResearchDataPage() {
       ? jobTypeFromUrl
       : 'CUSTOMER_RESEARCH';
   const isProductDataView = normalizedJobType === 'PRODUCT_DATA_COLLECTION';
+  const pageContextLabel = isProductDataView ? 'Product Intel' : 'Customer Synthesis';
   const productIdFromUrl = searchParams.get('productId');
   const productFromUrl = searchParams.get('product');
   const runIdFromUrl = searchParams.get('runId');
@@ -105,8 +106,6 @@ export default function AllResearchDataPage() {
   const [sourceFilter, setSourceFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
   const [subredditFilter, setSubredditFilter] = useState('');
-  const [solutionKeywordFilter, setSolutionKeywordFilter] = useState('');
-  const [minScoreFilter, setMinScoreFilter] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [deletingRowId, setDeletingRowId] = useState<string | null>(null);
@@ -157,12 +156,6 @@ export default function AllResearchDataPage() {
       if (subredditFilter) {
         params.set('subreddit', subredditFilter);
       }
-      if (solutionKeywordFilter) {
-        params.set('solutionKeyword', solutionKeywordFilter);
-      }
-      if (minScoreFilter > 0) {
-        params.set('minScore', String(minScoreFilter));
-      }
 
       const response = await fetch(
         `/api/projects/${projectId}/research?${params.toString()}`,
@@ -188,7 +181,6 @@ export default function AllResearchDataPage() {
       setLoading(false);
     }
   }, [
-    minScoreFilter,
     normalizedJobType,
     page,
     productFromUrl,
@@ -197,7 +189,6 @@ export default function AllResearchDataPage() {
     rowsPerPage,
     runIdFromUrl,
     selectedJob,
-    solutionKeywordFilter,
     subredditFilter,
   ]);
 
@@ -215,22 +206,15 @@ export default function AllResearchDataPage() {
     setSelectedRowIds([]);
   }, [normalizedJobType, productIdFromUrl, productFromUrl, runIdFromUrl]);
 
+  useEffect(() => {
+    setSourceFilter(isProductDataView ? 'product-intel' : 'all');
+    setSubredditFilter('');
+  }, [isProductDataView]);
+
   const uniqueSubreddits = useMemo(
     () =>
       Array.from(
         new Set(rows.map((row) => row.subreddit).filter((value): value is string => Boolean(value)))
-      ).sort(),
-    [rows]
-  );
-
-  const uniqueKeywords = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          rows
-            .map((row) => row.solutionKeyword)
-            .filter((value): value is string => Boolean(value))
-        )
       ).sort(),
     [rows]
   );
@@ -280,12 +264,6 @@ export default function AllResearchDataPage() {
     }
     if (subredditFilter) {
       params.set('subreddit', subredditFilter);
-    }
-    if (solutionKeywordFilter) {
-      params.set('solutionKeyword', solutionKeywordFilter);
-    }
-    if (minScoreFilter > 0) {
-      params.set('minScore', String(minScoreFilter));
     }
     const response = await fetch(`/api/projects/${projectId}/research/export?${params.toString()}`, {
       cache: 'no-store',
@@ -395,8 +373,6 @@ export default function AllResearchDataPage() {
           ...(productIdFromUrl ? { productId: productIdFromUrl } : {}),
           ...(selectedJob === 'all' && !runIdFromUrl && productFromUrl ? { product: productFromUrl } : {}),
           ...(subredditFilter ? { subreddit: subredditFilter } : {}),
-          ...(solutionKeywordFilter ? { solutionKeyword: solutionKeywordFilter } : {}),
-          ...(minScoreFilter > 0 ? { minScore: minScoreFilter } : {}),
         }),
       });
       const data = await response.json().catch(() => ({}));
@@ -459,64 +435,62 @@ export default function AllResearchDataPage() {
   return (
     <div className="px-8 py-8 max-w-7xl mx-auto space-y-8">
       {/* Header */}
-      <div className="border-b border-line bg-panel backdrop-blur-panel -mx-8 -mt-8 px-8 py-6 sticky top-0 z-30">
-        <PageHeader
-          backHref={`/projects/${projectId}/research-hub${productFromUrl ? `?product=${productFromUrl}` : ''}`}
-          backLabel="Back to Research Hub"
-          eyebrow="Context Cluster"
-          title={`${isProductDataView ? 'Product Intel' : 'Customer Synthesis'}${productFromUrl ? ` [${productFromUrl}]` : ''}`}
-          description={`${totalCount} datapoints | ${jobs.length} cycles${runIdFromUrl ? ` | Batch: ${runIdFromUrl.slice(0, 8)}` : ''}`}
-          actions={
-            <>
-              <button
-                onClick={handleDeleteSelected}
-                disabled={selectedCount === 0 || bulkDeleting || deletingAll}
-                className="btn btn-danger !min-h-[32px] px-4 text-label disabled:opacity-20"
-              >
-                {bulkDeleting ? 'Purging...' : `Purge (${selectedCount})`}
-              </button>
-              <button
-                onClick={handleDeleteAll}
-                disabled={deletingAll || bulkDeleting || totalCount === 0}
-                className="btn btn-danger !min-h-[32px] px-4 text-label disabled:opacity-20"
-              >
-                {deletingAll ? 'Wiping...' : 'Wipe Database'}
-              </button>
-              <button
-                onClick={handleExport}
-                className="btn btn-primary px-6 py-2.5 text-label font-bold uppercase tracking-[0.2em]"
-              >
-                Export Schema
-              </button>
-            </>
-          }
-        />
-      </div>
+      <PageHeader
+        backHref={`/projects/${projectId}/research-hub${
+          runIdFromUrl || productFromUrl
+            ? `?${[
+                runIdFromUrl ? `runId=${encodeURIComponent(runIdFromUrl)}` : null,
+                productFromUrl ? `product=${encodeURIComponent(productFromUrl)}` : null,
+              ]
+                .filter(Boolean)
+                .join("&")}`
+            : ''
+        }`}
+        backLabel="Back to Research Hub"
+        eyebrow="Ad Intelligence"
+        title={pageContextLabel}
+        description={`${totalCount} signals | ${jobs.length} runs${runIdFromUrl ? ` | Batch: ${runIdFromUrl.slice(0, 8)}` : ''}`}
+        actions={
+          <>
+            <button
+              onClick={handleDeleteSelected}
+              disabled={selectedCount === 0 || bulkDeleting || deletingAll}
+              className="btn btn-secondary !min-h-[36px] px-4 text-label font-bold uppercase tracking-widest hover:text-danger hover:border-danger/30 disabled:opacity-20"
+            >
+              {bulkDeleting ? 'Deleting...' : `Delete Selected (${selectedCount})`}
+            </button>
+            <button
+              onClick={handleDeleteAll}
+              disabled={deletingAll || bulkDeleting || totalCount === 0}
+              className="btn btn-secondary !min-h-[36px] px-4 text-label font-bold uppercase tracking-widest hover:text-danger hover:border-danger/30 disabled:opacity-20"
+            >
+              {deletingAll ? 'Deleting All...' : 'Delete All'}
+            </button>
+            <button
+              onClick={handleExport}
+              className="btn btn-primary !min-h-[36px] px-4 text-label font-bold uppercase tracking-widest"
+            >
+              {`Export ${pageContextLabel}`}
+            </button>
+          </>
+        }
+      />
 
       {/* Stats Overview */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-4 pt-4">
-        <SectionCard className="group hover:border-accent-2/30 transition-colors">
-          <div className="text-3xl font-black text-white tracking-tighter">{stats.totalRows}</div>
-          <p className="mt-2 text-label-sm font-mono text-muted uppercase tracking-[0.2em] opacity-40 group-hover:opacity-100 transition-opacity">Global Dataset Integrity</p>
+      <div className={`grid grid-cols-1 gap-4 pt-4 ${isProductDataView ? 'lg:grid-cols-1' : 'lg:grid-cols-2'}`}>
+        <SectionCard className="space-y-2" padding="md">
+          <p className="eyebrow !mb-0">Capture Count</p>
+          <p className="text-3xl font-bold text-white">{stats.totalRows}</p>
         </SectionCard>
-        <SectionCard className="group hover:border-accent-2/30 transition-colors">
-          <div className="text-3xl font-black text-white tracking-tighter">{stats.uniqueSubreddits}</div>
-          <p className="mt-2 text-label-sm font-mono text-muted uppercase tracking-[0.2em] opacity-40 group-hover:opacity-100 transition-opacity">Source Node Diversity</p>
-        </SectionCard>
-        <SectionCard className="group hover:border-accent-2/30 transition-colors">
-          <div className="text-3xl font-black text-white tracking-tighter">{stats.avgScore.toFixed(1)}</div>
-          <p className="mt-2 text-label-sm font-mono text-muted uppercase tracking-[0.2em] opacity-40 group-hover:opacity-100 transition-opacity">Avg Content Resonance</p>
-        </SectionCard>
-        <SectionCard className="group hover:border-accent/30 transition-colors">
-          <div className="text-3xl font-black text-accent tracking-tighter truncate">{stats.topKeyword}</div>
-          <div className="flex items-center justify-between mt-2">
-            <p className="text-label-sm font-mono text-muted uppercase tracking-[0.2em] opacity-40 group-hover:opacity-100 transition-opacity">Top Theme</p>
-            <span className="text-label-sm font-mono text-accent uppercase tracking-widest">{stats.topKeywordCount} Hits</span>
-          </div>
-        </SectionCard>
+        {!isProductDataView && (
+          <SectionCard className="space-y-2" padding="md">
+            <p className="eyebrow !mb-0">Communities</p>
+            <p className="text-3xl font-bold text-white">{stats.uniqueSubreddits}</p>
+          </SectionCard>
+        )}
       </div>
 
-      {keywordStats.length > 0 && (
+      {!isProductDataView && keywordStats.length > 0 && (
         <SectionCard padding="lg">
           <div className="flex items-center gap-4 mb-6">
             <div className="h-px flex-1 bg-line/50"></div>
@@ -545,10 +519,10 @@ export default function AllResearchDataPage() {
       {/* Filters Hub */}
       <div className="space-y-6 pt-4">
         <div className="flex items-center gap-4">
-          <p className="eyebrow !mb-0 opacity-60">Research Filters</p>
+          <p className="eyebrow !mb-0 opacity-60">Ad Filters</p>
           <div className="h-px flex-1 bg-line/30"></div>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className={`grid grid-cols-1 sm:grid-cols-2 ${isProductDataView ? 'lg:grid-cols-2' : 'lg:grid-cols-3'} gap-4`}>
           <div className="relative group">
             <select
               value={selectedJob}
@@ -556,7 +530,7 @@ export default function AllResearchDataPage() {
                 setSelectedJob(e.target.value);
                 setPage(1);
               }}
-              className="w-full px-4 py-3 bg-panel border border-line rounded-card text-body-sm font-mono text-white outline-none focus:border-accent/40 transition-colors appearance-none cursor-pointer hover:bg-bg-elevated"
+              className="w-full px-4 py-3 bg-bg-elevated border border-line rounded-inner text-body-sm font-mono text-white outline-none focus:border-accent/40 transition-colors appearance-none cursor-pointer hover:bg-panel"
             >
               <option value="all">RUN: ALL ({jobs.length})</option>
               {jobs.map((job) => (
@@ -572,98 +546,70 @@ export default function AllResearchDataPage() {
             <select
               value={sourceFilter}
               onChange={(e) => setSourceFilter(e.target.value)}
-              className="w-full px-4 py-3 bg-panel border border-line rounded-card text-body-sm font-mono text-white outline-none focus:border-accent/40 transition-colors appearance-none cursor-pointer hover:bg-bg-elevated"
+              disabled={isProductDataView}
+              className="w-full px-4 py-3 bg-bg-elevated border border-line rounded-inner text-body-sm font-mono text-white outline-none focus:border-accent/40 transition-colors appearance-none cursor-pointer hover:bg-panel"
             >
-              <option value="all">SOURCE: ALL</option>
-              <option value="reddit">REDDIT NETWORK</option>
-              <option value="amazon">AMAZON MARKET</option>
-              <option value="product-intel">PRODUCT INTEL</option>
-              <option value="uploaded-user">USER CONTEXT</option>
-              <option value="tiktok-ad">TIKTOK AD SETS</option>
+              {isProductDataView ? (
+                <option value="product-intel">PRODUCT INTEL</option>
+              ) : (
+                <>
+                  <option value="all">SOURCE: ALL</option>
+                  <option value="reddit">REDDIT NETWORK</option>
+                  <option value="amazon">AMAZON MARKET</option>
+                  <option value="uploaded-user">USER CONTEXT</option>
+                </>
+              )}
             </select>
             <span className="pointer-events-none absolute right-3 inset-y-0 flex items-center text-label-xs text-muted/20 group-hover:text-muted">▼</span>
           </div>
 
-          <div className="relative group">
-            <select
-              value={subredditFilter}
-              onChange={(e) => {
-                setSubredditFilter(e.target.value);
-                setPage(1);
-              }}
-              className="w-full px-4 py-3 bg-panel border border-line rounded-card text-body-sm font-mono text-white outline-none focus:border-accent/40 transition-colors appearance-none cursor-pointer hover:bg-bg-elevated"
-            >
-              <option value="">COMMUNITY: ALL</option>
-              {uniqueSubreddits.map((subreddit) => (
-                <option key={subreddit} value={subreddit}>
-                  r/{subreddit.toUpperCase()}
-                </option>
-              ))}
-            </select>
-            <span className="pointer-events-none absolute right-3 inset-y-0 flex items-center text-label-xs text-muted/20 group-hover:text-muted">▼</span>
-          </div>
+          {!isProductDataView && (
+            <div className="relative group">
+              <select
+                value={subredditFilter}
+                onChange={(e) => {
+                  setSubredditFilter(e.target.value);
+                  setPage(1);
+                }}
+                className="w-full px-4 py-3 bg-bg-elevated border border-line rounded-inner text-body-sm font-mono text-white outline-none focus:border-accent/40 transition-colors appearance-none cursor-pointer hover:bg-panel"
+              >
+                <option value="">COMMUNITY: ALL</option>
+                {uniqueSubreddits.map((subreddit) => (
+                  <option key={subreddit} value={subreddit}>
+                    r/{subreddit.toUpperCase()}
+                  </option>
+                ))}
+              </select>
+              <span className="pointer-events-none absolute right-3 inset-y-0 flex items-center text-label-xs text-muted/20 group-hover:text-muted">▼</span>
+            </div>
+          )}
 
-          <div className="relative group">
-            <select
-              value={solutionKeywordFilter}
-              onChange={(e) => {
-                setSolutionKeywordFilter(e.target.value);
-                setPage(1);
-              }}
-              className="w-full px-4 py-3 bg-panel border border-line rounded-card text-body-sm font-mono text-white outline-none focus:border-accent/40 transition-colors appearance-none cursor-pointer hover:bg-bg-elevated"
-            >
-              <option value="">ANGLE: ALL</option>
-              {uniqueKeywords.map((keyword) => (
-                <option key={keyword} value={keyword}>
-                  {keyword.toUpperCase()}
-                </option>
-              ))}
-            </select>
-            <span className="pointer-events-none absolute right-3 inset-y-0 flex items-center text-label-xs text-muted/20 group-hover:text-muted">▼</span>
-          </div>
-
-          <div className="flex items-center gap-4 px-5 py-3 bg-panel border border-line rounded-card group focus-within:border-accent/40 transition-colors">
-            <label className="text-label-sm font-mono text-muted uppercase tracking-widest opacity-50 group-hover:opacity-100 transition-opacity" htmlFor="minScoreFilter">
-              SCORE
-            </label>
-            <input
-              id="minScoreFilter"
-              type="number"
-              min={0}
-              value={minScoreFilter}
-              onChange={(e) => {
-                const parsed = Number.parseInt(e.target.value, 10);
-                setMinScoreFilter(Number.isFinite(parsed) && parsed > 0 ? parsed : 0);
-                setPage(1);
-              }}
-              className="w-full bg-transparent border-none text-body-sm font-mono text-white outline-none font-bold placeholder:text-muted/20"
-            />
-          </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="relative group">
-            <select
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value)}
-              className="w-full px-4 py-3 bg-panel border border-line rounded-card text-body-sm font-mono text-white outline-none focus:border-accent/40 transition-colors appearance-none cursor-pointer hover:bg-bg-elevated"
-            >
-              <option value="all">FORMAT: ALL</option>
-              <option value="post">POSTS</option>
-              <option value="comment">COMMENTS</option>
-              <option value="review">REVIEWS</option>
-              <option value="document">DOCUMENTS</option>
-            </select>
-            <span className="pointer-events-none absolute right-3 inset-y-0 flex items-center text-label-xs text-muted/20 group-hover:text-muted">▼</span>
-          </div>
+        <div className={`grid grid-cols-1 gap-4 ${isProductDataView ? 'md:grid-cols-1' : 'md:grid-cols-4'}`}>
+          {!isProductDataView && (
+            <div className="relative group">
+              <select
+                value={typeFilter}
+                onChange={(e) => setTypeFilter(e.target.value)}
+                className="w-full px-4 py-3 bg-bg-elevated border border-line rounded-inner text-body-sm font-mono text-white outline-none focus:border-accent/40 transition-colors appearance-none cursor-pointer hover:bg-panel"
+              >
+                <option value="all">FORMAT: ALL</option>
+                <option value="post">POSTS</option>
+                <option value="comment">COMMENTS</option>
+                <option value="review">REVIEWS</option>
+                <option value="document">DOCUMENTS</option>
+              </select>
+              <span className="pointer-events-none absolute right-3 inset-y-0 flex items-center text-label-xs text-muted/20 group-hover:text-muted">▼</span>
+            </div>
+          )}
 
-          <div className="relative md:col-span-3 group">
+          <div className={`relative group ${isProductDataView ? '' : 'md:col-span-3'}`}>
             <input
               type="text"
-              placeholder="SEARCH RESEARCH..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full px-12 py-3 bg-panel border border-line rounded-card text-body-sm font-mono text-white placeholder:text-muted/20 outline-none focus:border-accent/40 transition-colors hover:bg-bg-elevated"
+              className="w-full pl-24 pr-4 py-3 bg-bg-elevated border border-line rounded-inner text-body-sm font-mono text-white placeholder:text-muted/20 outline-none focus:border-accent/40 transition-colors hover:bg-panel"
             />
             <span className="pointer-events-none absolute left-5 inset-y-0 flex items-center text-label font-mono text-muted/20">SEARCH:</span>
           </div>
@@ -672,13 +618,11 @@ export default function AllResearchDataPage() {
 
       <div className="flex items-center justify-between text-label font-mono text-muted uppercase tracking-[0.2em] opacity-40 px-1 border-t border-line/5 py-4">
         <div>
-          Showing {filteredRows.length} of {rows.length} research rows
+          Showing {filteredRows.length} of {rows.length} ad signals
           {(sourceFilter !== 'all' ||
             typeFilter !== 'all' ||
             searchQuery ||
-            subredditFilter ||
-            solutionKeywordFilter ||
-            minScoreFilter > 0) &&
+            subredditFilter) &&
             ` · Integrated DB Total: ${totalCount}`}
         </div>
         <div className="flex items-center gap-6">
@@ -690,7 +634,7 @@ export default function AllResearchDataPage() {
         {loading ? (
           <div className="flex flex-col items-center justify-center py-40 space-y-4">
             <div className="w-12 h-12 border-2 border-accent-2/10 border-t-accent-2 rounded-full animate-spin"></div>
-            <div className="text-label font-mono text-muted uppercase tracking-[0.4em] animate-pulse">Loading research context...</div>
+            <div className="text-label font-mono text-muted uppercase tracking-[0.4em] animate-pulse">Loading ad context...</div>
           </div>
         ) : (
           <>
@@ -709,10 +653,16 @@ export default function AllResearchDataPage() {
                       </th>
                       <th className="p-5 text-body-xs font-mono text-muted uppercase tracking-widest w-24">ENTITY TYPE</th>
                       <th className="p-5 text-body-xs font-mono text-muted uppercase tracking-widest w-24">SOURCE NODE</th>
-                      <th className="p-5 text-body-xs font-mono text-muted uppercase tracking-widest w-44">CONTEXT HUB</th>
-                      <th className="p-5 text-body-xs font-mono text-muted uppercase tracking-widest w-32">SIGNAL TAG</th>
+                      {!isProductDataView && (
+                        <th className="p-5 text-body-xs font-mono text-muted uppercase tracking-widest w-44">CONTEXT HUB</th>
+                      )}
+                      {!isProductDataView && (
+                        <th className="p-5 text-body-xs font-mono text-muted uppercase tracking-widest w-32">SIGNAL TAG</th>
+                      )}
                       <th className="p-5 text-body-xs font-mono text-muted uppercase tracking-widest">CONTENT FRAGMENT</th>
-                      <th className="p-5 text-body-xs font-mono text-muted uppercase tracking-widest w-24 text-right">MAGNITUDE</th>
+                      {!isProductDataView && (
+                        <th className="p-5 text-body-xs font-mono text-muted uppercase tracking-widest w-24 text-right">MAGNITUDE</th>
+                      )}
                       <th className="p-5 text-body-xs font-mono text-muted uppercase tracking-widest w-32">TIMESTAMP</th>
                       <th className="p-5 text-body-xs font-mono text-muted uppercase tracking-widest w-20 text-center">METRIC</th>
                     </tr>
@@ -738,30 +688,34 @@ export default function AllResearchDataPage() {
                               </StatusChip>
                             </td>
                             <td className="p-5 text-muted text-label font-mono uppercase tracking-widest opacity-60 group-hover:opacity-80 transition-opacity">{getDisplaySource(row)}</td>
-                            <td className="p-5">
-                              {row.subreddit ? (
-                                <a
-                                  href={`https://reddit.com/r/${row.subreddit}`}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="text-accent-2/70 hover:text-white transition-colors text-body-xs font-black tracking-tight flex items-center gap-2 group/link"
-                                >
-                                  r/{row.subreddit.toUpperCase()}
-                                  <span className="text-label opacity-0 group-hover/link:opacity-40 transition-opacity">↗</span>
-                                </a>
-                              ) : (
-                                <span className="text-muted/20">—</span>
-                              )}
-                            </td>
-                            <td className="p-5">
-                              {row.solutionKeyword ? (
-                                <span className="text-accent font-black text-body-sm tracking-tight border-b border-accent/20">
-                                  {row.solutionKeyword}
-                                </span>
-                              ) : (
-                                <span className="text-muted/20">—</span>
-                              )}
-                            </td>
+                            {!isProductDataView && (
+                              <td className="p-5">
+                                {row.subreddit ? (
+                                  <a
+                                    href={`https://reddit.com/r/${row.subreddit}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-accent-2/70 hover:text-white transition-colors text-body-xs font-black tracking-tight flex items-center gap-2 group/link"
+                                  >
+                                    r/{row.subreddit.toUpperCase()}
+                                    <span className="text-label opacity-0 group-hover/link:opacity-40 transition-opacity">↗</span>
+                                  </a>
+                                ) : (
+                                  <span className="text-muted/20">—</span>
+                                )}
+                              </td>
+                            )}
+                            {!isProductDataView && (
+                              <td className="p-5">
+                                {row.solutionKeyword ? (
+                                  <span className="text-accent font-black text-body-sm tracking-tight border-b border-accent/20">
+                                    {row.solutionKeyword}
+                                  </span>
+                                ) : (
+                                  <span className="text-muted/20">—</span>
+                                )}
+                              </td>
+                            )}
                             <td className="p-5">
                               <div 
                                 className="max-w-lg text-sm text-text/90 leading-relaxed line-clamp-2 cursor-pointer group-hover:text-white transition-colors"
@@ -790,23 +744,24 @@ export default function AllResearchDataPage() {
                                 </button>
                               </div>
                             </td>
-                            <td className="p-5 text-right">
-                              {isRedditSource(row) ? (
-                                <div className="inline-flex flex-col items-end">
-                                  <div className="flex items-center gap-1.5 font-mono font-black text-white text-sm">
-                                    <span className="text-accent-2/40 text-label">RESO.</span>
-                                    {getScore(row)}
+                            {!isProductDataView && (
+                              <td className="p-5 text-right">
+                                {isRedditSource(row) ? (
+                                  <div className="inline-flex flex-col items-end">
+                                    <div className="flex items-center gap-1.5 font-mono font-black text-white text-sm">
+                                      <span className="text-accent-2/40 text-label">RESO.</span>
+                                      {getScore(row)}
+                                    </div>
                                   </div>
-                                </div>
-                              ) : isAmazonSource(row) ? (
-                                <div className="inline-flex items-baseline gap-1 bg-transparent py-1 px-2.5 rounded border border-line">
-                                  <span className="text-accent font-black text-body-xs">{row.rating ?? (row.metadata?.rating ?? '—')}</span>
-                                  <span className="text-label-xs text-muted opacity-40 font-bold tracking-widest">/ 5.0</span>
-                                </div>
-                              ) : (
-                                <span className="text-muted/20">—</span>
-                              )}
-                            </td>
+                                ) : isAmazonSource(row) ? (
+                                  <div className="inline-flex items-baseline gap-1 bg-transparent py-1 px-2.5 rounded border border-line">
+                                    <span className="text-accent font-black text-body-xs">{row.rating ?? (row.metadata?.rating ?? '—')}</span>
+                                  </div>
+                                ) : (
+                                  <span className="text-muted/20">—</span>
+                                )}
+                              </td>
+                            )}
                             <td className="p-5 text-muted font-mono text-label-sm uppercase tracking-widest opacity-60">
                               {formatDistanceToNow(getPostedDate(row), { addSuffix: true })}
                             </td>
@@ -826,7 +781,7 @@ export default function AllResearchDataPage() {
                           </tr>
                           {isExpanded && (
                             <tr>
-                              <td colSpan={9} className="bg-bg-elevated border-b border-line p-10">
+                              <td colSpan={isProductDataView ? 6 : 9} className="bg-bg-elevated border-b border-line p-10">
                                 <div className="max-w-5xl mx-auto space-y-10">
                                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
                                     <div className="lg:col-span-2 space-y-4">

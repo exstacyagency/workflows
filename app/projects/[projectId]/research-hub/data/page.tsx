@@ -17,6 +17,22 @@ type JobRecord = {
   createdAt: string;
 };
 
+type PatternAnalysisRecord = {
+  id: string;
+  projectId: string;
+  summary?: string | null;
+  rawJson?: Record<string, any> | null;
+  createdAt: string;
+  job?: {
+    id: string;
+    runId: string | null;
+    payload?: Record<string, any> | null;
+    resultSummary?: unknown;
+    createdAt: string;
+    updatedAt: string;
+  } | null;
+};
+
 type AdAsset = {
   id: string;
   jobId: string | null;
@@ -60,6 +76,15 @@ function getSupportedJobType(input: string): SupportedJobType | null {
   if (input === "ad-quality-gate") return "ad-quality-gate";
   if (input === "pattern-analysis") return "pattern-analysis";
   return null;
+}
+
+function getJobTypeLabel(jobType: SupportedJobType | null, fallback: string): string {
+  if (jobType === "ad-transcripts") return "Ad Transcripts";
+  if (jobType === "ad-ocr") return "Ad OCR";
+  if (jobType === "ad-collection") return "Ad Collection";
+  if (jobType === "ad-quality-gate") return "Quality Assessment";
+  if (jobType === "pattern-analysis") return "Pattern Analysis";
+  return fallback;
 }
 
 function getVideoUrl(raw: Record<string, any>): string {
@@ -116,17 +141,21 @@ export default function ResearchHubDataPage() {
   const rawJobType = String(searchParams?.get("jobType") ?? "ad-transcripts").trim();
   const queryRunId = String(searchParams?.get("runId") ?? "").trim();
   const focusJobType = getSupportedJobType(rawJobType);
+  const pageTitle = `${getJobTypeLabel(focusJobType, rawJobType)} Output`;
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [effectiveRunId, setEffectiveRunId] = useState<string | null>(null);
   const [assets, setAssets] = useState<AdAsset[]>([]);
   const [patternJob, setPatternJob] = useState<JobRecord | null>(null);
+  const [patternData, setPatternData] = useState<PatternAnalysisRecord | null>(null);
+  const [showPatternInputs, setShowPatternInputs] = useState(false);
   const [deletingAssetId, setDeletingAssetId] = useState<string | null>(null);
   const [clearingAssetKey, setClearingAssetKey] = useState<string | null>(null);
   const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [deletingAll, setDeletingAll] = useState(false);
+  const researchHubBackHref = `/projects/${projectId}/research-hub${(effectiveRunId || queryRunId) ? `?runId=${effectiveRunId || queryRunId}` : ""}`;
 
   useEffect(() => {
     async function load() {
@@ -141,6 +170,8 @@ export default function ResearchHubDataPage() {
         setLoading(true);
         setError(null);
         setPatternJob(null);
+        setPatternData(null);
+        setShowPatternInputs(false);
 
         const jobsRes = await fetch(`/api/projects/${projectId}/jobs`, { cache: "no-store" });
         const jobsData = await jobsRes.json().catch(() => ({}));
@@ -170,6 +201,15 @@ export default function ResearchHubDataPage() {
             throw new Error(`No pattern analysis data found for runId=${runId}`);
           }
           setPatternJob(latestPatternJob);
+          const patternRes = await fetch(
+            `/api/projects/${projectId}/pattern-analysis?jobId=${latestPatternJob.id}&runId=${runId}`,
+            { cache: "no-store" },
+          );
+          const patternDataResponse = await patternRes.json().catch(() => ({}));
+          if (!patternRes.ok) {
+            throw new Error(patternDataResponse?.error || "Failed to load pattern analysis output");
+          }
+          setPatternData(patternDataResponse as PatternAnalysisRecord);
           setAssets([]);
           return;
         }
@@ -195,9 +235,13 @@ export default function ResearchHubDataPage() {
   }, [focusJobType, projectId, queryRunId, rawJobType]);
 
   const patternResult = useMemo(() => {
-    const payload = asObj(patternJob?.payload);
-    return asObj(payload.result);
-  }, [patternJob]);
+    return asObj(patternData?.rawJson);
+  }, [patternData]);
+  const patternInputs = useMemo(() => asObj(patternJob?.payload), [patternJob]);
+  const patternList = useMemo(
+    () => (Array.isArray(patternResult.patterns) ? patternResult.patterns : []),
+    [patternResult],
+  );
 
   const transcriptRows = useMemo(
     () =>
@@ -390,37 +434,30 @@ export default function ResearchHubDataPage() {
     }
 
     if (focusJobType === "pattern-analysis") {
-      const patterns = asObj(patternResult.patterns);
       const columns = [
         "updatedAt",
         "jobId",
         "runId",
-        "adsAnalyzed",
+        "patternCount",
         "summary",
-        "hookPatterns",
-        "messagePatterns",
-        "textOverlayPatterns",
-        "ctaPatterns",
-        "timingPatterns",
-        "clusters",
+        "baseline",
+        "patterns",
       ];
-      const rows = patternJob
+      const rows = patternData
         ? [
             {
-              updatedAt: patternJob.updatedAt ?? patternJob.createdAt,
-              jobId: patternJob.id,
-              runId: patternJob.runId ?? "",
-              adsAnalyzed: asNum(patternResult.adsAnalyzed) ?? "",
+              updatedAt: patternData.job?.updatedAt ?? patternData.createdAt,
+              jobId: patternData.job?.id ?? patternJob?.id ?? "",
+              runId: patternData.job?.runId ?? patternJob?.runId ?? "",
+              patternCount: patternList.length,
               summary:
                 typeof patternResult.summary === "string"
                   ? patternResult.summary
-                  : "",
-              hookPatterns: Array.isArray(patterns.hookPatterns) ? patterns.hookPatterns.length : 0,
-              messagePatterns: Array.isArray(patterns.messagePatterns) ? patterns.messagePatterns.length : 0,
-              textOverlayPatterns: Array.isArray(patterns.textOverlayPatterns) ? patterns.textOverlayPatterns.length : 0,
-              ctaPatterns: Array.isArray(patterns.ctaPatterns) ? patterns.ctaPatterns.length : 0,
-              timingPatterns: Array.isArray(patterns.timingPatterns) ? patterns.timingPatterns.length : 0,
-              clusters: Array.isArray(patterns.clusters) ? patterns.clusters.length : 0,
+                  : typeof patternData.summary === "string"
+                    ? patternData.summary
+                    : "",
+              baseline: JSON.stringify(asObj(patternResult.baseline)),
+              patterns: JSON.stringify(patternList),
             },
           ]
         : [];
@@ -487,7 +524,7 @@ export default function ResearchHubDataPage() {
       };
     });
     return { columns, rows };
-  }, [assets, focusJobType, patternJob, patternResult, qualityRows, transcriptRows]);
+  }, [assets, focusJobType, patternData, patternJob, patternList, patternResult, qualityRows, transcriptRows]);
 
   function handleExportCsv() {
     if (!focusJobType) return;
@@ -661,38 +698,46 @@ export default function ResearchHubDataPage() {
   return (
     <div className="px-8 py-8 max-w-7xl mx-auto space-y-8">
       <PageHeader
-        backHref={`/projects/${projectId}/research-hub`}
+        backHref={researchHubBackHref}
         backLabel="Back to Research Hub"
-        title="Advertising Data Library"
+        title={pageTitle}
         description={effectiveRunId ? `Active run: ${effectiveRunId}` : "Loading advertising data..."}
         actions={
           <>
-            <StatusChip variant="subtle">{focusJobType ?? rawJobType}</StatusChip>
-            <button
-              onClick={handleExportCsv}
-              disabled={loading || !!error || !focusJobType || exportConfig.rows.length === 0}
-              className="btn btn-secondary !min-h-[36px] px-4 text-label font-bold uppercase tracking-widest"
-            >
-              Export Advertising Data
-            </button>
+            {focusJobType === "pattern-analysis" && patternJob && (
+              <button
+                type="button"
+                onClick={() => setShowPatternInputs((value) => !value)}
+                className="btn btn-secondary !min-h-[36px] px-4 text-label font-bold uppercase tracking-widest"
+              >
+                {showPatternInputs ? "Hide Inputs" : "View Inputs"}
+              </button>
+            )}
             {(focusJobType === "ad-transcripts" || focusJobType === "ad-quality-gate") && (
-              <div className="flex gap-2">
+              <>
                 <button
                   onClick={handleDeleteSelected}
                   disabled={selectedCount === 0 || bulkDeleting || deletingAll || !effectiveRunId}
-                  className="btn btn-secondary !min-h-[36px] px-4 text-label font-bold uppercase tracking-widest hover:text-danger hover:border-danger/30"
+                  className="btn btn-secondary !min-h-[36px] px-4 text-label font-bold uppercase tracking-widest hover:text-danger hover:border-danger/30 disabled:opacity-20"
                 >
-                  {bulkDeleting ? 'DELETING...' : `DELETE SELECTED (${selectedCount})`}
+                  {bulkDeleting ? 'Deleting...' : `Delete Selected (${selectedCount})`}
                 </button>
                 <button
                   onClick={handleDeleteAll}
                   disabled={deletingAll || bulkDeleting || assets.length === 0 || !effectiveRunId}
-                  className="btn btn-secondary !min-h-[36px] px-4 text-label font-bold uppercase tracking-widest hover:text-danger hover:border-danger/30"
+                  className="btn btn-secondary !min-h-[36px] px-4 text-label font-bold uppercase tracking-widest hover:text-danger hover:border-danger/30 disabled:opacity-20"
                 >
-                  {deletingAll ? 'PURGING_ALL...' : 'PURGE_ALL'}
+                  {deletingAll ? 'Deleting All...' : 'Delete All'}
                 </button>
-              </div>
+              </>
             )}
+            <button
+              onClick={handleExportCsv}
+              disabled={loading || !!error || !focusJobType || exportConfig.rows.length === 0}
+              className="btn btn-primary !min-h-[36px] px-4 text-label font-bold uppercase tracking-widest disabled:opacity-20"
+            >
+              {`Export ${pageTitle}`}
+            </button>
           </>
         }
       />
@@ -864,7 +909,7 @@ export default function ResearchHubDataPage() {
               </div>
             </SectionCard>
             <SectionCard className="space-y-2">
-              <p className="text-label font-mono text-muted uppercase tracking-widest opacity-40">Rejected Nodes</p>
+              <p className="text-label font-mono text-muted uppercase tracking-widest opacity-40">Rejected Ads</p>
               <div className="text-3xl font-bold text-danger">{qualityRejected}</div>
             </SectionCard>
           </div>
@@ -1003,30 +1048,22 @@ export default function ResearchHubDataPage() {
             <EmptyState title="No pattern analysis result found for this run." />
           ) : (
             <div className="space-y-8">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {showPatternInputs && (
+                <SectionCard padding="lg" className="space-y-4">
+                  <p className="eyebrow !mb-0">Input Parameters</p>
+                  <div className="rounded bg-panel p-4 overflow-hidden">
+                    <pre className="max-h-[300px] overflow-auto whitespace-pre-wrap break-words text-label font-mono text-muted scrollbar-thin scrollbar-thumb-line">
+                      {JSON.stringify(patternInputs, null, 2)}
+                    </pre>
+                  </div>
+                </SectionCard>
+              )}
+
+              <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
                 <SectionCard className="space-y-2">
-                  <p className="text-label font-mono text-muted uppercase tracking-widest opacity-40">Ads Synthesized</p>
+                  <p className="text-label font-mono text-muted uppercase tracking-widest opacity-40">Ads Analyzed</p>
                   <div className="text-3xl font-bold text-white">
                     {asNum(patternResult.adsAnalyzed) ?? 0}
-                  </div>
-                </SectionCard>
-                <SectionCard className="space-y-2">
-                  <p className="text-label font-mono text-muted uppercase tracking-widest opacity-40">Hook Vectors</p>
-                  <div className="flex items-end gap-3">
-                    <div className="text-3xl font-bold text-accent">
-                      {Array.isArray(asObj(patternResult.patterns).hookPatterns)
-                        ? asObj(patternResult.patterns).hookPatterns.length
-                        : 0}
-                    </div>
-                    <div className="text-xs font-mono text-muted mb-1.5 uppercase tracking-widest">Active</div>
-                  </div>
-                </SectionCard>
-                <SectionCard className="space-y-2">
-                  <p className="text-label font-mono text-muted uppercase tracking-widest opacity-40">Logic Clusters</p>
-                  <div className="text-3xl font-bold text-accent-2">
-                    {Array.isArray(asObj(patternResult.patterns).clusters)
-                      ? asObj(patternResult.patterns).clusters.length
-                      : 0}
                   </div>
                 </SectionCard>
               </div>
@@ -1041,12 +1078,14 @@ export default function ResearchHubDataPage() {
                 <p className="text-sm text-muted leading-relaxed font-medium">
                   {typeof patternResult.summary === "string" && patternResult.summary.trim().length > 0
                     ? patternResult.summary
+                    : typeof patternData?.summary === "string" && patternData.summary.trim().length > 0
+                      ? patternData.summary
                     : "No summary available."}
                 </p>
               </SectionCard>
 
               <SectionCard padding="lg" className="space-y-4">
-                <p className="text-label font-mono text-muted uppercase tracking-widest opacity-40 font-bold">Raw Analysis Output</p>
+                <p className="text-label font-mono text-muted uppercase tracking-widest opacity-40 font-bold">Full Output</p>
                 <div className="rounded bg-panel p-4 overflow-hidden">
                   <pre className="max-h-[300px] overflow-auto whitespace-pre-wrap break-words text-label font-mono text-muted scrollbar-thin scrollbar-thumb-line">
                     {JSON.stringify(patternResult, null, 2)}

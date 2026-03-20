@@ -3,7 +3,6 @@ import { cfg } from "@/lib/config";
 import Anthropic from "@anthropic-ai/sdk";
 import prisma from './prisma.ts';
 import { JobStatus, JobType, Prisma, ScriptStatus } from '@prisma/client';
-import { updateJobStatus } from '@/lib/jobs/updateJobStatus';
 import type { Job } from '@prisma/client';
 import { guardedExternalCall } from './externalCallGuard.ts';
 import { env, requireEnv } from './configGuard.ts';
@@ -2605,16 +2604,11 @@ export async function startScriptGenerationJob(projectId: string, job: Job) {
       researchSources,
     };
 
-    // Persist result metadata in the same completion transition.
-    await updateJobStatus(job.id, JobStatus.COMPLETED, {
-      resultSummary: completionSummary as any,
-      error: Prisma.JsonNull,
-    });
-
     return {
       jobId: job.id,
       scriptId: script.id,
       script,
+      completionSummary,
       usageEntries: generation.usageEntries ?? [],
     };
   } catch (err: any) {
@@ -2634,14 +2628,6 @@ export async function startScriptGenerationJob(projectId: string, job: Job) {
         });
       }
     }
-    await updateJobStatus(job.id, JobStatus.FAILED);
-    await prisma.job.update({
-      where: { id: job.id },
-      data: {
-        error: err?.message ?? 'Unknown error during script generation',
-      },
-    });
-
     throw err;
   }
 }

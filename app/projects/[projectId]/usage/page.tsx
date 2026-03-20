@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import GlobalNavMenu from "@/components/GlobalNavMenu";
 import { EmptyState, PageHeader, SectionCard, StatusChip } from "@/components/ui";
 import { getJobTypeLabel } from "@/lib/jobLabels";
 
@@ -141,11 +142,9 @@ export default function UsagePage() {
 
   return (
     <div className="px-8 py-8 max-w-7xl mx-auto space-y-8">
+      <GlobalNavMenu projectId={projectId} />
       <PageHeader
-        backHref={`/projects/${projectId}`}
-        backLabel="Back to Project"
         title="Usage & Metrics"
-        description="Track your research job spending and resource allocation."
       />
 
       {/* Total Spend Card */}

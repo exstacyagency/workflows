@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import CreateProjectButton from "@/app/(app)/projects/CreateProjectButton";
+import GlobalNavMenu from "@/components/GlobalNavMenu";
 import { EmptyState, PageHeader, SectionCard } from "@/components/ui";
 
 type Project = {
@@ -82,12 +83,7 @@ export default function ProjectsPage() {
 
   return (
     <div className="px-8 py-8 max-w-7xl mx-auto space-y-8">
-      <a
-        href="/studio"
-        className="text-label font-mono text-muted hover:text-white uppercase tracking-widest transition-colors inline-block"
-      >
-        ← Back to Studio
-      </a>
+      <GlobalNavMenu />
       <PageHeader
         title="Projects"
         actions={<CreateProjectButton />}

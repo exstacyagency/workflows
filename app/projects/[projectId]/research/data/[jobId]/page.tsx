@@ -5,6 +5,7 @@ import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
 import { PageHeader, SectionCard, StatusChip } from '@/components/ui';
+import { getJobTypeLabel } from '@/lib/jobLabels';
 
 interface ResearchRow {
   id: string;
@@ -40,12 +41,19 @@ interface KeywordStat {
   avgScore: number;
 }
 
+interface JobRecord {
+  id: string;
+  type: string;
+  payload?: Record<string, any> | null;
+}
+
 export default function ResearchDataPage() {
   const params = useParams();
   const searchParams = useSearchParams();
   const projectId = params.projectId as string;
   const jobId = params.jobId as string;
   const runId = searchParams.get('runId');
+  const researchHubBackHref = `/projects/${projectId}/research-hub${runId ? `?runId=${runId}` : ''}`;
 
   const [rows, setRows] = useState<ResearchRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -64,8 +72,9 @@ export default function ResearchDataPage() {
   const [typeFilter, setTypeFilter] = useState('all');
   const [subredditFilter, setSubredditFilter] = useState('');
   const [solutionKeywordFilter, setSolutionKeywordFilter] = useState('');
-  const [minScoreFilter, setMinScoreFilter] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
+  const [jobTitle, setJobTitle] = useState('Research Export');
+  const [isProductIntelView, setIsProductIntelView] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -79,12 +88,17 @@ export default function ResearchDataPage() {
       if (runId) params.set('runId', runId);
       if (subredditFilter) params.set('subreddit', subredditFilter);
       if (solutionKeywordFilter) params.set('solutionKeyword', solutionKeywordFilter);
-      if (minScoreFilter > 0) params.set('minScore', String(minScoreFilter));
 
-      const response = await fetch(`/api/projects/${projectId}/research?${params.toString()}`, {
-        cache: 'no-store',
-      });
-      const data = await response.json();
+      const [researchResponse, jobsResponse] = await Promise.all([
+        fetch(`/api/projects/${projectId}/research?${params.toString()}`, {
+          cache: 'no-store',
+        }),
+        fetch(`/api/projects/${projectId}/jobs`, {
+          cache: 'no-store',
+        }),
+      ]);
+      const data = await researchResponse.json();
+      const jobsData = await jobsResponse.json().catch(() => ({}));
       setRows(data.rows || []);
       setTotalCount(data.total || 0);
       setStats(
@@ -97,6 +111,16 @@ export default function ResearchDataPage() {
         }
       );
       setKeywordStats(Array.isArray(data.keywordStats) ? data.keywordStats : []);
+
+      const allJobs = Array.isArray(jobsData?.jobs) ? (jobsData.jobs as JobRecord[]) : [];
+      const matchedJob = allJobs.find((job) => job.id === jobId) ?? null;
+      if (matchedJob) {
+        setJobTitle(`${getJobTypeLabel(matchedJob.type)} Export`);
+        setIsProductIntelView(matchedJob.type === 'PRODUCT_DATA_COLLECTION');
+      } else {
+        setJobTitle('Research Export');
+        setIsProductIntelView(false);
+      }
     } catch (error) {
       console.error('Failed to load research data:', error);
     } finally {
@@ -104,7 +128,6 @@ export default function ResearchDataPage() {
     }
   }, [
     jobId,
-    minScoreFilter,
     page,
     projectId,
     rowsPerPage,
@@ -149,8 +172,7 @@ export default function ResearchDataPage() {
     typeFilter !== 'all' ||
     searchQuery ||
     subredditFilter ||
-    solutionKeywordFilter ||
-    minScoreFilter > 0;
+    solutionKeywordFilter;
 
   const formatDateTime = (date: string) =>
     new Date(date).toLocaleString('en-US', {
@@ -195,7 +217,6 @@ export default function ResearchDataPage() {
     if (runId) params.set('runId', runId);
     if (subredditFilter) params.set('subreddit', subredditFilter);
     if (solutionKeywordFilter) params.set('solutionKeyword', solutionKeywordFilter);
-    if (minScoreFilter > 0) params.set('minScore', String(minScoreFilter));
     const response = await fetch(`/api/projects/${projectId}/research/export?${params.toString()}`, {
       cache: 'no-store',
     });
@@ -212,9 +233,9 @@ export default function ResearchDataPage() {
     <div className="min-h-screen bg-bg text-white">
       <div className="border-b border-line px-8 py-6">
         <PageHeader
-          backHref={`/projects/${projectId}/research-hub`}
+          backHref={researchHubBackHref}
           backLabel="Back to Research Hub"
-          title="Raw Research Export"
+          title={jobTitle}
           description={
             runId
               ? `Active run: ${runId.substring(0, 8)} | ${totalCount} rows captured`
@@ -222,7 +243,6 @@ export default function ResearchDataPage() {
           }
           actions={
             <>
-              <StatusChip variant="subtle">{jobId.substring(0, 8)}</StatusChip>
               <Link
                 href={`/projects/${projectId}/research/data/${jobId}/inputs${runId ? `?runId=${runId}` : ''}`}
                 className="btn btn-secondary !min-h-[36px] px-4 text-label font-bold uppercase tracking-widest"
@@ -241,30 +261,34 @@ export default function ResearchDataPage() {
       </div>
 
       <div className="px-8 py-8 max-w-7xl mx-auto space-y-8">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className={`grid grid-cols-1 gap-6 ${isProductIntelView ? 'md:grid-cols-1' : 'md:grid-cols-4'}`}>
           <SectionCard className="space-y-2">
             <p className="text-label font-mono text-muted uppercase tracking-widest opacity-40">Capture Count</p>
             <div className="text-3xl font-bold text-white">{stats.totalRows}</div>
           </SectionCard>
-          <SectionCard className="space-y-2">
-            <p className="text-label font-mono text-muted uppercase tracking-widest opacity-40">Communities</p>
-            <div className="text-3xl font-bold text-accent-2">{stats.uniqueSubreddits}</div>
-          </SectionCard>
-          <SectionCard className="space-y-2">
-            <p className="text-label font-mono text-muted uppercase tracking-widest opacity-40">Average Score</p>
-            <div className="flex items-end gap-2">
-              <div className="text-3xl font-bold text-white">{stats.avgScore.toFixed(1)}</div>
-              <div className="text-label font-mono text-muted mb-1.5 uppercase tracking-widest">Score</div>
-            </div>
-          </SectionCard>
-          <SectionCard className="space-y-2 border-accent/20">
-            <p className="text-label font-mono text-accent uppercase tracking-widest opacity-60">Primary Keyword</p>
-            <div className="text-xl font-bold text-white truncate">{stats.topKeyword}</div>
-            <p className="text-label-sm font-mono text-muted/40 uppercase tracking-widest">{stats.topKeywordCount} matched rows</p>
-          </SectionCard>
+          {!isProductIntelView && (
+            <>
+              <SectionCard className="space-y-2">
+                <p className="text-label font-mono text-muted uppercase tracking-widest opacity-40">Communities</p>
+                <div className="text-3xl font-bold text-accent-2">{stats.uniqueSubreddits}</div>
+              </SectionCard>
+              <SectionCard className="space-y-2">
+                <p className="text-label font-mono text-muted uppercase tracking-widest opacity-40">Average Score</p>
+                <div className="flex items-end gap-2">
+                  <div className="text-3xl font-bold text-white">{stats.avgScore.toFixed(1)}</div>
+                  <div className="text-label font-mono text-muted mb-1.5 uppercase tracking-widest">Score</div>
+                </div>
+              </SectionCard>
+              <SectionCard className="space-y-2 border-accent/20">
+                <p className="text-label font-mono text-accent uppercase tracking-widest opacity-60">Primary Keyword</p>
+                <div className="text-xl font-bold text-white truncate">{stats.topKeyword}</div>
+                <p className="text-label-sm font-mono text-muted/40 uppercase tracking-widest">{stats.topKeywordCount} matched rows</p>
+              </SectionCard>
+            </>
+          )}
         </div>
 
-        {keywordStats.length > 0 && (
+        {!isProductIntelView && keywordStats.length > 0 && (
           <SectionCard className="space-y-4">
             <p className="card-label font-bold">Keyword Persistence</p>
             <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -291,16 +315,19 @@ export default function ResearchDataPage() {
             </div>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
+          <div className={`grid grid-cols-1 gap-4 ${isProductIntelView ? 'md:grid-cols-3' : 'md:grid-cols-3 lg:grid-cols-5'}`}>
             <div className="space-y-1.5 text-label-sm font-mono text-muted uppercase tracking-widest ml-1">Source Type</div>
             <div className="space-y-1.5 text-label-sm font-mono text-muted uppercase tracking-widest ml-1">Entity Type</div>
-            <div className="space-y-1.5 text-label-sm font-mono text-muted uppercase tracking-widest ml-1">Subreddit</div>
-            <div className="space-y-1.5 text-label-sm font-mono text-muted uppercase tracking-widest ml-1">Keyword</div>
-            <div className="space-y-1.5 text-label-sm font-mono text-muted uppercase tracking-widest ml-1">Min Intensity</div>
+            {!isProductIntelView && (
+              <>
+                <div className="space-y-1.5 text-label-sm font-mono text-muted uppercase tracking-widest ml-1">Subreddit</div>
+                <div className="space-y-1.5 text-label-sm font-mono text-muted uppercase tracking-widest ml-1">Keyword</div>
+              </>
+            )}
             <div className="space-y-1.5 text-label-sm font-mono text-muted uppercase tracking-widest ml-1">Search</div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 -mt-4">
+          <div className={`grid grid-cols-1 gap-4 -mt-4 ${isProductIntelView ? 'md:grid-cols-3' : 'md:grid-cols-3 lg:grid-cols-5'}`}>
             <select
               value={sourceFilter}
               onChange={(e) => setSourceFilter(e.target.value)}
@@ -324,46 +351,37 @@ export default function ResearchDataPage() {
               <option value="UPLOADED">UPLOADED</option>
             </select>
 
-            <select
-              value={subredditFilter}
-              onChange={(e) => {
-                setSubredditFilter(e.target.value);
-                setPage(1);
-              }}
-              className="w-full bg-bg-elevated border border-line rounded px-3 py-2 text-body-sm font-mono text-white focus:border-accent/40 outline-none transition-colors"
-            >
-              <option value="">All Subreddits</option>
-              {uniqueSubreddits.map((s) => (
-                <option key={s} value={s}>{s.toUpperCase()}</option>
-              ))}
-            </select>
+            {!isProductIntelView && (
+              <>
+                <select
+                  value={subredditFilter}
+                  onChange={(e) => {
+                    setSubredditFilter(e.target.value);
+                    setPage(1);
+                  }}
+                  className="w-full bg-bg-elevated border border-line rounded px-3 py-2 text-body-sm font-mono text-white focus:border-accent/40 outline-none transition-colors"
+                >
+                  <option value="">All Subreddits</option>
+                  {uniqueSubreddits.map((s) => (
+                    <option key={s} value={s}>{s.toUpperCase()}</option>
+                  ))}
+                </select>
 
-            <select
-              value={solutionKeywordFilter}
-              onChange={(e) => {
-                setSolutionKeywordFilter(e.target.value);
-                setPage(1);
-              }}
-              className="w-full bg-bg-elevated border border-line rounded px-3 py-2 text-body-sm font-mono text-white focus:border-accent/40 outline-none transition-colors"
-            >
-              <option value="">All Keywords</option>
-              {uniqueKeywords.map((k) => (
-                <option key={k} value={k}>{k.toUpperCase()}</option>
-              ))}
-            </select>
-
-            <input
-              type="number"
-              min={0}
-              value={minScoreFilter}
-              onChange={(e) => {
-                const parsed = parseInt(e.target.value, 10);
-                setMinScoreFilter(Number.isFinite(parsed) && parsed > 0 ? parsed : 0);
-                setPage(1);
-              }}
-              className="w-full bg-bg-elevated border border-line rounded px-3 py-2 text-body-sm font-mono text-white focus:border-accent/40 outline-none transition-colors"
-              placeholder="0"
-            />
+                <select
+                  value={solutionKeywordFilter}
+                  onChange={(e) => {
+                    setSolutionKeywordFilter(e.target.value);
+                    setPage(1);
+                  }}
+                  className="w-full bg-bg-elevated border border-line rounded px-3 py-2 text-body-sm font-mono text-white focus:border-accent/40 outline-none transition-colors"
+                >
+                  <option value="">All Keywords</option>
+                  {uniqueKeywords.map((k) => (
+                    <option key={k} value={k}>{k.toUpperCase()}</option>
+                  ))}
+                </select>
+              </>
+            )}
 
             <input
               type="text"

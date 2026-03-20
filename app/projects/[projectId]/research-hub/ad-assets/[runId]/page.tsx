@@ -25,6 +25,14 @@ type AssetRecord = {
   rawJson: Record<string, any> | null;
 };
 
+type JobRecord = {
+  id: string;
+  type: string;
+  runId: string | null;
+  createdAt: string;
+  payload?: Record<string, any> | null;
+};
+
 function asObj(value: unknown): Record<string, any> {
   if (value && typeof value === "object" && !Array.isArray(value)) {
     return value as Record<string, any>;
@@ -137,22 +145,49 @@ export default function AdAssetsViewerPage() {
   const runId = String(params?.runId ?? "");
   const focus = String(searchParams?.get("focus") ?? "").trim();
   const highlightOcr = focus === "ocr";
+  const pageTitle = highlightOcr ? "Ad OCR Output" : "Ad Collection Output";
+  const researchHubBackHref = `/projects/${projectId}/research-hub${runId ? `?runId=${runId}` : ""}`;
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [assets, setAssets] = useState<AssetRecord[]>([]);
+  const [sourceJobPayload, setSourceJobPayload] = useState<Record<string, any> | null>(null);
+  const [showInputs, setShowInputs] = useState(false);
+  const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
+  const [deletingAssetId, setDeletingAssetId] = useState<string | null>(null);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
 
   useEffect(() => {
     async function load() {
       try {
         setLoading(true);
         setError(null);
-        const res = await fetch(`/api/projects/${projectId}/runs/${runId}/ad-assets`);
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok || !data?.success) {
-          throw new Error(data?.error || "Failed to load ad assets");
+        const [assetsRes, jobsRes] = await Promise.all([
+          fetch(`/api/projects/${projectId}/runs/${runId}/ad-assets`),
+          fetch(`/api/projects/${projectId}/jobs`, { cache: "no-store" }),
+        ]);
+        const assetsData = await assetsRes.json().catch(() => ({}));
+        const jobsData = await jobsRes.json().catch(() => ({}));
+        if (!assetsRes.ok || !assetsData?.success) {
+          throw new Error(assetsData?.error || "Failed to load ad assets");
         }
-        setAssets(Array.isArray(data.assets) ? data.assets : []);
+        if (!jobsRes.ok || !jobsData?.success) {
+          throw new Error(jobsData?.error || "Failed to load job inputs");
+        }
+        setAssets(Array.isArray(assetsData.assets) ? assetsData.assets : []);
+        setSelectedAssetIds([]);
+
+        const jobs = Array.isArray(jobsData.jobs) ? (jobsData.jobs as JobRecord[]) : [];
+        const targetSubtype = highlightOcr ? "ad_ocr_collection" : "ad_raw_collection";
+        const matchedJob =
+          jobs
+            .filter((job) => {
+              const subtype = String(job.payload?.jobType ?? job.payload?.kind ?? "").trim();
+              return job.type === "AD_PERFORMANCE" && job.runId === runId && subtype === targetSubtype;
+            })
+            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0] ?? null;
+        setSourceJobPayload(matchedJob?.payload ?? null);
       } catch (e: any) {
         setError(e?.message || "Failed to load ad assets");
       } finally {
@@ -163,7 +198,7 @@ export default function AdAssetsViewerPage() {
     if (projectId && runId) {
       void load();
     }
-  }, [projectId, runId]);
+  }, [highlightOcr, projectId, runId]);
 
   const rows = useMemo(
     () =>
@@ -245,6 +280,104 @@ export default function AdAssetsViewerPage() {
       }),
     [rows],
   );
+  const visibleAssetIds = useMemo(() => rows.map((row) => row.asset.id), [rows]);
+  const allVisibleSelected =
+    visibleAssetIds.length > 0 && visibleAssetIds.every((id) => selectedAssetIds.includes(id));
+  const selectedCount = selectedAssetIds.length;
+
+  useEffect(() => {
+    setSelectedAssetIds((prev) => prev.filter((id) => visibleAssetIds.includes(id)));
+  }, [visibleAssetIds]);
+
+  function toggleSelectAsset(assetId: string) {
+    setSelectedAssetIds((prev) =>
+      prev.includes(assetId) ? prev.filter((id) => id !== assetId) : [...prev, assetId],
+    );
+  }
+
+  function toggleSelectAllVisible() {
+    if (allVisibleSelected) {
+      setSelectedAssetIds((prev) => prev.filter((id) => !visibleAssetIds.includes(id)));
+      return;
+    }
+    setSelectedAssetIds((prev) => Array.from(new Set([...prev, ...visibleAssetIds])));
+  }
+
+  async function handleDeleteAsset(assetId: string) {
+    if (!window.confirm("Delete this data point? This cannot be undone.")) return;
+
+    setDeletingAssetId(assetId);
+    setError(null);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/runs/${runId}/ad-assets`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assetId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error || "Failed to delete data point");
+      }
+      setAssets((prev) => prev.filter((asset) => asset.id !== assetId));
+      setSelectedAssetIds((prev) => prev.filter((id) => id !== assetId));
+    } catch (e: any) {
+      setError(e?.message || "Failed to delete data point");
+    } finally {
+      setDeletingAssetId(null);
+    }
+  }
+
+  async function handleDeleteSelected() {
+    if (selectedAssetIds.length === 0) return;
+    if (!window.confirm(`Delete ${selectedAssetIds.length} selected data point(s)? This cannot be undone.`)) {
+      return;
+    }
+
+    setBulkDeleting(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/runs/${runId}/ad-assets`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assetIds: selectedAssetIds }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error || "Failed to delete selected data points");
+      }
+      setAssets((prev) => prev.filter((asset) => !selectedAssetIds.includes(asset.id)));
+      setSelectedAssetIds([]);
+    } catch (e: any) {
+      setError(e?.message || "Failed to delete selected data points");
+    } finally {
+      setBulkDeleting(false);
+    }
+  }
+
+  async function handleDeleteAll() {
+    if (rows.length === 0) return;
+    if (!window.confirm("Delete all data points in this view? This cannot be undone.")) return;
+
+    setDeletingAll(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/runs/${runId}/ad-assets`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deleteAll: true }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error || "Failed to delete all data points");
+      }
+      setAssets([]);
+      setSelectedAssetIds([]);
+    } catch (e: any) {
+      setError(e?.message || "Failed to delete all data points");
+    } finally {
+      setDeletingAll(false);
+    }
+  }
 
   function handleExportCsv() {
     if (exportRows.length === 0) return;
@@ -288,7 +421,7 @@ export default function AdAssetsViewerPage() {
       <div className="min-h-screen bg-bg text-white px-8 py-8">
         <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
           <div className="w-8 h-8 border-2 border-accent-2/20 border-t-accent-2 rounded-full animate-spin" />
-          <p className="text-label font-mono text-muted uppercase tracking-[0.3em] animate-pulse">Scanning_Assets...</p>
+          <p className="text-label font-mono text-muted tracking-wide animate-pulse">Scanning Assets...</p>
         </div>
       </div>
     );
@@ -298,9 +431,9 @@ export default function AdAssetsViewerPage() {
     return (
       <div className="min-h-screen bg-bg text-white px-8 py-8 space-y-6">
         <PageHeader
-          backHref={`/projects/${projectId}/research-hub`}
+          backHref={researchHubBackHref}
           backLabel="Back to Research Hub"
-          title="Ad Creative Inventory"
+          title={pageTitle}
           description="Unable to load ad assets."
         />
         <EmptyState title="Asset load failed" description={error} variant="error" />
@@ -312,19 +445,39 @@ export default function AdAssetsViewerPage() {
     <div className="min-h-screen bg-bg text-white">
       <div className="border-b border-line bg-panel backdrop-blur-md px-8 py-6">
         <PageHeader
-          backHref={`/projects/${projectId}/research-hub`}
+          backHref={researchHubBackHref}
           backLabel="Back to Research Hub"
-          title="Ad Creative Inventory"
-          description={`View: Creative Asset Library | Assets: ${rows.length}`}
+          title={pageTitle}
+          description={`Job Type: ${highlightOcr ? "Ad OCR" : "Ad Collection"} | Assets: ${rows.length}`}
           actions={
             <>
-              <StatusChip variant="subtle">{`RUN_${runId.substring(0, 8)}`}</StatusChip>
+              <button
+                onClick={() => setShowInputs((current) => !current)}
+                disabled={!sourceJobPayload}
+                className="btn btn-secondary !min-h-[36px] px-4 text-label font-bold uppercase tracking-widest disabled:opacity-20"
+              >
+                {showInputs ? "Hide Inputs" : "View Inputs"}
+              </button>
+              <button
+                onClick={handleDeleteSelected}
+                disabled={selectedCount === 0 || bulkDeleting || deletingAll}
+                className="btn btn-secondary !min-h-[36px] px-4 text-label font-bold uppercase tracking-widest hover:text-danger hover:border-danger/30 disabled:opacity-20"
+              >
+                {bulkDeleting ? "Deleting..." : `Delete Selected (${selectedCount})`}
+              </button>
+              <button
+                onClick={handleDeleteAll}
+                disabled={rows.length === 0 || deletingAll || bulkDeleting}
+                className="btn btn-secondary !min-h-[36px] px-4 text-label font-bold uppercase tracking-widest hover:text-danger hover:border-danger/30 disabled:opacity-20"
+              >
+                {deletingAll ? "Deleting All..." : "Delete All"}
+              </button>
               <button
                 onClick={handleExportCsv}
                 disabled={rows.length === 0}
-                className="btn btn-primary !min-h-[40px] px-8 text-label font-bold uppercase tracking-widest"
+                className="btn btn-primary !min-h-[36px] px-4 text-label font-bold uppercase tracking-widest disabled:opacity-20"
               >
-                Export CSV
+                {`Export ${pageTitle}`}
               </button>
             </>
           }
@@ -332,6 +485,20 @@ export default function AdAssetsViewerPage() {
       </div>
 
       <div className="px-8 py-8 max-w-7xl mx-auto space-y-8">
+        {showInputs && sourceJobPayload && (
+          <SectionCard padding="none" className="overflow-hidden">
+            <div className="border-b border-line bg-bg-elevated px-6 py-3 flex items-center justify-between">
+              <p className="eyebrow !mb-0">Input Parameters</p>
+              <p className="eyebrow !mb-0 opacity-60">{highlightOcr ? "OCR Request" : "Collection Request"}</p>
+            </div>
+            <div className="p-6 bg-panel">
+              <pre className="max-h-[32rem] overflow-auto text-body-sm font-mono text-muted leading-relaxed whitespace-pre-wrap break-words scrollbar-thin scrollbar-thumb-line">
+                {JSON.stringify(sourceJobPayload, null, 2)}
+              </pre>
+            </div>
+          </SectionCard>
+        )}
+
         <SectionCard padding="none" className="overflow-hidden">
           <div className="px-6 py-4 border-b border-line bg-bg-elevated flex items-center justify-between">
             <p className="eyebrow !mb-0">Creative Assets</p>
@@ -349,9 +516,18 @@ export default function AdAssetsViewerPage() {
             )}
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse min-w-[1650px]">
+            <table className="w-full text-left border-collapse min-w-[1760px]">
               <thead className="bg-bg-elevated border-b border-line">
                 <tr>
+                  <th className="px-5 py-4 text-left w-12">
+                    <input
+                      type="checkbox"
+                      checked={allVisibleSelected}
+                      onChange={toggleSelectAllVisible}
+                      className="h-3.5 w-3.5 rounded border-line bg-bg-elevated text-accent focus:ring-accent/20"
+                      aria-label="Select all"
+                    />
+                  </th>
                   <th className="px-5 py-4 text-label-sm font-mono text-muted uppercase tracking-[0.2em] w-40">Timestamp</th>
                   <th className="px-5 py-4 text-label-sm font-mono text-muted uppercase tracking-[0.2em] w-32">Asset ID</th>
                   <th className="px-5 py-4 text-label-sm font-mono text-muted uppercase tracking-[0.2em] w-32">Classification</th>
@@ -374,6 +550,7 @@ export default function AdAssetsViewerPage() {
                   <th className="px-5 py-4 text-label-sm font-mono text-muted uppercase tracking-[0.2em] w-28">Spikes</th>
                   <th className="px-5 py-4 text-label-sm font-mono text-muted uppercase tracking-[0.2em] w-48">Frame Analysis</th>
                   <th className="px-5 py-4 text-label-sm font-mono text-muted uppercase tracking-[0.2em] w-24 text-center">Raw</th>
+                  <th className="px-5 py-4 text-label-sm font-mono text-muted uppercase tracking-[0.2em] w-28 text-center">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-line/30">
@@ -388,6 +565,15 @@ export default function AdAssetsViewerPage() {
                         : ""
                     }`}
                   >
+                    <td className="px-5 py-4">
+                      <input
+                        type="checkbox"
+                        checked={selectedAssetIds.includes(row.asset.id)}
+                        onChange={() => toggleSelectAsset(row.asset.id)}
+                        className="h-3.5 w-3.5 rounded border-line bg-bg-elevated text-accent focus:ring-accent/20"
+                        aria-label={`Select ${row.asset.id}`}
+                      />
+                    </td>
                     <td className="px-5 py-4 text-label font-mono text-muted">
                       {new Date(row.asset.createdAt).toLocaleDateString()}
                       <br />
@@ -542,6 +728,16 @@ export default function AdAssetsViewerPage() {
                           </div>
                         </div>
                       </details>
+                    </td>
+                    <td className="px-5 py-4 text-center">
+                      <button
+                        type="button"
+                        onClick={() => void handleDeleteAsset(row.asset.id)}
+                        disabled={deletingAssetId === row.asset.id || bulkDeleting || deletingAll}
+                        className="btn btn-secondary !min-h-[32px] px-4 text-label hover:text-danger hover:border-danger/30 disabled:opacity-40"
+                      >
+                        {deletingAssetId === row.asset.id ? "Deleting..." : "Delete"}
+                      </button>
                     </td>
                   </tr>
                 ))}

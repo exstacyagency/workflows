@@ -421,6 +421,8 @@ Plan limits are defined in `lib/billing/quotas.ts`. Spend caps can be set per ac
 
 ## Roadmap / Growth Opportunities
 
+**Creative Run Branching** is a scoped architectural improvement to the current run model. Today, research runs and creative runs share the same underlying `ResearchRun` record — creative jobs attach to the same run as the research jobs that preceded them. Separating these into a `sourceResearchRunId` (the research context to read from) and a distinct creative `runId` (the creative thread to write into) would allow multiple creative explorations to branch from a single research run. This is the natural next step for agency workflows where one research pass needs to support multiple simultaneous creative directions.
+
 **OpenClaw Integration** presents an opportunity to position the platform as an autonomous operating layer for creative production, not just a workflow tool. By integrating an agent framework with persistent brand memory across research runs, teams could compound insight quality over time and reduce manual orchestration between stages.
 
 **Social Listening & Trend Detection** creates a path to move from reactive research into proactive market intelligence. Real-time monitoring of emerging conversations and trends could help brands identify creative angles early and publish into demand before competitors adjust.

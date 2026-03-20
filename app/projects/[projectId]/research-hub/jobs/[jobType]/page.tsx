@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { getJobTypeLabel } from "@/lib/jobLabels";
 import { EmptyState, PageHeader, SectionCard, StatusChip } from "@/components/ui";
@@ -37,8 +37,11 @@ interface JobGroup {
 
 export default function JobListPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const projectId = params?.projectId as string;
   const jobType = params?.jobType as string;
+  const runId = String(searchParams?.get("runId") ?? "").trim();
+  const researchHubBackHref = `/projects/${projectId}/research-hub${runId ? `?runId=${runId}` : ""}`;
 
   const [loading, setLoading] = useState(true);
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -152,9 +155,9 @@ export default function JobListPage() {
     return (
       <div className="px-6 py-6 max-w-7xl mx-auto space-y-6">
         <PageHeader
-          backHref={`/projects/${projectId}/research-hub`}
+          backHref={researchHubBackHref}
           backLabel="Back to Research Hub"
-          title="Job Logs"
+          title={`${getJobTypeLabel(jobType)} History`}
         />
         <EmptyState title="Error Loading Jobs" description={error} variant="error" />
       </div>
@@ -165,15 +168,15 @@ export default function JobListPage() {
     <div className="px-8 py-8 max-w-7xl mx-auto space-y-8">
       {/* Header */}
       <PageHeader
-        backHref={`/projects/${projectId}/research-hub`}
+        backHref={researchHubBackHref}
         backLabel="Back to Research Hub"
-        title={`${getJobTypeLabel(jobType)} Logs`}
+        title={`${getJobTypeLabel(jobType)} History`}
         description={`${jobs.length} ${jobs.length === 1 ? "ENTRY" : "ENTRIES"} RECORDED`}
       />
 
       {/* Job Groups */}
       {groupedJobs.length === 0 ? (
-        <EmptyState title="No Job Logs Found" description="No job logs found for this type." />
+        <EmptyState title="No History Found" description={`No ${getJobTypeLabel(jobType).toLowerCase()} history found for this project.`} />
       ) : (
         <div className="space-y-6">
           {groupedJobs.map((group) => (
@@ -221,12 +224,29 @@ export default function JobListPage() {
                         <td className="px-5 py-4 text-right">
                           {job.status === "COMPLETED" ? (
                             <Link
-                              href={`/projects/${projectId}/research/data/${job.id}${
-                                job.runId ? `?runId=${job.runId}` : ""
-                              }`}
-                              className="text-body-sm font-mono uppercase tracking-wider text-accent-2 underline decoration-accent-2/30 underline-offset-4 transition-all hover:text-white hover:decoration-white"
+                              href={(() => {
+                                const subtype = String(job.payload?.jobType || job.payload?.kind || "").trim();
+                                if (job.type === "AD_PERFORMANCE") {
+                                  if (subtype === "ad_ocr_collection" || subtype === "ad_transcripts" || subtype === "ad_transcript_collection") {
+                                    return `/projects/${projectId}/research-hub/data?jobType=${
+                                      subtype === "ad_ocr_collection" ? "ad-ocr" : "ad-transcripts"
+                                    }${job.runId ? `&runId=${job.runId}` : ""}`;
+                                  }
+                                  return job.runId
+                                    ? `/projects/${projectId}/research-hub/ad-assets/${job.runId}`
+                                    : `/projects/${projectId}/research-hub`;
+                                }
+                                if (job.type === "AD_QUALITY_GATE") {
+                                  return `/projects/${projectId}/research-hub/data?jobType=ad-quality-gate${job.runId ? `&runId=${job.runId}` : ""}`;
+                                }
+                                if (job.type === "PATTERN_ANALYSIS") {
+                                  return `/projects/${projectId}/research-hub/data?jobType=pattern-analysis${job.runId ? `&runId=${job.runId}` : ""}`;
+                                }
+                                return `/projects/${projectId}/research/data/${job.id}${job.runId ? `?runId=${job.runId}` : ""}`;
+                              })()}
+                              className="btn btn-secondary !min-h-[32px] px-4 text-label"
                             >
-                              View Data →
+                              View Data
                             </Link>
                           ) : (
                             <span className="text-muted opacity-30">—</span>

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { getJobTypeLabel } from "@/lib/jobLabels";
+import GlobalNavMenu from "@/components/GlobalNavMenu";
 import RunManagementModal from "@/components/RunManagementModal";
 import { EmptyState, PageHeader, SectionCard, SectionLinkCard, StatusChip } from "@/components/ui";
 
@@ -1080,6 +1081,7 @@ export default function ResearchHubPage() {
 
   return (
     <div className="px-8 py-8 max-w-7xl mx-auto space-y-10">
+      <GlobalNavMenu projectId={projectId} />
       {/* New Run Confirmation Modal */}
       {showNewRunModal && (
         <div className="fixed inset-0 bg-overlay backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -1109,10 +1111,7 @@ export default function ResearchHubPage() {
       )}
 
       <PageHeader
-        backHref={`/projects/${projectId}`}
-        backLabel="Back to Project"
         title="Research Hub"
-        description="Multi-track customer research, ad research, and product research."
         actions={anyRunning ? <StatusChip variant="running">Running</StatusChip> : undefined}
       />
 
@@ -1610,7 +1609,7 @@ export default function ResearchHubPage() {
             return (
               <div key={job.id} className="app-list-item flex items-start justify-between gap-4">
                 <div className="flex-1">
-                  <div className="text-sm font-medium text-white">{job.type}</div>
+                  <div className="text-sm font-medium text-white">{getRunJobName(job)}</div>
                   <div className="text-xs text-muted">{new Date(job.createdAt).toLocaleString()}</div>
                   {isCancelable && (
                     <div className="mt-2">

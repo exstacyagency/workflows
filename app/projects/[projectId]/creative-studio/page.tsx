@@ -7,6 +7,7 @@ import { createPortal } from "react-dom";
 import { JobStatus, JobType } from "@prisma/client";
 import toast, { Toaster } from "react-hot-toast";
 import Link from "next/link";
+import GlobalNavMenu from "@/components/GlobalNavMenu";
 import RunManagementModal from "@/components/RunManagementModal";
 import { analyzeSwipeTranscript, type SwipeAnalysis } from "@/lib/analyzeSwipeTranscript";
 import { VideoEditorStep } from "./VideoEditorStep";
@@ -101,6 +102,7 @@ type ScriptDetails = {
   id: string;
   status: string;
   rawJson: unknown;
+  mergedVideoUrl?: string | null;
   wordCount: number | null;
   createdAt: string;
 };
@@ -434,6 +436,10 @@ export default function CreativeStudioPage() {
   const [scriptPanelLoading, setScriptPanelLoading] = useState(false);
   const [scriptPanelError, setScriptPanelError] = useState<string | null>(null);
   const [scriptPanelData, setScriptPanelData] = useState<ScriptDetails | null>(null);
+  const [activeScriptMergeStatus, setActiveScriptMergeStatus] = useState<{
+    scriptId: string | null;
+    mergedVideoUrl: string | null;
+  }>({ scriptId: null, mergedVideoUrl: null });
   const [scriptPanelEditMode, setScriptPanelEditMode] = useState(false);
   const [scriptPanelDraftBeats, setScriptPanelDraftBeats] = useState<ScriptBeat[]>([]);
   const [scriptPanelCombinedVoDraft, setScriptPanelCombinedVoDraft] = useState("");
@@ -571,16 +577,14 @@ export default function CreativeStudioPage() {
   }, [projectId, router, selectedProductIdFromUrl]);
 
   const loadRunCharacters = useCallback(async () => {
-    const activeRunId = String(selectedRunId ?? "").trim();
     const activeProductId = String(selectedProductId ?? "").trim();
-    if (!projectId || !activeRunId) {
+    if (!projectId) {
       setRunCharacters([]);
       setSelectedStoryboardCharacterId(null);
       return;
     }
     try {
       const params = new URLSearchParams();
-      params.set("runId", activeRunId);
       if (activeProductId) params.set("productId", activeProductId);
       const res = await fetch(`/api/projects/${projectId}/characters?${params.toString()}`, {
         cache: "no-store",
@@ -739,6 +743,7 @@ export default function CreativeStudioPage() {
     const names: Record<string, string> = {
       SCRIPT_GENERATION: "Generate Script",
       STORYBOARD_GENERATION: "Create Storyboard",
+      MERGE_NEXT: "Merge Scenes",
       IMAGE_PROMPT_GENERATION: "Generate Image Prompts",
       VIDEO_PROMPT_GENERATION: "Generate Video Prompts",
       VIDEO_IMAGE_GENERATION: "Generate First Frames",
@@ -1105,7 +1110,11 @@ export default function CreativeStudioPage() {
 function getSummaryText(resultSummary: unknown, job?: Job | null): string {
   const sanitizeSummary = (value: string): string => {
     const cleaned = value
-      .replace(/Video frames saved:/gi, "Video frames generated:")
+      .replace(/Video frames (?:saved|generated):\s*(\d+)/gi, (_, countText: string) => {
+        const count = Number(countText);
+        if (!Number.isFinite(count)) return "Video frames generated";
+        return `${count} ${count === 1 ? "frame was" : "frames were"} generated`;
+      })
         .replace(
           /Video generated:\s+\S+(?:\s+\(\+\d+\s+more\))?/gi,
           (match) => {
@@ -1140,7 +1149,7 @@ function getSummaryText(resultSummary: unknown, job?: Job | null): string {
       }).length;
       const generatedFrameCount = Math.max(resultImages.length, successfulTaskCount);
       if (generatedFrameCount > 0) {
-        return `Video frames generated: ${generatedFrameCount}`;
+        return `${generatedFrameCount} ${generatedFrameCount === 1 ? "frame was" : "frames were"} generated`;
       }
     }
     if (typeof resultSummary === "string" && resultSummary.trim()) {
@@ -2685,6 +2694,62 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
     return getJobsForType(type).some((job) => job.status === JobStatus.COMPLETED);
   }
 
+  const effectiveCompletedScriptJobs = useMemo(
+    () =>
+      sortJobsByRecency(
+        (selectedRunId ? jobsInActiveRun : jobs).filter(
+          (job) => job.type === JobType.SCRIPT_GENERATION && job.status === JobStatus.COMPLETED,
+        ),
+      ),
+    [jobs, jobsInActiveRun, selectedRunId],
+  );
+
+  const latestEffectiveScriptJob = effectiveCompletedScriptJobs[0] ?? null;
+  const latestEffectiveScriptId = getScriptIdFromJob(latestEffectiveScriptJob);
+
+  useEffect(() => {
+    const scriptId = String(latestEffectiveScriptId ?? "").trim();
+    if (!scriptId) {
+      setActiveScriptMergeStatus({ scriptId: null, mergedVideoUrl: null });
+      return;
+    }
+
+    let cancelled = false;
+    const controller = new AbortController();
+
+    async function loadActiveScriptMergeStatus() {
+      try {
+        const res = await fetch(`/api/projects/${projectId}/scripts/${scriptId}`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(data?.error || `Failed to load script (${res.status})`);
+        }
+        if (cancelled) return;
+        const script = data as ScriptDetails;
+        setActiveScriptMergeStatus({
+          scriptId,
+          mergedVideoUrl:
+            typeof script.mergedVideoUrl === "string" && script.mergedVideoUrl.trim()
+              ? script.mergedVideoUrl.trim()
+              : null,
+        });
+      } catch (err: any) {
+        if (cancelled || err?.name === "AbortError") return;
+        setActiveScriptMergeStatus({ scriptId, mergedVideoUrl: null });
+      }
+    }
+
+    void loadActiveScriptMergeStatus();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [latestEffectiveScriptId, projectId]);
+
   function isStaleRunningJob(job: Job | undefined): boolean {
     if (!job || job.status !== JobStatus.RUNNING) return false;
     const updatedAtMs = Date.parse(job.updatedAt);
@@ -2706,6 +2771,14 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
   const latestVideoPromptJobSignature = latestVideoPromptJob
     ? `${latestVideoPromptJob.id}:${latestVideoPromptJob.status}:${latestVideoPromptJob.updatedAt}`
     : "";
+  const editVideoDerivedStatus: ProductionStep["status"] = (() => {
+    const reviewStatus = getStepStatus(JobType.VIDEO_REVIEW);
+    if (activeScriptMergeStatus.mergedVideoUrl) return "completed";
+    if (reviewStatus === "running" || submitting === "review") return "running";
+    if (reviewStatus === "failed") return "failed";
+    if (hasCompletedJob(JobType.VIDEO_GENERATION)) return "not_started";
+    return reviewStatus;
+  })();
 
   const storyboardPanelsForSceneFlow = useMemo(() => {
     if (!latestCompletedStoryboardId) return [] as StoryboardPanel[];
@@ -2823,7 +2896,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
       label: "Edit Video",
       description: "Trim, keep, and merge your generated scenes into one finished video.",
       jobType: JobType.VIDEO_REVIEW,
-      status: getStepStatus(JobType.VIDEO_REVIEW),
+      status: editVideoDerivedStatus,
       canRun: hasCompletedJob(JobType.VIDEO_GENERATION),
       locked: !hasCompletedJob(JobType.VIDEO_GENERATION),
       lockReason: "Generate video first",
@@ -3845,11 +3918,9 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
   return (
     <div className="pb-20">
       <div className="px-8 py-8 max-w-7xl mx-auto space-y-10">
+        <GlobalNavMenu projectId={projectId} />
         <PageHeader
-          backHref={`/projects/${projectId}`}
-          backLabel="Back to Project"
           title="Creative Studio"
-          description="Script generation, storyboards, prompts, and production output."
           actions={anyRunning ? <StatusChip variant="running">Running</StatusChip> : undefined}
         />
 
@@ -3994,16 +4065,14 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
               <div>
                 <p className="eyebrow">Character Selection</p>
                 <p className="text-body-sm font-mono text-muted uppercase tracking-widest">
-                  Cast and review the active character for this run.
+                  Choose a character for this project. Characters stay linked to their source run and can be reused anywhere.
                 </p>
               </div>
             </div>
             <SectionCard className="space-y-4">
-              {!selectedRunId ? (
-                <p className="text-label font-mono text-muted uppercase tracking-[0.2em] opacity-40 italic">Select a run to load matching characters.</p>
-              ) : runCharacters.length === 0 ? (
+              {runCharacters.length === 0 ? (
                 <SectionCard className="border-accent/20 bg-accent/5" padding="sm">
-                  <p className="text-label font-mono text-accent uppercase tracking-widest">No characters found for this run.</p>
+                  <p className="text-label font-mono text-accent uppercase tracking-widest">No characters found for this product.</p>
                 </SectionCard>
               ) : (
                 <div className="space-y-4">
@@ -4842,7 +4911,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                                         disabled={storyboardSaving}
                                         className="btn btn-secondary !min-h-[26px] px-3 text-label-xs font-black uppercase tracking-widest text-accent-2 border-accent-2/30 bg-accent-2/5"
                                       >
-                                        Merge_Next
+                                        Merge Scenes
                                       </button>
                                     )}
                                     <button
@@ -5231,7 +5300,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
 
                   {scriptRunsLoading ? (
                     <div className="p-12 text-center animate-pulse">
-                      <p className="text-label font-mono text-muted uppercase tracking-widest">Querying_Research_Datastore...</p>
+                      <p className="text-label font-mono text-muted tracking-wide">Querying Research Datastore...</p>
                     </div>
                   ) : (
                     <div className="space-y-6">
@@ -5553,7 +5622,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
         />
 
         <SectionLinkCard
-          eyebrow="Usage And Cost"
+          eyebrow="Usage & Cost"
           description="Review spend, usage events, and settled provider costs for this project."
           status="Check spend and usage while building ads."
           sectionShell
@@ -5587,14 +5656,20 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                       </div>
                     )}
                   </div>
-                  <div className={`app-chip ${
-                    job.status === 'COMPLETED' ? 'app-chip--success' :
-                    job.status === 'FAILED' ? 'app-chip--danger' :
-                    job.status === 'RUNNING' ? 'app-chip--info' :
-                    ''
-                  }`}>
+                  <StatusChip
+                    variant={
+                      job.status === "COMPLETED"
+                        ? "success"
+                        : job.status === "FAILED"
+                          ? "danger"
+                          : job.status === "RUNNING"
+                            ? "running"
+                            : "info"
+                    }
+                    className={job.status === "PENDING" ? "opacity-60" : ""}
+                  >
                     {job.status}
-                  </div>
+                  </StatusChip>
                 </div>
               );
             })}

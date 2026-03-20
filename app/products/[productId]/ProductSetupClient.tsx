@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import GlobalNavMenu from "@/components/GlobalNavMenu";
 import { EmptyState, PageHeader, SectionCard } from "@/components/ui";
 
 export type ProductSetupData = {
@@ -541,6 +542,7 @@ export function ProductSetupClient({ product }: { product: ProductSetupData }) {
 
   return (
     <div className="px-8 py-8 max-w-7xl mx-auto space-y-8">
+      <GlobalNavMenu projectId={product.project.id} />
       <PageHeader
         backHref={`/projects/${product.project.id}`}
         backLabel="Back to Project"
