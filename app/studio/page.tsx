@@ -50,11 +50,12 @@ export default function StudioHomePage() {
 
   return (
     <>
+      <GlobalNavMenu offsetTop="top-24" />
       <StudioHeader />
       <div className="px-8 py-8 max-w-7xl mx-auto space-y-8">
-        <GlobalNavMenu offsetTop="top-14" />
         <PageHeader
           title="Victora Studio"
+          description="Manage projects, monitor jobs, and keep production moving."
         />
         <WhoAmI />
 

@@ -1,9 +1,9 @@
 import { prisma } from '@/lib/prisma';
 import { JobStatus } from '@prisma/client';
 import { notFound } from 'next/navigation';
-import GlobalNavMenu from '@/components/GlobalNavMenu';
 import { ProjectProductsPanel } from '@/components/ProjectProductsPanel';
 import { ProjectSettingsPanel } from '@/components/ProjectSettingsPanel';
+import GlobalNavMenu from "@/components/GlobalNavMenu";
 import { PageHeader, SectionCard, SectionLinkCard } from '@/components/ui';
 import { getJobTypeLabel } from '@/lib/jobLabels';
 
@@ -103,17 +103,25 @@ export default async function ProjectDashboardPage({ params }: Params) {
   ];
 
   return (
-    <div className="px-8 py-8 max-w-7xl mx-auto space-y-10">
+    <>
       <GlobalNavMenu projectId={projectId} />
-      <SectionCard padding="lg">
-        <PageHeader
-          eyebrow="Project Overview"
-          title={project.name}
-        />
-        <p className="text-body-sm font-mono text-muted mt-4">
-          ID: {project.id} · Updated {dateFormatter.format(project.updatedAt)}
-        </p>
-      </SectionCard>
+      <div className="px-8 py-8 max-w-7xl mx-auto space-y-10">
+        <a
+          href="/studio"
+          className="text-label font-mono text-muted hover:text-white uppercase tracking-widest transition-colors inline-block"
+        >
+          ← Back to Studio
+        </a>
+        <SectionCard padding="lg">
+          <PageHeader
+            eyebrow="Project Overview"
+            title={project.name}
+            description={project.description || 'No description provided yet.'}
+          />
+          <p className="text-body-sm font-mono text-muted mt-4">
+            ID: {project.id} · Updated {dateFormatter.format(project.updatedAt)}
+          </p>
+        </SectionCard>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {stats.map(stat => (
@@ -217,6 +225,7 @@ export default async function ProjectDashboardPage({ params }: Params) {
           </div>
         )}
       </div>
-    </div>
+      </div>
+    </>
   );
 }

@@ -1,79 +1,63 @@
 # RLS Disclosure
 
-This document clarifies the current tenant-isolation enforcement model for buyer diligence.
+This document is the canonical buyer-facing statement about row-level security (RLS) in the current repository.
 
-## Short version
+## Current truth
 
-Current active isolation control:
-- application-layer ownership checks and project-scoped queries
+The correct current statement is:
 
-Current RLS posture:
-- RLS is referenced historically as installed
-- RLS is **not** the control this repo currently relies on as the active enforcement mechanism
-- production/staging RLS enforcement has not been repo-verified in this codebase audit
+> RLS may exist historically or in some deployed database environments, but it is not the currently relied-upon, repo-proven tenant-isolation control for buyer diligence purposes.
 
-## What is actively enforcing access today
-
-The primary enforcement mechanism is the application layer:
-
-- session/auth checks
-- project ownership checks
-- route-level scoping by `projectId`
-- route-level scoping by `userId` where applicable
-- selective `404` behavior on missing/forbidden resources in several sensitive routes
-
-Examples in the current repo include:
-
-- `requireProjectOwner404`
-- `requireProjectOwner`
-- job reads scoped by `(id, userId)` or `(projectId, userId, jobId)`
-
-This means the real tenant boundary today is enforced in API code, not by a documented, repo-verifiable database RLS control.
-
-## What “RLS installed” means here
-
-The security checklist historically marks:
-
-- “RLS policy layer installed (functions + policies present in DB)”
-
-But from the repo alone:
-
-- the checked-in code does not provide enough evidence to independently confirm active deployed RLS enforcement
-- the current application architecture documents app-layer checks as the practical isolation mechanism
-
-Therefore the correct disclosure to a buyer is:
-
-> The platform may have RLS-related work historically installed in the database environment, but the active and relied-upon isolation control in the current system is application-layer ownership enforcement.
-
-## What this means for diligence
-
-Buyer should evaluate the platform as:
+For buyer diligence, the platform should currently be described as:
 
 - app-layer enforced multitenancy
-- not DB-layer enforced multitenancy for diligence purposes unless the deployed database is separately validated
+- not DB-layer-proven multitenancy
 
-That distinction matters because:
+## What is proven today
 
-- app-layer checks can be strong and deliberate
-- but they are not the same thing as independently enforced row-level database isolation
+The current proven active isolation control is the application layer:
 
-## Current buyer-safe statement
+- authenticated session checks
+- project ownership checks
+- project-scoped queries
+- user-scoped queries on some job reads
+- selective `404` masking on some sensitive routes
 
-The most accurate current statement is:
+That is the control supported by the checked-in code and the current buyer-grade docs.
 
-> Tenant isolation is enforced primarily through authenticated API ownership checks and project-scoped queries. RLS should not be represented as the active isolation control unless it is independently validated in the deployed database environment.
+## What RLS is not being claimed to be
 
-## What remains open
+This repository should **not** currently claim any of the following without separate deployed-environment evidence:
 
-These items remain open or not fully verified:
+- that RLS is the active relied-upon tenant-isolation control
+- that staging RLS enforcement has been verified
+- that production RLS enforcement has been verified
+- that app session context is proven to map into DB-level policy enforcement
+- that deployed RLS policies have been fully documented and validated for a buyer
 
-- confirm RLS is enabled in staging and production
-- confirm application session context is correctly mapped into DB-level enforcement
-- run cross-tenant negative tests with RLS expected on
-- document the deployed policies and validation evidence
+## Why this disclosure is conservative
 
-## Why this disclosure exists
+The repo contains historical RLS references, but not enough checked-in evidence to close buyer-grade proof from code alone.
 
-This document is intentionally conservative.
+Current repo limitations include:
 
-It is meant to prevent overstating the platform’s database isolation posture during a sale, licensing process, or buyer diligence review.
+- no buyer-grade checked-in proof of deployed policy inventory
+- no repo-verifiable proof that staging/prod enforcement has been validated
+- no repo-verifiable proof that session context is being applied into DB-level enforcement
+
+Because of that, the buyer-safe posture is:
+
+> Treat RLS as historical, partial, or environment-specific work unless it is separately proven outside the repo. Treat application-layer ownership enforcement as the current proven control.
+
+## What a stronger future statement would require
+
+This document can only be upgraded to “RLS is deployed and proven” if the following evidence exists:
+
+- the deployed policy set is documented
+- staging and production enforcement is validated
+- the app-to-DB session-context mapping is documented and verified
+- negative cross-tenant tests are run with expected DB-level deny behavior
+
+Until then, the correct statement remains:
+
+> RLS is not the currently relied-upon proven control in this repository audit.

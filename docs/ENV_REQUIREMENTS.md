@@ -10,6 +10,205 @@ It is intentionally not a dump of every tuning flag. It focuses on:
 - vars required for any job that talks to an external provider
 - what breaks if the var is missing
 
+## How to use this document during transfer
+
+Read this document in two layers:
+
+1. use the env tiers below to understand what is needed for:
+   - buyer demo / deterministic evaluation
+   - minimum production deployment
+   - full feature deployment
+2. use the provider-specific sections after that to see:
+   - which providers are essential vs optional
+   - which exact jobs and features are disabled without each provider
+
+This document is intended to reduce handoff ambiguity. Missing provider keys should be treated as intentionally disabling the affected flows, not as a vague partial-configuration state.
+
+## Evaluation tiers
+
+Use the env requirements in three different ways depending on what the buyer is trying to validate.
+
+### 1. Minimum demo env
+
+Use this when the goal is:
+
+- local bring-up
+- UI access
+- deterministic golden evaluation
+- basic repo walkthrough
+
+Essential:
+
+- `DATABASE_URL`
+- `NEXTAUTH_SECRET`
+- `NEXTAUTH_URL` or `APP_URL`
+- `AUTH_SECRET`
+- `DEBUG_ADMIN_TOKEN`
+
+Expected limitations:
+
+- no real provider-backed research or generation flows
+- no real storage-backed upload/media validation
+- billing/provider integrations may remain untested
+
+Best use case:
+
+- deterministic buyer evaluation
+- repo walkthrough
+- basic local verification without standing up the full provider stack
+
+### 2. Minimum production env
+
+Use this when the goal is:
+
+- deploy the app and worker in a realistic production shape
+- support login, persistence, and the configured subset of live features
+
+Essential baseline:
+
+- all core runtime/auth vars
+- queue/backend vars appropriate to the chosen queue mode
+- storage vars for any flows that persist media or uploads
+- provider vars only for the features intended to be live
+
+Important note:
+
+- production readiness does not require every optional provider
+- but any feature whose provider is missing should be considered intentionally disabled, not partially working
+
+Best use case:
+
+- transfer where the buyer wants a live deployment quickly
+- production deployment with a deliberately limited feature set enabled first
+
+### 3. Full feature env
+
+Use this when the goal is:
+
+- exercise the full research + creative pipeline end to end
+- validate the handoff as a fully transferable operating system, not just a deterministic contract repo
+
+This requires:
+
+- core runtime/auth vars
+- all active storage buckets
+- all research providers
+- all creative/generation providers
+- billing vars if billing is expected to operate
+
+Best use case:
+
+- full pipeline transfer
+- buyer validation of research + creative + billing behavior as an integrated product
+
+---
+
+## Provider criticality summary
+
+### Essential for any serious runtime
+
+- `DATABASE_URL`
+- `NEXTAUTH_SECRET`
+- `NEXTAUTH_URL`
+- `AUTH_SECRET`
+
+Without these:
+
+- the app cannot authenticate or persist data correctly
+
+### Essential for deterministic buyer demo
+
+- the core runtime/auth vars above
+- `DEBUG_ADMIN_TOKEN`
+
+Without this:
+
+- golden/security-sweep style evaluation flows may be harder or impossible to exercise as documented
+
+### Essential for full research feature coverage
+
+- `APIFY_API_TOKEN`
+- `ASSEMBLYAI_API_KEY`
+- `GOOGLE_CLOUD_VISION_API_KEY`
+- `ANTHROPIC_API_KEY`
+
+Without these:
+
+- ad collection, transcript extraction, OCR, customer analysis, pattern analysis, and several research-derived flows are disabled or fail fast
+
+### Essential for full creative feature coverage
+
+- `KIE_API_KEY`
+- `KIE_API_BASE_URL`
+- `KIE_CREATE_PATH`
+- `KIE_STATUS_PATH`
+- `KIE_LIVE_MODE`
+- `FAL_API_KEY`
+- `ELEVENLABS_API_KEY`
+- `ANTHROPIC_API_KEY`
+
+Without these:
+
+- first-frame generation, video generation, merge/reviewer flows, audio swap, and several generation features are disabled or fail fast
+
+### Essential for billing-enabled production
+
+- `STRIPE_SECRET_KEY`
+- `STRIPE_WEBHOOK_SECRET`
+- `STRIPE_PRICE_GROWTH`
+- `STRIPE_PRICE_SCALE`
+- `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
+- `APP_URL`
+
+Without these:
+
+- billing flows should be treated as disabled
+
+### Optional or conditional
+
+- Redis vars if `QUEUE_BACKEND=redis`
+- public-base URL overrides for custom CDN/object-store setups
+- model override vars
+- bucket endpoint/region overrides when using non-default bucket layouts
+
+These are not globally required, but they become required when the corresponding deployment shape or feature choice is active.
+
+## Feature disablement summary
+
+If these provider groups are missing, the following feature groups should be treated as disabled:
+
+### Missing research providers
+
+If `APIFY_API_TOKEN`, `ASSEMBLYAI_API_KEY`, `GOOGLE_CLOUD_VISION_API_KEY`, or `ANTHROPIC_API_KEY` are missing:
+
+- customer research is incomplete or fails
+- ad collection/transcripts/OCR/quality flows are incomplete or fail
+- customer analysis and pattern analysis are incomplete or fail
+- research-derived creative context becomes degraded or unavailable
+
+### Missing creative providers
+
+If `ANTHROPIC_API_KEY`, `KIE_*`, `FAL_API_KEY`, or `ELEVENLABS_API_KEY` are missing:
+
+- script/storyboard/prompt generation may fail
+- first-frame and video generation may fail
+- merge/reviewer flows may fail
+- character voice and audio-swap flows may fail
+
+### Missing storage configuration
+
+If required S3 vars are missing for the selected flow:
+
+- uploads, mirrored media, frames, trimmed clips, or avatar outputs fail
+- some UI flows may load metadata but fail on actual file persistence
+
+### Missing billing configuration
+
+If Stripe vars are missing:
+
+- billing and subscription flows should be treated as disabled
+- app/runtime flows that do not depend on billing can still be evaluated separately
+
 ## Core runtime
 
 | Env var | Maps to | Required when | What breaks if missing |
@@ -215,15 +414,70 @@ These are only needed if you use custom public bases or S3-compatible endpoints.
 | `S3_TRIMMED_CLIPS_PUBLIC_BASE_URL` | Public base for trimmed clips | Custom CDN/fronted bucket | Trimmed clip URLs use raw S3 URL instead. |
 | `S3_AVATAR_CHARACTER_GENERATION_PUBLIC_BASE_URL` | Public base for avatar assets | Custom CDN/fronted bucket | Avatar URLs use raw S3 URL instead. |
 
-## Recommended minimum `.env` for a buyer
+## Minimum env profiles
 
-This is the practical minimum for the platform to function across its current core flows:
+### Minimum demo env
+
+This is the smallest practical env for buyer-oriented local bring-up and deterministic evaluation:
+
+```env
+DATABASE_URL=
+NEXTAUTH_URL=http://localhost:3000
+NEXTAUTH_SECRET=
+AUTH_SECRET=
+DEBUG_ADMIN_TOKEN=
+QUEUE_BACKEND=db
+```
+
+What this supports:
+
+- app startup
+- login/session behavior
+- deterministic golden-style evaluation paths
+- repo walkthrough without live external providers
+
+What this does not support:
+
+- real provider-backed research/generation
+- realistic storage validation
+- billing validation
+
+### Minimum production env
+
+This is the practical baseline for a deployment that intends to run real application flows, but not necessarily every feature:
 
 ```env
 DATABASE_URL=
 NEXTAUTH_URL=
 NEXTAUTH_SECRET=
 AUTH_SECRET=
+QUEUE_BACKEND=db
+APP_URL=
+
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+AWS_S3_REGION=
+AWS_S3_BUCKET=
+AWS_S3_BUCKET_PRODUCT_SETUP=
+```
+
+Add these only for the features you intend to enable:
+
+- research providers for research jobs
+- creative providers for generation jobs
+- Stripe vars for billing
+- additional S3 bucket vars for frames, trimmed clips, and avatar separation
+
+### Full feature env
+
+This is the practical minimum for the platform to function across its current core flows end to end:
+
+```env
+DATABASE_URL=
+NEXTAUTH_URL=
+NEXTAUTH_SECRET=
+AUTH_SECRET=
+DEBUG_ADMIN_TOKEN=
 QUEUE_BACKEND=db
 
 AWS_ACCESS_KEY_ID=
@@ -259,6 +513,19 @@ NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=
 APP_URL=
 ```
 
+What this supports:
+
+- full research pipeline coverage
+- full creative pipeline coverage
+- billing-enabled runtime if Stripe is configured correctly
+
+What still depends on buyer ops beyond env:
+
+- app + worker deployment
+- provider-account ownership transfer
+- secret rotation
+- production hardening and monitoring
+
 ## Current bucket mapping in this repo
 
 As of the current code:
@@ -280,4 +547,3 @@ These exist, but they are tuning or operational knobs:
 - runtime timeouts
 - dev/test flags
 - deployment mode toggles
-
