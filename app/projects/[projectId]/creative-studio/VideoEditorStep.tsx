@@ -21,6 +21,7 @@ type Props = {
     sceneId: string;
     sceneNumber: number;
     videoUrl: string | null;
+    videoVersionToken?: string | number | null;
     beatLabel: string;
     vo: string;
     durationSec?: number;
@@ -62,6 +63,17 @@ function buildDefaultClips(scenes: Props["scenes"]): SceneClip[] {
       trimStart: 0,
       trimEnd: s.durationSec ?? 8,
     }));
+}
+
+function appendVideoVersionToken(url: string, versionToken?: string | number | null): string {
+  const normalizedUrl = String(url ?? "").trim();
+  if (!normalizedUrl) return "";
+  if (versionToken === null || versionToken === undefined || versionToken === "") {
+    return normalizedUrl;
+  }
+
+  const separator = normalizedUrl.includes("?") ? "&" : "?";
+  return `${normalizedUrl}${separator}v=${encodeURIComponent(String(versionToken))}`;
 }
 
 function TrimScrubber({
@@ -296,6 +308,10 @@ export function VideoEditorStep({ storyboardId, projectId, scenes, onComplete }:
   const hydratedStorageKeyRef = useRef<string | null>(null);
 
   const activeClip = clips.find((c) => c.sceneId === activeSceneId) ?? null;
+  const activeSceneMeta = scenes.find((scene) => scene.sceneId === activeSceneId) ?? null;
+  const activeClipPlaybackUrl = activeClip
+    ? appendVideoVersionToken(activeClip.videoUrl, activeSceneMeta?.videoVersionToken)
+    : "";
   const includedClips = clips.filter((c) => c.included);
   const totalTrimmedDuration = includedClips.reduce((sum, c) => sum + (c.trimEnd - c.trimStart), 0);
 
@@ -437,7 +453,7 @@ export function VideoEditorStep({ storyboardId, projectId, scenes, onComplete }:
       }
     }, 50);
     return () => clearTimeout(t);
-  }, [activeSceneId]);
+  }, [activeSceneId, activeClip?.trimStart, activeClipPlaybackUrl]);
 
   // Stop playback at trimEnd
   useEffect(() => {
@@ -609,8 +625,8 @@ export function VideoEditorStep({ storyboardId, projectId, scenes, onComplete }:
               >
                 <video
                   ref={videoRef}
-                  key={activeClip.sceneId}
-                  src={activeClip.videoUrl}
+                  key={`${activeClip.sceneId}:${activeClipPlaybackUrl}`}
+                  src={activeClipPlaybackUrl}
                   playsInline
                   controls
                   style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}

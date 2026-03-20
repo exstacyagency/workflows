@@ -85,12 +85,6 @@ export default function ProjectsPage() {
     <>
       <GlobalNavMenu />
       <div className="px-8 py-8 max-w-7xl mx-auto space-y-8">
-        <a
-          href="/studio"
-          className="text-label font-mono text-muted hover:text-white uppercase tracking-widest transition-colors inline-block"
-        >
-          ← Back to Studio
-        </a>
         <PageHeader
           title="Projects"
           actions={<CreateProjectButton />}

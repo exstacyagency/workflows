@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { getJobTypeLabel } from "@/lib/jobLabels";
-import { EmptyState, PageHeader, SectionCard, StatusChip } from "@/components/ui";
+import { EmptyState, LoadingState, PageHeader, SectionCard, StatusChip } from "@/components/ui";
 
 type JobStatus = "NOT_STARTED" | "PENDING" | "RUNNING" | "COMPLETED" | "FAILED";
 type JobType = "CUSTOMER_ANALYSIS";
@@ -139,14 +139,7 @@ export default function CustomerAnalysisJobsPage() {
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-bg px-8 py-8 text-white">
-        <div className="flex min-h-[60vh] flex-col items-center justify-center space-y-4">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent/20 border-t-accent" />
-          <p className="text-label font-mono uppercase tracking-[0.3em] text-muted">Fetching analysis history...</p>
-        </div>
-      </div>
-    );
+    return <LoadingState title="Loading analysis history" variant="page" />;
   }
 
   if (error) {

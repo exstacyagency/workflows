@@ -1,10 +1,10 @@
 # Victora — AI-Powered Ad Intelligence & Creative Automation Platform
 
 ## Headline
-The only platform that connects ad intelligence and creative production end-to-end — built for DTC brands that compete on creative velocity.
+An end-to-end ad intelligence and creative production platform built for DTC brands that compete on creative velocity.
 
 ## Short Description (for listing preview)
-Victora is a fully built, production-ready SaaS platform that runs an end-to-end advertising pipeline: from customer sentiment collection + analysis, ad collection + analysis, and product data collection to script generation, storyboard creation, and video ad output with built in editor. Security audited with billing infrastructure, job orchestration, quota enforcement, and multi-provider AI integrations production-hardened and included.
+Victora is a fully built pre-revenue SaaS platform that runs an end-to-end advertising pipeline: from customer sentiment collection and analysis, ad collection and analysis, and product data collection to script generation, storyboard creation, and video ad output with a built-in editing workflow. Security posture is documented, with billing infrastructure, job orchestration, quota enforcement, and multi-provider AI integrations included.
 
 ## Full Description
 
@@ -22,7 +22,7 @@ Most ad intelligence tools are data aggregators. Victora is a synthesis engine. 
 The creative side is built for control and iteration. Winning scripts become reusable blueprints — when an angle performs, the hook structure, pacing, and messaging are extracted and saved so every future run launches from a proven foundation. Storyboards are fully configurable before a single frame is generated, giving users complete control over shot composition, visual direction, and scene order. Every scene produces a reference image for approval before video generation begins — what gets approved is what gets rendered, eliminating wasted generation cycles on a direction that was wrong from the start. And the final video is assembled, trimmed, and merged inside the platform. The output isn't a folder of clips. It's a finished ad.
 
 ### What's Built
-This is not a prototype or MVP. Victora is a production-ready platform with:
+This is not a prototype or MVP. Victora is a fully built platform with:
 
 **Research Pipeline**
 - Customer review ingestion across main product + up to 3 competitors
@@ -38,7 +38,7 @@ This is not a prototype or MVP. Victora is a production-ready platform with:
 - Video prompt generation per scene
 - First and last frame image generation via latest AI image models
 - Video generation via latest AI video models
-- Built in video editor + delivery mechanism
+- Built-in trim/merge editing workflow before export
 
 **Platform Infrastructure**
 - Full async job queue with background worker
@@ -57,13 +57,13 @@ This is not a prototype or MVP. Victora is a production-ready platform with:
 - Auth: NextAuth.js with JWT sessions
 - AI: Anthropic Claude (multi-model, analysis + generation)
 - Video: KIE.ai (generation), Fal.ai (merge)
-- Research: Apify, Reddit API, AssemblyAI, Google Cloud Vision
+- Research: Apify, Reddit/community data ingestion, AssemblyAI, Google Cloud Vision
 - Storage: AWS S3 (multi-bucket architecture)
 - Billing: Stripe
 
 **Security & Code Quality**
-- Full security audit completed prior to listing
-- All API routes enforce session auth and project ownership
+- Security review and hardening pass completed prior to listing
+- Core project and job-scoped routes enforce session auth and project ownership
 - No raw SQL — Prisma ORM throughout
 - Stripe webhook signature verification
 - Secrets fail-closed at startup
@@ -71,14 +71,15 @@ This is not a prototype or MVP. Victora is a production-ready platform with:
 - Admin routes require token authentication
 - Destructive scripts blocked in production
 
-### Why This Is Worth $100k
+### Why The Asking Price
 The AI ad creative market isn't coming — it's here, and it's moving fast. The brands that will dominate performance marketing over the next three years aren't waiting for better tools. They're adopting them now, and the platforms they adopt first are the ones they'll build workflows around, integrate into their operations, and stay loyal to. The window to be that platform is open. But it won't stay that way.
 
-Victora is that infrastructure, already built. Not a prototype. Not a proof of concept. A production-hardened platform that has been through a full security audit, with every provider integration wired and tested, a billing stack that handles real subscriptions and spend caps, a job orchestration system managing async workloads across a seven-provider stack, and a frontend a paying customer can log into on day one. Replicating this independently would take a senior development team the better part of a year and a budget that exceeds this asking price — and they'd still be carrying security debt and integration risk that takes another cycle to resolve. All of that is already behind Victora.
+Victora is that infrastructure, already built. Not a prototype. Not a proof of concept. A substantial end-to-end platform with documented security posture, provider integrations across the core pipeline, a billing stack that handles subscriptions and spend caps, a job orchestration system managing async workloads across a multi-provider stack, and a frontend a buyer can commercialize without starting from zero. Replicating this independently would take a senior development team significant time and a budget that can exceed this asking price — while still carrying integration and hardening risk that would take additional cycles to resolve.
 
 A buyer who builds this independently doesn't just spend more money; They spend it while the market moves. Every month spent in development is a month a competitor is onboarding customers, building brand recognition, and establishing customer relationships that are hard to close later.
 
-The difference isn't just what's built. It's what's possible on day one. A buyer isn't acquiring a tool they need to build a business around — they're acquiring the infrastructure to go straight to market in a category that's moving faster than most teams can build. What remains is execution.
+The difference isn't just what's built. It's what a buyer can accelerate immediately. A buyer isn't acquiring a concept they need to turn into software — they're acquiring a substantial foundation
+for going to market in a category that's moving faster than most teams can build. What remains is commercialization, deployment refinement, and execution.
 
 ### Growth Opportunities
 - **Credit System** — usage-based billing with per-action credit consumption. Users purchase credits via one-time top-up packages or as part of a monthly membership tier.
@@ -108,7 +109,7 @@ The difference isn't just what's built. It's what's possible on day one. A buyer
 - **Autonomous Social Agent** — a deployed agent that operates brand X accounts autonomously. Builds organic social presence, engages with relevant conversations, and promotes the platform through natural interaction — not scheduled posts. Runs continuously without operator input.
 
 ### What's Included in the Sale
-- Complete, production-ready codebase — Next.js 15 app, background worker, and all supporting infrastructure code
+- Complete codebase — Next.js 15 app, background worker, and supporting infrastructure code
 - Registered domain with a fully designed, deployed web presence — branded landing page already live, ready to acquire customers from day one
 - Prisma schema with full migration history — deploy to any Postgres provider in minutes
 - .env.example with every environment variable documented

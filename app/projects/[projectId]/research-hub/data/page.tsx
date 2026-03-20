@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
-import { EmptyState, PageHeader, SectionCard, StatusChip } from "@/components/ui";
+import { EmptyState, LoadingState, PageHeader, SectionCard, StatusChip } from "@/components/ui";
 
 type JobStatus = "NOT_STARTED" | "PENDING" | "RUNNING" | "COMPLETED" | "FAILED";
 
@@ -698,10 +698,7 @@ export default function ResearchHubDataPage() {
       />
 
       {loading && (
-        <div className="flex flex-col items-center justify-center min-h-[40vh] space-y-4">
-          <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
-          <p className="text-xs font-mono text-muted uppercase tracking-widest">Querying Datastore...</p>
-        </div>
+        <LoadingState title="Querying datastore" variant="section" />
       )}
 
       {!loading && error && (

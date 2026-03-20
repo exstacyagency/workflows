@@ -5,13 +5,13 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { JobStatus, JobType } from "@prisma/client";
-import toast, { Toaster } from "react-hot-toast";
+import toast from "react-hot-toast";
 import Link from "next/link";
 import RunManagementModal from "@/components/RunManagementModal";
 import { analyzeSwipeTranscript, type SwipeAnalysis } from "@/lib/analyzeSwipeTranscript";
 import { VideoEditorStep } from "./VideoEditorStep";
 import GlobalNavMenu from "@/components/GlobalNavMenu";
-import { EmptyState, PageHeader, SectionCard, SectionLinkCard, StatusChip } from "@/components/ui";
+import { EmptyState, LoadingState, PageHeader, SectionCard, SectionLinkCard, StatusChip } from "@/components/ui";
 
 type Job = {
   id: string;
@@ -1194,6 +1194,17 @@ function getSummaryText(resultSummary: unknown, job?: Job | null): string {
   function getSceneVideoUrl(panel: StoryboardPanel | null | undefined): string {
     if (!panel) return "";
     return String(panel.videoUrl || (panel.rawJson as any)?.videoUrl || (panel.rawJson as any)?.video_url || "").trim();
+  }
+
+  function appendVideoVersionToken(url: string, versionToken?: string | number | null): string {
+    const normalizedUrl = String(url ?? "").trim();
+    if (!normalizedUrl) return "";
+    if (versionToken === null || versionToken === undefined || versionToken === "") {
+      return normalizedUrl;
+    }
+
+    const separator = normalizedUrl.includes("?") ? "&" : "?";
+    return `${normalizedUrl}${separator}v=${encodeURIComponent(String(versionToken))}`;
   }
 
 function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPanel {
@@ -2707,6 +2718,25 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
   const latestVideoPromptJobSignature = latestVideoPromptJob
     ? `${latestVideoPromptJob.id}:${latestVideoPromptJob.status}:${latestVideoPromptJob.updatedAt}`
     : "";
+  const latestVideoGenerationJob = getJobsForType(JobType.VIDEO_GENERATION)[0];
+  const latestVideoGenerationJobSignature = latestVideoGenerationJob
+    ? `${latestVideoGenerationJob.id}:${latestVideoGenerationJob.status}:${latestVideoGenerationJob.updatedAt}`
+    : "";
+  const latestVideoGenerationBySceneInActiveRun = useMemo(() => {
+    const latestByScene = new Map<number, string>();
+    for (const job of jobsInActiveRun) {
+      if (job.type !== JobType.VIDEO_GENERATION) continue;
+      if (job.status !== JobStatus.COMPLETED) continue;
+      const sceneNumber = Number((job.payload as any)?.sceneNumber);
+      if (!Number.isInteger(sceneNumber) || sceneNumber < 1) continue;
+      const updatedAt = String(job.updatedAt ?? job.createdAt ?? "").trim();
+      const previous = latestByScene.get(sceneNumber) ?? "";
+      if (!previous || new Date(updatedAt).getTime() >= new Date(previous).getTime()) {
+        latestByScene.set(sceneNumber, updatedAt);
+      }
+    }
+    return latestByScene;
+  }, [jobsInActiveRun]);
 
   const storyboardPanelsForSceneFlow = useMemo(() => {
     if (!latestCompletedStoryboardId) return [] as StoryboardPanel[];
@@ -3133,7 +3163,8 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
     if (
       !latestStoryboardJobSignature &&
       !latestVideoImageJobSignature &&
-      !latestVideoPromptJobSignature
+      !latestVideoPromptJobSignature &&
+      !latestVideoGenerationJobSignature
     ) {
       return;
     }
@@ -3143,6 +3174,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
     latestStoryboardJobSignature,
     latestVideoImageJobSignature,
     latestVideoPromptJobSignature,
+    latestVideoGenerationJobSignature,
     storyboardPanelId,
   ]);
 
@@ -3836,11 +3868,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
   );
 
   if (loading) {
-    return (
-      <div className="px-6 py-6">
-        <p className="text-sm text-muted">Loading creative studio...</p>
-      </div>
-    );
+    return <LoadingState title="Loading creative studio" variant="page" />;
   }
 
   return (
@@ -3848,8 +3876,6 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
       <GlobalNavMenu projectId={projectId} />
       <div className="px-8 py-8 max-w-7xl mx-auto space-y-10">
         <PageHeader
-          backHref={`/projects/${projectId}`}
-          backLabel="Back to Project"
           title="Creative Studio"
           description="Script generation, storyboards, prompts, and production output."
           actions={anyRunning ? <StatusChip variant="running">Running</StatusChip> : undefined}
@@ -4193,6 +4219,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                       const hasImages = Boolean(imageJobForScene && (firstFrameImageUrl || lastFrameImageUrl));
                       const videoUrl = getSceneVideoUrl(panel);
                       const hasVideo = Boolean(videoUrl);
+                      const videoVersionToken = latestVideoGenerationBySceneInActiveRun.get(sceneNumber) ?? null;
                       return {
                         sceneNumber,
                         panel: panel ?? null,
@@ -4202,6 +4229,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                         hasImages,
                         hasVideo,
                         videoUrl: videoUrl || null,
+                        videoVersionToken,
                         locked: step.locked || !panel,
                         lockReason: !panel
                           ? "Scene missing from storyboard."
@@ -4483,15 +4511,6 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                           </div>
                         </div>
                       )}
-                      {hasSelectedRunWithJobs && step.status === "failed" && Boolean(step.lastJob?.error) && (
-                        <SectionCard className="flex items-start gap-4 border-danger/30 bg-danger/5" padding="sm">
-                          <div className="w-2 h-2 rounded-full bg-danger mt-1 animate-pulse shrink-0" />
-                          <div className="flex-1">
-                            <p className="text-label font-mono text-danger uppercase tracking-widest font-bold mb-1">Error</p>
-                            <p className="text-body-sm font-mono text-danger leading-relaxed">{getErrorText(step.lastJob?.error)}</p>
-                          </div>
-                        </SectionCard>
-                      )}
                     </div>
 
               {step.key === "video_images" && (
@@ -4499,9 +4518,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                   {!storyboardId ? (
                     <EmptyState title="Storyboard data is missing" variant="error" />
                   ) : storyboardPanelLoading && storyboardMatchesCurrentFetch ? (
-                    <div className="p-16 text-center animate-pulse">
-                      <p className="text-label font-mono text-muted uppercase tracking-widest">Loading scene data...</p>
-                    </div>
+                    <LoadingState title="Loading scene data" variant="inline" minHeightClassName="py-16" />
                   ) : storyboardPanelError && storyboardMatchesCurrentFetch ? (
                     <SectionCard className="text-center text-danger text-label font-mono uppercase tracking-widest border-danger/20 bg-danger/5" padding="lg">
                       Error: {storyboardPanelError}
@@ -4597,9 +4614,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                   {!storyboardId ? (
                     <EmptyState title="Storyboard data is missing" variant="error" />
                   ) : storyboardPanelLoading && storyboardMatchesCurrentFetch ? (
-                    <div className="p-16 text-center animate-pulse">
-                      <p className="text-label font-mono text-muted uppercase tracking-widest">Loading video data...</p>
-                    </div>
+                    <LoadingState title="Loading video data" variant="inline" minHeightClassName="py-16" />
                   ) : storyboardPanelError && storyboardMatchesCurrentFetch ? (
                     <SectionCard className="text-center text-danger text-label font-mono uppercase tracking-widest border-danger/20 bg-danger/5" padding="lg">
                       Error: {storyboardPanelError}
@@ -4611,6 +4626,10 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                           const isGenerating = videoGeneratingNumber === row.sceneNumber;
                           const hasVideo = row.hasVideo;
                           const videoUrl = String(row.videoUrl || "").trim();
+                          const previewVideoUrl = appendVideoVersionToken(
+                            videoUrl,
+                            row.videoVersionToken,
+                          );
                           const isReviewOpen = row.isVideoReviewOpen;
                           return (
                             <SectionCard
@@ -4653,7 +4672,8 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                                 {isReviewOpen && hasVideo && (
                                   <div className="pt-2 animate-in fade-in zoom-in-95 duration-300">
                                     <video
-                                      src={videoUrl}
+                                      key={`${row.sceneNumber}:${previewVideoUrl}`}
+                                      src={previewVideoUrl}
                                       controls
                                       className="w-full aspect-[9/16] rounded-card border border-line shadow-inner bg-panel"
                                     />
@@ -4684,6 +4704,8 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                              sceneId: String((p as any).sceneId ?? p.id ?? p.sceneNumber ?? ""),
                              sceneNumber: Number(p.sceneNumber) || 0,
                              videoUrl: p.videoUrl,
+                             videoVersionToken:
+                               latestVideoGenerationBySceneInActiveRun.get(Number(p.sceneNumber) || 0) ?? null,
                              beatLabel: String(p.beatLabel ?? ""),
                              vo: String(p.vo ?? ""),
                              durationSec: typeof p.clipDurationSeconds === "number" ? p.clipDurationSeconds : undefined,
@@ -4700,9 +4722,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
               {step.key === "script" && step.status === "completed" && isScriptPanelOpen && (
                 <div className="mt-6 space-y-6 px-6 pb-6 animate-in fade-in slide-in-from-top-4 duration-500">
                   {scriptPanelLoading ? (
-                    <div className="p-16 text-center animate-pulse">
-                      <p className="text-label font-mono text-muted uppercase tracking-widest">Loading script...</p>
-                    </div>
+                    <LoadingState title="Loading script" variant="inline" minHeightClassName="py-16" />
                   ) : scriptPanelError ? (
                     <SectionCard className="text-center text-danger text-label font-mono uppercase tracking-widest border-danger/20 bg-danger/5" padding="lg">
                       Error: {scriptPanelError}
@@ -4777,9 +4797,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                   {!storyboardId ? (
                     <EmptyState title="Storyboard could not be loaded" variant="error" />
                   ) : storyboardPanelLoading && storyboardMatchesCurrentFetch ? (
-                    <div className="p-16 text-center animate-pulse">
-                      <p className="text-label font-mono text-muted uppercase tracking-widest">Loading storyboard...</p>
-                    </div>
+                    <LoadingState title="Loading storyboard" variant="inline" minHeightClassName="py-16" />
                   ) : storyboardPanelError && storyboardMatchesCurrentFetch ? (
                     <SectionCard className="text-center text-danger text-label font-mono uppercase tracking-widest border-danger/20 bg-danger/5" padding="lg">
                       Error: {storyboardPanelError}
@@ -4926,9 +4944,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                   {!storyboardId ? (
                     <EmptyState title="Storyboard data is missing" variant="error" />
                   ) : storyboardPanelLoading && storyboardMatchesCurrentFetch ? (
-                    <div className="p-16 text-center animate-pulse">
-                      <p className="text-label font-mono text-muted uppercase tracking-widest">Loading image prompts...</p>
-                    </div>
+                    <LoadingState title="Loading image prompts" variant="inline" minHeightClassName="py-16" />
                   ) : storyboardPanelError && storyboardMatchesCurrentFetch ? (
                     <div className="p-12 text-center text-danger text-label font-mono uppercase tracking-widest border border-danger/20 rounded-card bg-danger/5">
                       Error: {storyboardPanelError}
@@ -5057,9 +5073,7 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
                   {!storyboardId ? (
                     <EmptyState title="Storyboard data is missing" variant="error" />
                   ) : storyboardPanelLoading && storyboardMatchesCurrentFetch ? (
-                    <div className="p-16 text-center animate-pulse">
-                      <p className="text-label font-mono text-muted uppercase tracking-widest">Loading video prompts...</p>
-                    </div>
+                    <LoadingState title="Loading video prompts" variant="inline" minHeightClassName="py-16" />
                   ) : storyboardPanelError && storyboardMatchesCurrentFetch ? (
                     <div className="p-12 text-center text-danger text-label font-mono uppercase tracking-widest border border-danger/20 rounded-card bg-danger/5">
                       Error: {storyboardPanelError}
@@ -5635,8 +5649,6 @@ function normalizeStoryboardPanel(panel: unknown, index: number): StoryboardPane
           </div>,
           document.body,
         )}
-
-      <Toaster position="bottom-right" />
     </div>
   );
 }

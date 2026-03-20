@@ -2,7 +2,7 @@
 
 import { use, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { EmptyState, PageHeader, SectionCard } from "@/components/ui";
+import { EmptyState, LoadingState, PageHeader, SectionCard } from "@/components/ui";
 
 type DeadJob = {
   id: string;
@@ -227,9 +227,8 @@ export default function DeadLetterPage({
         </div>
 
         {loading ? (
-          <div className="px-5 py-8 text-center space-y-3">
-            <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin mx-auto" />
-            <p className="text-xs font-mono text-muted uppercase tracking-widest">Polling Queue...</p>
+          <div className="px-5 py-5">
+            <LoadingState title="Polling queue" variant="inline" minHeightClassName="py-8" />
           </div>
         ) : jobs.length === 0 ? (
           <div className="px-5 py-5">
