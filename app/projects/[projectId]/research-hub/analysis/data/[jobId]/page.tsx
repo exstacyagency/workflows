@@ -1,13 +1,12 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { useParams, useSearchParams } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { EmptyState, PageHeader, SectionCard, StatusChip } from '@/components/ui';
 
 export default function CustomerAnalysisDataPage() {
   const params = useParams();
-  const searchParams = useSearchParams();
   const projectId = params.projectId as string;
   const jobId = params.jobId as string;
 
@@ -18,11 +17,6 @@ export default function CustomerAnalysisDataPage() {
   const [inputsLoading, setInputsLoading] = useState(false);
   const [inputsError, setInputsError] = useState<string | null>(null);
   const [analysisInputs, setAnalysisInputs] = useState<any>(null);
-  const runIdFromUrl = searchParams.get('runId');
-  const researchHubBackHref = useMemo(() => {
-    const resolvedRunId = payload?.runId || runIdFromUrl;
-    return `/projects/${projectId}/research-hub${resolvedRunId ? `?runId=${resolvedRunId}` : ''}`;
-  }, [payload?.runId, projectId, runIdFromUrl]);
 
   useEffect(() => {
     async function loadAnalysis() {
@@ -78,7 +72,7 @@ export default function CustomerAnalysisDataPage() {
       <div className="min-h-screen bg-bg text-white px-8 py-8">
         <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
           <div className="w-8 h-8 border-2 border-accent/20 border-t-accent rounded-full animate-spin" />
-          <p className="text-label font-mono text-muted uppercase tracking-[0.3em] animate-pulse">Synthesizing Analysis...</p>
+          <p className="text-label font-mono text-muted uppercase tracking-[0.3em] animate-pulse">Synthesizing_Analysis...</p>
         </div>
       </div>
     );
@@ -87,7 +81,7 @@ export default function CustomerAnalysisDataPage() {
   if (error) {
     return (
       <div className="min-h-screen bg-bg text-white px-8 py-8 space-y-6">
-        <PageHeader backHref={researchHubBackHref} backLabel="Back to Research Hub" title="Customer Analysis Output" />
+        <PageHeader backHref={`/projects/${projectId}/research-hub`} backLabel="Back to Research Hub" title="Analysis Output" />
         <EmptyState title="Analysis Error" description={error} variant="error" />
       </div>
     );
@@ -97,15 +91,16 @@ export default function CustomerAnalysisDataPage() {
     <div className="min-h-screen bg-bg text-white">
       <div className="border-b border-line bg-panel backdrop-blur-md px-8 py-6">
         <PageHeader
-          backHref={researchHubBackHref}
+          backHref={`/projects/${projectId}/research-hub`}
           backLabel="Back to Research Hub"
-          title="Customer Analysis Output"
-          description="Job Type: Customer Analysis"
+          title="Synthesis Output"
+          description="Analysis Type: Audience Analysis"
           actions={
             <>
+              <StatusChip variant="success">{jobId.substring(0, 8)}</StatusChip>
             <button
               onClick={handleViewInputs}
-              className="btn btn-secondary !min-h-[36px] px-4 text-label font-bold uppercase tracking-widest"
+              className="btn btn-secondary !min-h-[40px] px-6 text-label font-bold uppercase tracking-widest"
             >
               {showInputs ? 'Hide Inputs' : 'View Inputs'}
             </button>
@@ -120,7 +115,7 @@ export default function CustomerAnalysisDataPage() {
                 a.click();
                 window.URL.revokeObjectURL(url);
               }}
-              className="btn btn-primary !min-h-[36px] px-4 text-label font-bold uppercase tracking-widest"
+              className="btn btn-primary !min-h-[40px] px-6 text-label font-bold uppercase tracking-widest"
             >
               Download JSON
             </button>

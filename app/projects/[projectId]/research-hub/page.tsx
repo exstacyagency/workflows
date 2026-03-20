@@ -457,12 +457,11 @@ export default function ResearchHubPage() {
     return `/projects/${projectId}/research/data${query ? `?${query}` : ""}`;
   }, [projectId, selectedProduct?.name, selectedProductId, selectedRunId]);
   const adDataHref = useMemo(() => {
-    const adOverviewRunId = currentRunId || selectedRunId;
-    if (adOverviewRunId) {
-      return `/projects/${projectId}/research-hub/ad-assets/${adOverviewRunId}`;
-    }
-    return `/projects/${projectId}/research-hub`;
-  }, [currentRunId, projectId, selectedRunId]);
+    const params = new URLSearchParams();
+    params.set("jobType", "ad-transcripts");
+    if (selectedRunId) params.set("runId", selectedRunId);
+    return `/projects/${projectId}/research-hub/data?${params.toString()}`;
+  }, [projectId, selectedRunId]);
   const productDataHref = useMemo(() => {
     const params = new URLSearchParams();
     params.set("jobType", "PRODUCT_DATA_COLLECTION");
@@ -1081,8 +1080,9 @@ export default function ResearchHubPage() {
   }
 
   return (
-    <div className="px-8 py-8 max-w-7xl mx-auto space-y-10">
+    <>
       <GlobalNavMenu projectId={projectId} />
+      <div className="px-8 py-8 max-w-7xl mx-auto space-y-10">
       {/* New Run Confirmation Modal */}
       {showNewRunModal && (
         <div className="fixed inset-0 bg-overlay backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -1112,7 +1112,10 @@ export default function ResearchHubPage() {
       )}
 
       <PageHeader
+        backHref={`/projects/${projectId}`}
+        backLabel="Back to Project"
         title="Research Hub"
+        description="Multi-track customer research, ad research, and product research."
         actions={anyRunning ? <StatusChip variant="running">Running</StatusChip> : undefined}
       />
 
@@ -1304,26 +1307,13 @@ export default function ResearchHubPage() {
                       "product-collection",
                     ]);
                     const showAlwaysHistoryButton = stepsWithAlwaysHistoryButton.has(stepWithStatus.id);
-		                    const historyUrl = (() => {
-		                      if (stepWithStatus.label === "Customer Analysis") {
-		                        return currentRunId
-		                          ? `/projects/${projectId}/research-hub/jobs/customer-analysis?runId=${currentRunId}`
-		                          : `/projects/${projectId}/research-hub/jobs/customer-analysis`;
-		                      }
-		                      if (stepWithStatus.jobType === "AD_PERFORMANCE") {
-		                        const params = new URLSearchParams();
-		                        const effectiveHistoryRunId = currentRunId || selectedRunId;
-		                        if (effectiveHistoryRunId) params.set("runId", effectiveHistoryRunId);
-		                        if (stepWithStatus.id === "ad-collection") params.set("subtype", "ad_raw_collection");
-		                        if (stepWithStatus.id === "ad-ocr") params.set("subtype", "ad_ocr_collection");
-		                        if (stepWithStatus.id === "ad-transcripts") params.set("subtype", "ad_transcripts");
-		                        const query = params.toString();
-		                        return `/projects/${projectId}/research-hub/jobs/${stepWithStatus.jobType}${query ? `?${query}` : ""}`;
-		                      }
-		                      return currentRunId
-		                        ? `/projects/${projectId}/research-hub/jobs/${stepWithStatus.jobType}?runId=${currentRunId}`
-		                        : `/projects/${projectId}/research-hub/jobs/${stepWithStatus.jobType}`;
-		                    })();
+	                    const historyUrl = currentRunId
+	                      ? stepWithStatus.label === "Customer Analysis"
+	                        ? `/projects/${projectId}/research-hub/jobs/customer-analysis?runId=${currentRunId}`
+	                        : `/projects/${projectId}/research-hub/jobs/${stepWithStatus.jobType}?runId=${currentRunId}`
+	                      : stepWithStatus.label === "Customer Analysis"
+	                        ? `/projects/${projectId}/research-hub/jobs/customer-analysis`
+	                        : `/projects/${projectId}/research-hub/jobs/${stepWithStatus.jobType}`;
 	                    const payloadRunId = String(stepWithStatus.lastJob?.payload?.runId ?? "").trim();
 	                    const stepRunId =
 	                      stepWithStatus.lastJob?.runId || payloadRunId || currentRunId || selectedRunId || null;
@@ -1623,7 +1613,7 @@ export default function ResearchHubPage() {
             return (
               <div key={job.id} className="app-list-item flex items-start justify-between gap-4">
                 <div className="flex-1">
-                  <div className="text-sm font-medium text-white">{getRunJobName(job)}</div>
+                  <div className="text-sm font-medium text-white">{getJobTypeLabel(job.type)}</div>
                   <div className="text-xs text-muted">{new Date(job.createdAt).toLocaleString()}</div>
                   {isCancelable && (
                     <div className="mt-2">
@@ -1661,7 +1651,8 @@ export default function ResearchHubPage() {
         </div>
       </div>
 
-    </div>
+      </div>
+    </>
   );
 }
 

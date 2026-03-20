@@ -141,11 +141,15 @@ export default function UsagePage() {
   }
 
   return (
-    <div className="px-8 py-8 max-w-7xl mx-auto space-y-8">
+    <>
       <GlobalNavMenu projectId={projectId} />
-      <PageHeader
-        title="Usage & Metrics"
-      />
+      <div className="px-8 py-8 max-w-7xl mx-auto space-y-8">
+        <PageHeader
+          backHref={`/projects/${projectId}`}
+          backLabel="Back to Project"
+          title="Usage & Metrics"
+          description="Track your research job spending and resource allocation."
+        />
 
       {/* Total Spend Card */}
       <SectionCard className="overflow-hidden relative group p-10">
@@ -314,6 +318,7 @@ export default function UsagePage() {
           Metrics shown are ledger simulations. Actual API resource allocation is tracked post-aggregation.
         </p>
       </div>
-    </div>
+      </div>
+    </>
   );
 }

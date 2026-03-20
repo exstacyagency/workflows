@@ -82,15 +82,22 @@ export default function ProjectsPage() {
   }
 
   return (
-    <div className="px-8 py-8 max-w-7xl mx-auto space-y-8">
+    <>
       <GlobalNavMenu />
-      <PageHeader
-        title="Projects"
-        actions={<CreateProjectButton />}
-      />
-      {error && (
-        <p className="text-xs text-danger font-mono">{error}</p>
-      )}
+      <div className="px-8 py-8 max-w-7xl mx-auto space-y-8">
+        <a
+          href="/studio"
+          className="text-label font-mono text-muted hover:text-white uppercase tracking-widest transition-colors inline-block"
+        >
+          ← Back to Studio
+        </a>
+        <PageHeader
+          title="Projects"
+          actions={<CreateProjectButton />}
+        />
+        {error && (
+          <p className="text-xs text-danger font-mono">{error}</p>
+        )}
 
       <div className="space-y-6">
         <div className="flex items-center justify-between border-b border-line pb-4">
@@ -192,6 +199,7 @@ export default function ProjectsPage() {
           </div>
         </SectionCard>
       </div>
-    </div>
+      </div>
+    </>
   );
 }
